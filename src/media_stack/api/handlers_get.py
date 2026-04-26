@@ -677,13 +677,19 @@ class GetRequestHandler:
             # reach jellyfin/jellyseerr/sabnzbd/authelia/envoy logs etc.
             # Return every service the registry knows about, plus the
             # platform pods (controller, ui) the operator may want to
-            # tail directly.
+            # tail directly, plus every CronJob template (so transient
+            # job pods like `media-stack-media-hygiene-29619765-2j9dc`
+            # are reachable through the dashboard — operators were
+            # previously stuck running `kubectl logs <pod>` to debug
+            # CronJob fires like the legacy media-hygiene Wave 6
+            # suspension).
             try:
                 from media_stack.api.services.registry import SERVICES
                 svcs = sorted({s.id for s in SERVICES})
             except Exception as exc:  # noqa: BLE001
                 log_swallowed(exc)
                 svcs = []
+            cronjobs = ops_svc.list_cronjob_log_sources()
             platform = ["controller", "ui"]
             handler._json_response(200, {
                 "sources": [
@@ -691,6 +697,7 @@ class GetRequestHandler:
                       for p in platform),
                     *({"id": s, "label": s.title(), "kind": "service"}
                       for s in svcs),
+                    *cronjobs,
                 ],
             })
         elif path.startswith("/api/logs/") and path.count("/") == 3:

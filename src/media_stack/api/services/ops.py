@@ -481,6 +481,15 @@ class OpsService:
         labels carry the project prefix. Without the fallback, asking
         the dashboard for "controller" logs returned an empty list
         plus the misleading "No pods found for controller" string.
+
+        After both `app=…` candidates miss, we try `job-name=<service_name>`
+        which covers transient CronJob/Job pods (e.g.
+        `media-stack-media-hygiene-29619765-2j9dc`). The operator
+        picks the CronJob name from the dropdown and the backend
+        resolves it to the most-recent pod by creationTimestamp —
+        the auto-generated suffix is opaque to the UI. CronJob pods
+        age out via TTL; if no pod exists we return a clear
+        "no recent pod for <name>" message rather than a 500.
         """
         namespace = os.environ.get("K8S_NAMESPACE", "")
         try:
@@ -491,25 +500,77 @@ class OpsService:
                 except Exception:
                     k8s_config.load_kube_config()
                 v1 = k8s_client.CoreV1Api()
-                candidates = [service_name, f"media-stack-{service_name}"]
+                candidates = [
+                    ("app", service_name),
+                    ("app", f"media-stack-{service_name}"),
+                    ("job-name", service_name),
+                ]
                 pods = None
-                for candidate in candidates:
+                matched_label = None
+                for label, value in candidates:
                     found = v1.list_namespaced_pod(
-                        namespace, label_selector=f"app={candidate}",
+                        namespace, label_selector=f"{label}={value}",
                     )
                     if found.items:
                         pods = found
+                        matched_label = (label, value)
                         break
+
+                # CronJob fallback: when the operator picked a CronJob
+                # name from the dropdown, no pod is labelled
+                # `job-name=<cronjob-name>` directly — Jobs spawned by
+                # the CronJob carry `job-name=<cronjob-name>-<ts>`. The
+                # CronJob template label `app=<cronjob-name>` may also
+                # be missing on completed-pod selectors, so list every
+                # pod whose job-name STARTS WITH the requested name.
                 if pods is None:
+                    all_pods = v1.list_namespaced_pod(namespace)
+                    matched_pods = [
+                        p for p in all_pods.items
+                        if (p.metadata.labels or {}).get("job-name", "").startswith(f"{service_name}-")
+                        or (p.metadata.labels or {}).get("job-name", "") == service_name
+                    ]
+                    if matched_pods:
+                        # Pick most-recent by creationTimestamp.
+                        from datetime import datetime, timezone as _tz
+                        _epoch = datetime(1970, 1, 1, tzinfo=_tz.utc)
+                        matched_pods.sort(
+                            key=lambda p: p.metadata.creation_timestamp or _epoch,
+                            reverse=True,
+                        )
+
+                        class _Stub:
+                            pass
+
+                        pods = _Stub()
+                        pods.items = matched_pods  # type: ignore[attr-defined]
+                        matched_label = ("job-name~", service_name)
+
+                if pods is None:
+                    tried = ", ".join(f"{lbl}={val}" for lbl, val in candidates)
                     return {
                         "lines": [],
                         "error": (
                             f"No pods found for {service_name} "
-                            f"(tried labels: {', '.join(candidates)})"
+                            f"(tried labels: {tried}). For CronJob/Job "
+                            f"sources this means no recent pod for "
+                            f"{service_name} — pod may have aged out "
+                            f"via TTL."
                         ),
                     }
+
+                # Pick the most-recent pod for transient/CronJob sources;
+                # for app-labelled (long-lived) pods, items[0] is fine.
+                pod_items = list(pods.items)
+                if matched_label and matched_label[0] in ("job-name", "job-name~"):
+                    from datetime import datetime, timezone as _tz
+                    _epoch = datetime(1970, 1, 1, tzinfo=_tz.utc)
+                    pod_items.sort(
+                        key=lambda p: p.metadata.creation_timestamp or _epoch,
+                        reverse=True,
+                    )
                 log_text = v1.read_namespaced_pod_log(
-                    name=pods.items[0].metadata.name, namespace=namespace, tail_lines=lines,
+                    name=pod_items[0].metadata.name, namespace=namespace, tail_lines=lines,
                 )
                 return {"lines": log_text.splitlines()[-lines:]}
             else:
@@ -520,6 +581,47 @@ class OpsService:
                 return {"lines": log_text.splitlines()[-lines:]}
         except Exception as exc:
             return {"lines": [], "error": str(exc)[:200]}
+
+    def list_cronjob_log_sources(self) -> list[dict[str, str]]:
+        """Enumerate CronJob templates as log sources for the Logs UI.
+
+        Each entry looks like
+        ``{"id": "media-stack-media-hygiene", "label": "Media hygiene (cron)", "kind": "cronjob"}``.
+        The ``id`` is the CronJob's metadata.name, which is what
+        ``GET /api/logs/<id>`` resolves to the most-recent pod via the
+        ``job-name`` selector in :meth:`get_service_logs`.
+
+        Returns an empty list when not running in Kubernetes or when
+        the BatchV1 API is unreachable — callers must tolerate that
+        gracefully so the platform/service portion of the dropdown
+        still renders.
+        """
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if not namespace:
+            return []
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            batch_v1 = k8s_client.BatchV1Api()
+            cronjobs = batch_v1.list_namespaced_cron_job(namespace)
+            sources: list[dict[str, str]] = []
+            for cj in cronjobs.items:
+                name = cj.metadata.name
+                # Build a friendly label: strip the project prefix and
+                # title-case + " (cron)" suffix so the dropdown reads
+                # naturally next to the platform/service rows.
+                short = name
+                if short.startswith("media-stack-"):
+                    short = short[len("media-stack-"):]
+                label = short.replace("-", " ").capitalize() + " (cron)"
+                sources.append({"id": name, "label": label, "kind": "cronjob"})
+            return sources
+        except Exception as exc:
+            log_swallowed(exc)
+            return []
 
 
 _instance = OpsService()
@@ -538,3 +640,4 @@ get_snapshot_detail = _instance.get_snapshot_detail
 diff_snapshots = _instance.diff_snapshots
 get_mount_info = _instance.get_mount_info
 get_service_logs = _instance.get_service_logs
+list_cronjob_log_sources = _instance.list_cronjob_log_sources

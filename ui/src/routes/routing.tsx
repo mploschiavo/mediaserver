@@ -2,6 +2,7 @@ import { createRoute } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DnsCheckCard } from "@/features/routing-admin/DnsCheckCard";
+import { EnvoyAdminSummaryCard } from "@/features/routing-admin/EnvoyAdminSummaryCard";
 import { GatewayHostnamesCard } from "@/features/routing-admin/GatewayHostnamesCard";
 import { ReachabilityMatrix } from "@/features/routing-admin/ReachabilityMatrix";
 import { RoutingStrategyCard } from "@/features/routing-admin/RoutingStrategyCard";
@@ -39,6 +40,8 @@ function RoutingPage() {
         error={routing.error}
         onRetry={() => void routing.refetch()}
       />
+
+      <EnvoyAdminSummaryCard />
 
       <ReachabilityMatrix />
 

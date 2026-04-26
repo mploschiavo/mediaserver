@@ -22,6 +22,10 @@ import {
   formatUntil,
   nextCronFire,
 } from "./format";
+import {
+  JobDetailBreakdown,
+  type JobDetailBreakdownRow,
+} from "./JobDetailBreakdown";
 
 interface JobDetailPanelProps {
   job: JobMeta;
@@ -47,12 +51,7 @@ interface JobDetailPanelProps {
   onRunningChange?: (running: boolean) => void;
 }
 
-interface RunRow {
-  ts: number | undefined;
-  status: string;
-  elapsed: number | undefined;
-  source?: string;
-}
+type RunRow = JobDetailBreakdownRow;
 
 function lastRunsForJob(
   name: string,
@@ -92,36 +91,6 @@ function lastSuccessfulRun(
     }
   }
   return null;
-}
-
-function statusBadge(status: string) {
-  if (status === "ok") return <Badge variant="success">ok</Badge>;
-  if (status === "skipped") return <Badge variant="warning">skipped</Badge>;
-  if (status === "error" || status === "errors" || status === "failed")
-    return <Badge variant="danger">error</Badge>;
-  return <Badge variant="outline">{status || "—"}</Badge>;
-}
-
-function sourceBadge(source: string | undefined) {
-  if (!source) return null;
-  const tone =
-    source === "cron"
-      ? "border-info/40 bg-info/10 text-info"
-      : source === "manual"
-        ? "border-accent/40 bg-accent/10 text-accent"
-        : "border-warning/40 bg-warning/10 text-warning";
-  return (
-    <span
-      className={cn(
-        "ml-1.5 inline-flex items-center rounded-md border px-1.5 py-0 text-[10px] uppercase tracking-wide",
-        tone,
-      )}
-      data-testid={`job-detail-source-${source}`}
-      title={`Triggered by ${source}`}
-    >
-      {source}
-    </span>
-  );
 }
 
 interface DepChipProps {
@@ -692,40 +661,7 @@ export function JobDetailPanel({
                   />
                 </div>
               ) : null}
-              <div
-                className="overflow-x-auto"
-                data-testid="job-detail-runs-table"
-              >
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-fg-muted">
-                      <th className="py-2 font-medium">When</th>
-                      <th className="py-2 font-medium">Status</th>
-                      <th className="py-2 text-right font-medium">Elapsed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {runs.map((row, i) => (
-                      <tr
-                        key={`${row.ts ?? "x"}-${i}`}
-                        className="border-b border-border/60 last:border-b-0"
-                      >
-                        <td
-                          className="py-1.5 tabular-nums text-fg-muted"
-                          title={formatAbsolute(row.ts)}
-                        >
-                          {formatRelative(epochToIso(row.ts))}
-                          {sourceBadge(row.source)}
-                        </td>
-                        <td className="py-1.5">{statusBadge(row.status)}</td>
-                        <td className="py-1.5 text-right font-mono tabular-nums text-fg-muted">
-                          {formatElapsed(row.elapsed)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <JobDetailBreakdown rows={runs} />
             </div>
           )}
         </CardContent>

@@ -70,7 +70,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: ui
-          image: harbor.iomio.io/library/media-stack-ui:v1.3.19
+          image: harbor.iomio.io/library/media-stack-ui:v1.3.20
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

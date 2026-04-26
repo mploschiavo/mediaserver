@@ -36,6 +36,22 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 import { LogsPage } from "./LogsPage";
 
+/**
+ * After LogsTable migrated to `<DataTable>`, rows carry the
+ * `logs-data-table-row-<id>` test-id slug rather than the legacy
+ * `logs-row`. The per-row contract attributes (`data-source`,
+ * `data-level`, `data-tone`) are preserved via `renderRowAttributes`,
+ * so existing assertions on `data-source` still work — we just
+ * resolve the row elements by selector.
+ */
+function getLogRows(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-testid^="logs-data-table-row-"]',
+    ),
+  );
+}
+
 const sampleLines = [
   "[2026-04-07 12:00:01] INFO: boot ok",
   "[2026-04-07 12:00:02] ERROR: boom",
@@ -81,7 +97,7 @@ describe("LogsPage", () => {
 
   it("renders all three sample lines as table rows", () => {
     renderWithProviders(<LogsPage />);
-    const rows = screen.getAllByTestId("logs-row");
+    const rows = getLogRows();
     expect(rows.length).toBe(3);
     expect(screen.getByTestId("logs-stat-visible")).toHaveTextContent("3");
     expect(screen.getByTestId("logs-stat-total")).toHaveTextContent("3");
@@ -89,11 +105,11 @@ describe("LogsPage", () => {
 
   it("filters by level when a chip is toggled off", async () => {
     renderWithProviders(<LogsPage />);
-    expect(screen.getAllByTestId("logs-row").length).toBe(3);
+    expect(getLogRows().length).toBe(3);
     await userEvent.click(screen.getByTestId("logs-level-chip-INFO"));
     // Filtering removes the [INFO] line, leaving 2.
     await waitFor(() => {
-      expect(screen.getAllByTestId("logs-row").length).toBe(2);
+      expect(getLogRows().length).toBe(2);
     });
   });
 
@@ -101,7 +117,7 @@ describe("LogsPage", () => {
     renderWithProviders(<LogsPage />);
     await userEvent.type(screen.getByTestId("logs-search"), "BOOM");
     await waitFor(() => {
-      expect(screen.getAllByTestId("logs-row").length).toBe(1);
+      expect(getLogRows().length).toBe(1);
     });
   });
 
@@ -109,7 +125,7 @@ describe("LogsPage", () => {
     renderWithProviders(<LogsPage />);
     await userEvent.type(screen.getByTestId("logs-search"), "/^ERROR/");
     await waitFor(() => {
-      expect(screen.getAllByTestId("logs-row").length).toBe(1);
+      expect(getLogRows().length).toBe(1);
     });
   });
 
@@ -126,9 +142,7 @@ describe("LogsPage", () => {
       { source: "sonarr", lines: ["[2026-04-07 12:00:02] INFO: b"] },
     ];
     renderWithProviders(<LogsPage />);
-    const sources = screen
-      .getAllByTestId("logs-row")
-      .map((r) => r.getAttribute("data-source"));
+    const sources = getLogRows().map((r) => r.getAttribute("data-source"));
     expect(sources).toContain("controller");
     expect(sources).toContain("sonarr");
   });

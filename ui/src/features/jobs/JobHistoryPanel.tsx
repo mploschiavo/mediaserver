@@ -16,6 +16,10 @@ import {
   formatElapsed,
   formatRelative,
 } from "./format";
+import {
+  JobBreakdownTable,
+  type JobBreakdownRow,
+} from "./JobBreakdownTable";
 
 interface JobHistoryPanelProps {
   history: readonly JobHistoryEntry[];
@@ -28,13 +32,7 @@ interface JobHistoryPanelProps {
   catalog?: ReadonlyMap<string, JobMeta>;
 }
 
-interface PerJobRow {
-  name: string;
-  service: string | undefined;
-  status: string;
-  elapsed: number | undefined;
-  error: string | undefined;
-}
+type PerJobRow = JobBreakdownRow;
 
 /**
  * Compact name list for the table row — operators want to see WHICH
@@ -244,14 +242,6 @@ const historyColumns: ColumnDef<JobHistoryEntry>[] = [
   },
 ];
 
-function statusBadge(status: string) {
-  if (status === "ok") return <Badge variant="success">ok</Badge>;
-  if (status === "skipped") return <Badge variant="warning">skipped</Badge>;
-  if (status === "error" || status === "errors" || status === "failed")
-    return <Badge variant="danger">error</Badge>;
-  return <Badge variant="outline">{status || "—"}</Badge>;
-}
-
 /**
  * Default panel rendered when no job is selected. Shows a compact
  * table of recent batch runs from the controller's history feed,
@@ -342,51 +332,7 @@ export function JobHistoryPanel({ history, catalog }: JobHistoryPanelProps) {
                   No per-job results recorded for this batch.
                 </p>
               ) : (
-                <table
-                  className="w-full text-sm"
-                  data-testid="job-history-breakdown"
-                >
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-fg-muted">
-                      <th className="py-2 font-medium">Job</th>
-                      <th className="py-2 font-medium">Status</th>
-                      <th className="py-2 text-right font-medium">Elapsed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {breakdown.map((row) => (
-                      <tr
-                        key={row.name}
-                        className="border-b border-border/60 last:border-b-0 align-top"
-                        data-testid={`job-history-breakdown-row-${row.name}`}
-                      >
-                        <td className="py-1.5 pr-2">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {row.service ? (
-                              <span
-                                className="inline-flex items-center rounded-md border border-border bg-bg-2 px-1.5 py-0 text-[10px] uppercase tracking-wide text-fg-muted"
-                                data-testid={`job-history-breakdown-service-${row.name}`}
-                                title={`Service: ${row.service}`}
-                              >
-                                {row.service}
-                              </span>
-                            ) : null}
-                            <span className="font-mono text-xs">{row.name}</span>
-                          </div>
-                          {row.error ? (
-                            <div className="mt-0.5 text-xs text-danger">
-                              {row.error}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="py-1.5">{statusBadge(row.status)}</td>
-                        <td className="py-1.5 text-right font-mono tabular-nums text-fg-muted">
-                          {formatElapsed(row.elapsed)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <JobBreakdownTable rows={breakdown} />
               )}
             </div>
           </VaulDrawer.Content>

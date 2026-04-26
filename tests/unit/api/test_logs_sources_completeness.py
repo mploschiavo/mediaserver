@@ -35,22 +35,30 @@ class LogsSourcesCompletenessRatchet(unittest.TestCase):
     handler dispatch, asserts the response includes every registry
     service id."""
 
-    def _capture_dispatch(self) -> dict:
+    def _capture_dispatch(
+        self, cronjobs: list[dict] | None = None,
+    ) -> dict:
         """Invoke the GET dispatcher's /api/logs/sources branch and
         return the parsed JSON body. Uses an inline replica of the
         handler's branch logic — the dispatch surface is too tied to
         BaseHTTPRequestHandler internals to mock cleanly, but the
-        branch itself is small and documented in handlers_get.py."""
-        # Mirror the branch in handlers_get.py (lines ~636–663).
+        branch itself is small and documented in handlers_get.py.
+
+        ``cronjobs`` simulates the BatchV1Api list — defaults to an
+        empty list so the platform+service-only assertions still pass
+        when no CronJobs are present (the compose deploy path)."""
+        # Mirror the branch in handlers_get.py.
         # If those drift, this test should be updated to keep parity.
         platform = ["controller", "ui"]
         svcs = sorted({s.id for s in SERVICES})
+        cron = list(cronjobs or [])
         return {
             "sources": [
                 *({"id": p, "label": p.title(), "kind": "platform"}
                   for p in platform),
                 *({"id": s, "label": s.title(), "kind": "service"}
                   for s in svcs),
+                *cron,
             ],
         }
 
@@ -83,13 +91,49 @@ class LogsSourcesCompletenessRatchet(unittest.TestCase):
             )
 
     def test_kinds_are_well_formed(self) -> None:
-        """Every row must declare ``kind: platform`` or ``kind: service``.
-        Used by the UI to badge platform vs service entries differently."""
-        body = self._capture_dispatch()
+        """Every row must declare ``kind: platform``, ``kind: service``,
+        or ``kind: cronjob``. Used by the UI to badge platform vs
+        service vs cronjob entries differently."""
+        # Include a representative CronJob row so the assertion
+        # exercises the third kind too.
+        body = self._capture_dispatch(cronjobs=[
+            {"id": "media-stack-media-hygiene",
+             "label": "Media hygiene (cron)",
+             "kind": "cronjob"},
+        ])
         for row in body["sources"]:
-            self.assertIn(row["kind"], ("platform", "service"), row)
+            self.assertIn(
+                row["kind"],
+                ("platform", "service", "cronjob"),
+                row,
+            )
             self.assertTrue(row["id"], row)
             self.assertTrue(row["label"], row)
+
+    def test_cronjob_kind_is_supported(self) -> None:
+        """CronJob templates surface as ``kind: cronjob`` rows so the
+        Logs UI can route them to the same `/api/logs/<id>` endpoint
+        — backend resolves to the most-recent pod via the
+        ``job-name=<id>-…`` label. Without this row class, transient
+        CronJob/Job pod logs (e.g. legacy media-hygiene Wave 6 fires)
+        are unreachable from the dashboard and operators fall back to
+        live `kubectl logs <pod>`."""
+        body = self._capture_dispatch(cronjobs=[
+            {"id": "media-stack-media-hygiene",
+             "label": "Media hygiene (cron)",
+             "kind": "cronjob"},
+            {"id": "media-stack-jellyfin-prewarm",
+             "label": "Jellyfin prewarm (cron)",
+             "kind": "cronjob"},
+        ])
+        cronjob_rows = [r for r in body["sources"] if r["kind"] == "cronjob"]
+        self.assertEqual(
+            len(cronjob_rows), 2,
+            "CronJob entries must flow through to the response unchanged",
+        )
+        ids = {r["id"] for r in cronjob_rows}
+        self.assertIn("media-stack-media-hygiene", ids)
+        self.assertIn("media-stack-jellyfin-prewarm", ids)
 
     def test_response_shape_is_a_flat_list(self) -> None:
         """The wire shape is ``{"sources": [{id, label, kind}]}``. If
@@ -126,6 +170,15 @@ class LogsSourcesDispatchHandlerRatchet(unittest.TestCase):
             "/api/logs/sources branch must read from the SERVICES "
             "registry — without it, the source list won't grow when "
             "new techs are added (the original bug class).",
+        )
+        self.assertIn(
+            "list_cronjob_log_sources",
+            block,
+            "/api/logs/sources branch must call "
+            "ops_svc.list_cronjob_log_sources() so CronJob/Job pod "
+            "logs are reachable from the dashboard. Without it the "
+            "operator falls back to live `kubectl logs <pod>` for "
+            "every CronJob fire.",
         )
 
 
