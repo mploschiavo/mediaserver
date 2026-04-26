@@ -14,15 +14,18 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Route as RootRoute } from "@/routes/__root";
 
 /**
- * Landing route. The dashboard is being rebuilt one tab at a time;
- * the page renders the onboarding checklist + pre-upgrade migration
- * safety check when the controller surfaces them, and otherwise
- * redirects to /media-integrity (the showcase tab) so existing
- * deep-links keep their fallback.
+ * Landing route. The page renders the onboarding checklist +
+ * pre-upgrade migration safety check when the controller surfaces
+ * them, and otherwise lands on /ops — the operator dashboard.
  *
- * The decision is component-local rather than `beforeLoad` so we can
- * gate on Tanstack Query results — the redirect only fires once
- * neither hook has anything to say.
+ * Why /ops: it's the broadest "what's the state of my stack right
+ * now?" surface. The historical /media-integrity default surprised
+ * operators ("why is the dashboard a single subsystem?"). /ops is
+ * the natural homepage for an admin tool.
+ *
+ * The decision is component-local rather than `beforeLoad` so we
+ * can gate on Tanstack Query results — the redirect only fires
+ * once neither hook has anything to say.
  */
 function HomePage() {
   const reduce = useReducedMotion();
@@ -31,8 +34,7 @@ function HomePage() {
 
   // While either probe is in flight, render nothing. The fallback
   // redirect mustn't fire until we've heard back, otherwise an admin
-  // with onboarding still pending would get bounced to /media-integrity
-  // before we know.
+  // with onboarding still pending would get bounced before we know.
   if (onboarding.isLoading || migration.isLoading) {
     return null;
   }
@@ -40,11 +42,10 @@ function HomePage() {
   const showOnboarding = onboardingHasContent(onboarding.data);
   const showMigration = migrationCheckHasContent(migration.data);
 
-  // Existing redirect-to-/media-integrity fallback: if neither card
-  // has content (and neither hook errored into something visible),
-  // we keep the historical behaviour.
+  // Default landing — /ops gives the operator the breadth they
+  // expect from a "home" view (services, jobs, quick actions).
   if (!showOnboarding && !showMigration) {
-    return <Navigate to="/media-integrity" replace />;
+    return <Navigate to="/ops" replace />;
   }
 
   return (

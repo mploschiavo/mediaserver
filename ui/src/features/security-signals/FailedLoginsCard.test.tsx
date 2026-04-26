@@ -34,7 +34,7 @@ describe("FailedLoginsCard", () => {
     failedLoginsState.data = { clusters: [] };
     renderWithProviders(<FailedLoginsCard />);
     expect(
-      screen.getByText("No failed-login clusters"),
+      screen.getByText(/no failed-login clusters/i),
     ).toBeInTheDocument();
   });
 

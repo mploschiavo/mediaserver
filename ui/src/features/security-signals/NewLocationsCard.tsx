@@ -210,8 +210,8 @@ export function NewLocationsCard() {
             <div className="p-6">
               <EmptyState
                 icon={ShieldCheck}
-                title="No new-location alerts"
-                description="No known users have signed in from an unfamiliar IP or geo."
+                title="✓ All clear — no new-location alerts"
+                description="No known user has signed in from an IP or geo we haven't seen them at before."
               />
             </div>
           ) : (

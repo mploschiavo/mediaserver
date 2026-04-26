@@ -30,7 +30,7 @@ describe("FailedServicesCard", () => {
   it("renders the empty state when no services are failed", () => {
     failedState.data = { failed_services: [], count: 0 };
     renderWithProviders(<FailedServicesCard />);
-    expect(screen.getByText("No failed services")).toBeInTheDocument();
+    expect(screen.getByText(/no failed services/i)).toBeInTheDocument();
   });
 
   it("renders the error message when the query fails", () => {

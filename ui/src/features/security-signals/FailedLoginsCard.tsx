@@ -249,8 +249,8 @@ export function FailedLoginsCard({
             <div className="p-6">
               <EmptyState
                 icon={ShieldAlert}
-                title="No failed-login clusters"
-                description="No credential-stuffing signals in the last 24 hours."
+                title="✓ All clear — no failed-login clusters"
+                description="Probed every authenticated upstream; no credential-stuffing signals in the last 24 hours."
               />
             </div>
           ) : (
