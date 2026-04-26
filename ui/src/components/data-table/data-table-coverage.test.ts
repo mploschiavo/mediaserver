@@ -51,29 +51,19 @@ const _LEGACY_TABLE_ALLOWLIST: ReadonlyArray<{
       "Side-pane key/value rows, not a sortable/filterable list of homogeneous records",
   },
   {
-    file: "logs/LogsTable.tsx",
+    file: "jobs/JobDetailBreakdown.tsx",
     reason:
-      "Streaming log viewer with tail-mode auto-scroll, search-mark spans, " +
-      "and per-row data-source/level/tone attributes. Needs DataTable to " +
-      "expose a renderRowAttributes/renderRow prop before migrating " +
-      "(Wave 6 candidate).",
+      "drawer-internal breakdown — opens on row-click, not a sort/filter " +
+      "scenario; intentionally non-DataTable. Extracted from " +
+      "JobDetailPanel.tsx so the outer panel migrates cleanly.",
   },
   {
-    file: "jobs/JobDetailPanel.tsx",
+    file: "jobs/JobBreakdownTable.tsx",
     reason:
-      "Embedded breakdown table inside the job-detail drawer — outer " +
-      "DataTable migration would distort the drawer's nested-grid layout. " +
-      "Wave 6: split inner table out as a presentational sub-component " +
-      "and migrate that.",
-  },
-  {
-    file: "jobs/JobHistoryPanel.tsx",
-    reason:
-      "Outer 'Recent batches' table IS migrated to <DataTable>. The " +
-      "remaining raw <table> is the per-batch breakdown inside the Vaul " +
-      "drawer (opens on row-click) — drawer-only, not a sort/filter " +
-      "scenario. Wave 6: extract drawer breakdown into its own file " +
-      "(jobs/JobBreakdownTable.tsx) and allowlist that instead.",
+      "drawer-internal breakdown — opens on row-click, not a sort/filter " +
+      "scenario; intentionally non-DataTable. Extracted from " +
+      "JobHistoryPanel.tsx so the outer 'Recent batches' table " +
+      "(now <DataTable>) is unencumbered.",
   },
 ];
 
@@ -145,11 +135,15 @@ describe("DataTable coverage ratchet", () => {
   it("allowlist size doesn't grow without reason", () => {
     // Floor — only goes DOWN as we migrate. Bump down each time you
     // remove an entry. Prevents silent allowlist growth. Current
-    // floor: 5 (BulkImportDialog, UserDetailDrawer, LogsTable,
-    // JobDetailPanel, JobHistoryPanel). Goal is 2 (only the truly
-    // non-table allowed entries — CSV preview + side-pane key/value
-    // rows; the 3 drawer/streaming cases get their inner tables
-    // extracted in Wave 6).
-    expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(5);
+    // floor: 4 (BulkImportDialog, UserDetailDrawer, JobDetailBreakdown,
+    // JobBreakdownTable). LogsTable was migrated once DataTable shipped
+    // the `renderRowAttributes` prop in v1.3.19. Wave 6 extracted the
+    // two drawer-internal breakdowns out of JobDetailPanel.tsx and
+    // JobHistoryPanel.tsx into their own components so the outer panels
+    // stay clean — the inner breakdowns are intentionally non-DataTable
+    // (opens on row-click, not sort/filter scenarios). Goal is 2 (only
+    // the truly non-table allowed entries — CSV preview + side-pane
+    // key/value rows).
+    expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(4);
   });
 });

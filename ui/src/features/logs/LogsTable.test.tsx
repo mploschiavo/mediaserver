@@ -13,14 +13,45 @@ function lines(): ParsedLine[] {
   ];
 }
 
+/**
+ * After the `<DataTable>` migration, rows are rendered by the primitive
+ * with stable testIds of the form `logs-data-table-row-<id>`. We
+ * resolve them here by querying for any element whose `data-testid`
+ * starts with that prefix — the existing per-row contracts
+ * (`data-source`, `data-level`, `data-tone`) are preserved via
+ * DataTable's `renderRowAttributes` hook and asserted directly.
+ */
+function getRows(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-testid^="logs-data-table-row-"]',
+    ),
+  );
+}
+
 describe("LogsTable", () => {
   it("renders one row per line with timestamp, source, level columns", () => {
     renderWithProviders(<LogsTable lines={lines()} search="" tailing={false} />);
-    const rows = screen.getAllByTestId("logs-row");
+    const rows = getRows();
     expect(rows).toHaveLength(3);
     expect(rows[0]).toHaveAttribute("data-source", "controller");
     expect(rows[1]).toHaveAttribute("data-source", "sonarr");
     expect(rows[2]).toHaveAttribute("data-source", "radarr");
+  });
+
+  it("preserves per-row data-level on each migrated row", () => {
+    renderWithProviders(<LogsTable lines={lines()} search="" tailing={false} />);
+    const rows = getRows();
+    expect(rows[0]).toHaveAttribute("data-level", "[INFO]");
+    expect(rows[1]).toHaveAttribute("data-level", "[ERR]");
+    expect(rows[2]).toHaveAttribute("data-level", "[WARN]");
+  });
+
+  it("propagates the hashed source tone to a row-level data-tone attr", () => {
+    renderWithProviders(<LogsTable lines={lines()} search="" tailing={false} />);
+    const rows = getRows();
+    expect(rows[0]).toHaveAttribute("data-tone", hashSource("controller").fg);
+    expect(rows[1]).toHaveAttribute("data-tone", hashSource("sonarr").fg);
   });
 
   it("colors the source cell with the stable hash tone", () => {
@@ -86,6 +117,6 @@ describe("LogsTable", () => {
 
   it("renders an empty body when no lines are provided", () => {
     renderWithProviders(<LogsTable lines={[]} search="" tailing={false} />);
-    expect(screen.queryAllByTestId("logs-row")).toHaveLength(0);
+    expect(getRows()).toHaveLength(0);
   });
 });

@@ -47,7 +47,12 @@ describe("logs route", () => {
     expect(screen.getByTestId("logs-page")).toBeInTheDocument();
     expect(screen.getByTestId("logs-toolbar")).toBeInTheDocument();
     expect(screen.getByTestId("logs-stats")).toBeInTheDocument();
-    expect(screen.getByTestId("logs-table-body")).toBeInTheDocument();
+    // After the LogsTable -> <DataTable> migration, the legacy
+    // `logs-table-body` test-id is gone (it lived on the raw
+    // `<tbody>` we no longer render). The DataTable primitive owns
+    // the body now; the wrapping scroller still exposes a stable
+    // hook the route shell can assert on.
+    expect(screen.getByTestId("logs-table-scroller")).toBeInTheDocument();
     // Source chips legend.
     expect(
       screen.getByTestId("logs-source-chip-controller"),
