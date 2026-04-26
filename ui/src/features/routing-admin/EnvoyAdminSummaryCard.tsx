@@ -17,7 +17,7 @@
 // because most of the values (p99 latency in particular) move on a
 // minute timescale anyway and a noisier poll just burns cluster CPU.
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   Activity,
@@ -388,6 +388,43 @@ export function EnvoyAdminSummaryCard() {
     return { rows, topClusters: top };
   }, [sparkDeltas]);
 
+  // Latency-over-time heatmap data — cluster × bucket grid of p99
+  // values. Picks the top-6 clusters by max p99 so the worst tails
+  // surface first; anything quieter is hidden to keep the grid
+  // readable. Each cell carries (p50, p95, p99) so the tooltip can
+  // show the full quantile triple on hover.
+  const latencyHeatmap = useMemo(() => {
+    if (sparkSamples.length < 2) {
+      return { clusters: [] as string[], buckets: [] as number[],
+               cells: {} as Record<string, Record<number, { p50: number | null; p95: number | null; p99: number | null }>> };
+    }
+    // Aggregate the worst p99 per cluster across the window so we
+    // can pick the top-6.
+    const worstP99 = new Map<string, number>();
+    for (const s of sparkSamples) {
+      for (const [cluster, q] of Object.entries(s.latency_per_cluster ?? {})) {
+        const p99 = q.p99;
+        if (typeof p99 !== "number") continue;
+        const cur = worstP99.get(cluster) ?? 0;
+        if (p99 > cur) worstP99.set(cluster, p99);
+      }
+    }
+    const topClusters = [...worstP99.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 6)
+      .map(([n]) => n);
+    const buckets = sparkSamples.map((s) => s.ts);
+    const cells: Record<string, Record<number, { p50: number | null; p95: number | null; p99: number | null }>> = {};
+    for (const cluster of topClusters) {
+      cells[cluster] = {};
+      for (const s of sparkSamples) {
+        const q = s.latency_per_cluster?.[cluster];
+        if (q) cells[cluster][s.ts] = q;
+      }
+    }
+    return { clusters: topClusters, buckets, cells };
+  }, [sparkSamples]);
+
   // Per-cluster active connections — current snapshot, not a series.
   // Sorted desc; capped at 8 rows for visual hygiene.
   const activeCxBreakdown = useMemo(() => {
@@ -679,6 +716,28 @@ export function EnvoyAdminSummaryCard() {
             stack). */}
         {activeCxBreakdown.length > 0 ? (
           <ActiveConnectionsCard data={activeCxBreakdown} />
+        ) : null}
+
+        {/* Latency-over-time heatmap — top-6 clusters by worst p99
+            across the buffer. Cells are colour-graded
+            (green <100 / amber <500 / red ≥500); hover shows the
+            full p50/p95/p99 triple. Sparse cells (cluster had no
+            histogram data in that bucket) render as faint
+            placeholders so the grid stays aligned. */}
+        {latencyHeatmap.clusters.length > 0 ? (
+          <LatencyHeatmapCard
+            clusters={latencyHeatmap.clusters}
+            buckets={latencyHeatmap.buckets}
+            cells={latencyHeatmap.cells}
+          />
+        ) : null}
+
+        {/* Live request tail — most-recent-first table of the last
+            buffered samples. Each row: timestamp, total rq/s, err/s,
+            and a tiny per-bucket sparkline of total req. Hidden when
+            <2 samples (same gate as the rate chart). */}
+        {sparkDeltas.length >= 2 ? (
+          <RequestTailCard deltas={sparkDeltas} />
         ) : null}
 
         {/* Pie charts — visual at-a-glance for the three questions
@@ -1308,6 +1367,246 @@ function ActiveConnectionsCard({ data }: ActiveConnectionsCardProps) {
             </span>
           </li>
         ))}
+      </ul>
+    </div>
+  );
+}
+
+interface LatencyHeatmapCardProps {
+  clusters: readonly string[];
+  buckets: readonly number[];
+  cells: Record<
+    string,
+    Record<number, { p50: number | null; p95: number | null; p99: number | null }>
+  >;
+}
+
+/**
+ * Cluster × time grid of p99 latency. Each cell is tinted by
+ * severity (green <100ms · amber <500ms · red ≥500ms · faint when
+ * the cluster had no histogram in that bucket). Top-6 clusters by
+ * worst p99 surface; anything quieter is hidden.
+ *
+ * Reading the grid: rows = upstream clusters, columns = sample
+ * buckets (left = oldest, right = newest). A horizontal red streak
+ * means a cluster has been slow throughout; a vertical streak across
+ * multiple clusters means everything-spiked-at-once (likely a
+ * cluster-wide event, not an individual upstream issue).
+ */
+function LatencyHeatmapCard({
+  clusters,
+  buckets,
+  cells,
+}: LatencyHeatmapCardProps) {
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+      data-testid="envoy-summary-latency-over-time"
+    >
+      <div>
+        <span className="text-sm font-medium text-fg">
+          Latency over time (p99)
+        </span>
+        <p className="text-xs text-fg-muted">
+          Top {clusters.length} clusters by worst tail. Cell tint =
+          green &lt;100ms · amber &lt;500ms · red ≥500ms · faint when no
+          histogram data for that bucket.
+        </p>
+      </div>
+      <div
+        className="grid items-center gap-x-2 gap-y-1 text-xs"
+        style={{
+          gridTemplateColumns: `minmax(120px, max-content) repeat(${buckets.length}, minmax(8px, 1fr))`,
+        }}
+        data-testid="envoy-summary-latency-grid"
+      >
+        {/* Header row — empty corner + bucket times (every 4th
+            label so a 240-bucket window doesn't overflow). */}
+        <div aria-hidden />
+        {buckets.map((b, i) => (
+          <div
+            key={b}
+            className="text-center text-[9px] tabular-nums text-fg-faint"
+          >
+            {i % 4 === 0
+              ? new Date(b * 1000).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : ""}
+          </div>
+        ))}
+        {clusters.map((cluster) => (
+          <Fragment key={cluster}>
+            <div
+              className="truncate font-mono text-fg"
+              title={cluster}
+              data-testid={`envoy-summary-latency-row-${cluster}`}
+            >
+              {prettyCluster(cluster)}
+            </div>
+            {buckets.map((b) => {
+              const q = cells[cluster]?.[b];
+              const p99 = q?.p99 ?? null;
+              const tone = latencyTone(p99);
+              return (
+                <Tooltip key={b}>
+                  <TooltipTrigger asChild>
+                    <div
+                      className={cn(
+                        "h-4 rounded-sm border",
+                        latencyToneClass(tone),
+                      )}
+                      data-tone={tone}
+                      aria-label={
+                        p99 !== null
+                          ? `${cluster} p99 ${p99}ms at ${new Date(
+                              b * 1000,
+                            ).toLocaleTimeString()}`
+                          : `${cluster} no data`
+                      }
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {q ? (
+                      <div className="text-xs">
+                        <div className="font-mono">{cluster}</div>
+                        <div className="tabular-nums text-fg-muted">
+                          p50 {q.p50 ?? "—"}ms · p95 {q.p95 ?? "—"}ms · p99{" "}
+                          {q.p99 ?? "—"}ms
+                        </div>
+                        <div className="text-fg-faint">
+                          {new Date(b * 1000).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-fg-muted">No data</div>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function latencyTone(p99: number | null): "muted" | "success" | "warning" | "danger" {
+  if (p99 === null || p99 === undefined) return "muted";
+  if (p99 < 100) return "success";
+  if (p99 < 500) return "warning";
+  return "danger";
+}
+
+function latencyToneClass(tone: "muted" | "success" | "warning" | "danger"): string {
+  switch (tone) {
+    case "success":
+      return "border-success/40 bg-success/30";
+    case "warning":
+      return "border-warning/40 bg-warning/30";
+    case "danger":
+      return "border-danger/40 bg-danger/40";
+    case "muted":
+      return "border-border/40 bg-bg-2/40";
+  }
+}
+
+interface RequestTailCardProps {
+  deltas: readonly TimeseriesDelta[];
+}
+
+/**
+ * Most-recent-first list of the last buffered samples. Each row is
+ * a timestamp, the aggregate request rate, error rate, and a small
+ * sparkline showing recent request-rate trend up to that bucket.
+ * Useful for "what just happened" troubleshooting — operators can
+ * see the spike that caused them to open the panel.
+ *
+ * Capped at 20 rows for visual hygiene; the full buffer is still
+ * driving the line/area charts above.
+ */
+function RequestTailCard({ deltas }: RequestTailCardProps) {
+  const recent = useMemo(
+    () => [...deltas].reverse().slice(0, 20),
+    [deltas],
+  );
+  const maxRq = useMemo(
+    () => Math.max(1, ...deltas.map((d) => d.rq_per_s)),
+    [deltas],
+  );
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+      data-testid="envoy-summary-request-tail"
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-fg">
+          Recent buckets
+        </span>
+        <span
+          className="inline-block size-1.5 animate-pulse rounded-full bg-success"
+          aria-hidden
+        />
+        <span className="text-xs text-fg-muted">live</span>
+      </div>
+      <p className="text-xs text-fg-muted">
+        Last 20 polling buckets, newest first. Each row is an aggregate
+        rate snapshot — drill into the per-cluster traffic chart above
+        to see which upstream owns the spike.
+      </p>
+      <ul
+        className="flex flex-col divide-y divide-border/50"
+        data-testid="envoy-summary-request-tail-list"
+      >
+        {recent.map((d, idx) => {
+          const ratePct = (d.rq_per_s / maxRq) * 100;
+          const errPct =
+            d.rq_per_s > 0
+              ? Math.min(100, (d.err_per_s / d.rq_per_s) * 100)
+              : 0;
+          return (
+            <li
+              key={d.ts}
+              className={cn(
+                "flex items-center gap-3 py-1 text-xs",
+                idx === 0 && "bg-success/5",
+              )}
+              data-testid={`envoy-summary-tail-row-${idx}`}
+            >
+              <span className="w-16 tabular-nums text-fg-muted">
+                {new Date(d.ts * 1000).toLocaleTimeString()}
+              </span>
+              <div className="relative h-2 flex-1 overflow-hidden rounded bg-bg-2">
+                <div
+                  className="absolute inset-y-0 left-0 bg-info/60"
+                  style={{ width: `${ratePct}%` }}
+                  aria-hidden
+                />
+                {errPct > 0 ? (
+                  <div
+                    className="absolute inset-y-0 right-0 bg-danger/70"
+                    style={{ width: `${(errPct * ratePct) / 100}%` }}
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
+              <span className="w-16 tabular-nums text-fg">
+                {d.rq_per_s.toFixed(1)} rq/s
+              </span>
+              <span
+                className={cn(
+                  "w-14 tabular-nums",
+                  d.err_per_s > 0 ? "text-danger" : "text-fg-faint",
+                )}
+              >
+                {d.err_per_s.toFixed(1)} err/s
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
