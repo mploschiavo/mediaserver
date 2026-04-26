@@ -32,9 +32,10 @@ import { describe, expect, it } from "vitest";
 const UI_DIR = path.resolve(__dirname, "..", "..", "..");
 const FEATURES_DIR = path.join(UI_DIR, "src", "features");
 
-// Files allowed to use the raw `<Table>` primitive. Each entry MUST
-// include a justification — if you're adding to this list, the
-// reviewer's first question is "why isn't this a DataTable?"
+// Files allowed to use the raw `<Table>` primitive OR raw HTML
+// table tags (<table>/<thead>/<tbody>). Each entry MUST include a
+// justification — if you're adding to this list, the reviewer's
+// first question is "why isn't this a DataTable?"
 const _LEGACY_TABLE_ALLOWLIST: ReadonlyArray<{
   file: string;
   reason: string;
@@ -49,9 +50,38 @@ const _LEGACY_TABLE_ALLOWLIST: ReadonlyArray<{
     reason:
       "Side-pane key/value rows, not a sortable/filterable list of homogeneous records",
   },
+  {
+    file: "logs/LogsTable.tsx",
+    reason:
+      "Streaming log viewer with tail-mode auto-scroll, search-mark spans, " +
+      "and per-row data-source/level/tone attributes. Needs DataTable to " +
+      "expose a renderRowAttributes/renderRow prop before migrating " +
+      "(Wave 6 candidate).",
+  },
+  {
+    file: "jobs/JobDetailPanel.tsx",
+    reason:
+      "Embedded breakdown table inside the job-detail drawer — outer " +
+      "DataTable migration would distort the drawer's nested-grid layout. " +
+      "Wave 6: split inner table out as a presentational sub-component " +
+      "and migrate that.",
+  },
+  {
+    file: "jobs/JobHistoryPanel.tsx",
+    reason:
+      "Outer 'Recent batches' table IS migrated to <DataTable>. The " +
+      "remaining raw <table> is the per-batch breakdown inside the Vaul " +
+      "drawer (opens on row-click) — drawer-only, not a sort/filter " +
+      "scenario. Wave 6: extract drawer breakdown into its own file " +
+      "(jobs/JobBreakdownTable.tsx) and allowlist that instead.",
+  },
 ];
 
-const _LEGACY_TABLE_PATTERN = /<(?:Table|TableHeader|TableBody|TableRow|TableHead)\b/;
+// Catches both the `<Table>` primitive AND raw HTML `<table>` tags.
+// Raw <table> regex requires a word boundary or attribute character so
+// it doesn't false-positive on words like "Notable" or "Tabletop".
+const _LEGACY_TABLE_PATTERN =
+  /<(?:Table|TableHeader|TableBody|TableRow|TableHead)\b|<table[\s>]|<thead[\s>]|<tbody[\s>]/;
 
 function relPath(abs: string): string {
   return path.relative(FEATURES_DIR, abs).replace(/\\/g, "/");
@@ -114,7 +144,12 @@ describe("DataTable coverage ratchet", () => {
 
   it("allowlist size doesn't grow without reason", () => {
     // Floor — only goes DOWN as we migrate. Bump down each time you
-    // remove an entry. Prevents silent allowlist growth.
-    expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(2);
+    // remove an entry. Prevents silent allowlist growth. Current
+    // floor: 5 (BulkImportDialog, UserDetailDrawer, LogsTable,
+    // JobDetailPanel, JobHistoryPanel). Goal is 2 (only the truly
+    // non-table allowed entries — CSV preview + side-pane key/value
+    // rows; the 3 drawer/streaming cases get their inner tables
+    // extracted in Wave 6).
+    expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(5);
   });
 });
