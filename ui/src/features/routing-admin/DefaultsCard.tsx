@@ -61,7 +61,8 @@ export function DefaultsCard() {
         <CardTitle>Defaults</CardTitle>
         <CardDescription>
           Inherited knobs that apply to every host unless explicitly
-          overridden. Per-host edit lands in PR-6.5.
+          overridden. Per-host overrides surface in the Hostnames
+          editor.
         </CardDescription>
       </CardHeader>
       <CardContent>
