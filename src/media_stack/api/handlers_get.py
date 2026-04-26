@@ -526,6 +526,82 @@ class GetRequestHandler:
             handler._json_response(200, config_svc.get_env())
         elif path == "/api/routing":
             handler._json_response(200, config_svc.get_routing())
+        elif path == "/api/routing/v2":
+            # Migrated v2 view of the routing config. Read-only in
+            # PR-4; PR-5 adds POST + apply. Reads the v1 dict via
+            # the legacy service, runs migrate_v1_to_v2, returns the
+            # structured shape the new UI consumes.
+            from media_stack.api.services.config.routing import (
+                migrate_v1_to_v2,
+                validate_routing_config,
+            )
+            try:
+                v1 = config_svc.get_routing()
+                # ``direct_hosts`` becomes hosts[]; need media_server_id
+                # from the profile so that role resolves to a concrete
+                # service rather than the default "jellyfin".
+                ms_id = None
+                try:
+                    ms_id = config_svc._profile.media_server_id()  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    ms_id = None
+                cfg = migrate_v1_to_v2(v1, media_server_id=ms_id)
+                # Validate but include errors as a sibling field so
+                # the UI can render them inline; v1 → v2 migration may
+                # produce a config that fails some VRs (e.g. apex
+                # default = NONE which is fine; other implicit defaults
+                # may not be). Operators see what's not happy without
+                # being blocked from reading.
+                errors = [
+                    {"code": e.code, "field": e.field,
+                     "message": e.message, "hint": e.hint}
+                    for e in validate_routing_config(cfg)
+                ]
+                handler._json_response(200, {
+                    "config": cfg.to_dict(),
+                    "validation": errors,
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    500, {"error": str(exc)[:200]},
+                )
+        elif path == "/api/routing/effective":
+            # Same as /api/routing/v2 but with `defaults` merged into
+            # every host's per-field knobs, so the UI shows what Envoy
+            # actually sees instead of the operator-facing "inherited"
+            # placeholders. Read-only.
+            from media_stack.api.services.config.routing import (
+                migrate_v1_to_v2,
+            )
+            try:
+                v1 = config_svc.get_routing()
+                ms_id = None
+                try:
+                    ms_id = config_svc._profile.media_server_id()  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    ms_id = None
+                cfg = migrate_v1_to_v2(v1, media_server_id=ms_id)
+                # Merge defaults into each host. Only fills in fields
+                # the host left unset (None / empty). Per-host explicit
+                # values always win.
+                eff = cfg.to_dict()
+                defaults = eff.get("defaults") or {}
+                for h in eff.get("hosts", []):
+                    if not h.get("websocket"):
+                        h["websocket"] = defaults.get("websocket", False)
+                    if not h.get("auth") and defaults.get("auth"):
+                        h["auth"] = dict(defaults["auth"])
+                    if not h.get("timeout_seconds"):
+                        h["timeout_seconds"] = defaults.get("timeout_seconds", 0)
+                    if not h.get("body_limit_mb"):
+                        h["body_limit_mb"] = defaults.get("body_limit_mb", 0)
+                    if not h.get("headers") and defaults.get("headers"):
+                        h["headers"] = dict(defaults["headers"])
+                handler._json_response(200, {"config": eff})
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    500, {"error": str(exc)[:200]},
+                )
         elif path == "/api/profile":
             handler._json_response(200, config_svc.get_profile())
         elif path == "/api/manifests":
