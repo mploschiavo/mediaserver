@@ -45,6 +45,7 @@ import {
 } from "recharts";
 import { fetcher } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
+import { ClusterDetailDrawer } from "./ClusterDetailDrawer";
 import {
   Card,
   CardContent,
@@ -196,6 +197,7 @@ function prettyCluster(name: string): string {
 
 export function EnvoyAdminSummaryCard() {
   const [intervalMs, setIntervalMs] = useState<number>(DEFAULT_INTERVAL_MS);
+  const [drillCluster, setDrillCluster] = useState<string | null>(null);
   const query = useEnvoyAdminSummary(intervalMs);
   const tsQuery = useEnvoyTimeseries(intervalMs);
   const data = query.data;
@@ -723,12 +725,14 @@ export function EnvoyAdminSummaryCard() {
             (green <100 / amber <500 / red ≥500); hover shows the
             full p50/p95/p99 triple. Sparse cells (cluster had no
             histogram data in that bucket) render as faint
-            placeholders so the grid stays aligned. */}
+            placeholders so the grid stays aligned. Click a row
+            label to open the drill-down drawer. */}
         {latencyHeatmap.clusters.length > 0 ? (
           <LatencyHeatmapCard
             clusters={latencyHeatmap.clusters}
             buckets={latencyHeatmap.buckets}
             cells={latencyHeatmap.cells}
+            onClusterClick={setDrillCluster}
           />
         ) : null}
 
@@ -817,9 +821,15 @@ export function EnvoyAdminSummaryCard() {
                     className="flex items-center justify-between gap-2 text-sm"
                     data-testid={`envoy-summary-top-route-${cluster}`}
                   >
-                    <span className="font-mono text-xs text-fg">
+                    <button
+                      type="button"
+                      className="font-mono text-xs text-fg hover:underline focus-visible:underline"
+                      onClick={() => setDrillCluster(cluster)}
+                      data-testid={`envoy-summary-top-route-${cluster}-drill`}
+                      aria-label={`Drill into ${cluster}`}
+                    >
                       {prettyCluster(cluster)}
-                    </span>
+                    </button>
                     <span className="tabular-nums text-fg-muted">
                       {formatNumber(count)}
                     </span>
@@ -845,9 +855,14 @@ export function EnvoyAdminSummaryCard() {
                     className="flex items-center justify-between gap-2 text-sm"
                     data-testid={`envoy-summary-slow-${row.name}`}
                   >
-                    <span className="font-mono text-xs text-fg">
+                    <button
+                      type="button"
+                      className="font-mono text-xs text-fg hover:underline focus-visible:underline"
+                      onClick={() => setDrillCluster(row.name)}
+                      aria-label={`Drill into ${row.name}`}
+                    >
                       {prettyCluster(row.name)}
-                    </span>
+                    </button>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="tabular-nums text-fg-muted">
@@ -932,6 +947,11 @@ export function EnvoyAdminSummaryCard() {
           </div>
         )}
       </CardContent>
+      <ClusterDetailDrawer
+        open={drillCluster !== null}
+        cluster={drillCluster}
+        onClose={() => setDrillCluster(null)}
+      />
     </Card>
   );
 }
@@ -1379,6 +1399,7 @@ interface LatencyHeatmapCardProps {
     string,
     Record<number, { p50: number | null; p95: number | null; p99: number | null }>
   >;
+  onClusterClick?: (cluster: string) => void;
 }
 
 /**
@@ -1397,6 +1418,7 @@ function LatencyHeatmapCard({
   clusters,
   buckets,
   cells,
+  onClusterClick,
 }: LatencyHeatmapCardProps) {
   return (
     <div
@@ -1438,13 +1460,25 @@ function LatencyHeatmapCard({
         ))}
         {clusters.map((cluster) => (
           <Fragment key={cluster}>
-            <div
-              className="truncate font-mono text-fg"
-              title={cluster}
-              data-testid={`envoy-summary-latency-row-${cluster}`}
-            >
-              {prettyCluster(cluster)}
-            </div>
+            {onClusterClick ? (
+              <button
+                type="button"
+                className="truncate text-left font-mono text-fg hover:underline focus-visible:underline"
+                title={cluster}
+                onClick={() => onClusterClick(cluster)}
+                data-testid={`envoy-summary-latency-row-${cluster}`}
+              >
+                {prettyCluster(cluster)}
+              </button>
+            ) : (
+              <div
+                className="truncate font-mono text-fg"
+                title={cluster}
+                data-testid={`envoy-summary-latency-row-${cluster}`}
+              >
+                {prettyCluster(cluster)}
+              </div>
+            )}
             {buckets.map((b) => {
               const q = cells[cluster]?.[b];
               const p99 = q?.p99 ?? null;

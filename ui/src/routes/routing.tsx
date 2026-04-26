@@ -9,10 +9,12 @@ import { EnvoyAdminSummaryCard } from "@/features/routing-admin/EnvoyAdminSummar
 import { ExposureCard } from "@/features/routing-admin/ExposureCard";
 import { GatewayHostnamesCard } from "@/features/routing-admin/GatewayHostnamesCard";
 import { HostnamesMatrix } from "@/features/routing-admin/HostnamesMatrix";
+import { LiveAccessLogCard } from "@/features/routing-admin/LiveAccessLogCard";
 import { PathAliasesCard } from "@/features/routing-admin/PathAliasesCard";
 import { ReachabilityMatrix } from "@/features/routing-admin/ReachabilityMatrix";
 import { RouteTableCard } from "@/features/routing-admin/RouteTableCard";
 import { RoutingStrategyCard } from "@/features/routing-admin/RoutingStrategyCard";
+import { SankeyFlowCard } from "@/features/routing-admin/SankeyFlowCard";
 import { TlsCertificateCard } from "@/features/routing-admin/TlsCertificateCard";
 import { useRouting } from "@/features/routing-admin/hooks";
 import { Route as RootRoute } from "@/routes/__root";
@@ -74,7 +76,9 @@ function RoutingPage() {
         </TabsContent>
 
         <TabsContent value="live" className="flex flex-col gap-6 pt-4">
+          <SankeyFlowCard />
           <EnvoyAdminSummaryCard />
+          <LiveAccessLogCard />
         </TabsContent>
 
         <TabsContent value="diagnostics" className="flex flex-col gap-6 pt-4">
