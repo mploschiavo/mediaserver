@@ -46,6 +46,118 @@ export function useRouting(): UseQueryResult<RoutingResponse> {
   });
 }
 
+// ---- Routing v2 (PR-4 onward) ---------------------------------------------
+
+/**
+ * Subset of the v2 schema the UI reads. Mirrors the Python dataclasses
+ * in `services/config/routing/schema_v2.py`. Treated as
+ * `additionalProperties: true` because the backend may extend it
+ * (Tier 1/2 fields land in subsequent PRs).
+ */
+export interface RoutingV2HostTls {
+  cert_id?: string;
+  force_https?: boolean;
+}
+export interface RoutingV2HostAuth {
+  gate?: "required" | "optional" | "none";
+  provider?: string;
+}
+export interface RoutingV2HostEntry {
+  role: string;
+  service_id: string;
+  canonical: string;
+  aliases?: string[];
+  path_prefix?: string;
+  tls?: RoutingV2HostTls;
+  auth?: RoutingV2HostAuth;
+  websocket?: boolean;
+  timeout_seconds?: number;
+  body_limit_mb?: number;
+  maintenance?: boolean;
+}
+export interface RoutingV2Exposure {
+  enabled: boolean;
+  binding: "auto" | "k8s_ingress" | "k8s_loadbalancer" | "compose_host_port" | "compose_loopback";
+  public_hostnames: string[];
+  bind_addresses?: string[];
+}
+export interface RoutingV2PathAlias {
+  from: string;
+  to: string;
+  code: number;
+}
+export interface RoutingV2Apex {
+  action: "none" | "redirect" | "static" | "service";
+  target?: string;
+  code?: number;
+}
+export interface RoutingV2CatchAll {
+  action: "404" | "redirect" | "block" | "service";
+  target?: string;
+  code?: number;
+  custom_404_body?: string;
+}
+export interface RoutingV2CertManager {
+  issuer_kind: "Issuer" | "ClusterIssuer";
+  issuer_name: string;
+  challenge: "http01" | "dns01";
+  solver?: { provider: string; secret_ref?: string };
+  secret_name?: string;
+}
+export interface RoutingV2Cert {
+  id: string;
+  source: "cert_manager" | "acme_direct" | "uploaded" | "cloudflare_origin";
+  common_name: string;
+  sans?: string[];
+  cert_manager?: RoutingV2CertManager;
+  expires_at?: string;
+  auto_renew?: boolean;
+  status?: "pending" | "ready" | "failed";
+  failure_message?: string;
+}
+export interface RoutingV2Config {
+  version: number;
+  base_domain: string;
+  stack_subdomain: string;
+  gateway_host: string;
+  gateway_port: number;
+  strategy: "subdomain" | "path" | "hybrid";
+  scheme: string;
+  app_path_prefix: string;
+  exposure: RoutingV2Exposure;
+  hosts: RoutingV2HostEntry[];
+  path_aliases: RoutingV2PathAlias[];
+  apex: RoutingV2Apex;
+  catch_all: RoutingV2CatchAll;
+  certs: RoutingV2Cert[];
+  defaults?: {
+    websocket?: boolean;
+    auth?: RoutingV2HostAuth;
+    timeout_seconds?: number;
+    body_limit_mb?: number;
+  };
+}
+export interface RoutingV2ValidationError {
+  code: string;
+  field: string;
+  message: string;
+  hint?: string;
+}
+export interface RoutingV2Response {
+  config: RoutingV2Config;
+  validation: RoutingV2ValidationError[];
+}
+
+const ROUTING_V2_KEY = ["routing", "v2"] as const;
+
+export function useRoutingV2(): UseQueryResult<RoutingV2Response> {
+  return useQuery({
+    queryKey: ROUTING_V2_KEY,
+    queryFn: () => fetcher<RoutingV2Response>("api/routing/v2"),
+    staleTime: 30_000,
+  });
+}
+
 // ---- Routing config (POST /api/routing) -----------------------------------
 
 export type RoutingStrategyValue = "hybrid" | "subdomain" | "path";
