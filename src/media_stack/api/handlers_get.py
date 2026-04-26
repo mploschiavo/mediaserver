@@ -987,9 +987,12 @@ class GetRequestHandler:
             # Resolution order matches the auth policy: Authelia/Authentik
             # forwarded headers first, then the session cookie (for
             # direct-access deployments where the user signed in with the
-            # controller's in-page form). Without the session-cookie
-            # branch the dashboard never showed the logout badge for
-            # localhost users even though they WERE authenticated.
+            # controller's in-page form), then Basic auth (when the
+            # browser is supplying the credentials on every request via
+            # the WWW-Authenticate popup). Without all three branches
+            # the avatar in the top-right falls back to "??" even
+            # though the operator is authenticated — exactly the
+            # symptom that drove this branch to grow over time.
             user = (handler.headers.get("Remote-User", "")
                     or handler.headers.get("X-authentik-username", ""))
             name = (handler.headers.get("Remote-Name", "")
@@ -999,7 +1002,33 @@ class GetRequestHandler:
             groups = (handler.headers.get("Remote-Groups", "")
                       or handler.headers.get("X-authentik-groups", ""))
             if not user:
-                user = session_cookie_reader.username_for_handler(handler)
+                user = session_cookie_reader.username_for_handler(handler) or ""
+            if not user:
+                auth_hdr = handler.headers.get("Authorization", "") or ""
+                if auth_hdr.startswith("Basic "):
+                    try:
+                        decoded = base64.b64decode(auth_hdr[6:]).decode(
+                            "utf-8", "replace")
+                        user = decoded.partition(":")[0] or ""
+                    except Exception:  # noqa: BLE001
+                        user = ""
+            # If we resolved a username but have no display_name /
+            # email yet, hydrate them from the user store. The Topbar
+            # avatar prefers display_name and looks shabby with a
+            # bare "admin" — pulling the row's display_name (e.g.
+            # "Administrator") fixes that for the common case.
+            if user and not name:
+                try:
+                    from media_stack.core.auth.users.user_service_factory \
+                        import build_default_service
+                    svc = build_default_service()
+                    row = svc._store.get_by_username(user)
+                    if row is not None:
+                        name = (getattr(row, "display_name", "") or "").strip()
+                        if not email:
+                            email = (getattr(row, "email", "") or "").strip()
+                except Exception:  # noqa: BLE001
+                    pass
             handler._json_response(200, {
                 "authenticated": bool(user),
                 "user": user,
