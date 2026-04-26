@@ -1,12 +1,21 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GuardrailDomainTab } from "./GuardrailDomainTab";
-import { useGuardrails, type GuardrailDomain } from "./hooks";
+import {
+  useGuardrails,
+  useUpdateGuardrailsConfig,
+  type GuardrailDomain,
+} from "./hooks";
 
 const DOMAIN_ORDER: ReadonlyArray<{ id: GuardrailDomain; label: string }> = [
   { id: "storage", label: "Storage" },
@@ -64,7 +73,11 @@ export function GuardrailsPage({ focusedId }: GuardrailsPageProps) {
   }
 
   return (
-    <Tabs
+    <div className="flex flex-col gap-4">
+      <CadenceEditor
+        currentSeconds={query.data?.evaluation_interval_seconds ?? 300}
+      />
+      <Tabs
       defaultValue={defaultTab}
       className="flex flex-col gap-4"
       data-testid="guardrails-tabs"
@@ -90,5 +103,98 @@ export function GuardrailsPage({ focusedId }: GuardrailsPageProps) {
         </TabsContent>
       ))}
     </Tabs>
+    </div>
+  );
+}
+
+/**
+ * Editable cadence input for the cross-domain guardrail evaluation
+ * loop. Operators previously had no way to slow this down — every
+ * minute the loop fired, polluting /api/jobs/history with one row
+ * per already-firing rule. POST /api/guardrails/config persists a
+ * new interval (floor 30s, ceiling 3600s).
+ */
+function CadenceEditor({ currentSeconds }: { currentSeconds: number }) {
+  const update = useUpdateGuardrailsConfig();
+  const [draft, setDraft] = useState(String(currentSeconds));
+  const dirty = String(currentSeconds) !== draft;
+
+  // Quick-set buttons: common operator choices. 60s is the legacy
+  // "every minute" cadence (allowed, not recommended); 300s is the
+  // new default; 600s/1800s for slower stacks where the operator
+  // cares more about quiet history than fresh signals.
+  const presets = [60, 300, 600, 1800];
+
+  const onSave = () => {
+    const n = Number.parseInt(draft, 10);
+    if (!Number.isFinite(n) || n < 30 || n > 3600) {
+      toast.error("Cadence must be between 30 and 3600 seconds.");
+      return;
+    }
+    update.mutate(
+      { evaluation_interval_seconds: n },
+      {
+        onSuccess: (res) => {
+          toast.success(
+            `Guardrail cadence set to ${res.evaluation_interval_seconds}s.`,
+          );
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : "Failed to save");
+        },
+      },
+    );
+  };
+
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-lg border border-border bg-bg-1 p-3 sm:flex-row sm:items-end sm:gap-3"
+      data-testid="guardrails-cadence-editor"
+    >
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="guardrail-cadence" className="text-xs text-fg-muted">
+          Evaluation cadence (seconds)
+        </Label>
+        <Input
+          id="guardrail-cadence"
+          type="number"
+          min={30}
+          max={3600}
+          step={10}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          className="w-32 tabular-nums"
+          data-testid="guardrails-cadence-input"
+        />
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {presets.map((p) => (
+          <Button
+            key={p}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setDraft(String(p))}
+            data-testid={`guardrails-cadence-preset-${p}`}
+          >
+            {p === 60 ? "1m" : p === 300 ? "5m" : p === 600 ? "10m" : "30m"}
+          </Button>
+        ))}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        onClick={onSave}
+        disabled={!dirty || update.isPending}
+        loading={update.isPending}
+        data-testid="guardrails-cadence-save"
+      >
+        Save cadence
+      </Button>
+      <p className="text-xs text-fg-muted sm:ml-auto">
+        How often the registry re-evaluates every rule. Storage rules
+        rarely need {"<"} 5 min. Floor 30s, ceiling 1h.
+      </p>
+    </div>
   );
 }

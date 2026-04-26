@@ -55,10 +55,14 @@ export interface Guardrail {
 
 interface GuardrailsResponse {
   guardrails: readonly Guardrail[];
+  /** Cadence (seconds) at which guardrails re-evaluate. Configurable
+   *  via POST /api/guardrails/config. Default 300 (5min). */
+  evaluation_interval_seconds: number;
 }
 
 interface RawGuardrailsResponse {
   guardrails?: unknown;
+  evaluation_interval_seconds?: unknown;
 }
 
 export interface GuardrailTestResult {
@@ -94,8 +98,14 @@ export function useGuardrails(): UseQueryResult<GuardrailsResponse> {
       const raw = await fetcher<RawGuardrailsResponse>("api/guardrails", {
         silenceAuthEvent: true,
       });
+      const interval =
+        typeof raw.evaluation_interval_seconds === "number" &&
+        Number.isFinite(raw.evaluation_interval_seconds)
+          ? raw.evaluation_interval_seconds
+          : 300;
       return {
         guardrails: asArray<Guardrail>(raw.guardrails),
+        evaluation_interval_seconds: interval,
       };
     },
     refetchInterval: 30_000,
@@ -112,6 +122,30 @@ export function useGuardrails(): UseQueryResult<GuardrailsResponse> {
 }
 
 // ---- Mutations ----------------------------------------------------------
+
+/**
+ * Updates the cross-domain guardrail evaluation cadence. Backend
+ * floors at 30s and ceilings at 3600s; the controller persists the
+ * value in-process for the rest of its lifetime.
+ */
+export function useUpdateGuardrailsConfig(): UseMutationResult<
+  { evaluation_interval_seconds: number },
+  Error,
+  { evaluation_interval_seconds: number }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) =>
+      fetcher<{ evaluation_interval_seconds: number }>(
+        "api/guardrails/config",
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: GUARDRAILS_QUERY_KEY });
+    },
+  });
+}
+
 
 export function useUpdateGuardrail(
   id: string,

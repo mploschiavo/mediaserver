@@ -500,8 +500,21 @@ class GetRequestHandler:
         elif path == "/api/guardrails":
             from media_stack.services import guardrails as _guardrails_pkg
             registry = _guardrails_pkg.default()
+            try:
+                from media_stack.application.guardrails.evaluation_loop import (
+                    _resolved_interval as _gr_interval,
+                )
+                interval = int(_gr_interval(None))
+            except Exception:  # noqa: BLE001
+                interval = 300
             handler._json_response(200, {
                 "guardrails": registry.status_summary(),
+                # Cadence (seconds) at which guardrails re-evaluate.
+                # Operators can tune via MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS
+                # env var or POST /api/guardrails/config. Surfacing it
+                # here lets the UI render an editable input + the
+                # "next evaluation in" hint on the page header.
+                "evaluation_interval_seconds": interval,
             })
 
         # --- Config ---
