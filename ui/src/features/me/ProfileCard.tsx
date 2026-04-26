@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,13 +57,8 @@ export function ProfileCard() {
             </div>
           </div>
         ) : me.error ? (
-          <div
-            role="alert"
-            data-testid="profile-card-error"
-            className="text-sm text-danger"
-          >
-            <p className="font-medium">Failed to load your profile</p>
-            <p className="mt-1 text-fg-muted">{me.error.message}</p>
+          <div data-testid="profile-card-error" className="w-full">
+            <ApiErrorTile error={me.error} onRetry={() => void me.refetch()} />
           </div>
         ) : me.data ? (
           <motion.div

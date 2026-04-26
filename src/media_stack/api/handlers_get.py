@@ -817,6 +817,16 @@ class GetRequestHandler:
             handler._json_response(200, config_svc.get_download_categories())
         elif path == "/api/metadata-settings":
             handler._json_response(200, config_svc.get_metadata_settings())
+        elif path == "/api/bazarr/subtitle-config":
+            # Aggregator over Bazarr's languages + profiles + settings.
+            # Surfaced on Settings → Display → Subtitle preferences.
+            try:
+                from .services import bazarr_proxy
+                handler._json_response(
+                    200, bazarr_proxy.get_subtitle_config(),
+                )
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(500, {"error": str(exc)[:200]})
         elif path == "/api/livetv-sources":
             handler._json_response(200, config_svc.get_livetv_sources())
         elif path == "/api/discovery-lists":
@@ -1264,10 +1274,23 @@ class GetRequestHandler:
             Path(__file__).resolve().parents[3] / "contracts" / "branding.yaml",
             Path("contracts/branding.yaml"),
         ])
+        # Naming convention (industry pattern: product dominates,
+        # vendor is secondary credit):
+        #   * ``name``     — product short name shown in chrome
+        #     ("Media Stack"). The sidebar wordmark reads from this.
+        #   * ``tagline``  — full product name for splash / about
+        #     ("Media Stack Controller").
+        #   * ``vendor``   — company / publisher ("iomio"). Surfaced
+        #     as a small "by iomio" subtitle, never as the primary
+        #     wordmark.
+        # The link target is ALWAYS the dashboard root (``/``); the
+        # ``homepage_url`` is for an "About" external link (footer /
+        # settings → about), not the sidebar mark.
         defaults = {
-            "name": "iomio.io",
-            "homepage_url": "https://iomio.io",
+            "name": "Media Stack",
             "tagline": "Media Stack Controller",
+            "vendor": "iomio",
+            "homepage_url": "https://iomio.io",
             "wordmark": "/api/static/iomio-wordmark.svg",
             "icon": "/api/static/iomio-icon.svg",
             "illustration": "/api/static/iomio-orbit.svg",

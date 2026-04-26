@@ -4,6 +4,7 @@ import { LogOut, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -277,12 +278,11 @@ export function SessionsCard() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : sessionsQuery.error ? (
-          <div
-            role="alert"
-            data-testid="sessions-card-error"
-            className="px-6 py-4 text-sm text-danger"
-          >
-            {sessionsQuery.error.message}
+          <div className="px-6 py-4" data-testid="sessions-card-error">
+            <ApiErrorTile
+              error={sessionsQuery.error}
+              onRetry={() => void sessionsQuery.refetch()}
+            />
           </div>
         ) : sessions.length === 0 ? (
           <p

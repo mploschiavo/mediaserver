@@ -35,7 +35,9 @@ describe("ProfileCard", () => {
     meState.error = new Error("auth expired");
     renderWithProviders(<ProfileCard />);
     const err = screen.getByTestId("profile-card-error");
-    expect(err).toHaveTextContent("Failed to load your profile");
+    // ApiErrorTile renders "Couldn't load" for non-status errors and
+    // surfaces the underlying message verbatim.
+    expect(err).toHaveTextContent("Couldn't load");
     expect(err).toHaveTextContent("auth expired");
   });
 

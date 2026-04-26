@@ -1,0 +1,47 @@
+2026-04-26 21:37:18 - INFO    :: MainThread : Starting Tautulli v2.17.0
+2026-04-26 21:37:18 - INFO    :: MainThread : [Docker] Linux 6.17.0-22-generic (#22-Ubuntu SMP PREEMPT_DYNAMIC Fri Mar 13 12:04:44 UTC 2026 - Alpine Linux 3.23.3)
+2026-04-26 21:37:18 - INFO    :: MainThread : UTC (UTC+0000)
+2026-04-26 21:37:18 - INFO    :: MainThread : Language C / Encoding UTF-8
+2026-04-26 21:37:18 - INFO    :: MainThread : Python 3.12.12 (main, Oct 11 2025, 01:16:26) [GCC 15.2.0]
+2026-04-26 21:37:18 - INFO    :: MainThread : SQLite 3.51.2
+2026-04-26 21:37:18 - INFO    :: MainThread : Program Dir: /app/tautulli
+2026-04-26 21:37:18 - INFO    :: MainThread : Config File: /config/config.ini
+2026-04-26 21:37:18 - INFO    :: MainThread : Database File: /config/tautulli.db
+2026-04-26 21:37:18 - INFO    :: MainThread : Checking if the database upgrades are required...
+2026-04-26 21:37:18 - DEBUG   :: MainThread : Altering database. Updating database table notify_log.
+2026-04-26 21:37:18 - DEBUG   :: MainThread : User 'Local' does not exist. Adding user.
+2026-04-26 21:37:18 - INFO    :: MainThread : Checking if configuration upgrades are required...
+2026-04-26 21:37:18 - INFO    :: MainThread : Tautulli Config :: Writing configuration to file
+2026-04-26 21:37:18 - DEBUG   :: MainThread : Generating UUID...
+2026-04-26 21:37:18 - INFO    :: MainThread : Tautulli Config :: Writing configuration to file
+2026-04-26 21:37:18 - DEBUG   :: MainThread : Generating API key...
+2026-04-26 21:37:18 - INFO    :: MainThread : Tautulli Config :: Writing configuration to file
+2026-04-26 21:37:18 - DEBUG   :: MainThread : Generating JWT secret...
+2026-04-26 21:37:18 - INFO    :: MainThread : Tautulli Config :: Writing configuration to file
+2026-04-26 21:37:18 - INFO    :: MainThread : Retrieving latest version information from GitHub
+2026-04-26 21:37:18 - DEBUG   :: MainThread : Requesting URL via GET method: https://api.github.com/repos/Tautulli/Tautulli/commits/master
+2026-04-26 21:37:19 - DEBUG   :: MainThread : Latest version is 5610c167a17b0898d93d0588a0df81c03306ac52
+2026-04-26 21:37:19 - INFO    :: MainThread : Comparing currently installed version with latest GitHub version
+2026-04-26 21:37:19 - DEBUG   :: MainThread : Requesting URL via GET method: https://api.github.com/repos/Tautulli/Tautulli/compare/v2.17.0...5610c167a17b0898d93d0588a0df81c03306ac52
+2026-04-26 21:37:19 - DEBUG   :: MainThread : In total, 0 commits behind
+2026-04-26 21:37:19 - INFO    :: MainThread : Tautulli is up to date
+2026-04-26 21:37:19 - INFO    :: MainThread : Tautulli NotificationHandler :: Starting background notification handler (2 threads).
+2026-04-26 21:37:19 - ERROR   :: MainThread : Tautulli PlexTV :: PlexTV called, but no token provided.
+2026-04-26 21:37:19 - ERROR   :: MainThread : Tautulli PlexTV :: PlexTV called, but no token provided.
+2026-04-26 21:37:20 - INFO    :: MainThread : Tautulli WebStart :: Initializing Tautulli web server...
+2026-04-26 21:37:20 - WARNING :: MainThread : Tautulli WebStart :: Web server authentication is disabled!
+2026-04-26 21:37:20 - INFO    :: MainThread : Tautulli WebStart :: Thread Pool Size: 10.
+2026-04-26 21:37:20 - INFO    :: MainThread : Tautulli WebStart :: Starting Tautulli web server on http://0.0.0.0:8181/
+2026-04-26 21:37:20 - INFO    :: MainThread : [26/Apr/2026:21:37:20] ENGINE Serving on http://0.0.0.0:8181
+2026-04-26 21:37:20 - INFO    :: MainThread : Tautulli is ready!
+2026-04-26 21:37:39 - INFO    :: MainThread : Signal 15 caught, saving and exiting...
+2026-04-26 21:37:39 - INFO    :: MainThread : Tautulli WebStart :: Stopping Tautulli web server...
+2026-04-26 21:37:39 - INFO    :: MainThread : [26/Apr/2026:21:37:39] ENGINE Bus STOPPING
+2026-04-26 21:37:39 - INFO    :: MainThread : [26/Apr/2026:21:37:39] ENGINE HTTP Server cherrypy._cpwsgi_server.CPWSGIServer(('0.0.0.0', 8181)) shut down
+2026-04-26 21:37:39 - INFO    :: MainThread : [26/Apr/2026:21:37:39] ENGINE Bus STOPPED
+2026-04-26 21:37:39 - INFO    :: MainThread : [26/Apr/2026:21:37:39] ENGINE Bus EXITING
+2026-04-26 21:37:39 - INFO    :: MainThread : [26/Apr/2026:21:37:39] ENGINE Bus EXITED
+2026-04-26 21:37:39 - INFO    :: MainThread : Tautulli Config :: Writing configuration to file
+2026-04-26 21:37:39 - INFO    :: Thread-3 (process_queue) : Tautulli NotificationHandler :: Notification thread exiting...
+2026-04-26 21:37:39 - INFO    :: Thread-2 (process_queue) : Tautulli NotificationHandler :: Notification thread exiting...
+2026-04-26 21:37:39 - INFO    :: MainThread : Tautulli is shutting down...

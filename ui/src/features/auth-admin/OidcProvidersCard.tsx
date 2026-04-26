@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Globe, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/api";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { asObjectMap } from "@/lib/coerce";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -167,13 +168,12 @@ export function OidcProvidersCard() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : config.error ? (
-          <p
-            role="alert"
-            className="px-6 py-4 text-sm text-danger"
-            data-testid="oidc-error"
-          >
-            {config.error.message}
-          </p>
+          <div className="px-6 py-4" data-testid="oidc-error">
+            <ApiErrorTile
+              error={config.error}
+              onRetry={() => void config.refetch()}
+            />
+          </div>
         ) : !isConfigured ? (
           <div className="p-6">
             <EmptyState

@@ -3,6 +3,15 @@ service:
   name: SABnzbd
   desc: Usenet client
   category: downloads
+  # Gated behind the ``sabnzbd`` compose profile / k8s overlay.
+  # Usenet logins are paid; many home operators run torrent-only
+  # (qBittorrent). Marking SAB opt-in keeps the dashboard from
+  # firing "API key missing" alerts for a service the operator
+  # never intended to wire up. Re-enable by setting
+  # COMPOSE_PROFILES=...,sabnzbd (compose) or applying the
+  # sabnzbd overlay (k8s).
+  profiles:
+    - sabnzbd
   host: sabnzbd
   # In-container SAB listens on 8080; the host republishes it as
   # 8085 because qBittorrent already owns 8080 on the host.

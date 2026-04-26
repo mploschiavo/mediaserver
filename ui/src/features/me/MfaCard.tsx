@@ -1,4 +1,5 @@
 import { ExternalLink, ShieldCheck, ShieldOff } from "lucide-react";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,12 +68,11 @@ export function MfaCard() {
         {mfa.isLoading ? (
           <Skeleton className="h-6 w-24" data-testid="mfa-card-loading" />
         ) : mfa.error ? (
-          <div
-            role="alert"
-            data-testid="mfa-card-error"
-            className="text-sm text-danger"
-          >
-            {mfa.error.message}
+          <div data-testid="mfa-card-error">
+            <ApiErrorTile
+              error={mfa.error}
+              onRetry={() => void mfa.refetch()}
+            />
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
