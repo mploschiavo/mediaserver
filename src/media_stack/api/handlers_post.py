@@ -1115,6 +1115,64 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.update_routing(body, handler.action_trigger))
             return
 
+        # POST /api/auth/oidc/probe — server-side fetch of an OIDC
+        # discovery URL. The browser-side fetch the operator was
+        # using hits CORS or rate limits (Google in particular CORS-
+        # blocks third-party reads); doing it here lets the form
+        # auto-populate without those constraints.
+        if handler.path == "/api/auth/oidc/probe":
+            body = handler._read_json_body() or {}
+            url = str(body.get("discovery_url", "")).strip()
+            if not url.startswith(("http://", "https://")):
+                handler._json_response(
+                    400,
+                    {"error": "discovery_url must be http(s)"},
+                )
+                return
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "Accept": "application/json",
+                        "User-Agent": "media-stack-controller/oidc-probe",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                doc = _dumps_mod.loads(raw)
+                if not isinstance(doc, dict):
+                    raise ValueError("discovery doc is not a JSON object")
+                # Extract just the well-known fields the form needs.
+                # Pass the full doc through too in case the operator
+                # wants advanced customisation.
+                want = (
+                    "issuer", "authorization_endpoint", "token_endpoint",
+                    "userinfo_endpoint", "jwks_uri",
+                    "end_session_endpoint", "introspection_endpoint",
+                    "revocation_endpoint", "response_types_supported",
+                    "scopes_supported", "id_token_signing_alg_values_supported",
+                    "subject_types_supported",
+                )
+                summary = {k: doc.get(k) for k in want if k in doc}
+                handler._json_response(200, {
+                    "ok": True,
+                    "summary": summary,
+                    "raw": doc,
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    502,
+                    {
+                        "error": (
+                            "Couldn't fetch the discovery doc: "
+                            f"{str(exc)[:160]}"
+                        ),
+                        "ok": False,
+                    },
+                )
+            return
+
         # POST /api/routing/v2 — partial v2 update.
         #
         # Accepts a partial RoutingConfigV2 dict; deep-merges with the

@@ -200,18 +200,55 @@ export function useOidcProviders(): UseQueryResult<OidcProvidersResponse> {
  * dedicated parse endpoint. The controller returns the canonical
  * `{auth_url, token_url, userinfo_url, ...}` slice we splice into the
  * provider form so the operator can review before saving.
+ *
+ * Two paths:
+ *   * ``discovery_url`` only → controller fetches the well-known URL
+ *     server-side (avoids CORS / rate-limit issues with Google etc.),
+ *     then routes the resulting JSON through the parser.
+ *   * ``raw`` (or ``issuer``) → parses the pre-fetched JSON directly
+ *     for operators pasting from a config dump.
+ *
+ * When both are present, server-side fetch wins (the URL is the
+ * canonical source).
  */
 export function useParseOidc(): UseMutationResult<
   ParsedOidcConfig,
   Error,
-  { discovery_url?: string; issuer?: string; raw?: string }
+  { discovery_url?: string; issuer?: string; raw?: string | object }
 > {
   return useMutation({
-    mutationFn: (body) =>
-      fetcher<ParsedOidcConfig>("api/auth/parse-oidc", {
+    mutationFn: async (body) => {
+      // discovery_url path: probe via the controller (server-side
+      // fetch), then send the resolved doc to the existing parser.
+      if (body.discovery_url && !body.raw) {
+        const probe = await fetcher<{
+          ok: boolean;
+          summary?: Record<string, unknown>;
+          raw?: Record<string, unknown>;
+          error?: string;
+        }>("api/auth/oidc/probe", {
+          method: "POST",
+          body: JSON.stringify({ discovery_url: body.discovery_url }),
+        });
+        if (!probe.ok || !probe.raw) {
+          throw new Error(
+            probe.error ||
+              "Discovery probe didn't return a valid OIDC config",
+          );
+        }
+        return await fetcher<ParsedOidcConfig>("api/auth/parse-oidc", {
+          method: "POST",
+          body: JSON.stringify({
+            discovery_url: body.discovery_url,
+            raw: JSON.stringify(probe.raw),
+          }),
+        });
+      }
+      return await fetcher<ParsedOidcConfig>("api/auth/parse-oidc", {
         method: "POST",
         body: JSON.stringify(body),
-      }),
+      });
+    },
   });
 }
 
