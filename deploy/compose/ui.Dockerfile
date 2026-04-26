@@ -63,7 +63,7 @@ ENV MEDIA_STACK_UI_VERSION=${VERSION} \
 
 # nginx-unprivileged ships its own /etc/nginx/conf.d/default.conf; our
 # template overwrites it on entrypoint via envsubst.
-COPY docker/ui-nginx.conf /etc/nginx/templates/default.conf.template
+COPY deploy/compose/ui-nginx.conf /etc/nginx/templates/default.conf.template
 
 # Bake the Vite-built static bundle. Nothing else is shipped — the
 # legacy dashboard.html and api/static/ are owned by the build stage
