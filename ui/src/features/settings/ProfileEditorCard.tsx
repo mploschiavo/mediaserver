@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { formatRelative } from "@/features/media-integrity/format";
 import { useProfileYaml, useSaveProfile, type ProfileResponse } from "./hooks";
 
@@ -91,13 +92,10 @@ export function ProfileEditorCard() {
             data-testid="profile-editor-loading"
           />
         ) : profile.error ? (
-          <div
-            role="alert"
-            data-testid="profile-editor-error"
-            className="text-sm text-danger"
-          >
-            {profile.error.message}
-          </div>
+          <ApiErrorTile
+            error={profile.error}
+            onRetry={() => void profile.refetch()}
+          />
         ) : (
           <textarea
             aria-label="Profile YAML"

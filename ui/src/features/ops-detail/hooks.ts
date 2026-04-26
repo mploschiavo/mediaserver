@@ -73,11 +73,29 @@ export interface CrashloopEntry {
   checked_at?: number;
 }
 
+export interface NonRegistryProblemPod {
+  pod: string;
+  namespace?: string;
+  phase?: string;
+  restart_count?: number;
+  last_terminated_reason?: string;
+  owner?: string;
+  /** "Job", "ReplicaSet", "DaemonSet", "StatefulSet", or "" */
+  owner_kind?: string;
+  started_at?: number | null;
+}
+
 export interface CrashloopsResponse {
   /** Keyed by service id; entries inherit `service_id` redundantly. */
   services: Record<string, CrashloopEntry>;
   /** epoch seconds */
   checked_at?: number;
+  /**
+   * CronJob/Job pods + ad-hoc deployments NOT in the SERVICES registry
+   * that are in trouble. Surfaces things the legacy crashloops tile
+   * missed (jellyfin-prewarm Errors, anythingllm CrashLoopBackOff, etc.).
+   */
+  non_registry_pods?: readonly NonRegistryProblemPod[];
 }
 
 const CRASHLOOPS_KEY = ["ops-detail", "crashloops"] as const;

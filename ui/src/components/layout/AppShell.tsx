@@ -21,6 +21,7 @@ import {
 } from "@/components/layout/CommandPalette";
 import { UpgradeBanner } from "@/features/stack-lifecycle/UpgradeBanner";
 import { TriggeredBanner } from "@/features/guardrails";
+import { RunningJobsBanner } from "@/features/jobs/RunningJobsBanner";
 import {
   startAlertEngine,
   type HealthLike,
@@ -170,6 +171,10 @@ export function AppShell({ children }: AppShellProps) {
             one rule is firing at warning+ severity. Click navigates
             to /guardrails?focus=<id> for the worst offender. */}
         <TriggeredBanner />
+        {/* Running-jobs aggregator — single source of truth for
+            "what's happening right now" across actions, jobs, and
+            CronJob pods. Renders nothing when nothing is running. */}
+        <RunningJobsBanner />
         {/* SPA-cache-staleness banner. Renders when the running
             controller version (probed via /api/stack/update) has
             moved past the SPA's build-time `VITE_BUILD_VERSION` —

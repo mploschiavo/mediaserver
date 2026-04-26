@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable } from "@/components/data-table";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { asArray } from "@/lib/coerce";
 import { useConfigDrift, type DriftEntry } from "./hooks";
 
@@ -141,12 +142,11 @@ export function DriftCard() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : drift.error ? (
-          <div
-            role="alert"
-            data-testid="drift-card-error"
-            className="px-6 py-4 text-sm text-danger"
-          >
-            {drift.error.message}
+          <div className="px-6 py-4">
+            <ApiErrorTile
+              error={drift.error}
+              onRetry={() => void drift.refetch()}
+            />
           </div>
         ) : rows.length === 0 ? (
           <p

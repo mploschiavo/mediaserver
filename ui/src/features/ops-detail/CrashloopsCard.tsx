@@ -14,7 +14,11 @@ import {
   ResponsiveTable,
   type ResponsiveTableColumn,
 } from "@/components/layout/ResponsiveTable";
-import { useCrashloops, type CrashloopEntry } from "./hooks";
+import {
+  useCrashloops,
+  type CrashloopEntry,
+  type NonRegistryProblemPod,
+} from "./hooks";
 
 interface CrashloopRow {
   id: string;
@@ -186,7 +190,66 @@ export function CrashloopsCard() {
             />
           </div>
         )}
+        <NonRegistryPodsSection rows={query.data?.non_registry_pods ?? []} />
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Pods in trouble that aren't in the SERVICES registry — Job /
+ * CronJob / DaemonSet / ad-hoc deployments. Hidden when the list is
+ * empty so the card stays calm during normal operation.
+ *
+ * Why this exists: registry-tracked services don't catch CronJob
+ * pods (the jellyfin-prewarm transient Errors the operator saw, the
+ * anythingllm CrashLoopBackOffs, etc.). This section makes them
+ * visible without polluting the registry hygiene list above.
+ */
+function NonRegistryPodsSection({
+  rows,
+}: {
+  rows: readonly NonRegistryProblemPod[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div
+      className="border-t border-border px-6 py-4"
+      data-testid="crashloops-non-registry-section"
+    >
+      <h3 className="mb-2 text-sm font-medium text-fg">
+        Other pods (Jobs / CronJobs / non-registry)
+      </h3>
+      <p className="mb-3 text-xs text-fg-muted">
+        Pods in your namespace not tracked by the SERVICES registry.
+        CronJob fires + ad-hoc workloads land here.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((p) => (
+          <li
+            key={p.pod}
+            className="flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-1.5 text-xs"
+            data-testid={`crashloops-non-registry-row-${p.pod}`}
+          >
+            <span className="font-mono text-fg" title={p.pod}>
+              {p.pod}
+            </span>
+            <Badge variant="outline" data-tone="warning">
+              {p.last_terminated_reason || p.phase || "?"}
+            </Badge>
+            {p.restart_count !== undefined && p.restart_count > 0 ? (
+              <Badge variant="outline">
+                <RefreshCcw className="size-3" /> {p.restart_count}
+              </Badge>
+            ) : null}
+            {p.owner_kind && p.owner ? (
+              <span className="text-fg-muted">
+                {p.owner_kind}/{p.owner}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
