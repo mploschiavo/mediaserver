@@ -313,6 +313,18 @@ export function EnvoyAdminSummaryCard() {
     [sparkDeltas],
   );
 
+  // Latency heatmap — every cluster with histogram data, sorted by
+  // p99 desc so the worst tail-latency surfaces first. The "Slowest
+  // p99" section above is a top-5 summary; the heatmap is the full
+  // per-cluster breakdown for deep triage.
+  const latencyHeatRows = useMemo(() => {
+    if (!data) return [];
+    return Object.entries(data.request_p_latency_ms)
+      .map(([name, p]) => ({ name, ...p }))
+      .filter((r) => r.p50 !== null || r.p95 !== null || r.p99 !== null)
+      .sort((a, b) => (b.p99 ?? 0) - (a.p99 ?? 0));
+  }, [data]);
+
   if (query.isLoading) {
     return (
       <Card data-testid="envoy-admin-summary-loading">
@@ -407,24 +419,33 @@ export function EnvoyAdminSummaryCard() {
         {/* Live request-rate chart — shows derived rate (Δrequests/Δt)
             since admin polling started. Not a long-term graph; for
             durable history graph the Prometheus /metrics feed in
-            Grafana. The chart hides when fewer than 2 deltas have
-            been computed (need 2 buckets to draw a line). */}
-        {rateChartData.length >= 2 && (
-          <div
-            className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
-            data-testid="envoy-summary-rate-chart"
-          >
-            <div>
-              <span className="text-sm font-medium text-fg">
-                Request rate (live)
-              </span>
-              <p className="text-xs text-fg-muted">
-                Requests/sec downstream and 4xx+5xx error rate, derived
-                from the rolling buffer. {rateChartData.length} bucket
-                {rateChartData.length === 1 ? "" : "s"} since the panel
-                opened.
-              </p>
-            </div>
+            Grafana. Always rendered with an explicit empty state so
+            the operator sees the feature even before the rolling
+            buffer has filled (it needs ≥2 polls = 60s after a fresh
+            pod boot to draw the first line). */}
+        <div
+          className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+          data-testid="envoy-summary-rate-chart"
+        >
+          <div>
+            <span className="text-sm font-medium text-fg">
+              Request rate (live)
+            </span>
+            <p className="text-xs text-fg-muted">
+              Requests/sec downstream and 4xx+5xx error rate, derived
+              from the rolling buffer.{" "}
+              {rateChartData.length >= 2
+                ? `${rateChartData.length} bucket${
+                    rateChartData.length === 1 ? "" : "s"
+                  } since the panel opened.`
+                : tsQuery.isLoading
+                  ? "Loading first sample…"
+                  : (ts?.samples.length ?? 0) === 0
+                    ? "Waiting for first sample (polls every 30s)."
+                    : `1 sample collected — need 2 to draw a trend (next poll in <30s).`}
+            </p>
+          </div>
+          {rateChartData.length >= 2 ? (
             <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
@@ -532,8 +553,17 @@ export function EnvoyAdminSummaryCard() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </div>
-        )}
+          ) : (
+            <div
+              className="flex h-44 w-full items-center justify-center rounded border border-dashed border-border/60 bg-bg-1/40 text-xs text-fg-muted"
+              data-testid="envoy-summary-rate-chart-empty"
+            >
+              {tsQuery.isLoading
+                ? "Loading…"
+                : "Trend appears once two polls have completed."}
+            </div>
+          )}
+        </div>
 
         {/* Pie charts — visual at-a-glance for the three questions
             operators ask first: "what response codes are we serving",
@@ -661,6 +691,55 @@ export function EnvoyAdminSummaryCard() {
           </Section>
         </div>
 
+        {/* Latency heatmap — full per-cluster p50/p95/p99 grid sorted
+            by p99 desc. The "Slowest p99" section above is a top-5
+            preview; this is the deep-triage view. Cell tone is driven
+            by latency severity (success <100ms / warning <500ms /
+            danger ≥500ms) so the bad actors stand out without reading
+            the numbers. */}
+        {latencyHeatRows.length > 0 && (
+          <div
+            className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+            data-testid="envoy-summary-latency-heatmap"
+          >
+            <div>
+              <span className="text-sm font-medium text-fg">
+                Cluster latency heatmap
+              </span>
+              <p className="text-xs text-fg-muted">
+                p50 / p95 / p99 per upstream, sorted by tail. Cell tint
+                shows severity: green &lt;100ms · amber &lt;500ms · red ≥500ms.
+              </p>
+            </div>
+            <div
+              className="grid items-center gap-x-2 gap-y-1 text-sm"
+              style={{ gridTemplateColumns: "minmax(0,1fr) auto auto auto" }}
+            >
+              <div className="text-xs uppercase tracking-wide text-fg-faint">
+                Cluster
+              </div>
+              <div className="text-center text-xs uppercase tracking-wide text-fg-faint">
+                p50
+              </div>
+              <div className="text-center text-xs uppercase tracking-wide text-fg-faint">
+                p95
+              </div>
+              <div className="text-center text-xs uppercase tracking-wide text-fg-faint">
+                p99
+              </div>
+              {latencyHeatRows.map((r) => (
+                <FragmentRow
+                  key={r.name}
+                  name={prettyCluster(r.name)}
+                  p50={r.p50}
+                  p95={r.p95}
+                  p99={r.p99}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Soft-fail banners */}
         {(data.clusters_error || data.stats_error) && (
           <div
@@ -747,7 +826,31 @@ interface SparklineProps {
  */
 function Sparkline({ data, color, height = 24 }: SparklineProps) {
   if (data.length < 2) {
-    return <span style={{ height, display: "block" }} aria-hidden />;
+    // Render a faint dotted baseline so the trend's eventual home is
+    // visible even before the rolling buffer fills (≥2 polls). Without
+    // this the Stat card looks like the spark prop did nothing.
+    return (
+      <svg
+        viewBox={`0 0 100 ${height}`}
+        preserveAspectRatio="none"
+        className="w-full"
+        style={{ height }}
+        role="img"
+        aria-label="trend pending"
+      >
+        <line
+          x1="0"
+          y1={height / 2}
+          x2="100"
+          y2={height / 2}
+          stroke="var(--color-fg-faint)"
+          strokeWidth={1}
+          strokeDasharray="2 3"
+          vectorEffect="non-scaling-stroke"
+          opacity={0.5}
+        />
+      </svg>
+    );
   }
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -805,6 +908,67 @@ function Section({ title, description, children, testid }: SectionProps) {
         <p className="text-xs text-fg-muted">{description}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+interface FragmentRowProps {
+  name: string;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+
+/**
+ * Heatmap row — name + three colour-tinted latency cells. Returns a
+ * fragment so the parent grid layouts can place the four cells onto
+ * the same logical row via auto-flow.
+ */
+function FragmentRow({ name, p50, p95, p99 }: FragmentRowProps) {
+  return (
+    <>
+      <div
+        className="font-mono text-xs text-fg truncate"
+        title={name}
+        data-testid={`envoy-summary-heat-${name}`}
+      >
+        {name}
+      </div>
+      <HeatCell ms={p50} />
+      <HeatCell ms={p95} />
+      <HeatCell ms={p99} />
+    </>
+  );
+}
+
+interface HeatCellProps {
+  ms: number | null;
+}
+
+function HeatCell({ ms }: HeatCellProps) {
+  if (ms === null || ms === undefined) {
+    return (
+      <div className="rounded px-2 py-0.5 text-center text-xs tabular-nums text-fg-faint">
+        —
+      </div>
+    );
+  }
+  const tone =
+    ms < 100 ? "success" : ms < 500 ? "warning" : "danger";
+  const toneClass = {
+    success: "border-success/40 bg-success/10 text-success",
+    warning: "border-warning/40 bg-warning/10 text-warning",
+    danger: "border-danger/40 bg-danger/10 text-danger",
+  }[tone];
+  return (
+    <div
+      className={cn(
+        "rounded border px-2 py-0.5 text-center text-xs font-medium tabular-nums",
+        toneClass,
+      )}
+      data-tone={tone}
+    >
+      {ms}ms
     </div>
   );
 }
