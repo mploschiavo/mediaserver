@@ -1125,12 +1125,22 @@ class PostRequestHandler:
         # POST /api/guardrails/{id}/test       — dry-run evaluation
         # POST /api/guardrails/{id}/disable    — soft-disable toggle
         if handler.path.startswith("/api/guardrails/"):
+            from urllib.parse import unquote
             from media_stack.services import guardrails as _guardrails_pkg
             registry = _guardrails_pkg.default()
             tail = handler.path[len("/api/guardrails/"):]
             parts = tail.split("/", 1)
-            rule_id = parts[0]
-            sub = parts[1] if len(parts) > 1 else ""
+            # The SPA calls encodeURIComponent on rule ids before
+            # building the URL. Rule ids contain colons (e.g.
+            # ``storage:inode_floor``) which encodeURIComponent turns
+            # into ``%3A`` — Python's BaseHTTPRequestHandler hands us
+            # ``handler.path`` raw, NOT decoded. Without unquote, the
+            # registry lookup misses every encoded id, every Test/
+            # Disable click returns 404 "unknown guardrail", and the
+            # operator quote was: "Test failed: unknown guardrail:
+            # storage%3Ainode_floor".
+            rule_id = unquote(parts[0])
+            sub = unquote(parts[1]) if len(parts) > 1 else ""
             body = handler._read_json_body() or {}
             if registry.get(rule_id) is None:
                 handler._json_response(
