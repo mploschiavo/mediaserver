@@ -35,6 +35,8 @@ import {
 import { cn } from "@/lib/cn";
 import { formatRelative } from "@/features/media-integrity/format";
 import { ResetPasswordDialog } from "./ResetPasswordDialog";
+import { useMe } from "@/features/me/hooks";
+import { Link } from "@tanstack/react-router";
 import {
   usePatchUser,
   useRevokeUserSession,
@@ -207,6 +209,8 @@ function ProfilePanel({
   const [displayName, setDisplayName] = useState(user.display_name ?? "");
   const [role, setRole] = useState(userRole(user));
   const [resetOpen, setResetOpen] = useState(false);
+  const me = useMe();
+  const isSelf = me.data?.id === user.id;
 
   const patch = usePatchUser();
   const setUserRole = useSetUserRole();
@@ -304,21 +308,39 @@ function ProfilePanel({
         >
           Save
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={handleReset}
-          data-testid="user-profile-reset-password"
-        >
-          <KeyRound aria-hidden /> Reset password…
-        </Button>
+        {isSelf ? (
+          // The Users-tab reset surface is for admin-on-other.
+          // Self-resets always go through /me → ChangePasswordCard
+          // which verifies the current password before applying the
+          // new one — type-then-walk-away here is what locked admins
+          // out previously.
+          <Button asChild type="button" variant="secondary">
+            <Link
+              to="/me"
+              data-testid="user-profile-go-to-me-for-self-password"
+            >
+              <KeyRound aria-hidden /> Change my password (in /me)
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleReset}
+            data-testid="user-profile-reset-password"
+          >
+            <KeyRound aria-hidden /> Reset password…
+          </Button>
+        )}
       </div>
-      <ResetPasswordDialog
-        open={resetOpen}
-        onOpenChange={setResetOpen}
-        userId={user.id}
-        username={user.username}
-      />
+      {isSelf ? null : (
+        <ResetPasswordDialog
+          open={resetOpen}
+          onOpenChange={setResetOpen}
+          userId={user.id}
+          username={user.username}
+        />
+      )}
     </form>
   );
 }

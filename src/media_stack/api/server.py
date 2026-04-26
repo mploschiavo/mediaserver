@@ -49,7 +49,6 @@ from media_stack.api.session_singletons import (
     session_store as _session_store,
     trusted_proxy_auth as _trusted_proxy_auth,
 )
-from media_stack.api.login_page import LOGIN_HTML as _LOGIN_HTML
 from media_stack.core.auth.csrf import CsrfProtector as _CsrfProtector
 from media_stack.core.auth.security_headers import (
     LEGACY_DASHBOARD_POLICY as _LEGACY_DASHBOARD_POLICY_BASE,
@@ -232,56 +231,54 @@ class _AuthPolicy:
     def send_401(self, handler) -> None:
         """Emit an unauthenticated response.
 
-        For browsers we NEVER return WWW-Authenticate: Basic — that
-        triggers the ugly native credential popup. Instead we either
-        (a) 302 to an upstream OIDC login when CONTROLLER_OIDC_LOGIN_REDIRECT
-        is set, or (b) render a styled in-page login form that POSTs
-        to /api/auth/login and cookies the response.
+        Since the v1.0.175 API/UI split this service is REST-only —
+        the controller never serves HTML, including login forms. The
+        UI is in its own container and any browser that lands here
+        directly is one redirect away from the real sign-in page.
 
-        Scripts and API clients (Accept: application/json, non-HTML,
-        non-GET) still get a 401 with WWW-Authenticate so curl and
-        other tooling behave predictably.
+        Two modes:
+
+        * If ``CONTROLLER_LOGIN_URL`` is set (or ``CONTROLLER_OIDC_LOGIN_REDIRECT``
+          for back-compat), browser GETs are 302-redirected there.
+          Use this on staging / prod where the UI lives at a known URL.
+        * Otherwise: JSON 401 with ``{"error": "authentication
+          required", "login_url": null}`` and a normal
+          ``WWW-Authenticate: Basic`` header so curl / clients behave.
+          The browser still pops the Basic popup in that case, but
+          that's the right answer when no UI URL is configured —
+          getting the popup is preferable to a styled form on the
+          API surface that pretends to be the dashboard.
         """
+        login_url = (
+            self._env.get("CONTROLLER_LOGIN_URL", "").strip()
+            or self._env.get("CONTROLLER_OIDC_LOGIN_REDIRECT", "").strip()
+        )
         is_browser = self._is_browser_navigation(handler)
-        login_url = self._env.get("CONTROLLER_OIDC_LOGIN_REDIRECT", "").strip()
         if is_browser and login_url:
             handler.send_response(HTTPStatus.FOUND)
             handler.send_header("Location", login_url)
             handler.send_header(_H_CONTENT_LENGTH, "0")
             handler.end_headers()
             return
-        if is_browser:
-            self._send_login_page(handler)
-            return
+        body = json.dumps({
+            "error": "authentication required",
+            "login_url": login_url or None,
+            "hint": (
+                "The controller API is REST-only since v1.0.175; "
+                "the dashboard runs in the media-stack-ui container. "
+                "Set CONTROLLER_LOGIN_URL on the controller to redirect "
+                "browser users to the dashboard automatically."
+            ),
+        }).encode("utf-8")
         handler.send_response(HTTPStatus.UNAUTHORIZED)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
         handler.send_header(
             "WWW-Authenticate", 'Basic realm="Media Stack Controller"',
         )
-        handler.send_header(_H_CONTENT_LENGTH, "0")
-        handler.end_headers()
-
-    def _send_login_page(self, handler) -> None:
-        """Render a minimal styled login form. Submits to /api/auth/login
-        which sets the session cookie; on success the browser reloads
-        into the dashboard.
-
-        Also emits the CSRF cookie — the login form itself doesn't use
-        it, but once the user is signed in and hits any dashboard POST,
-        the cookie must already be present or the POST 403s with
-        ``CSRF token missing or invalid``. Setting it here makes the
-        cookie available across the login transition."""
-        rd = getattr(handler, "path", "/") or "/"
-        html = _LOGIN_HTML.replace("__RD__", rd)
-        payload = html.encode("utf-8")
-        handler.send_response(HTTPStatus.UNAUTHORIZED)
-        handler.send_header("Content-Type", "text/html; charset=utf-8")
-        handler.send_header(_H_CONTENT_LENGTH, str(len(payload)))
-        # Don't send WWW-Authenticate here — it forces the browser's
-        # native credential dialog and our form goes unused.
+        handler.send_header(_H_CONTENT_LENGTH, str(len(body)))
         self.emit_security_headers(handler)
-        _issue_csrf_if_missing(handler)
         handler.end_headers()
-        handler.wfile.write(payload)
+        handler.wfile.write(body)
 
     def _is_browser_navigation(self, handler) -> bool:
         """True for GET requests whose Accept header prefers HTML.
