@@ -10,7 +10,10 @@ from typing import Any
 
 import yaml
 
-_ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_ENV_PATTERN = re.compile(
+    r"\$\{(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?:(?P<op>:?[-+?])(?P<arg>[^}]*))?\}"
+)
 
 
 def parse_wait_seconds(value: str, *, default_seconds: int = 300) -> int:
@@ -114,7 +117,33 @@ class ComposeSpecResolver:
     @staticmethod
     def _expand_string(value: str, env: dict[str, str]) -> str:
         def _replace(match: re.Match[str]) -> str:
-            key = match.group(1).strip()
+            key = (match.group("name") or "").strip()
+            op = match.group("op") or ""
+            arg = match.group("arg") or ""
+            present = key in env
+            empty = present and env.get(key, "") == ""
+            # Match the docker-compose interpolation rules — see
+            # https://docs.docker.com/reference/compose-file/interpolation/
+            #   ${VAR:-default}  use default if unset OR empty
+            #   ${VAR-default}   use default if unset (empty kept)
+            #   ${VAR:+alt}      use alt if set AND non-empty
+            #   ${VAR+alt}       use alt if set (empty counts)
+            #   ${VAR:?err}      treat unset/empty as error (we render empty)
+            #   ${VAR?err}       treat unset as error (we render empty)
+            if op == ":-":
+                return arg if (not present or empty) else env[key]
+            if op == "-":
+                return arg if not present else env[key]
+            if op == ":+":
+                return arg if present and not empty else ""
+            if op == "+":
+                return arg if present else ""
+            if op in (":?", "?"):
+                # Don't crash the generator over an unset var; fall back
+                # to the variable's value (empty when unset). The
+                # missing-required-var case is the operator's bug to fix
+                # in the .env file, not for the renderer to abort on.
+                return env.get(key, "")
             return str(env.get(key, ""))
 
         return _ENV_PATTERN.sub(_replace, value)

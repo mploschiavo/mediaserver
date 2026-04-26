@@ -228,9 +228,15 @@ services:
   envoy-config-init:
     image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
+    # Image ENTRYPOINT is "media-stack-controller" — for the
+    # one-shot envoy generator we need plain python3, so override.
+    # The generator is shipped as an installed module, so use -m
+    # rather than a baked-in source path (which doesn't exist on the
+    # wheel-built image).
+    entrypoint: ["python3"]
     command:
-      - python3
-      - /opt/media-stack/src/media_stack/cli/commands/generate_envoy_config_main.py
+      - -m
+      - media_stack.services.edge.envoy_config_generator
     environment:
       COMPOSE_FILE: /compose/docker-compose.yml
       CONFIG_ROOT: /runtime-config
@@ -251,11 +257,17 @@ services:
       # test panel + the OIDC discovery URL unreachable from
       # downstream apps. (v1.0.147 root-cause.)
       ENVOY_LISTENER_PORT: "8880"
+      # The runtime template ships with the repo (not in the wheel),
+      # so point the generator at the bind-mounted defaults dir.
+      # Without this, the generator probes a path computed from
+      # __file__ which only resolves correctly from a source checkout.
+      ENVOY_RUNTIME_TEMPLATE_FILE: /defaults/compose/envoy.runtime.base.yaml
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
       - ${CONFIG_ROOT:-../config}:/runtime-config:rw
       - ../contracts:/contracts:ro
+      - ../config/defaults:/defaults:ro
       # RW so the generator can mint a self-signed cert the first time
       # the stack comes up (see _resolve_or_mint_certs in
       # core/platforms/compose/edge/providers/envoy/dynamic_config.py).
@@ -679,8 +691,10 @@ services:
   media-stack-controller:
     image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}
     container_name: media-stack-controller
+    # Image ENTRYPOINT is already "media-stack-controller" — only
+    # pass flags here, otherwise the binary's own name re-arrives as
+    # an unrecognized positional arg.
     command:
-      - media-stack-controller
       - --serve
       - --config
       - /contracts/media-stack.config.json

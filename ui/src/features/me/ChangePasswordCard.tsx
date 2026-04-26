@@ -13,7 +13,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/api/client";
 import { toast } from "sonner";
-import { useMe } from "./hooks";
 
 /**
  * Self-service password change for the signed-in user.
@@ -22,38 +21,33 @@ import { useMe } from "./hooks";
  * password (current + new + confirm). Mirrors GitHub / Google /
  * Notion / Linear conventions.
  *
- * Backend wiring: today this routes through
- * ``POST /api/users/{me_id}/reset-password`` — the user_write_service
- * gates the call with ``@requires_self_or_admin`` so the caller's
- * own user_id is authorised. The "current password" field is
- * captured but NOT yet verified server-side (the reset endpoint
- * doesn't take it). Verifying current-password before allowing the
- * change is a defence-in-depth follow-up that adds a dedicated
- * ``/api/me/change-password`` endpoint with old-password check —
- * tracked in memory/project_pending_followups.md.
+ * Backend wiring: ``POST /api/me/change-password`` verifies
+ * ``current_password`` server-side via the same ``BasicAuthVerifier``
+ * primitive that gates ``/api/auth/login``, then applies
+ * ``new_password`` through the user_write_service. The current
+ * password IS the re-auth proof, so this path is intentionally
+ * exempt from the X-Sudo-Password gate (asking for the old password
+ * twice would double-prompt without adding security).
  *
  * After the change, the new password propagates to Authelia
  * synchronously and to downstream service admins (Sonarr / Radarr /
  * qBittorrent) in the background.
  */
 export function ChangePasswordCard() {
-  const me = useMe();
   const [currentPwd, setCurrentPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showNew, setShowNew] = useState(false);
 
   const change = useMutation({
-    mutationFn: async (body: { password: string }) => {
-      const id = me.data?.id;
-      if (!id) throw new Error("Not signed in");
-      return fetcher(
-        `api/users/${encodeURIComponent(String(id))}/reset-password`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        },
-      );
+    mutationFn: async (body: {
+      current_password: string;
+      new_password: string;
+    }) => {
+      return fetcher("api/me/change-password", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
     },
     onSuccess: () => {
       toast.success(
@@ -83,7 +77,10 @@ export function ChangePasswordCard() {
       toast.error("New password must differ from the current one.");
       return;
     }
-    change.mutate({ password: newPwd });
+    change.mutate({
+      current_password: currentPwd,
+      new_password: newPwd,
+    });
   };
 
   return (
@@ -117,8 +114,7 @@ export function ChangePasswordCard() {
               data-testid="change-password-current"
             />
             <span className="text-[11px] text-fg-faint">
-              Server-side verification of the current password is a
-              follow-up (today the field is required client-side only).
+              Verified server-side before the change is applied.
             </span>
           </div>
           <div className="flex flex-col gap-1.5">

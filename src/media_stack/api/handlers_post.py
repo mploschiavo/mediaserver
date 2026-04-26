@@ -520,6 +520,122 @@ _handle_login = _session_login_helper.login
 _handle_logout = _session_login_helper.logout
 
 
+class _MeChangePasswordHelper:
+    """Self-service password change for the signed-in user.
+
+    Flow:
+      1. Resolve username from session cookie / Authelia Remote-User /
+         Basic-auth header (same precedence as the GET-side ``/api/me``).
+      2. Verify ``current_password`` against the controller's user
+         store via ``BasicAuthVerifier`` — same primitive that gates
+         ``/api/auth/login`` so a wrong-old-password rejection here is
+         identical to a normal failed login.
+      3. On success, hand off to the same ``user_write_service``
+         method admins use for ``/api/users/{id}/reset-password`` —
+         which propagates the new password to Authelia synchronously
+         and to downstream service admins (Sonarr / Radarr /
+         qBittorrent) in the background.
+
+    No X-Sudo-Password gate: ``current_password`` IS the re-auth
+    proof, asking for it twice would double-prompt without adding
+    security. The path is intentionally NOT in
+    ``_DEFAULT_SUDO_PATHS`` / the ``/api/users/...`` sudo-prefix list
+    in ``_SudoGate``.
+
+    Errors are kept generic — never leak whether the username was
+    unknown vs. the password was wrong, or a username will fall out
+    of a 404 vs. a 403.
+    """
+
+    _MIN_LENGTH = 8
+
+    def handle(self, handler) -> None:
+        body = handler._read_json_body() or {}
+        current = str(body.get("current_password", "") or "")
+        new_pwd = str(body.get("new_password", "") or "")
+
+        if not current or not new_pwd:
+            handler._json_response(400, {
+                "error": "current_password and new_password required"})
+            return
+        if len(new_pwd) < self._MIN_LENGTH:
+            handler._json_response(400, {
+                "error": f"new_password must be at least "
+                         f"{self._MIN_LENGTH} characters"})
+            return
+        if current == new_pwd:
+            handler._json_response(400, {
+                "error": "new_password must differ from current_password"})
+            return
+
+        username = self._resolve_username(handler)
+        if not username:
+            handler._json_response(401, {"error": "not authenticated"})
+            return
+
+        try:
+            verifier = build_default_auth_verifier()
+            ok = bool(verifier.verify(username, current))
+        except Exception:  # noqa: BLE001
+            ok = False
+        if not ok:
+            handler._json_response(403, {
+                "error": "current_password is incorrect"})
+            return
+
+        svc = build_default_service()
+        try:
+            user = svc._store.get_by_username(username)
+        except Exception:  # noqa: BLE001
+            user = None
+        if user is None:
+            handler._json_response(403, {
+                "error": "current_password is incorrect"})
+            return
+
+        actor = _actor_resolver.resolve(handler, body)
+        try:
+            result = svc.reset_password(
+                user.id, password=new_pwd, actor=actor,
+            )
+        except UserServiceError as exc:
+            handler._json_response(400, {"error": str(exc)})
+            return
+        handler._json_response(
+            200, _strip_legacy_plaintext(result) or {"ok": True})
+
+    @staticmethod
+    def _resolve_username(handler) -> str:
+        try:
+            cookie_user = _session_cookie_reader.username_for_handler(handler)
+        except Exception:  # noqa: BLE001
+            cookie_user = ""
+        if cookie_user:
+            return cookie_user
+        try:
+            proxy_user = str(_trusted_proxy_auth.identity(handler) or "")
+        except Exception:  # noqa: BLE001
+            proxy_user = ""
+        if proxy_user:
+            return proxy_user
+        try:
+            auth_hdr = handler.headers.get("Authorization", "") or ""
+        except AttributeError:
+            return ""
+        if auth_hdr.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_hdr[6:]).decode(
+                    "utf-8", "replace")
+                return decoded.partition(":")[0] or ""
+            except Exception:  # noqa: BLE001
+                return ""
+        return ""
+
+
+_me_change_password_helper = _MeChangePasswordHelper()
+_handle_me_change_password = _me_change_password_helper.handle
+
+
 class _TlsCertHandler:
     """Install / regenerate the edge TLS certificate used by Envoy.
 
@@ -943,6 +1059,15 @@ class PostRequestHandler:
         # POST /api/auth/logout — revoke the session cookie
         if handler.path == "/api/auth/logout":
             _handle_logout(handler)
+            return
+        # POST /api/me/change-password — self-service password change.
+        # Verifies current_password BEFORE applying new_password.
+        # Bypasses the X-Sudo-Password gate because current_password
+        # IS the re-auth proof for this request — making the user
+        # type their old password twice (once in the form, once as a
+        # sudo header) adds zero security.
+        if handler.path == "/api/me/change-password":
+            _handle_me_change_password(handler)
             return
         # POST /api/tls/certificate — install a PEM cert+key bundle
         if handler.path == "/api/tls/certificate":
