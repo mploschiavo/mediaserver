@@ -1,14 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Pause, Play, Search } from "lucide-react";
 import type { LogSource } from "@/api/shapes";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { LEVELS, type LevelTag } from "./hooks";
+import { LEVELS, useLogSources, type LevelTag } from "./hooks";
 import { hashSource } from "./format";
 
-/** All supported services, in display order. */
+/**
+ * Fallback list, used until `/api/logs/sources` resolves. The dynamic
+ * list (every SERVICES-registry app + controller + ui — 27+ entries)
+ * replaces these once the fetch completes. Kept here so the toolbar
+ * has SOMETHING to render on first paint and during transient API
+ * failures, not as the source of truth.
+ *
+ * Note: previously this 8-entry list WAS the source of truth, which
+ * meant operators couldn't reach jellyfin / jellyseerr / sabnzbd /
+ * envoy / authelia / 19 other pods' logs even though they were
+ * running. Fixed by `GET /api/logs/sources`.
+ */
 export const ALL_SOURCES: readonly { value: LogSource; label: string }[] = [
   { value: "controller", label: "Controller" },
   { value: "sonarr", label: "Sonarr" },
@@ -76,14 +87,28 @@ export function LogsToolbar({
     }
   }, [search]);
 
+  // Dynamic source list from `GET /api/logs/sources`. Falls back to
+  // the legacy 8-entry list while the query is in flight or if the
+  // controller is unreachable (auth pages mount this component too).
+  const sourcesQuery = useLogSources();
+  const sourceOptions = useMemo<
+    ReadonlyArray<{ value: LogSource; label: string }>
+  >(() => {
+    const dynamic = sourcesQuery.data;
+    if (dynamic && dynamic.length > 0) {
+      return dynamic.map((s) => ({ value: s.id, label: s.label }));
+    }
+    return ALL_SOURCES;
+  }, [sourcesQuery.data]);
+
   const selected = new Set(sources);
   const toggleSource = (s: LogSource) => {
     const next = new Set(selected);
     if (next.has(s)) next.delete(s);
     else next.add(s);
-    // Preserve the canonical SOURCES order so the chips don't jitter
-    // when the operator clicks them out of sequence.
-    onSourcesChange(ALL_SOURCES.map((x) => x.value).filter((v) => next.has(v)));
+    // Preserve canonical order so chips don't jitter as operator
+    // toggles them out of sequence.
+    onSourcesChange(sourceOptions.map((x) => x.value).filter((v) => next.has(v)));
   };
 
   return (
@@ -95,7 +120,7 @@ export function LogsToolbar({
         <span className="mr-1 text-xs font-medium uppercase tracking-wide text-fg-muted">
           Sources
         </span>
-        {ALL_SOURCES.map((s) => {
+        {sourceOptions.map((s) => {
           const active = selected.has(s.value);
           const tone = hashSource(s.value);
           return (

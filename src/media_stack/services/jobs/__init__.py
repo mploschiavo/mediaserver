@@ -1,10 +1,23 @@
-"""Job framework — runs bootstrap/maintenance jobs declared in
-``contracts/services/*.yaml``.
+"""Jobs package — Phase 16-E shim.
 
-Moved here from ``media_stack.cli.commands.job_framework`` under
-ADR-0002 Phase 16: this is a shared service used by ``services/``,
-``api/``, and ``cli/``, so it doesn't belong in the CLI entry-point
-layer. The old location now re-exports from here so existing
-imports continue to work; new code should import directly from
-``media_stack.services.jobs.framework``.
+ADR-0002 Phase 16-E (cross-cutting jobs) split this package's
+contents across the hexagonal layers:
+
+- Pure value objects (``Job``, ``CancelledError``, ``Job.noop``,
+  ``PREREQS``, the history-schema constants) live in
+  ``media_stack.domain.jobs.types``.
+- Orchestration / runtime dispatch (``JobRunner``, ``JobContext``,
+  ``ActionHandlerService``, controller handler-spec loader / runner
+  builder) lives under ``media_stack.application.jobs``.
+- Bootstrap config generation (filesystem I/O) lives in
+  ``media_stack.infrastructure.jobs.bootstrap_config_generator``.
+
+Each legacy submodule (``framework``, ``action_handlers``,
+``controller_handlers``, ``controller_runner``,
+``bootstrap_config_generator``) keeps a ``sys.modules[__name__] =
+_impl`` shim so existing callers — including the
+``media-stack-generate-bootstrap-config`` console-script entry-point
+in ``pyproject.toml`` — and contracts/services/*.yaml
+plugin.jobs.<name>.handler refs keep resolving. Phase 16-F removes
+these shims.
 """

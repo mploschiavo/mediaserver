@@ -26,6 +26,12 @@ access_control:
 
 session:
   secret: change-this-session-secret-with-32-or-more-characters
+  # Authelia defaults are 1h/5m which kicks operators out mid-task.
+  # Set explicitly: 12h absolute lifetime, 30m idle window, 7d
+  # remember-me opt-in.
+  expiration: 12h
+  inactivity: 30m
+  remember_me: 168h
   cookies:
     - domain: local
       authelia_url: http://authelia.local

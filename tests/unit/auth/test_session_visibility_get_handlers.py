@@ -673,6 +673,57 @@ class TestMyTokens(unittest.TestCase):
         helper.dispatch(h, "/api/me/tokens")
         self.assertEqual(h.status, 401)
 
+    def test_legacy_dataclass_repr_owner_is_surfaced(self):
+        """Legacy regression: tokens minted before the
+        ``handlers_post.token_create`` Bug-1 fix have a corrupted
+        ``owner_username`` like ``"Actor(username='alice', ...)"``.
+        The GET handler must still surface them to the rightful owner
+        instead of pretending they don't exist — otherwise the
+        operator sees ``tokens count = 0`` even after issuing.
+        """
+        legacy_repr = (
+            "Actor(username='alice', roles=frozenset({'admin'}), "
+            "is_admin=True, is_system=False, session_id=None, "
+            "source_provider='controller', is_impersonating=None, "
+            "client_ip='10.0.0.1', user_agent='curl')"
+        )
+        helper, deps = _build_helper(
+            actor=Actor(username="alice", is_admin=False),
+        )
+        # ``_FakeTokenStore.list_all`` returns every token when no
+        # owner is supplied, mirroring the real ``ApiTokenStore``.
+        store = _LegacyAwareTokenStore()
+        store.tokens = [
+            _FakeToken(id="legacy", owner_username=legacy_repr, name="ci"),
+            _FakeToken(id="other", owner_username=(
+                "Actor(username='bob', is_admin=False)"
+            )),
+        ]
+        helper._token_store_getter = lambda: store
+        h = _FakeHandler(path="/api/me/tokens")
+        helper.dispatch(h, "/api/me/tokens")
+        self.assertEqual(h.status, 200)
+        ids = {t["id"] for t in h.body["tokens"]}
+        self.assertIn("legacy", ids, "alice's legacy token must surface")
+        self.assertNotIn("other", ids, "bob's legacy token must NOT leak")
+
+
+class _LegacyAwareTokenStore:
+    """Token-store stub whose ``list_all()`` mirrors the real
+    ``ApiTokenStore``: no arg → return everything; explicit owner →
+    exact-match filter. The base ``_FakeTokenStore`` short-circuits
+    the empty-owner case to ``[]``, which masks the legacy-repr
+    fallback path under test.
+    """
+
+    def __init__(self) -> None:
+        self.tokens: list = []
+
+    def list_all(self, owner_username: str = ""):
+        if not owner_username:
+            return list(self.tokens)
+        return [t for t in self.tokens if t.owner_username == owner_username]
+
 
 class TestMyMfaState(unittest.TestCase):
 

@@ -77,6 +77,22 @@ describe("UserBansCard", () => {
     expect(screen.getByText("policy violation")).toBeInTheDocument();
   });
 
+  it("filters bans via the DataTable username filter", async () => {
+    userBansState.data = [
+      { username: "alice", reason: "policy" },
+      { username: "bob", reason: "credential stuffing" },
+    ];
+    renderWithProviders(<UserBansCard />);
+    expect(screen.getByTestId("user-ban-row-alice")).toBeInTheDocument();
+    expect(screen.getByTestId("user-ban-row-bob")).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByTestId("user-ban-filter-username"),
+      "bob",
+    );
+    expect(screen.queryByTestId("user-ban-row-alice")).toBeNull();
+    expect(screen.getByTestId("user-ban-row-bob")).toBeInTheDocument();
+  });
+
   it("renders 'indefinite' when expires_at is missing", () => {
     userBansState.data = [{ username: "carol", reason: "hold" }];
     renderWithProviders(<UserBansCard />);

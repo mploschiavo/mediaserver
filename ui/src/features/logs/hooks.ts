@@ -16,11 +16,45 @@
 // React Query keeps the last cached payload, which is exactly what
 // "pause and read history" wants.
 
-import { useQueries, type UseQueryResult } from "@tanstack/react-query";
+import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { api } from "@/api/endpoints";
+import { fetcher } from "@/api/client";
 import type { LogLineShape, LogSource, LogStreamShape } from "@/api/shapes";
 import { asArray } from "@/lib/coerce";
 import { extractTimestamp } from "./format";
+
+/**
+ * One entry in the Logs UI's filter dropdown. Returned by
+ * `GET /api/logs/sources` — driven by the controller's SERVICES
+ * registry plus platform pods (controller, ui).
+ */
+export interface LogSourceOption {
+  id: string;
+  label: string;
+  kind: "platform" | "service";
+}
+
+const _LOG_SOURCES_KEY = ["logs", "sources"] as const;
+
+/**
+ * Fetches the dynamic list of log sources. Replaces the hardcoded
+ * 8-source list operators were stuck with — every service in the
+ * registry plus the controller / ui pods. Cached for 5 minutes; the
+ * registry is static during a controller's lifetime.
+ */
+export function useLogSources(): UseQueryResult<readonly LogSourceOption[]> {
+  return useQuery({
+    queryKey: _LOG_SOURCES_KEY,
+    queryFn: async () => {
+      const data = await fetcher<{ sources?: readonly LogSourceOption[] }>(
+        "api/logs/sources",
+      );
+      return data.sources ?? [];
+    },
+    staleTime: 300_000,
+    retry: 1,
+  });
+}
 
 /** Result of parsing one raw log row into something the table can render. */
 export interface ParsedLine {

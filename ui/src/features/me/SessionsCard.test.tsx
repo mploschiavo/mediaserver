@@ -118,6 +118,19 @@ describe("SessionsCard", () => {
     expect(screen.getByTestId("session-row-s2")).toBeInTheDocument();
   });
 
+  it("filters sessions via the DataTable device filter", async () => {
+    sessionsState.data = populatedSessions;
+    renderWithProviders(<SessionsCard />);
+    expect(screen.getByTestId("session-row-s1")).toBeInTheDocument();
+    expect(screen.getByTestId("session-row-s2")).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByTestId("session-filter-device"),
+      "Firefox",
+    );
+    expect(screen.queryByTestId("session-row-s1")).toBeNull();
+    expect(screen.getByTestId("session-row-s2")).toBeInTheDocument();
+  });
+
   it("disables the Sign out button on the current session", () => {
     sessionsState.data = populatedSessions;
     renderWithProviders(<SessionsCard />);
@@ -172,5 +185,33 @@ describe("SessionsCard", () => {
     renderWithProviders(<SessionsCard />);
     await userEvent.click(screen.getByTestId("session-signout-s2"));
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("rate limit"));
+  });
+
+  it("hides Sign out + This wasn't me on the SSO synth row", () => {
+    // The controller emits a synth caller-row (revokable=false,
+    // session_id="") under SSO when the cross-provider aggregate is
+    // empty. The buttons would be inert because there's no session_id
+    // to act on; the UI should hide them and surface a hint instead.
+    sessionsState.data = {
+      current_session_id: "",
+      sessions: [
+        {
+          session_id: "",
+          provider: "controller",
+          device: "Mozilla/5.0",
+          client_ip: "203.0.113.10",
+          last_activity: "",
+          revokable: false,
+        },
+      ],
+    };
+    renderWithProviders(<SessionsCard />);
+    // Action buttons must NOT exist on the synth row.
+    expect(screen.queryByTestId(/^session-signout-/)).toBeNull();
+    expect(screen.queryByTestId(/^session-wasnt-me-/)).toBeNull();
+    // Help text replaces them.
+    expect(
+      screen.getByTestId("session-synth-help-synth-0"),
+    ).toHaveTextContent(/sign out from the user menu/i);
   });
 });

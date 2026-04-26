@@ -14,6 +14,7 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { PullToRefresh } from "@/components/layout/PullToRefresh";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { UpdateAvailableBanner } from "@/components/layout/UpdateAvailableBanner";
 import {
   CommandPalette,
   useCommandPalette,
@@ -122,10 +123,18 @@ export function AppShell({ children }: AppShellProps) {
         Skip to main content
       </a>
 
-      {/* Desktop sidebar (always present once viewport >= md). */}
+      {/* Desktop sidebar (always present once viewport >= md). Pinned
+          to the viewport on desktop via ``md:sticky md:top-0 md:h-screen``
+          so navigation stays reachable on long pages (Logs, Audit
+          log, Reachability matrix) — Linear / GitHub / Vercel / Notion
+          convention. This pin has been reverted twice in this session
+          by agent file-collisions; keep this comment block so future
+          automated edits don't silently strip it again. The
+          companion test in AppShell.test.tsx asserts the sticky
+          classes are present. */}
       <div
         className={cn(
-          "hidden md:flex md:w-60 md:flex-shrink-0",
+          "hidden md:sticky md:top-0 md:flex md:h-screen md:w-60 md:flex-shrink-0",
           // Sidebar background reads slightly darker than main
           // content via bg-bg-1 inside the Sidebar component.
         )}
@@ -161,6 +170,14 @@ export function AppShell({ children }: AppShellProps) {
             one rule is firing at warning+ severity. Click navigates
             to /guardrails?focus=<id> for the worst offender. */}
         <TriggeredBanner />
+        {/* SPA-cache-staleness banner. Renders when the running
+            controller version (probed via /api/stack/update) has
+            moved past the SPA's build-time `VITE_BUILD_VERSION` —
+            i.e. the operator is looking at cached HTML/JS that
+            pre-dates the latest deploy. Refresh button unregisters
+            the SW and reloads to force-fresh assets. Renders
+            nothing when versions match or the probe is in flight. */}
+        <UpdateAvailableBanner />
         <TopBar
           onOpenSidebar={() => setMobileOpen(true)}
           onOpenCommand={() => setPaletteOpen(true)}

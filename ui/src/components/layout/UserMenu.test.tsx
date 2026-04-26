@@ -19,20 +19,23 @@ import { UserMenu } from "./UserMenu";
 
 const originalFetch = globalThis.fetch;
 
+const replaceMock = vi.fn();
+
 beforeEach(() => {
   navigateMock.mockReset();
   toastErrorMock.mockReset();
-  // happy-dom's window.location.reload would throw "not implemented".
-  // Replace it with a no-op spy so the success path doesn't blow up.
+  replaceMock.mockReset();
+  // happy-dom's window.location.replace would throw "not implemented".
+  // Replace it with a spy so the sign-out path always navigates to
+  // Authelia regardless of what the logout POST returned.
   try {
-    Object.defineProperty(window.location, "reload", {
+    Object.defineProperty(window.location, "replace", {
       configurable: true,
       writable: true,
-      value: vi.fn(),
+      value: replaceMock,
     });
   } catch {
-    // If the host already exposes a writable .reload, just overwrite.
-    (window.location as unknown as { reload: () => void }).reload = vi.fn();
+    (window.location as unknown as { replace: (url: string) => void }).replace = replaceMock;
   }
 });
 
@@ -87,7 +90,7 @@ describe("UserMenu", () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: "/me" });
   });
 
-  it("Sign out calls /api/auth/logout and reloads on success", async () => {
+  it("Sign out POSTs to /api/auth/logout and navigates to Authelia portal", async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }) as Response);
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
     render(<UserMenu name="Alice" />);
@@ -100,12 +103,18 @@ describe("UserMenu", () => {
     const [url, init] = firstCall ?? [undefined, undefined];
     expect(String(url)).toContain("/api/auth/logout");
     expect(init?.method).toBe("POST");
+    expect(replaceMock).toHaveBeenCalled();
+    expect(String(replaceMock.mock.calls[0]?.[0] ?? "")).toContain(
+      "/app/authelia/",
+    );
   });
 
-  it("Sign out toasts an error when the logout request fails", async () => {
+  it("Sign out still navigates to Authelia even when the logout POST 401s", async () => {
+    // The "session already expired" case used to leave the user
+    // stuck; now: ignore the POST result, navigate anyway.
     const fetchMock = vi.fn(async () => ({
       ok: false,
-      status: 500,
+      status: 401,
     }) as Response);
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
     render(<UserMenu name="Alice" />);
@@ -113,9 +122,8 @@ describe("UserMenu", () => {
       screen.getByRole("button", { name: /open account menu/i }),
     );
     await userEvent.click(await screen.findByText("Sign out"));
-    // Wait for the error path.
-    await screen.findByText("Sign out");
-    expect(toastErrorMock).toHaveBeenCalled();
+    expect(replaceMock).toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
   it("Documentation menu item links to the docs URL", async () => {

@@ -2,6 +2,7 @@ import { asArray } from "@/lib/coerce";
 import { useMemo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, MapPin, ShieldCheck } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,14 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import {
   Tooltip,
   TooltipContent,
@@ -77,6 +71,104 @@ export function NewLocationsCard() {
     return list.map((a, i) => toRow(a, i));
   }, [query.data]);
 
+  const columns = useMemo<ColumnDef<AlertRow>[]>(
+    () => [
+      {
+        id: "user",
+        accessorFn: (r) => r.user,
+        header: "User",
+        meta: { label: "User" },
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-fg">{row.original.user}</span>
+            {row.original.provider ? (
+              <Badge variant="info">{row.original.provider}</Badge>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "prior",
+        accessorFn: (r) => `${r.priorIp} ${r.priorGeo}`,
+        header: "Prior IP / geo",
+        meta: { label: "Prior IP / geo" },
+        cell: ({ row }) => (
+          <div className="flex flex-col text-fg-muted">
+            <span className="font-mono tabular-nums">
+              {row.original.priorIp}
+            </span>
+            {row.original.priorGeo ? (
+              <span className="text-xs text-fg-faint">
+                {row.original.priorGeo}
+              </span>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "new",
+        accessorFn: (r) => `${r.newIp} ${r.newGeo}`,
+        header: "New IP / geo",
+        meta: { label: "New IP / geo" },
+        cell: ({ row }) => (
+          <div className="flex flex-col text-fg">
+            <span className="font-mono tabular-nums">{row.original.newIp}</span>
+            {row.original.newGeo ? (
+              <span className="text-xs text-fg-muted">
+                {row.original.newGeo}
+              </span>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "observed_at",
+        accessorFn: (r) => r.observedAt,
+        header: "Observed",
+        meta: { label: "Observed" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {fmt(row.original.observedAt)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* The disabled <button> needs a wrapping span so the
+                    tooltip still receives pointer events. */}
+                <span className="inline-block">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled
+                    aria-disabled
+                    data-testid={`new-location-ack-${row.original.id}`}
+                    aria-label={`Acknowledge new-location alert for ${row.original.user}`}
+                  >
+                    Acknowledge
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Acknowledgement endpoint pending
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 6 }}
@@ -123,84 +215,16 @@ export function NewLocationsCard() {
               />
             </div>
           ) : (
-            <Table data-testid="new-locations-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Prior IP / geo</TableHead>
-                  <TableHead>New IP / geo</TableHead>
-                  <TableHead>Observed</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-testid={`new-location-row-${row.id}`}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-fg">{row.user}</span>
-                        {row.provider ? (
-                          <Badge variant="info">{row.provider}</Badge>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-fg-muted">
-                      <div className="flex flex-col">
-                        <span className="font-mono tabular-nums">
-                          {row.priorIp}
-                        </span>
-                        {row.priorGeo ? (
-                          <span className="text-xs text-fg-faint">
-                            {row.priorGeo}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-fg">
-                      <div className="flex flex-col">
-                        <span className="font-mono tabular-nums">
-                          {row.newIp}
-                        </span>
-                        {row.newGeo ? (
-                          <span className="text-xs text-fg-muted">
-                            {row.newGeo}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="tabular-nums text-fg-muted">
-                      {fmt(row.observedAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          {/* The disabled <button> needs a wrapping span
-                              so the tooltip still receives pointer events. */}
-                          <span className="inline-block">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled
-                              aria-disabled
-                              data-testid={`new-location-ack-${row.id}`}
-                              aria-label={`Acknowledge new-location alert for ${row.user}`}
-                            >
-                              Acknowledge
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Acknowledgement endpoint pending
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="px-6 pb-6" data-testid="new-locations-table">
+              <DataTable<AlertRow>
+                testId="new-location"
+                columns={columns}
+                data={rows}
+                getRowId={(r) => r.id}
+                caption={`${rows.length} alert${rows.length === 1 ? "" : "s"}`}
+                emptyState="No new-location alerts."
+              />
+            </div>
           )}
         </CardContent>
       </Card>

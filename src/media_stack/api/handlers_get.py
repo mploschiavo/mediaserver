@@ -94,9 +94,33 @@ import logging
 # (v1.0.195). Walk up from this file (api/ → media_stack/ → src/) to
 # the repo root, then into the contracts tree.
 
-_OPENAPI_YAML_PATH = (
-    Path(__file__).resolve().parents[3] / "contracts" / "api" / "openapi.yaml"
+# Resolve openapi.yaml across deploy modes:
+#   1. Source-tree dev (parents[3] = repo root containing contracts/)
+#   2. Wheel image, install-root layout (`/opt/media-stack/contracts/`)
+#   3. Wheel shared-data layout (`<sys.prefix>/share/media-stack/...`)
+#   4. Legacy bind-mount path
+# Same bug class as media-integrity v1.0.231 — the wheel install
+# moves the file out from under a single hardcoded path. Without the
+# candidate list, ``GET /api/openapi.json`` falls through to the
+# legacy 50-endpoint stub and the api-docs viewer renders empty.
+import sys as _sys
+
+_OPENAPI_PATH_CANDIDATES = (
+    Path(__file__).resolve().parents[3] / "contracts" / "api" / "openapi.yaml",
+    Path("/opt/media-stack/contracts/api/openapi.yaml"),
+    Path(_sys.prefix) / "share" / "media-stack" / "contracts" / "api" / "openapi.yaml",
+    Path("/contracts/api/openapi.yaml"),
 )
+
+
+def _resolve_openapi_yaml() -> Path:
+    for p in _OPENAPI_PATH_CANDIDATES:
+        if p.is_file():
+            return p
+    return _OPENAPI_PATH_CANDIDATES[0]  # log a sane default if nothing found
+
+
+_OPENAPI_YAML_PATH = _resolve_openapi_yaml()
 _OPENAPI_YAML = ""
 try:
     _OPENAPI_YAML = _OPENAPI_YAML_PATH.read_text(encoding="utf-8")
@@ -633,6 +657,29 @@ class GetRequestHandler:
             handler._json_response(200, ops_svc.get_mount_info())
         elif path == "/api/logs" or path.startswith("/api/logs?"):
             _handle_logs(handler)
+        elif path == "/api/logs/sources" or path.startswith("/api/logs/sources?"):
+            # Dynamic source list for the Logs UI's filter dropdown.
+            # The legacy hardcoded list in LogsToolbar.tsx capped at 8
+            # services even though SERVICES has 27+; operators couldn't
+            # reach jellyfin/jellyseerr/sabnzbd/authelia/envoy logs etc.
+            # Return every service the registry knows about, plus the
+            # platform pods (controller, ui) the operator may want to
+            # tail directly.
+            try:
+                from media_stack.api.services.registry import SERVICES
+                svcs = sorted({s.id for s in SERVICES})
+            except Exception as exc:  # noqa: BLE001
+                log_swallowed(exc)
+                svcs = []
+            platform = ["controller", "ui"]
+            handler._json_response(200, {
+                "sources": [
+                    *({"id": p, "label": p.title(), "kind": "platform"}
+                      for p in platform),
+                    *({"id": s, "label": s.title(), "kind": "service"}
+                      for s in svcs),
+                ],
+            })
         elif path.startswith("/api/logs/") and path.count("/") == 3:
             _handle_service_logs(handler, path)
 
@@ -648,7 +695,26 @@ class GetRequestHandler:
         elif path == "/api/grafana.json":
             handler._json_response(200, metrics_svc.get_grafana_dashboard())
         elif path == "/api/openapi.json":
-            handler._json_response(200, handler._get_openapi_spec())
+            # Return the real `contracts/api/openapi.yaml` parsed to
+            # JSON. The legacy `_get_openapi_spec()` was a hardcoded
+            # stub from pre-Phase 4 days — it returned ~50 endpoints
+            # with no examples, no operationId, no x-codeSamples,
+            # which left the api-docs page rendering an empty viewer
+            # even though the real spec has 209 operations + 360
+            # examples + 23 x-codeSamples blocks. The Stoplight
+            # Elements component points at this URL via
+            # `apiDescriptionUrl="/api/openapi.json"`; without parsing
+            # the rich YAML, operators saw an empty docs surface.
+            try:
+                import yaml as _yaml
+                spec = _yaml.safe_load(_OPENAPI_YAML) or {}
+                spec["servers"] = _build_openapi_servers()
+                handler._json_response(200, spec)
+            except Exception as exc:  # noqa: BLE001
+                log_swallowed(exc)
+                # Fall back to the legacy stub so a YAML parse error
+                # doesn't take the docs page down entirely.
+                handler._json_response(200, handler._get_openapi_spec())
         elif path == "/api/openapi.yaml":
             _handle_openapi_yaml(handler)
 

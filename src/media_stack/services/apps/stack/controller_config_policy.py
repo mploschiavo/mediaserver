@@ -26,9 +26,30 @@ from .controller_config_policy_helpers import (
     _walk_path,
 )
 
-_POLICY_CATALOG_PATH = (
-    Path(__file__).resolve().parents[5] / "contracts" / "media-stack.bootstrap.policy.yaml"
+import sys as _sys
+
+# Resolve media-stack.bootstrap.policy.yaml across deploy modes —
+# same install-path bug class as v1.0.231 / v1.0.235; see
+# test_install_path_resolvers_ratchet. The pre-existing
+# _IMAGE_POLICY_PATH was a partial mitigation referenced by specific
+# call sites; the candidate-list form supersedes it for default
+# resolution.
+_POLICY_CATALOG_PATH_CANDIDATES = (
+    Path(__file__).resolve().parents[5] / "contracts" / "media-stack.bootstrap.policy.yaml",
+    Path("/opt/media-stack/contracts/media-stack.bootstrap.policy.yaml"),
+    Path(_sys.prefix) / "share" / "media-stack" / "contracts" / "media-stack.bootstrap.policy.yaml",
+    Path("/contracts/media-stack.bootstrap.policy.yaml"),
 )
+
+
+def _resolve_policy_catalog() -> Path:
+    for p in _POLICY_CATALOG_PATH_CANDIDATES:
+        if p.is_file():
+            return p
+    return _POLICY_CATALOG_PATH_CANDIDATES[0]
+
+
+_POLICY_CATALOG_PATH = _resolve_policy_catalog()
 _IMAGE_POLICY_PATH = Path("/opt/media-stack/contracts/media-stack.bootstrap.policy.yaml")
 
 

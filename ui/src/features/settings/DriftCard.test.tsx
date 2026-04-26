@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 
 const driftState = vi.hoisted(() => ({
@@ -71,6 +72,31 @@ describe("DriftCard", () => {
     expect(screen.getByTestId("drift-row-log.level")).toHaveTextContent(
       "error",
     );
+  });
+
+  it("filters drift entries via the DataTable key filter", async () => {
+    driftState.data = {
+      drift: [
+        {
+          key: "tls.cert_path",
+          profile_value: "/etc/ssl/a.pem",
+          live_value: "/etc/ssl/b.pem",
+          severity: "warn",
+        },
+        {
+          key: "log.level",
+          profile_value: "info",
+          live_value: "debug",
+          severity: "error",
+        },
+      ],
+    };
+    renderWithProviders(<DriftCard />);
+    expect(screen.getByTestId("drift-row-tls.cert_path")).toBeInTheDocument();
+    expect(screen.getByTestId("drift-row-log.level")).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId("drift-filter-key"), "log");
+    expect(screen.queryByTestId("drift-row-tls.cert_path")).toBeNull();
+    expect(screen.getByTestId("drift-row-log.level")).toBeInTheDocument();
   });
 
   it("links Reconcile to /ops", () => {

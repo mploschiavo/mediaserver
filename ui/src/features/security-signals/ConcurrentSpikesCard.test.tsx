@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 
 const concurrentState = vi.hoisted(() => ({
@@ -64,6 +65,34 @@ describe("ConcurrentSpikesCard", () => {
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("authelia")).toBeInTheDocument();
     expect(screen.getByText("jellyfin")).toBeInTheDocument();
+  });
+
+  it("filters spikes via the DataTable user filter", async () => {
+    concurrentState.data = {
+      alerts: [
+        {
+          username: "alice",
+          count: 7,
+          threshold: 5,
+          providers: ["authelia"],
+        },
+        {
+          username: "bob",
+          count: 9,
+          threshold: 5,
+          providers: ["jellyfin"],
+        },
+      ],
+    };
+    renderWithProviders(<ConcurrentSpikesCard />);
+    expect(screen.getByTestId("concurrent-spike-row-alice")).toBeInTheDocument();
+    expect(screen.getByTestId("concurrent-spike-row-bob")).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByTestId("concurrent-spike-filter-user"),
+      "bob",
+    );
+    expect(screen.queryByTestId("concurrent-spike-row-alice")).toBeNull();
+    expect(screen.getByTestId("concurrent-spike-row-bob")).toBeInTheDocument();
   });
 
   it("links Review sessions to /sessions with the user query param", () => {

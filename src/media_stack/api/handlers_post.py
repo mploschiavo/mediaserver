@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 from media_stack.api.actor_resolver import ActorResolver as _ActorResolver
 from media_stack.api.session_singletons import (
     SESSION_COOKIE_NAME,
+    session_cookie_reader as _session_cookie_reader,
     session_store as _session_store,
     trusted_proxy_auth as _trusted_proxy_auth,
 )
@@ -122,6 +123,20 @@ class _HandlerActorResolverFactory:
     ``build_default_service`` / ``_trusted_proxy_auth`` still takes
     effect. A bare ``ActorResolver(build_service=build_default_service)``
     captures the import-time name and sails past the patched symbol.
+
+    POST bodies on /me-style mutations (token mint, session revoke,
+    "this wasn't me") rarely carry an explicit ``_actor`` field — the
+    caller is acting on themselves and the controller is expected to
+    figure out who they are from the request context. Without a hint,
+    the underlying :class:`ActorResolver` falls back to the literal
+    placeholder ``"controller-ui"``, which then lands as
+    ``actor.username`` and gets persisted by callees (token store,
+    audit log) under the wrong identity. Mirroring the GET-side
+    factory in ``security_get_deps.py``, we pre-resolve the caller's
+    real username from the session cookie first, then the trusted-
+    proxy ``Remote-User`` header, and only inject it into ``body``
+    when the caller didn't already supply one (preserving admin
+    impersonation flows that pass ``_actor`` explicitly).
     """
 
     def resolve(self, handler, body: dict) -> Actor:
@@ -129,7 +144,32 @@ class _HandlerActorResolverFactory:
             build_service=build_default_service,
             client_ip_for=_trusted_proxy_auth.client_ip,
         )
-        return impl.resolve(handler, body or {})
+        merged = dict(body or {})
+        if not str(merged.get("_actor", "") or "").strip():
+            identity = self._identity_from_request(handler)
+            if identity:
+                merged["_actor"] = identity
+        return impl.resolve(handler, merged)
+
+    def _identity_from_request(self, handler) -> str:
+        """Return the authenticated username on this request, or ''.
+
+        Resolution order matches the GET-side factory: session cookie
+        wins, then the trusted-proxy ``Remote-User`` header (Authelia
+        via Envoy ext_authz). Returning '' lets the underlying resolver
+        fall back to its bootstrap default for the rare unauthenticated
+        POST that still reaches this layer (e.g. login itself).
+        """
+        try:
+            cookie_user = _session_cookie_reader.username_for_handler(handler)
+        except Exception:  # noqa: BLE001
+            cookie_user = ""
+        if cookie_user:
+            return cookie_user
+        try:
+            return str(_trusted_proxy_auth.identity(handler) or "")
+        except Exception:  # noqa: BLE001
+            return ""
 
 
 _actor_resolver = _HandlerActorResolverFactory()
@@ -626,7 +666,7 @@ class _UserMgmtPostHelper:
         "controller_admin", "provider_payloads",
     })
 
-    def token_create(self, body: dict, actor: str) -> dict:
+    def token_create(self, body: dict, actor) -> dict:
         """Mint an API token.
 
         Two modes:
@@ -635,9 +675,24 @@ class _UserMgmtPostHelper:
             shared family_id. Both plaintexts are returned once;
             subsequent requests use the access token, and the refresh
             exchanges at POST /api/tokens/refresh for a rotated pair.
+
+        ``actor`` is an :class:`Actor` instance from the dispatcher
+        (legacy type hint said ``str`` because the original handler
+        passed a username string before the resolver was promoted to
+        return a full ``Actor``). We only persist ``actor.username``
+        as ``owner_username`` — never ``str(actor)``, which under a
+        frozen ``@dataclass`` produces a repr like ``"Actor(username=
+        'alice', roles=frozenset({...}), ...)"`` that gets stored
+        verbatim and then never matches the GET-side
+        ``actor.username`` lookup. That mismatch was Bug 1: tokens
+        appear to mint successfully, then ``/api/me/tokens`` returns
+        zero rows because the stored ``owner_username`` field is the
+        dataclass repr, not the username.
         """
         store = build_default_api_token_store()
-        owner = (str(body.get("owner_username", actor)).strip() or actor)
+        actor_username = self._actor_username(actor)
+        body_owner = str(body.get("owner_username", "") or "").strip()
+        owner = body_owner or actor_username
         name = str(body.get("name", "")).strip() or "api-token"
         scope = str(body.get("scope", "admin")).strip() or "admin"
         kind = str(body.get("kind", "long_lived")).strip()
@@ -798,6 +853,28 @@ class _UserMgmtPostHelper:
 
     def _resolve_roles_path(self) -> Path:
         return resolve_default_roles_path()
+
+    def _actor_username(self, actor) -> str:
+        """Coerce an ``actor`` argument to its username string.
+
+        Legacy callers (and the type hints sprinkled throughout this
+        helper) declare ``actor: str``, but the dispatcher above has
+        passed a full :class:`Actor` instance ever since the role-
+        aware resolver landed. ``str(actor_instance)`` yields the
+        frozen-dataclass repr, which then poisons every persisted
+        ``owner_username`` / audit ``actor`` field downstream. This
+        helper returns ``actor.username`` when the argument is an
+        ``Actor``, the value as-is when it's already a string, and
+        an empty string when neither is true (defensive — the
+        underlying stores treat ``""`` as "unknown caller" rather
+        than blowing up).
+        """
+        username = getattr(actor, "username", None)
+        if isinstance(username, str):
+            return username
+        if isinstance(actor, str):
+            return actor
+        return ""
 
 
 _user_mgmt_helper = _UserMgmtPostHelper()

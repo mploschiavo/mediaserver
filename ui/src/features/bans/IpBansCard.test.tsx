@@ -105,6 +105,29 @@ describe("IpBansCard", () => {
     expect(screen.getByText("scraper")).toBeInTheDocument();
   });
 
+  it("filters bans via the DataTable reason filter", async () => {
+    ipBansState.data = [
+      {
+        cidr: "203.0.113.0/24",
+        reason: "scraper",
+        banned_at: "2026-04-01T12:00:00Z",
+      },
+      { cidr: "198.51.100.7", reason: "abuse" },
+    ];
+    renderWithProviders(<IpBansCard />);
+    expect(
+      screen.getByTestId("ip-ban-row-203.0.113.0/24"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("ip-ban-row-198.51.100.7"),
+    ).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId("ip-ban-filter-reason"), "abuse");
+    expect(screen.queryByTestId("ip-ban-row-203.0.113.0/24")).toBeNull();
+    expect(
+      screen.getByTestId("ip-ban-row-198.51.100.7"),
+    ).toBeInTheDocument();
+  });
+
   it("opens the dialog, validates a bad CIDR inline, and does not call mutation", async () => {
     ipBansState.data = [];
     renderWithProviders(<IpBansCard />);

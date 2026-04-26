@@ -59,6 +59,12 @@ vi.mock("@/features/stack-lifecycle/UpgradeBanner", () => ({
   UpgradeBanner: () => null,
 }));
 
+// UpdateAvailableBanner shares the `useStackUpdate` query path; stub
+// it for the same QueryClient-not-in-scope reason.
+vi.mock("./UpdateAvailableBanner", () => ({
+  UpdateAvailableBanner: () => null,
+}));
+
 // TriggeredBanner reads useGuardrails (Tanstack Query); same
 // QueryClient-not-in-scope story as UpgradeBanner. Quiet stub.
 vi.mock("@/features/guardrails", () => ({

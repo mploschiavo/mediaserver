@@ -9,10 +9,31 @@ import react from "@vitejs/plugin-react";
 // v1.x (Vite-6-native) lands.
 import { VitePWA as _VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 const VitePWA = _VitePWA as (opts: unknown) => PluginOption;
 
+// Bake the package's `version` into the bundle as
+// `import.meta.env.VITE_BUILD_VERSION` so:
+//   1. The drift banner can compare the running controller version to
+//      the SPA's build version (App-is-out-of-date detection).
+//   2. The SW cache-name suffixes change on every version bump, which
+//      forces Workbox to purge the old runtime caches on activation —
+//      operators no longer need to hard-refresh after a deploy.
+// Reading via `readFileSync` (not `import` / JSON-module assertion) keeps
+// us off Vite/Node's experimental JSON-import flag list.
+const PKG = JSON.parse(
+  readFileSync(path.resolve(__dirname, "package.json"), "utf8"),
+) as { version?: string };
+const BUILD_VERSION = (PKG.version ?? "0.0.0").trim();
+
 export default defineConfig({
+  define: {
+    // String-quoted because Vite's `define` does a literal text
+    // substitution; without the quotes, "1.3.14" becomes a syntax error
+    // at the call site.
+    "import.meta.env.VITE_BUILD_VERSION": JSON.stringify(BUILD_VERSION),
+  },
   plugins: [
     react(),
     VitePWA({
@@ -22,6 +43,12 @@ export default defineConfig({
       // strategy lean: cache the app shell + static assets, never
       // cache /api/* (that's session-tied data).
       workbox: {
+        // Version-stamp the precache + runtime cache names so a new
+        // build registers under a fresh cache identity. Workbox's
+        // standard activate handler then deletes any cache whose
+        // name doesn't match the current set, killing stale HTML/JS
+        // automatically on the next SW activation.
+        cacheId: `media-stack-${BUILD_VERSION}`,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
@@ -34,7 +61,7 @@ export default defineConfig({
             urlPattern: /\.(?:woff2|woff|ttf|eot)$/,
             handler: "CacheFirst",
             options: {
-              cacheName: "media-stack-fonts",
+              cacheName: `media-stack-fonts-${BUILD_VERSION}`,
               expiration: {
                 maxEntries: 16,
                 maxAgeSeconds: 60 * 60 * 24 * 365,
@@ -46,7 +73,7 @@ export default defineConfig({
             urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/.*$/,
             handler: "CacheFirst",
             options: {
-              cacheName: "media-stack-cdn-fonts",
+              cacheName: `media-stack-cdn-fonts-${BUILD_VERSION}`,
               expiration: {
                 maxEntries: 16,
                 maxAgeSeconds: 60 * 60 * 24 * 365,

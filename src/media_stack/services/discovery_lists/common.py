@@ -1,62 +1,15 @@
-"""Shared discovery-list helper functions."""
+"""Shim — moved to ``media_stack.domain.discovery_lists.common`` in
+ADR-0002 Phase 16-E. Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+of the form ``mock.patch.object(MODULE, "_helper", ...)`` (where
+``MODULE`` is the legacy shim path) work transparently — the shim
+import resolves to the impl module itself, so attribute patches land
+on the same module the impl function's body looks up names from.
+"""
 
-import re
-from typing import Any
+import sys
 
+from media_stack.domain.discovery_lists import common as _impl
 
-
-class DiscoveryListCommonService:
-    def coerce_for_example(self, value: Any, example: Any) -> Any:
-        if isinstance(example, bool):
-            if isinstance(value, str):
-                return value.strip().lower() in ("1", "true", "yes", "on")
-            return bool(value)
-        if isinstance(example, int) and not isinstance(example, bool):
-            try:
-                if value is None:
-                    return value
-                return int(value)
-            except Exception:
-                return value
-        return value
-    
-    
-    def normalize_title(self, value: Any) -> str:
-        text = str(value or "").strip().lower()
-        if not text:
-            return ""
-        return re.sub(r"[^a-z0-9]+", "", text)
-    
-    
-    def service_to_int(self, value: Any, default: int | None = None) -> int | None:
-        try:
-            if value is None:
-                return default
-            return int(value)
-        except Exception:
-            return default
-    
-    
-    def pick_series_lookup_candidate(self, 
-        lookup_payload: list[Any], target_name: str
-    ) -> dict[str, Any] | None:
-        candidates = [item for item in lookup_payload if isinstance(item, dict)]
-        if not candidates:
-            return None
-        target_token = normalize_title(target_name)
-        for item in candidates:
-            if normalize_title(item.get("title")) == target_token:
-                return item
-        for item in candidates:
-            if service_to_int(item.get("tvdbId")):
-                return item
-        return candidates[0]
-
-
-_instance = DiscoveryListCommonService()
-coerce_for_example = _instance.coerce_for_example
-normalize_title = _instance.normalize_title
-service_to_int = _instance.service_to_int
-pick_series_lookup_candidate = _instance.pick_series_lookup_candidate
+sys.modules[__name__] = _impl

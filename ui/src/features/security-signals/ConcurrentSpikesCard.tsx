@@ -2,6 +2,7 @@ import { asArray } from "@/lib/coerce";
 import { useMemo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, ShieldCheck, Users } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -11,14 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { useConcurrentSpikes, type ConcurrentSpikeAlert } from "./hooks";
 
@@ -79,6 +73,91 @@ export function ConcurrentSpikesCard() {
     return list.map((a, i) => toRow(a, i));
   }, [query.data]);
 
+  const columns = useMemo<ColumnDef<SpikeRow>[]>(
+    () => [
+      {
+        id: "user",
+        accessorFn: (r) => r.user,
+        header: "User",
+        meta: { label: "User" },
+        cell: ({ row }) => (
+          <span className="font-medium text-fg">{row.original.user}</span>
+        ),
+      },
+      {
+        id: "count",
+        accessorFn: (r) => r.count,
+        header: "Count",
+        meta: { label: "Count" },
+        sortingFn: "basic",
+        cell: ({ row }) => (
+          <Badge
+            variant={severity(row.original.count, row.original.threshold)}
+          >
+            {row.original.count}
+          </Badge>
+        ),
+      },
+      {
+        id: "threshold",
+        accessorFn: (r) => r.threshold,
+        header: "Threshold",
+        meta: { label: "Threshold" },
+        sortingFn: "basic",
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {row.original.threshold}
+          </span>
+        ),
+      },
+      {
+        id: "providers",
+        accessorFn: (r) => r.providers.join(" "),
+        header: "Providers",
+        meta: { label: "Providers" },
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-1">
+            {row.original.providers.length === 0 ? (
+              <span className="text-xs text-fg-faint">—</span>
+            ) : (
+              row.original.providers.map((p) => (
+                <Badge key={p} variant={providerVariant(p)}>
+                  {p}
+                </Badge>
+              ))
+            )}
+          </div>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end">
+            {/* Plain anchor — the `/sessions` route is owned by a
+                parallel agent and may not be registered with the
+                router yet. Falling back to a native link keeps this
+                card useful in either world; the `?user=` query param
+                is honoured by the sessions page when it lands and
+                ignored otherwise. */}
+            <a
+              href={`/sessions?user=${encodeURIComponent(row.original.user)}`}
+              className="text-sm font-medium text-accent underline-offset-2 [@media(hover:hover)]:hover:underline"
+              data-testid={`concurrent-spike-review-${row.original.id}`}
+              aria-label={`Review sessions for ${row.original.user}`}
+            >
+              Review sessions
+            </a>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 6 }}
@@ -125,66 +204,16 @@ export function ConcurrentSpikesCard() {
               />
             </div>
           ) : (
-            <Table data-testid="concurrent-spikes-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Count</TableHead>
-                  <TableHead>Threshold</TableHead>
-                  <TableHead>Providers</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-testid={`concurrent-spike-row-${row.id}`}
-                  >
-                    <TableCell className="font-medium text-fg">
-                      {row.user}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={severity(row.count, row.threshold)}>
-                        {row.count}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="tabular-nums text-fg-muted">
-                      {row.threshold}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {row.providers.length === 0 ? (
-                          <span className="text-xs text-fg-faint">—</span>
-                        ) : (
-                          row.providers.map((p) => (
-                            <Badge key={p} variant={providerVariant(p)}>
-                              {p}
-                            </Badge>
-                          ))
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {/* Plain anchor — the `/sessions` route is owned by
-                          a parallel agent and may not be registered with
-                          the router yet. Falling back to a native link
-                          keeps this card useful in either world; the
-                          `?user=` query param is honoured by the sessions
-                          page when it lands and ignored otherwise. */}
-                      <a
-                        href={`/sessions?user=${encodeURIComponent(row.user)}`}
-                        className="text-sm font-medium text-accent underline-offset-2 [@media(hover:hover)]:hover:underline"
-                        data-testid={`concurrent-spike-review-${row.id}`}
-                        aria-label={`Review sessions for ${row.user}`}
-                      >
-                        Review sessions
-                      </a>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="px-6 pb-6" data-testid="concurrent-spikes-table">
+              <DataTable<SpikeRow>
+                testId="concurrent-spike"
+                columns={columns}
+                data={rows}
+                getRowId={(r) => r.id}
+                caption={`${rows.length} spike${rows.length === 1 ? "" : "s"}`}
+                emptyState="No concurrent-session spikes."
+              />
+            </div>
           )}
         </CardContent>
       </Card>

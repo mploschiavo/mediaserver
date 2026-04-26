@@ -1,7 +1,9 @@
 import { asArray } from "@/lib/coerce";
+import { useMemo } from "react";
 import { Link2, Link2Off, Network, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,14 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
 import {
   useImportOrphanUser,
@@ -104,6 +99,58 @@ export function ProviderReconcileCard() {
     );
   };
 
+  // The provider table is a per-user matrix: column-per-provider with
+  // a linked-badge / unlink-button cell. We build columns dynamically
+  // so the DataTable filter UI lights up for every provider name.
+  const columns = useMemo<ColumnDef<UserProvider>[]>(() => {
+    const userCol: ColumnDef<UserProvider> = {
+      id: "user",
+      accessorFn: (r) => r.username ?? userIdOf(r),
+      header: "User",
+      meta: { label: "User" },
+      cell: ({ row }) => (
+        <span className="font-medium text-fg">
+          {row.original.username ?? userIdOf(row.original)}
+        </span>
+      ),
+    };
+    const providerCols: ColumnDef<UserProvider>[] = PROVIDER_NAMES.map((p) => ({
+      id: p,
+      accessorFn: (r) => readProvider(r, p)?.externalId ?? "",
+      header: (p[0] ?? "").toUpperCase() + p.slice(1),
+      meta: { label: (p[0] ?? "").toUpperCase() + p.slice(1) },
+      enableSorting: false,
+      cell: ({ row }) => {
+        const userId = userIdOf(row.original);
+        const cell = readProvider(row.original, p);
+        if (!cell) return <span className="text-fg-faint">—</span>;
+        return (
+          <div className="flex items-center gap-2">
+            <Badge variant="success">
+              <Link2 aria-hidden className="size-3" />
+              {cell.externalId ?? "linked"}
+            </Badge>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={unlink.isPending || !userId}
+              onClick={() => handleUnlinkGhost(userId, p)}
+              data-testid={`provider-unlink-${userId}-${p}`}
+              aria-label={`Unlink ${p} from ${row.original.username}`}
+            >
+              <Link2Off aria-hidden /> Unlink
+            </Button>
+          </div>
+        );
+      },
+    }));
+    return [userCol, ...providerCols];
+    // handleUnlinkGhost is stable enough — captured via closure per
+    // render. Re-build columns when the unlink mutation pending state
+    // flips so disabled-ness reflects live state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlink.isPending]);
+
   return (
     <Card data-testid="provider-reconcile-card">
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
@@ -152,60 +199,16 @@ export function ProviderReconcileCard() {
             />
           </div>
         ) : (
-          <Table data-testid="provider-reconcile-table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                {PROVIDER_NAMES.map((p) => (
-                  <TableHead key={p} className="capitalize">
-                    {p}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.map((row) => {
-                const userId = userIdOf(row);
-                return (
-                  <TableRow
-                    key={userId || row.username}
-                    data-testid={`provider-row-${userId || row.username}`}
-                  >
-                    <TableCell className="font-medium text-fg">
-                      {row.username ?? userId}
-                    </TableCell>
-                    {PROVIDER_NAMES.map((p) => {
-                      const cell = readProvider(row, p);
-                      return (
-                        <TableCell key={p}>
-                          {cell ? (
-                            <div className="flex items-center gap-2">
-                              <Badge variant="success">
-                                <Link2 aria-hidden className="size-3" />
-                                {cell.externalId ?? "linked"}
-                              </Badge>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={unlink.isPending || !userId}
-                                onClick={() => handleUnlinkGhost(userId, p)}
-                                data-testid={`provider-unlink-${userId}-${p}`}
-                                aria-label={`Unlink ${p} from ${row.username}`}
-                              >
-                                <Link2Off aria-hidden /> Unlink
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-fg-faint">—</span>
-                          )}
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="px-6 pb-6" data-testid="provider-reconcile-table">
+            <DataTable<UserProvider>
+              testId="provider"
+              columns={columns}
+              data={list}
+              getRowId={(r) => userIdOf(r) || r.username || ""}
+              caption={`${list.length} user${list.length === 1 ? "" : "s"}`}
+              emptyState="No provider bindings."
+            />
+          </div>
         )}
 
         {diffs.length > 0 ? (

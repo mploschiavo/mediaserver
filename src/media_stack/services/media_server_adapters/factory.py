@@ -1,29 +1,21 @@
-"""Factory for media-server adapters."""
+"""Shim — moved to
+``media_stack.application.media_server_adapters.factory`` in ADR-0002
+Phase 16-E (media_server_adapters). Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+of the form ``mock.patch.object(MODULE, "_helper", ...)`` (where
+``MODULE`` is the legacy shim path) work transparently — the shim
+import resolves to the impl module itself, so attribute patches land
+on the same module the impl function's body looks up names from.
 
-from dataclasses import dataclass, field
-from typing import Any
+The legacy import path ``media_stack.services.media_server_adapters.factory:MediaServerAdapterFactory``
+is referenced by ``contracts/services/_core.yaml`` and existing
+bootstrap tests — keep this shim until the manifest entries are
+relocated and the tests rebased.
+"""
 
-from ..adapter_factory import build_adapter_registry, get_adapter_class
-from ..plugin_manifest_loader import build_adapter_hook_defaults, load_plugin_manifests
-from .base import MediaServerAdapterBase, MediaServerAdapterContext
+import sys
 
-AdapterClass = type[MediaServerAdapterBase]
+from media_stack.application.media_server_adapters import factory as _impl
 
-
-@dataclass(frozen=True)
-class MediaServerAdapterFactory:
-    adapter_class_specs: dict[str, Any] | None = None
-    _adapter_classes: dict[str, AdapterClass] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        specs = self.adapter_class_specs
-        if specs is None:
-            specs = build_adapter_hook_defaults(load_plugin_manifests()).media_server_adapter_classes
-        registry = build_adapter_registry(specs, base_class=MediaServerAdapterBase, role="media_server")
-        object.__setattr__(self, "_adapter_classes", registry)
-
-    def create(self, backend: str, context: MediaServerAdapterContext) -> MediaServerAdapterBase:
-        cls = get_adapter_class(self._adapter_classes, backend, role="media_server")
-        return cls(context=context)
+sys.modules[__name__] = _impl

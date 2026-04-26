@@ -2,6 +2,7 @@ import { asArray } from "@/lib/coerce";
 import { useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, KeyRound, ShieldAlert } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,14 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { useFailedLogins, type FailedLoginCluster } from "./hooks";
 
@@ -113,6 +107,107 @@ export function FailedLoginsCard({
     return list.map((c, i) => toRow(c, i));
   }, [query.data]);
 
+  const columns = useMemo<ColumnDef<FailedRow>[]>(
+    () => [
+      {
+        id: "identifier",
+        accessorFn: (r) => r.identifier,
+        header: "Identifier",
+        meta: { label: "Identifier" },
+        cell: ({ row }) => (
+          <span className="font-mono text-fg">{row.original.identifier}</span>
+        ),
+      },
+      {
+        id: "attempts",
+        accessorFn: (r) => r.attempts,
+        header: "Attempts",
+        meta: { label: "Attempts" },
+        sortingFn: "basic",
+        cell: ({ row }) => (
+          <Badge variant={severity(row.original.attempts)}>
+            {row.original.attempts}
+          </Badge>
+        ),
+      },
+      {
+        id: "timespan",
+        accessorFn: (r) => {
+          const a = new Date(r.first).getTime();
+          const b = new Date(r.last).getTime();
+          if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0;
+          return b - a;
+        },
+        header: "Timespan",
+        meta: { label: "Timespan" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {timespan(row.original.first, row.original.last)}
+          </span>
+        ),
+      },
+      {
+        id: "last_seen",
+        accessorFn: (r) => r.last,
+        header: "Last seen",
+        meta: { label: "Last seen" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {fmt(row.original.last)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => {
+          const r = row.original;
+          if (auditLogAvailable) {
+            return (
+              <div className="flex items-center justify-end">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="secondary"
+                  data-testid={`failed-login-investigate-${r.id}`}
+                >
+                  <a
+                    href={`/audit-log?action=auth.login.failed&actor=${encodeURIComponent(
+                      r.identifier,
+                    )}`}
+                    aria-label={`Investigate failed logins for ${r.identifier}`}
+                  >
+                    Investigate
+                  </a>
+                </Button>
+              </div>
+            );
+          }
+          return (
+            <div className="flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setDetails(r)}
+                data-testid={`failed-login-investigate-${r.id}`}
+                aria-label={`Show raw details for ${r.identifier}`}
+              >
+                Investigate
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [auditLogAvailable],
+  );
+
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 6 }}
@@ -159,69 +254,16 @@ export function FailedLoginsCard({
               />
             </div>
           ) : (
-            <Table data-testid="failed-logins-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Identifier</TableHead>
-                  <TableHead>Attempts</TableHead>
-                  <TableHead>Timespan</TableHead>
-                  <TableHead>Last seen</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-testid={`failed-login-row-${row.id}`}
-                  >
-                    <TableCell className="font-mono text-fg">
-                      {row.identifier}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={severity(row.attempts)}>
-                        {row.attempts}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="tabular-nums text-fg-muted">
-                      {timespan(row.first, row.last)}
-                    </TableCell>
-                    <TableCell className="tabular-nums text-fg-muted">
-                      {fmt(row.last)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {auditLogAvailable ? (
-                        <Button
-                          asChild
-                          size="sm"
-                          variant="secondary"
-                          data-testid={`failed-login-investigate-${row.id}`}
-                        >
-                          <a
-                            href={`/audit-log?action=auth.login.failed&actor=${encodeURIComponent(
-                              row.identifier,
-                            )}`}
-                            aria-label={`Investigate failed logins for ${row.identifier}`}
-                          >
-                            Investigate
-                          </a>
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => setDetails(row)}
-                          data-testid={`failed-login-investigate-${row.id}`}
-                          aria-label={`Show raw details for ${row.identifier}`}
-                        >
-                          Investigate
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="px-6 pb-6" data-testid="failed-logins-table">
+              <DataTable<FailedRow>
+                testId="failed-login"
+                columns={columns}
+                data={rows}
+                getRowId={(r) => r.id}
+                caption={`${rows.length} cluster${rows.length === 1 ? "" : "s"}`}
+                emptyState="No failed-login clusters."
+              />
+            </div>
           )}
         </CardContent>
       </Card>

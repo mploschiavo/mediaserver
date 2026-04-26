@@ -154,15 +154,14 @@ export interface RecentAdditionsShape {
   items: readonly RecentItemShape[];
 }
 
-export type LogSource =
-  | "controller"
-  | "sonarr"
-  | "radarr"
-  | "lidarr"
-  | "readarr"
-  | "bazarr"
-  | "prowlarr"
-  | "qbittorrent";
+// Log source ids are dynamically derived from the controller's
+// SERVICES registry via `GET /api/logs/sources` plus the platform
+// pods (controller, ui). Previously this was a closed union of 8
+// hardcoded values that didn't grow as new services were added —
+// operators couldn't reach jellyfin/jellyseerr/sabnzbd/envoy/etc.
+// logs even though they were running. Widened to `string` so the
+// UI can render whatever the controller advertises at runtime.
+export type LogSource = string;
 
 export interface LogLineShape {
   ts: string;

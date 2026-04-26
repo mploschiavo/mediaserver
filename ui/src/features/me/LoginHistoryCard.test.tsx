@@ -48,6 +48,12 @@ function resetAll() {
   thisWasntMeState.isPending = false;
   toastSuccess.mockReset();
   toastError.mockReset();
+  // The "This wasn't me" handler now gates on window.confirm so the
+  // operator doesn't accidentally sign themselves out of every
+  // device.  Default to "yes" in tests so the existing assertions
+  // about the mutation firing keep working; the cancel-path test
+  // overrides this per-test.
+  vi.spyOn(window, "confirm").mockReturnValue(true);
 }
 
 const entries = {
@@ -133,5 +139,20 @@ describe("LoginHistoryCard", () => {
       screen.getByTestId("login-history-wasnt-me-e1"),
     );
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+  });
+
+  it("does NOT post when the operator cancels the confirm dialog", async () => {
+    // The "This wasn't me" action revokes every session for the
+    // caller (sign-out everywhere) and writes an audit-trail
+    // anomaly entry.  That's intentional — but the consequence is
+    // dramatic enough that the operator should be able to back out.
+    // A dismissed confirm() must not fire the mutation.
+    historyState.data = entries;
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderWithProviders(<LoginHistoryCard />);
+    await userEvent.click(
+      screen.getByTestId("login-history-wasnt-me-e1"),
+    );
+    expect(thisWasntMeMutate).not.toHaveBeenCalled();
   });
 });

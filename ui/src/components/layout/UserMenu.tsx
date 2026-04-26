@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 
 interface UserMenuProps {
@@ -46,21 +45,24 @@ export function UserMenu({
   const handleSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
+    // Best-effort POST so the controller can audit-log; don't block
+    // UX on it. When session is already expired the POST returns 401
+    // — that used to leave the user stuck (toast errored, button
+    // disabled, no redirect). Now: fire-and-forget, then always
+    // navigate to Authelia so the cookie clears regardless.
     try {
-      const res = await fetch("/api/auth/logout", {
+      await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
-      });
-      if (!res.ok) {
-        throw new Error(`Logout failed (${res.status})`);
-      }
-      window.location.reload();
-    } catch (err) {
-      setSigningOut(false);
-      toast.error(
-        err instanceof Error ? err.message : "Could not sign out, try again.",
-      );
+      }).catch(() => undefined);
+    } catch {
+      // swallowed — Authelia is the source of truth for the cookie.
     }
+    // Authelia clears its session cookie when you GET its portal
+    // root; navigating there is the canonical sign-out flow with
+    // ext_authz. Authelia then redirects to the configured
+    // ``default_redirection_url`` which lands on the login screen.
+    window.location.replace("/app/authelia/?rd=" + encodeURIComponent(window.location.origin));
   };
 
   return (

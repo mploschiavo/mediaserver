@@ -53,6 +53,13 @@ vi.mock("@/features/stack-lifecycle/UpgradeBanner", () => ({
   UpgradeBanner: () => <div data-testid="upgrade-banner-stub" />,
 }));
 
+// UpdateAvailableBanner reads `useStackUpdate` (Tanstack Query) the
+// same way the upgrade banner does — stub to keep the shell tests
+// from needing a QueryClient.
+vi.mock("./UpdateAvailableBanner", () => ({
+  UpdateAvailableBanner: () => <div data-testid="update-available-banner-stub" />,
+}));
+
 // The TriggeredBanner reads useGuardrails (network-bound). The
 // AppShell tests render bare without a QueryClient so we stub it
 // to a quiet div that is still asserted-against in mount-order tests.
@@ -179,6 +186,26 @@ describe("AppShell", () => {
     );
     const root = container.firstChild as HTMLElement;
     expect(root.className).toContain("min-h-screen");
+  });
+
+  it("pins the desktop sidebar (sticky + h-screen at md+)", () => {
+    // Ratchet: the desktop sidebar wrapper MUST carry md:sticky +
+    // md:top-0 + md:h-screen so navigation stays in view as the
+    // operator scrolls long pages. Reverted twice this session by
+    // agent file-collisions — this test catches any future revert.
+    const { container } = render(
+      <AppShell>
+        <span>x</span>
+      </AppShell>,
+    );
+    // The sidebar wrapper is the first <aside>'s parent (the
+    // ``hidden md:...`` wrapper around the Sidebar component).
+    const wrapper = container.querySelector(".md\\:sticky");
+    expect(wrapper, "sidebar wrapper missing md:sticky").not.toBeNull();
+    const cls = wrapper?.className ?? "";
+    expect(cls).toContain("md:sticky");
+    expect(cls).toContain("md:top-0");
+    expect(cls).toContain("md:h-screen");
   });
 
   it("renders a 'Skip to main content' link targeting #main-content", () => {

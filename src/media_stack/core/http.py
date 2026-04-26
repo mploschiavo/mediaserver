@@ -159,7 +159,20 @@ class HttpClient:
         headers = {"Accept": "application/json"}
 
         if api_key:
+            # ``X-Api-Key`` is what Sonarr/Radarr/Prowlarr/Bazarr/SAB
+            # all accept, so it's the default. Jellyfin / Emby don't
+            # accept it — they need ``X-Emby-Token`` (or a
+            # ``MediaBrowser`` Authorization header). Send BOTH so
+            # one client can probe any backend without callers having
+            # to know which header style applies. The two headers are
+            # mutually exclusive across vendors (no service rejects
+            # the OTHER header — they just ignore it), so this is
+            # safe. Without this fix, the jellyfin session-admin
+            # provider gets 401 on /Sessions and the operator's
+            # "active sessions" view lists only the controller's
+            # synth caller-row, never the real Jellyfin clients.
             headers["X-Api-Key"] = api_key
+            headers["X-Emby-Token"] = api_key
 
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
