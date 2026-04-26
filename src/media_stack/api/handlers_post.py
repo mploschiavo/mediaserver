@@ -1115,6 +1115,99 @@ class PostRequestHandler:
             handler._json_response(200, config_svc.update_routing(body, handler.action_trigger))
             return
 
+        # POST /api/routing/v2 — partial v2 update.
+        #
+        # Accepts a partial RoutingConfigV2 dict; deep-merges with the
+        # current config (read via migrate_v1_to_v2), validates, and
+        # persists. v2-only fields (hosts[], path_aliases, apex,
+        # catch_all, defaults, exposure) write directly to the
+        # overrides file; v1 fields (gateway_host, strategy, etc.)
+        # also flow through update_routing() so the legacy generator
+        # picks them up.
+        if handler.path == "/api/routing/v2":
+            body = handler._read_json_body()
+            if not body:
+                handler._json_response(400, {"error": "JSON body required"})
+                return
+            from media_stack.api.services.config.routing import (
+                RoutingConfigV2,
+                migrate_v1_to_v2,
+                validate_routing_config,
+            )
+            from media_stack.api.services.registry import (
+                get_active_service_ids,
+            )
+            try:
+                # 1. Read current state via the migrator → cfg
+                v1 = config_svc.get_routing()
+                ms_id = None
+                try:
+                    ms_id = config_svc._profile.media_server_id()  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    ms_id = None
+                current = migrate_v1_to_v2(v1, media_server_id=ms_id)
+
+                # 2. Deep-merge body onto current dict
+                base = current.to_dict()
+                merged = _deep_merge_dict(base, body)
+                cfg = RoutingConfigV2.from_dict(merged)
+
+                # 3. Validate
+                errors = [
+                    {"code": e.code, "field": e.field,
+                     "message": e.message, "hint": e.hint}
+                    for e in validate_routing_config(
+                        cfg,
+                        known_service_ids=get_active_service_ids(),
+                    )
+                ]
+                if errors:
+                    handler._json_response(422, {
+                        "status": "validation_failed",
+                        "validation": errors,
+                    })
+                    return
+
+                # 4. Persist v2 overrides + the v1-compatible fields
+                # via update_routing() so the legacy generator stays
+                # in sync. The v2-only blocks land in the overrides
+                # file under their own keys (the migrator round-trips).
+                v1_compat = {
+                    "base_domain": cfg.base_domain,
+                    "stack_subdomain": cfg.stack_subdomain,
+                    "gateway_host": cfg.gateway_host,
+                    "gateway_port": cfg.gateway_port,
+                    "app_path_prefix": cfg.app_path_prefix,
+                    "strategy": cfg.strategy.value,
+                    "scheme": cfg.scheme,
+                    "internet_exposed": cfg.exposure.enabled,
+                    # direct_hosts is reconstituted from hosts[]
+                    # canonical entries — preserves v1 reads while v2
+                    # is the source of truth going forward.
+                    "direct_hosts": {
+                        h.role: h.canonical for h in cfg.hosts if h.role and h.canonical
+                    },
+                }
+                v1_result = config_svc.update_routing(
+                    v1_compat, handler.action_trigger,
+                )
+
+                # Append v2-only blocks to the overrides file so the
+                # next read sees them. We merge into the existing
+                # overrides without disturbing v1-compat keys.
+                _persist_v2_overrides(cfg)
+
+                handler._json_response(200, {
+                    "status": "ok",
+                    "config": cfg.to_dict(),
+                    "v1_legacy_result": v1_result,
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    500, {"error": str(exc)[:200]},
+                )
+            return
+
         # POST /api/password-policy — update min_length/require_classes/
         # history_len. Changes take effect on the next user create or
         # password reset (the next UserService rebuild picks up the
@@ -2236,6 +2329,55 @@ import contextlib as _contextlib
 import threading as _threading
 
 _MI_REVIEW_TLS = _threading.local()
+
+
+def _deep_merge_dict(base: dict, patch: dict) -> dict:
+    """Recursively merge ``patch`` onto ``base``. Lists in ``patch``
+    REPLACE the list in ``base`` (operators expect "send the new
+    list" semantics for hosts/path_aliases/etc.). Dicts merge.
+    Scalars overwrite."""
+    out = dict(base)
+    for k, v in patch.items():
+        if (
+            isinstance(v, dict)
+            and isinstance(out.get(k), dict)
+        ):
+            out[k] = _deep_merge_dict(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _persist_v2_overrides(cfg) -> None:
+    """Write the v2-only fields (hosts, path_aliases, apex, catch_all,
+    defaults, exposure, certs) to the routing-overrides.yaml file.
+    The legacy v1-compat fields are written separately by
+    ``ConfigService.update_routing``; this is the additive half."""
+    import yaml as _yaml
+
+    config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+    overrides_path = config_root / ".controller" / "routing-overrides.yaml"
+    overrides_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Read existing file (v1 fields already there from update_routing()).
+    existing: dict = {}
+    if overrides_path.is_file():
+        try:
+            existing = _yaml.safe_load(overrides_path.read_text(encoding="utf-8")) or {}
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
+            existing = {}
+
+    routing = dict(existing.get("routing") or {})
+    cfg_dict = cfg.to_dict()
+    # Only the v2-only keys — v1-compat keys came in via update_routing().
+    for k in ("hosts", "path_aliases", "apex", "catch_all", "defaults",
+              "exposure", "certs", "version"):
+        if k in cfg_dict:
+            routing[k] = cfg_dict[k]
+    existing["routing"] = routing
+    with open(overrides_path, "w") as f:
+        _yaml.dump(existing, f, default_flow_style=False, sort_keys=False)
 
 
 @_contextlib.contextmanager

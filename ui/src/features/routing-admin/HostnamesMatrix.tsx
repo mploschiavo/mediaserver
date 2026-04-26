@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Lock, ShieldCheck, Unlock } from "lucide-react";
+import { Lock, ShieldCheck, Unlock, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -11,7 +12,13 @@ import {
 } from "@/components/ui/card";
 import { DataTable } from "@/components/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useRoutingV2, type RoutingV2HostEntry } from "./hooks";
+import { HostEditDrawer } from "./HostEditDrawer";
 
 /**
  * Read-only matrix of every host the controller has registered:
@@ -23,6 +30,7 @@ import { useRoutingV2, type RoutingV2HostEntry } from "./hooks";
  */
 export function HostnamesMatrix() {
   const q = useRoutingV2();
+  const [editIndex, setEditIndex] = useState<number | null>(null);
 
   const rows = useMemo<readonly RoutingV2HostEntry[]>(
     () => (q.data?.config.hosts ?? []) as readonly RoutingV2HostEntry[],
@@ -126,35 +134,80 @@ export function HostnamesMatrix() {
         accessorFn: (h) => h.auth?.gate ?? "",
         cell: ({ row }) => {
           const gate = row.original.auth?.gate ?? "none";
+          const isAuthProvider = row.original.service_id === "authelia";
           if (gate === "required") {
             return (
-              <Badge
-                variant="outline"
-                data-tone="warning"
-                className="gap-1"
-                data-testid={`hostnames-auth-${row.index}-required`}
-              >
-                <Lock className="size-3" aria-hidden /> required
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    data-tone="warning"
+                    className="gap-1"
+                    data-testid={`hostnames-auth-${row.index}-required`}
+                  >
+                    <Lock className="size-3" aria-hidden /> required
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Traffic to this hostname must be authenticated by
+                  Authelia (ext_authz). Click the row to edit.
+                </TooltipContent>
+              </Tooltip>
             );
           }
           if (gate === "optional") {
             return (
-              <Badge variant="outline" data-tone="muted">
-                optional
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" data-tone="muted">
+                    optional
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Authelia checks happen but failures don't block —
+                  the upstream sees the auth headers and decides.
+                </TooltipContent>
+              </Tooltip>
             );
           }
           return (
-            <Badge
-              variant="outline"
-              className="gap-1 text-fg-muted"
-              data-testid={`hostnames-auth-${row.index}-none`}
-            >
-              <Unlock className="size-3" aria-hidden /> none
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-fg-muted"
+                  data-testid={`hostnames-auth-${row.index}-none`}
+                >
+                  <Unlock className="size-3" aria-hidden /> none
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isAuthProvider
+                  ? "The auth provider can't gate itself with itself — would lock you out."
+                  : "Open: requests reach the upstream without an auth check. Use only for public services."}
+              </TooltipContent>
+            </Tooltip>
           );
         },
+      },
+      {
+        id: "edit",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="rounded p-1 text-fg-muted hover:bg-bg-2 hover:text-fg"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditIndex(row.index);
+            }}
+            aria-label={`Edit ${row.original.canonical}`}
+            data-testid={`hostnames-edit-${row.index}`}
+          >
+            <Pencil className="size-3.5" aria-hidden />
+          </button>
+        ),
       },
     ],
     [],
@@ -189,15 +242,48 @@ export function HostnamesMatrix() {
     );
   }
 
+  const handleAddNew = () => {
+    if (!q.data) return;
+    const newHosts = [
+      ...q.data.config.hosts,
+      {
+        role: "",
+        service_id: "",
+        canonical: "",
+        aliases: [],
+      } as RoutingV2HostEntry,
+    ];
+    // Open the drawer for the new (empty) row at the appended index.
+    // The mutation only fires on Save, so leaving the drawer cancels
+    // the addition.
+    setEditIndex(newHosts.length - 1);
+    // Pre-write the host into the cached query data so the drawer
+    // sees the empty row to edit. The next Save sends `hosts: newHosts`.
+    q.data.config.hosts = newHosts;
+  };
+
   return (
+    <>
     <Card data-testid="hostnames-matrix">
-      <CardHeader>
-        <CardTitle>Hostnames</CardTitle>
-        <CardDescription>
-          Every host the controller routes to a backend service.
-          Canonical = primary URL, aliases redirect to canonical.
-          Edit comes in v1.0.244 (PR-5).
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <CardTitle>Hostnames</CardTitle>
+          <CardDescription>
+            Every host the controller routes to a backend service.
+            Canonical = primary URL, aliases redirect to canonical.
+            Click the pencil to edit auth, TLS, path prefix, websocket,
+            or maintenance mode.
+          </CardDescription>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleAddNew}
+          data-testid="hostnames-add"
+        >
+          <Plus className="size-3.5" /> Add host
+        </Button>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
@@ -205,8 +291,8 @@ export function HostnamesMatrix() {
             className="rounded-md border border-dashed border-border p-4 text-center text-sm text-fg-muted"
             data-testid="hostnames-matrix-empty"
           >
-            No hostnames configured yet. Add them in <code>routing.yaml</code> or
-            via the editor in PR-5.
+            No hostnames configured yet. Click <strong>Add host</strong>
+            {" "}to wire one up.
           </div>
         ) : (
           <DataTable<RoutingV2HostEntry>
@@ -218,5 +304,12 @@ export function HostnamesMatrix() {
         )}
       </CardContent>
     </Card>
+    <HostEditDrawer
+      open={editIndex !== null}
+      hostIndex={editIndex}
+      config={q.data?.config ?? null}
+      onClose={() => setEditIndex(null)}
+    />
+    </>
   );
 }

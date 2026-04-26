@@ -565,6 +565,153 @@ class GetRequestHandler:
                 handler._json_response(
                     500, {"error": str(exc)[:200]},
                 )
+        elif path == "/api/routing/routes":
+            # Operator-facing route table. Answers "what URL goes
+            # where?" by enumerating every route the gateway emits:
+            #
+            #   * Per-service path-prefix routes (e.g. /app/jellyfin/
+            #     → service_jellyfin) when strategy is path or hybrid
+            #   * Per-service subdomain routes (e.g. jellyfin.iomio.io
+            #     → service_jellyfin) when strategy is subdomain or
+            #     hybrid AND the operator wired a direct_host
+            #   * Path aliases (HTTP redirects)
+            #   * Apex + catch-all
+            #
+            # Returned as a flat list with `host`, `match`, `target`,
+            # `kind`, `source` so the UI can render a sortable table.
+            from media_stack.api.services.config.routing import (
+                migrate_v1_to_v2,
+            )
+            from media_stack.api.services.registry import (
+                SERVICES,
+                get_active_service_ids,
+            )
+            try:
+                v1 = config_svc.get_routing()
+                ms_id = None
+                try:
+                    ms_id = config_svc._profile.media_server_id()  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    ms_id = None
+                cfg = migrate_v1_to_v2(v1, media_server_id=ms_id)
+
+                rows: list[dict] = []
+                strategy = cfg.strategy.value
+                gw = cfg.gateway_host
+                app_prefix = cfg.app_path_prefix or "/app"
+                active = get_active_service_ids()
+
+                # 1. Per-service path-prefix routes (auto, derived).
+                if strategy in ("path", "hybrid") and gw:
+                    for svc in SERVICES:
+                        if not svc.web_ui or svc.id not in active:
+                            continue
+                        rows.append({
+                            "host": gw,
+                            "match": f"{app_prefix}/{svc.id}/",
+                            "target": svc.id,
+                            "target_kind": "service",
+                            "kind": "auto_path",
+                            "source": (
+                                f"strategy={strategy}, app_path_prefix="
+                                f"{app_prefix} (derived per-service)"
+                            ),
+                        })
+
+                # 2. Explicit hosts from the v2 config (direct_hosts in
+                # v1, hosts[] in v2).
+                for h in cfg.hosts:
+                    if h.canonical and h.canonical != gw:
+                        rows.append({
+                            "host": h.canonical,
+                            "match": "/" if not h.path_prefix else h.path_prefix,
+                            "target": h.service_id,
+                            "target_kind": "service",
+                            "kind": "subdomain",
+                            "source": (
+                                f"hosts[] entry (role={h.role})"
+                            ),
+                        })
+                    if h.canonical == gw and h.path_prefix:
+                        rows.append({
+                            "host": gw,
+                            "match": h.path_prefix
+                                if h.path_prefix.endswith("/")
+                                else h.path_prefix + "/",
+                            "target": h.service_id,
+                            "target_kind": "service",
+                            "kind": "explicit_path",
+                            "source": (
+                                f"hosts[] entry (role={h.role}, "
+                                "explicit path_prefix override)"
+                            ),
+                        })
+                    # Aliases redirect to canonical.
+                    for alias in h.aliases:
+                        rows.append({
+                            "host": alias,
+                            "match": "/",
+                            "target": h.canonical,
+                            "target_kind": "redirect",
+                            "kind": "host_alias",
+                            "source": f"hosts[].aliases for {h.canonical}",
+                        })
+
+                # 3. Path aliases (HTTP redirects).
+                for p in cfg.path_aliases:
+                    if not p.from_path or not p.to_path:
+                        continue
+                    rows.append({
+                        "host": gw,
+                        "match": p.from_path,
+                        "target": p.to_path,
+                        "target_kind": "redirect",
+                        "kind": "path_alias",
+                        "source": f"path_aliases[] ({p.code})",
+                    })
+
+                # 4. Apex.
+                if cfg.apex.action.value != "none":
+                    rows.append({
+                        "host": gw,
+                        "match": "/ (exact)",
+                        "target": (
+                            cfg.apex.target
+                            or f"({cfg.apex.action.value})"
+                        ),
+                        "target_kind": (
+                            "redirect" if cfg.apex.action.value == "redirect"
+                            else cfg.apex.action.value
+                        ),
+                        "kind": "apex",
+                        "source": "apex.action",
+                    })
+
+                # 5. Catch-all.
+                ca = cfg.catch_all
+                rows.append({
+                    "host": gw,
+                    "match": "/ (catch-all)",
+                    "target": ca.target or f"({ca.action.value})",
+                    "target_kind": (
+                        "redirect" if ca.action.value == "redirect"
+                        else ca.action.value
+                    ),
+                    "kind": "catch_all",
+                    "source": "catch_all.action",
+                })
+
+                handler._json_response(200, {
+                    "rows": rows,
+                    "summary": {
+                        "strategy": strategy,
+                        "gateway_host": gw,
+                        "app_path_prefix": app_prefix,
+                        "active_service_count": len(active),
+                    },
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(500, {"error": str(exc)[:200]})
         elif path == "/api/routing/preview":
             # Pure-function preview: returns the Envoy route_config + the
             # active EdgeBindingAdapter's ApplyPlan for the *current* v2
