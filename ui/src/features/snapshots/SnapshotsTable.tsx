@@ -1,12 +1,10 @@
 import { useMemo, useState } from "react";
 import { Camera, Eye, GitCompare } from "lucide-react";
 import { toast } from "sonner";
+import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
-import {
-  ResponsiveTable,
-  type ResponsiveTableColumn,
-} from "@/components/layout/ResponsiveTable";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,15 +31,20 @@ function formatBytes(bytes: number | undefined): string {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function countServices(snap: SnapshotEntry): string {
+function readServicesCount(snap: SnapshotEntry): number | undefined {
   // The list endpoint doesn't include a per-snapshot service count,
   // so we surface a dash; the per-snapshot detail (drawer) includes
   // the full mapping. Keeping the column means we don't reshape the
   // table when richer data lands.
   const rec = snap as unknown as Record<string, unknown>;
-  if (typeof rec.services_count === "number") return String(rec.services_count);
-  if (typeof rec.configs === "number") return String(rec.configs);
-  return "—";
+  if (typeof rec.services_count === "number") return rec.services_count;
+  if (typeof rec.configs === "number") return rec.configs;
+  return undefined;
+}
+
+function formatServicesCount(snap: SnapshotEntry): string {
+  const n = readServicesCount(snap);
+  return n === undefined ? "—" : String(n);
 }
 
 interface SnapshotsTableProps {
@@ -99,68 +102,103 @@ export function SnapshotsTable({ initialSelected = [] }: SnapshotsTableProps) {
     if (next.length === 2) setDiffOpen(true);
   };
 
-  const columns: ResponsiveTableColumn<SnapshotEntry>[] = [
-    {
-      id: "file",
-      header: "Filename",
-      cell: (row) => (
-        <span className="font-mono text-xs text-fg" title={row.file}>
-          {row.file}
-        </span>
-      ),
-    },
-    {
-      id: "created",
-      header: "Taken at",
-      cell: (row) => (
-        <span className="tabular-nums text-fg-muted">{row.created}</span>
-      ),
-    },
-    {
-      id: "size",
-      header: "Size",
-      cell: (row) => (
-        <span className="font-mono tabular-nums text-fg-muted">
-          {formatBytes(row.size)}
-        </span>
-      ),
-    },
-    {
-      id: "services-count",
-      header: "Services",
-      cell: (row) => (
-        <span className="font-mono tabular-nums text-fg-muted">
-          {countServices(row)}
-        </span>
-      ),
-    },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: (row) => (
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setDrawerFor(row.file)}
-            data-testid={`snapshot-view-${row.file}`}
+  // Memoise columns — actions cell depends on `diffSelected` so the
+  // primary/ghost variant on the Diff button stays in sync.
+  const columns = useMemo<ColumnDef<SnapshotEntry>[]>(
+    () => [
+      {
+        id: "file",
+        accessorFn: (row) => row.file,
+        header: "Filename",
+        meta: { label: "Filename" },
+        cell: ({ row }) => (
+          <span
+            className="font-mono text-xs text-fg"
+            title={row.original.file}
           >
-            <Eye aria-hidden />
-            View
-          </Button>
-          <Button
-            variant={diffSelected.includes(row.file) ? "primary" : "ghost"}
-            size="sm"
-            onClick={() => toggleDiff(row.file)}
-            data-testid={`snapshot-diff-${row.file}`}
-          >
-            <GitCompare aria-hidden />
-            Diff
-          </Button>
-        </div>
-      ),
-    },
-  ];
+            {row.original.file}
+          </span>
+        ),
+      },
+      {
+        id: "created",
+        accessorFn: (row) => row.created,
+        header: "Taken at",
+        meta: { label: "Taken at" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {row.original.created}
+          </span>
+        ),
+      },
+      {
+        id: "size",
+        accessorFn: (row) =>
+          typeof row.size === "number" && Number.isFinite(row.size)
+            ? row.size
+            : 0,
+        header: "Size",
+        meta: { label: "Size" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="font-mono tabular-nums text-fg-muted">
+            {formatBytes(row.original.size)}
+          </span>
+        ),
+      },
+      {
+        id: "services-count",
+        accessorFn: (row) => readServicesCount(row) ?? 0,
+        header: "Services",
+        meta: { label: "Services" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="font-mono tabular-nums text-fg-muted">
+            {formatServicesCount(row.original)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDrawerFor(r.file)}
+                data-testid={`snapshot-view-${r.file}`}
+              >
+                <Eye aria-hidden />
+                View
+              </Button>
+              <Button
+                variant={diffSelected.includes(r.file) ? "primary" : "ghost"}
+                size="sm"
+                onClick={() => toggleDiff(r.file)}
+                data-testid={`snapshot-diff-${r.file}`}
+              >
+                <GitCompare aria-hidden />
+                Diff
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    // toggleDiff closes over diffSelected; rebuild the actions cell
+    // when the selection set changes so the primary variant updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [diffSelected],
+  );
 
   return (
     <>
@@ -206,49 +244,16 @@ export function SnapshotsTable({ initialSelected = [] }: SnapshotsTableProps) {
               description="Take your first snapshot to capture the current config state. The controller redacts API keys automatically."
             />
           ) : (
-            <ResponsiveTable
-              rows={rows}
-              rowKey={(r) => r.file}
-              columns={columns}
-              card={(row) => (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span
-                      className="truncate font-mono text-xs text-fg"
-                      title={row.file}
-                    >
-                      {row.file}
-                    </span>
-                    <span className="font-mono tabular-nums text-xs text-fg-muted">
-                      {formatBytes(row.size)}
-                    </span>
-                  </div>
-                  <span className="text-xs tabular-nums text-fg-muted">
-                    {row.created}
-                  </span>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDrawerFor(row.file)}
-                      data-testid={`snapshot-view-${row.file}-mobile`}
-                    >
-                      <Eye aria-hidden />
-                      View
-                    </Button>
-                    <Button
-                      variant={diffSelected.includes(row.file) ? "primary" : "ghost"}
-                      size="sm"
-                      onClick={() => toggleDiff(row.file)}
-                      data-testid={`snapshot-diff-${row.file}-mobile`}
-                    >
-                      <GitCompare aria-hidden />
-                      Diff
-                    </Button>
-                  </div>
-                </div>
-              )}
-            />
+            <div data-testid="snapshots-table">
+              <DataTable<SnapshotEntry>
+                testId="snapshots-rows"
+                columns={columns}
+                data={rows}
+                getRowId={(row) => row.file}
+                caption={`${rows.length} snapshot${rows.length === 1 ? "" : "s"}`}
+                emptyState="No snapshots yet."
+              />
+            </div>
           )}
         </CardContent>
       </Card>

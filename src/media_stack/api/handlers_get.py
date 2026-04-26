@@ -702,6 +702,11 @@ class GetRequestHandler:
                                   metrics_svc.get_prometheus_metrics(api_cache).encode("utf-8"))
         elif path == "/api/envoy/stats":
             handler._json_response(200, metrics_svc.get_envoy_stats())
+        elif path == "/api/envoy/admin-summary":
+            # Operator-facing aggregate of cluster health + request
+            # rates + p50/p95/p99 latency + active connections + TLS
+            # handshake errors. Surfaced on the Routing tab.
+            handler._json_response(200, metrics_svc.get_envoy_admin_summary())
         elif path == "/api/feed.xml":
             handler._raw_response(200, "application/rss+xml; charset=utf-8",
                                   metrics_svc.get_rss_feed(handler.state, api_cache).encode("utf-8"))

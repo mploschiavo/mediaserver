@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 
@@ -110,5 +110,22 @@ describe("SnapshotsTable", () => {
     expect(
       await screen.findByTestId("snapshot-diff-dialog"),
     ).toBeInTheDocument();
+  });
+
+  it("filters snapshots in-memory via the per-column filename filter", async () => {
+    snapshotsState.data = {
+      snapshots: [
+        { file: "alpha.json", size: 100, created: "2026-01-01" },
+        { file: "beta.json", size: 200, created: "2026-01-02" },
+      ],
+    };
+    renderWithProviders(<SnapshotsTable />);
+    // Two rows initially.
+    expect(screen.getAllByTestId(/^snapshots-rows-row-/).length).toBe(2);
+    const fileFilter = screen.getByTestId("snapshots-rows-filter-file");
+    await userEvent.type(fileFilter, "alpha");
+    await waitFor(() =>
+      expect(screen.getAllByTestId(/^snapshots-rows-row-/).length).toBe(1),
+    );
   });
 });

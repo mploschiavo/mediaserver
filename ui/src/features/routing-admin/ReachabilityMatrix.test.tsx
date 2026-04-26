@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 
 const probeState = vi.hoisted(() => ({
@@ -94,5 +95,37 @@ describe("ReachabilityMatrix", () => {
     };
     renderWithProviders(<ReachabilityMatrix />);
     expect(screen.getAllByText("sonarr").length).toBeGreaterThan(0);
+  });
+
+  it("filters rows in-memory via the per-column app filter", async () => {
+    probeState.data = {
+      rows: [
+        {
+          app: "sonarr",
+          internal_url: "http://sonarr:8989",
+          external_url: "https://sonarr.example.test",
+          ok: true,
+          status_code: 200,
+          latency_ms: 42,
+          probed_at: new Date().toISOString(),
+        },
+        {
+          app: "radarr",
+          internal_url: "http://radarr:7878",
+          external_url: "https://radarr.example.test",
+          ok: false,
+          status_code: 502,
+          latency_ms: 5000,
+          probed_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderWithProviders(<ReachabilityMatrix />);
+    expect(screen.getAllByTestId(/^reachability-rows-row-/).length).toBe(2);
+    const appFilter = screen.getByTestId("reachability-rows-filter-app");
+    await userEvent.type(appFilter, "sonarr");
+    await waitFor(() =>
+      expect(screen.getAllByTestId(/^reachability-rows-row-/).length).toBe(1),
+    );
   });
 });

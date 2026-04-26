@@ -4,6 +4,7 @@ import { useLocation } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, ScrollText } from "lucide-react";
 import { toast } from "sonner";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { AuditEntry } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
-import {
-  ResponsiveTable,
-  type ResponsiveTableColumn,
-} from "@/components/layout/ResponsiveTable";
 import { SkeletonTable } from "@/components/layout/SkeletonTable";
 import { useAuditLog } from "@/api/hooks";
 
@@ -198,72 +196,109 @@ export function AuditLogTable() {
     return list.map((entry, i) => toRow(entry, i));
   }, [query.data]);
 
-  const columns: ResponsiveTableColumn<AuditLogRow>[] = [
-    {
-      id: "timestamp",
-      header: "When",
-      cell: (row) => (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="cursor-default tabular-nums text-fg-muted"
-              data-testid={`audit-row-ts-${row.id}`}
-            >
-              {formatRelative(row.ts)}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            <span className="font-mono text-xs">{row.ts || "—"}</span>
-          </TooltipContent>
-        </Tooltip>
-      ),
-    },
-    {
-      id: "actor",
-      header: "Actor",
-      cell: (row) => <span className="font-medium text-fg">{row.actor}</span>,
-    },
-    {
-      id: "action",
-      header: "Action",
-      cell: (row) => (
-        <span className="font-mono text-xs text-fg">{row.action || "—"}</span>
-      ),
-    },
-    {
-      id: "target",
-      header: "Target",
-      cell: (row) => (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="block max-w-[20ch] cursor-default truncate text-xs text-fg-muted"
-              data-testid={`audit-row-target-${row.id}`}
-            >
-              {truncate(row.target || "—", 24)}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            <span className="font-mono text-xs">{row.target || "—"}</span>
-          </TooltipContent>
-        </Tooltip>
-      ),
-    },
-    {
-      id: "result",
-      header: "Result",
-      cell: (row) => (
-        <Badge variant={resultVariant(row.result)}>{row.result}</Badge>
-      ),
-    },
-    {
-      id: "idempotency-key",
-      header: "Idempotency key",
-      cell: (row) => (
-        <CopyableMono value={row.idempotencyKey} label="Idempotency key" />
-      ),
-    },
-  ];
+  // Memoised columns — `accessorFn` for the timestamp column makes
+  // sort fall back to the raw ISO string (lexicographic on ISO is
+  // the same as chronological), with `enableColumnFilter: false` so
+  // operators don't get a confusing free-text input next to the
+  // header (the page-level action filter is the canonical filter).
+  const columns = useMemo<ColumnDef<AuditLogRow>[]>(
+    () => [
+      {
+        id: "timestamp",
+        accessorFn: (row) => row.ts,
+        header: "When",
+        meta: { label: "When" },
+        enableColumnFilter: false,
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="cursor-default tabular-nums text-fg-muted"
+                  data-testid={`audit-row-ts-${r.id}`}
+                >
+                  {formatRelative(r.ts)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="font-mono text-xs">{r.ts || "—"}</span>
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
+      },
+      {
+        id: "actor",
+        accessorFn: (row) => row.actor,
+        header: "Actor",
+        meta: { label: "Actor" },
+        cell: ({ row }) => (
+          <span className="font-medium text-fg">{row.original.actor}</span>
+        ),
+      },
+      {
+        id: "action",
+        accessorFn: (row) => row.action,
+        header: "Action",
+        meta: { label: "Action" },
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-fg">
+            {row.original.action || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "target",
+        accessorFn: (row) => row.target,
+        header: "Target",
+        meta: { label: "Target" },
+        cell: ({ row }) => {
+          const r = row.original;
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="block max-w-[20ch] cursor-default truncate text-xs text-fg-muted"
+                  data-testid={`audit-row-target-${r.id}`}
+                >
+                  {truncate(r.target || "—", 24)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="font-mono text-xs">{r.target || "—"}</span>
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
+      },
+      {
+        id: "result",
+        accessorFn: (row) => row.result,
+        header: "Result",
+        meta: { label: "Result" },
+        cell: ({ row }) => (
+          <Badge variant={resultVariant(row.original.result)}>
+            {row.original.result}
+          </Badge>
+        ),
+      },
+      {
+        id: "idempotency-key",
+        accessorFn: (row) => row.idempotencyKey,
+        header: "Idempotency key",
+        meta: { label: "Idempotency key" },
+        enableSorting: false,
+        cell: ({ row }) => (
+          <CopyableMono
+            value={row.original.idempotencyKey}
+            label="Idempotency key"
+          />
+        ),
+      },
+    ],
+    [],
+  );
 
   const filterControls = (
     <div
@@ -350,39 +385,14 @@ export function AuditLogTable() {
           }
         />
       ) : (
-        <Card className="p-0">
-          <ResponsiveTable
-            rows={rows}
-            rowKey={(r) => r.id}
+        <Card className="p-3">
+          <DataTable<AuditLogRow>
+            testId="audit-log-rows"
             columns={columns}
-            card={(row) => (
-              <div
-                className="flex flex-col gap-2"
-                data-testid={`audit-card-${row.id}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-fg">{row.actor}</span>
-                  <Badge variant={resultVariant(row.result)}>
-                    {row.result}
-                  </Badge>
-                </div>
-                <span className="font-mono text-xs text-fg">
-                  {row.action || "—"}
-                </span>
-                <span className="text-xs text-fg-muted">
-                  {truncate(row.target || "—", 64)}
-                </span>
-                <div className="flex items-center justify-between text-xs text-fg-muted">
-                  <span className="tabular-nums">
-                    {formatRelative(row.ts)}
-                  </span>
-                  <CopyableMono
-                    value={row.idempotencyKey}
-                    label="Idempotency key"
-                  />
-                </div>
-              </div>
-            )}
+            data={rows}
+            getRowId={(row) => row.id}
+            caption={`${rows.length} ${rows.length === 1 ? "entry" : "entries"}`}
+            emptyState="No audit entries yet."
           />
         </Card>
       )}

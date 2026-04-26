@@ -8,16 +8,14 @@ import {
   Tv,
   type LucideIcon,
 } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import type { MediaIntegrityStatusShape } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
-import {
-  ResponsiveTable,
-  type ResponsiveTableColumn,
-} from "@/components/layout/ResponsiveTable";
 import { formatBytes, formatRelative } from "./format";
 
 interface AdapterTableProps {
@@ -122,6 +120,106 @@ function buildRows(status: MediaIntegrityStatusShape | undefined): AdapterRow[] 
 export function AdapterTable({ status, loading }: AdapterTableProps) {
   const rows = useMemo(() => buildRows(status), [status]);
 
+  // Memoised columns. Numeric counts use `sortingFn: "basic"` so
+  // the operator can sort by failures-desc to find the noisiest
+  // adapter. The lastRun column carries an accessorFn returning the
+  // raw ISO string — lex sort on ISO == chronological sort.
+  const columns = useMemo<ColumnDef<AdapterRow>[]>(
+    () => [
+      {
+        id: "adapter",
+        accessorFn: (row) => row.name,
+        header: "Adapter",
+        meta: { label: "Adapter" },
+        cell: ({ row }) => {
+          const r = row.original;
+          const Icon = r.icon;
+          return (
+            <div className="flex items-center gap-2 font-medium text-fg">
+              <Icon className="size-4 text-fg-muted" aria-hidden />
+              <span>{r.name}</span>
+            </div>
+          );
+        },
+      },
+      {
+        id: "resolved",
+        accessorFn: (row) => (row.ran ? row.resolved : -1),
+        header: "Resolved",
+        meta: { label: "Resolved" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) =>
+          row.original.ran ? (
+            <Badge variant="default">{row.original.resolved}</Badge>
+          ) : (
+            <span className="text-fg-faint">—</span>
+          ),
+      },
+      {
+        id: "freed",
+        accessorFn: (row) => (row.ran ? row.freed : -1),
+        header: "Freed",
+        meta: { label: "Freed" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) =>
+          row.original.ran ? (
+            <span className="font-mono tabular-nums">
+              {formatBytes(row.original.freed)}
+            </span>
+          ) : (
+            <span className="text-fg-faint">—</span>
+          ),
+      },
+      {
+        id: "needs-review",
+        accessorFn: (row) => (row.ran ? row.needsReview : -1),
+        header: "Needs review",
+        meta: { label: "Needs review" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) =>
+          row.original.ran ? (
+            <Badge variant={row.original.needsReview > 0 ? "warning" : "default"}>
+              {row.original.needsReview}
+            </Badge>
+          ) : (
+            <span className="text-fg-faint">—</span>
+          ),
+      },
+      {
+        id: "failures",
+        accessorFn: (row) => (row.ran ? row.failures : -1),
+        header: "Failures",
+        meta: { label: "Failures" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) =>
+          row.original.ran ? (
+            <Badge variant={row.original.failures > 0 ? "danger" : "default"}>
+              {row.original.failures}
+            </Badge>
+          ) : (
+            <span className="text-fg-faint">—</span>
+          ),
+      },
+      {
+        id: "last-run",
+        accessorFn: (row) => row.lastRun,
+        header: "Last run",
+        meta: { label: "Last run" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {row.original.ran ? formatRelative(row.original.lastRun) : "never"}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
   if (loading) {
     return (
       <div className="space-y-2" data-testid="adapter-table-loading">
@@ -147,109 +245,15 @@ export function AdapterTable({ status, loading }: AdapterTableProps) {
     );
   }
 
-  const columns: ResponsiveTableColumn<AdapterRow>[] = [
-    {
-      id: "adapter",
-      header: "Adapter",
-      cell: (row) => (
-        <div className="flex items-center gap-2 font-medium text-fg">
-          <row.icon className="size-4 text-fg-muted" aria-hidden />
-          <span>{row.name}</span>
-        </div>
-      ),
-    },
-    {
-      id: "resolved",
-      header: "Resolved",
-      cell: (row) =>
-        row.ran ? (
-          <Badge variant="default">{row.resolved}</Badge>
-        ) : (
-          <span className="text-fg-faint">—</span>
-        ),
-    },
-    {
-      id: "freed",
-      header: "Freed",
-      cell: (row) =>
-        row.ran ? (
-          <span className="font-mono tabular-nums">{formatBytes(row.freed)}</span>
-        ) : (
-          <span className="text-fg-faint">—</span>
-        ),
-    },
-    {
-      id: "needs-review",
-      header: "Needs review",
-      cell: (row) =>
-        row.ran ? (
-          <Badge variant={row.needsReview > 0 ? "warning" : "default"}>
-            {row.needsReview}
-          </Badge>
-        ) : (
-          <span className="text-fg-faint">—</span>
-        ),
-    },
-    {
-      id: "failures",
-      header: "Failures",
-      cell: (row) =>
-        row.ran ? (
-          <Badge variant={row.failures > 0 ? "danger" : "default"}>
-            {row.failures}
-          </Badge>
-        ) : (
-          <span className="text-fg-faint">—</span>
-        ),
-    },
-    {
-      id: "last-run",
-      header: "Last run",
-      cell: (row) => (
-        <span className="tabular-nums text-fg-muted">
-          {row.ran ? formatRelative(row.lastRun) : "never"}
-        </span>
-      ),
-    },
-  ];
-
   return (
-    <Card className="p-0" data-testid="adapter-table">
-      <ResponsiveTable
-        rows={rows}
-        rowKey={(r) => r.id}
+    <Card className="p-3" data-testid="adapter-table">
+      <DataTable<AdapterRow>
+        testId="media-integrity-adapters"
         columns={columns}
-        card={(row) => (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-medium text-fg">
-                <row.icon className="size-4 text-fg-muted" aria-hidden />
-                <span>{row.name}</span>
-              </div>
-              <span className="text-xs tabular-nums text-fg-muted">
-                {row.ran ? formatRelative(row.lastRun) : "never"}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-              <span className="text-fg-muted">Resolved</span>
-              <span className="text-right font-mono tabular-nums">
-                {row.ran ? row.resolved : "—"}
-              </span>
-              <span className="text-fg-muted">Freed</span>
-              <span className="text-right font-mono tabular-nums">
-                {row.ran ? formatBytes(row.freed) : "—"}
-              </span>
-              <span className="text-fg-muted">Needs review</span>
-              <span className="text-right font-mono tabular-nums">
-                {row.ran ? row.needsReview : "—"}
-              </span>
-              <span className="text-fg-muted">Failures</span>
-              <span className="text-right font-mono tabular-nums">
-                {row.ran ? row.failures : "—"}
-              </span>
-            </div>
-          </div>
-        )}
+        data={rows}
+        getRowId={(row) => row.id}
+        caption={`${rows.length} adapter${rows.length === 1 ? "" : "s"}`}
+        emptyState="No adapters configured."
       />
     </Card>
   );
