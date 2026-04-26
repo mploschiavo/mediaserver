@@ -18,12 +18,14 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.services.edge.binding_adapter import EdgeBindingAdapter  # noqa: E402
+from media_stack.services.edge.compose_host_port_adapter import (  # noqa: E402
+    ComposeHostPortAdapter,
+)
 from media_stack.services.edge.k8s_ingress_adapter import K8sIngressAdapter  # noqa: E402
 
 
-# Add ComposeHostPortAdapter here when PR-7 lands. The ratchet
-# auto-fans across every adapter listed.
-KNOWN_ADAPTERS: list[type] = [K8sIngressAdapter]
+# The ratchet auto-fans across every adapter listed.
+KNOWN_ADAPTERS: list[type] = [K8sIngressAdapter, ComposeHostPortAdapter]
 
 
 class EdgeBindingAdapterCoverageRatchet(unittest.TestCase):
