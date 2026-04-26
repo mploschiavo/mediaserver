@@ -988,6 +988,40 @@ class GetRequestHandler:
             # rates + p50/p95/p99 latency + active connections + TLS
             # handshake errors. Surfaced on the Routing tab.
             handler._json_response(200, metrics_svc.get_envoy_admin_summary())
+        elif path == "/api/envoy/access-log":
+            # Stream the last N lines of Envoy's access log so the
+            # operator panel can show live request flow with source
+            # IPs, paths, statuses, upstream cluster, and latency.
+            #
+            # Sources tried in order:
+            #   1. ``ENVOY_ACCESS_LOG_PATH`` env var if set (file path).
+            #   2. ``kubectl logs`` for the envoy pod (when running on
+            #      K8s — controller's ServiceAccount has read access).
+            #   3. ``docker compose logs`` for the envoy service when
+            #      no kubectl is available.
+            # Each entry is parsed as JSON when possible (the Envoy
+            # access_log filter is configured to emit JSON in the
+            # default media-stack profile); falls back to raw text
+            # otherwise.
+            qs = parse_qs(urlparse(handler.path).query)
+            try:
+                limit = int((qs.get("limit") or ["50"])[0])
+            except (TypeError, ValueError):
+                limit = 50
+            limit = max(1, min(500, limit))
+            try:
+                from media_stack.api.services.envoy_access_log import (
+                    tail_envoy_access_log,
+                )
+                rows = tail_envoy_access_log(limit=limit)
+                handler._json_response(200, {
+                    "rows": rows,
+                    "limit": limit,
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    500, {"error": str(exc)[:200], "rows": []},
+                )
         elif path == "/api/envoy/timeseries":
             # Rolling buffer of recent admin-summary samples + derived
             # rate deltas. Populated as a side-effect of the
