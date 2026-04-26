@@ -258,7 +258,45 @@ class EnvoyDynamicConfigService:
         # Inject TLS transport socket if cert files exist (compose with TLS).
         # K8s uses ingress TLS termination, so certs won't be present.
         self._inject_tls_if_available(payload)
+        # XFF trusted hops — env-overridable. The template hardcodes
+        # 1 (single proxy: K8s Ingress controller / nginx). Operators
+        # behind Cloudflare set MEDIA_STACK_TRUSTED_PROXY_HOPS=2 so
+        # CF's hop is also trusted; an extra CDN in front would need 3.
+        # Setting too high lets clients spoof their IP via XFF; setting
+        # too low leaves operators staring at proxy IPs in the panel.
+        self._apply_xff_trusted_hops_override(payload)
         return payload
+
+    def _apply_xff_trusted_hops_override(
+        self, payload: dict[str, Any],
+    ) -> None:
+        """Read MEDIA_STACK_TRUSTED_PROXY_HOPS from env and write the
+        value onto every HCM in the payload. Best-effort: structural
+        anomalies (missing keys, wrong types) silently skip — the
+        template already has a sane default."""
+        import os as _os
+        raw = _os.environ.get("MEDIA_STACK_TRUSTED_PROXY_HOPS", "").strip()
+        if not raw:
+            return
+        try:
+            hops = int(raw)
+        except ValueError:
+            return
+        if hops < 1 or hops > 10:
+            return
+        for listener in (
+            (payload.get("static_resources") or {}).get("listeners") or []
+        ):
+            for chain in listener.get("filter_chains", []) or []:
+                for f in chain.get("filters", []) or []:
+                    cfg = f.get("typed_config") or {}
+                    if (
+                        cfg.get("@type", "").endswith(
+                            ".HttpConnectionManager",
+                        )
+                        and "use_remote_address" in cfg
+                    ):
+                        cfg["xff_num_trusted_hops"] = hops
 
     def _collect_routes_from_routers(
         self,

@@ -10,6 +10,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 
 interface AccessLogRow {
@@ -18,8 +23,19 @@ interface AccessLogRow {
   path?: string;
   status?: number;
   upstream?: string;
+  upstream_host?: string;
   duration_ms?: number;
   client_ip?: string;
+  /**
+   * Full XFF chain as received. Useful audit trail when the deploy
+   * has more proxy hops than xff_num_trusted_hops trims (e.g. CDN
+   * added without a controller config update).
+   */
+  x_forwarded_for?: string;
+  /** Cloudflare's authoritative client IP (CF strips inbound CF-* headers). */
+  cf_connecting_ip?: string;
+  x_real_ip?: string;
+  host?: string;
   user_agent?: string;
   raw?: string;
 }
@@ -135,15 +151,13 @@ export function LiveAccessLogCard() {
                   <span className="truncate text-fg-faint">{r.raw}</span>
                 ) : (
                   <>
-                    <span className="w-20 shrink-0 truncate text-fg-faint" title={r.client_ip}>
-                      {r.client_ip ?? "—"}
-                    </span>
+                    <ClientIpCell row={r} />
                     <Badge variant="outline" className="w-12 justify-center text-[10px]">
                       {r.method ?? "?"}
                     </Badge>
                     <span
                       className="flex-1 min-w-[140px] truncate text-fg"
-                      title={r.path}
+                      title={hostAndPath(r)}
                     >
                       {r.path ?? "—"}
                     </span>
@@ -165,6 +179,81 @@ export function LiveAccessLogCard() {
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Client IP cell with the full XFF chain on hover. The displayed
+ * value is the resolved real client IP that Envoy chose after
+ * applying ``xff_num_trusted_hops``; the tooltip surfaces:
+ *
+ *   * Cloudflare's CF-Connecting-IP (when Cloudflare is in front)
+ *   * The full XFF chain as received
+ *   * X-Real-Ip when the ingress controller set it
+ *
+ * Privacy ⚠: client IPs may be PII for some compliance regimes —
+ * the panel is operator-only (auth-gated) so this is fine in the
+ * media-stack default deployment.
+ */
+function ClientIpCell({ row }: { row: AccessLogRow }) {
+  const display =
+    row.client_ip ?? row.cf_connecting_ip ?? row.x_real_ip ?? "—";
+  const hasChain =
+    row.x_forwarded_for ||
+    row.cf_connecting_ip ||
+    row.x_real_ip ||
+    row.client_ip;
+  if (!hasChain) {
+    return (
+      <span className="w-24 shrink-0 truncate text-fg-faint">
+        {display}
+      </span>
+    );
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="w-24 shrink-0 truncate text-fg-faint hover:text-fg-muted"
+          data-testid="live-access-log-client-ip"
+        >
+          {display}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className="flex flex-col gap-0.5 font-mono text-[11px]">
+          {row.cf_connecting_ip ? (
+            <div>
+              <span className="text-fg-faint">cf:</span>{" "}
+              <span className="text-fg">{row.cf_connecting_ip}</span>
+            </div>
+          ) : null}
+          {row.x_real_ip ? (
+            <div>
+              <span className="text-fg-faint">x-real-ip:</span>{" "}
+              <span className="text-fg">{row.x_real_ip}</span>
+            </div>
+          ) : null}
+          {row.x_forwarded_for ? (
+            <div>
+              <span className="text-fg-faint">x-forwarded-for:</span>{" "}
+              <span className="text-fg">{row.x_forwarded_for}</span>
+            </div>
+          ) : null}
+          {row.host ? (
+            <div className="mt-1 border-t border-border pt-1">
+              <span className="text-fg-faint">host:</span>{" "}
+              <span className="text-fg">{row.host}</span>
+            </div>
+          ) : null}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function hostAndPath(row: AccessLogRow): string {
+  const host = row.host ? `${row.host} ` : "";
+  return `${host}${row.path ?? ""}`;
 }
 
 function StatusBadge({ status }: { status?: number }) {

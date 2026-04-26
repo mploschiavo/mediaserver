@@ -49,8 +49,21 @@ _KEY_METHOD = ("method", "request_method", ":method")
 _KEY_PATH = ("path", "request_path", ":path")
 _KEY_STATUS = ("status", "response_code")
 _KEY_UPSTREAM = ("upstream", "upstream_cluster", "cluster")
+_KEY_UPSTREAM_HOST = ("upstream_host",)
 _KEY_DURATION = ("duration", "duration_ms", "request_duration_ms")
-_KEY_CLIENT = ("client_ip", "downstream_remote_address", "x_forwarded_for")
+# Real client IP — Envoy resolves this for us when use_remote_address
+# + xff_num_trusted_hops are configured (see envoy.runtime.base.yaml).
+# Falls back to the proxy-hop address when those settings are off so
+# operators upgrading from older deploys still see *something*.
+_KEY_CLIENT = ("client_ip", "downstream_remote_address")
+# XFF chain — full audit trail. Useful when more than xff_num_trusted_hops
+# proxies are between the client and Envoy (e.g. CDN added mid-deploy).
+_KEY_XFF = ("x_forwarded_for", "request_x_forwarded_for")
+# Cloudflare's authoritative client IP. CF strips inbound CF-* headers
+# so this can be trusted when the request came through Cloudflare.
+_KEY_CF = ("cf_connecting_ip", "request_cf_connecting_ip")
+_KEY_REAL_IP = ("x_real_ip", "real_ip")
+_KEY_HOST = ("host", "authority", "request_authority")
 _KEY_UA = ("user_agent", "request_user_agent")
 
 
@@ -79,8 +92,13 @@ def _parse_line(line: str) -> dict[str, Any]:
             "path": _first(obj, _KEY_PATH),
             "status": _first(obj, _KEY_STATUS),
             "upstream": _first(obj, _KEY_UPSTREAM),
+            "upstream_host": _first(obj, _KEY_UPSTREAM_HOST),
             "duration_ms": _first(obj, _KEY_DURATION),
             "client_ip": _first(obj, _KEY_CLIENT),
+            "x_forwarded_for": _first(obj, _KEY_XFF),
+            "cf_connecting_ip": _first(obj, _KEY_CF),
+            "x_real_ip": _first(obj, _KEY_REAL_IP),
+            "host": _first(obj, _KEY_HOST),
             "user_agent": _first(obj, _KEY_UA),
             "raw": line,
         }
@@ -110,32 +128,63 @@ def _read_file(path: Path, limit: int) -> list[str]:
         return []
 
 
-def _kubectl_tail(limit: int) -> list[str]:
-    """kubectl logs media-stack-envoy --tail=<limit>. Returns [] if
-    kubectl is absent or the call fails (e.g. running on Compose)."""
-    if not shutil.which("kubectl"):
-        return []
+def _k8s_tail(limit: int) -> list[str]:
+    """Fetch the last N stdout lines from the Envoy pod via the
+    Kubernetes Python client.
+
+    The controller image ships kubernetes>=35; ``kubectl`` is NOT
+    installed (extra ~50MB binary for one feature). The K8s API
+    server's ``GET /api/v1/namespaces/{ns}/pods/{name}/log?tailLines=N``
+    returns the same content, and the bundled controller
+    ServiceAccount has the ``pods/log`` verb.
+
+    ``ENVOY_POD_LABEL`` defaults to ``app=envoy`` (matches the
+    bundled K8s manifests in deploy/k8s/base/edge/). Operators with a
+    custom label set the env to override.
+    """
     namespace = os.environ.get("MEDIA_STACK_NAMESPACE", "media-stack")
-    pod_label = os.environ.get(
-        "ENVOY_POD_LABEL", "app=media-stack-envoy",
-    )
+    pod_label = os.environ.get("ENVOY_POD_LABEL", "app=envoy")
+    container = os.environ.get("ENVOY_CONTAINER_NAME", "envoy")
     try:
-        proc = subprocess.run(
-            [
-                "kubectl", "-n", namespace, "logs",
-                "-l", pod_label,
-                "--tail", str(limit),
-                "--max-log-requests", "1",
-            ],
-            capture_output=True,
-            timeout=5,
-            check=False,
+        # Lazy import — kubernetes is heavy; only paid when an
+        # operator actually opens the live-tail panel.
+        from kubernetes import client, config
+        try:
+            config.load_incluster_config()
+        except Exception:  # noqa: BLE001
+            try:
+                config.load_kube_config()
+            except Exception:  # noqa: BLE001
+                return []
+        v1 = client.CoreV1Api()
+        # Resolve the label to a concrete pod name (pick the first
+        # ready pod). Multiple replicas would need fan-out; the
+        # bundled deploy is single-replica so first-pod is correct.
+        pods = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=pod_label,
+            limit=5,
         )
-    except (subprocess.TimeoutExpired, OSError):
+        if not pods.items:
+            return []
+        pod_name = pods.items[0].metadata.name
+        # tailLines = limit; container = the envoy sidecar (ignores
+        # init containers). We avoid streaming/follow — the panel
+        # polls every 5s, which is plenty without sustaining an
+        # open watch.
+        log_text: str = v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=namespace,
+            container=container,
+            tail_lines=limit,
+            timestamps=False,
+        )
+        return log_text.splitlines() if log_text else []
+    except Exception:  # noqa: BLE001
+        # Anything wrong (RBAC denied, pod renamed, API unreachable)
+        # falls through to the docker compose path so a misconfigured
+        # K8s deploy doesn't black-hole the panel.
         return []
-    if proc.returncode != 0:
-        return []
-    return proc.stdout.decode("utf-8", errors="replace").splitlines()
 
 
 def _docker_tail(limit: int) -> list[str]:
@@ -166,7 +215,7 @@ def tail_envoy_access_log(limit: int = 50) -> list[dict[str, Any]]:
     if explicit:
         lines = _read_file(Path(explicit), limit)
     if not lines and os.environ.get("KUBERNETES_SERVICE_HOST"):
-        lines = _kubectl_tail(limit)
+        lines = _k8s_tail(limit)
     if not lines:
         lines = _docker_tail(limit)
 

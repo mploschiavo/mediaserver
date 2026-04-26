@@ -12,6 +12,75 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
                 codec_type: AUTO
+                # === Real client IP via XFF ===
+                # Without this, downstream_remote_address is the
+                # immediate proxy hop (nginx-ingress / Cloudflare /
+                # Traefik / docker bridge), not the actual client.
+                # ``use_remote_address: true`` tells Envoy to walk the
+                # X-Forwarded-For chain and substitute that as the
+                # source address; ``xff_num_trusted_hops`` controls
+                # how far back to walk. v1.0.252 default is 1 (one
+                # proxy: K8s ingress controller). Override via
+                # ``MEDIA_STACK_TRUSTED_PROXY_HOPS`` env at deploy
+                # time:
+                #   * 1 → bare K8s Ingress / direct compose
+                #   * 2 → Cloudflare in front of an ingress controller
+                #   * 3 → CDN + ingress + extra proxy
+                # Wrong value class:
+                #   - too high: client can spoof its IP by stuffing
+                #     XFF headers (we'd trust them).
+                #   - too low: we still see the proxy IP.
+                use_remote_address: true
+                xff_num_trusted_hops: 1
+                # === Access log to stdout (JSON) ===
+                # Envoy's container stdout is captured by docker /
+                # K8s, so the controller can tail it via the K8s API
+                # or ``docker compose logs`` without a shared volume.
+                # JSON format keeps parsing trivial; the controller's
+                # access-log service reads the documented key
+                # synonyms (start_time / x-forwarded-for / etc.).
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        json_format:
+                          # Timestamp + request line.
+                          ts: "%START_TIME%"
+                          method: "%REQ(:METHOD)%"
+                          path: "%REQ(:PATH)%"
+                          protocol: "%PROTOCOL%"
+                          # Status + duration.
+                          status: "%RESPONSE_CODE%"
+                          response_flags: "%RESPONSE_FLAGS%"
+                          duration_ms: "%DURATION%"
+                          bytes_sent: "%BYTES_SENT%"
+                          bytes_received: "%BYTES_RECEIVED%"
+                          # Source identity — three layers, in order
+                          # of trust:
+                          # 1. ``client_ip`` — Envoy's resolved
+                          #    downstream_remote_address AFTER the
+                          #    use_remote_address/xff trim. This is
+                          #    the source the operator should care
+                          #    about; the others are audit trail.
+                          # 2. ``x_forwarded_for`` — full chain as
+                          #    received, useful when an extra hop
+                          #    is added between deploys.
+                          # 3. ``cf_connecting_ip`` — Cloudflare's
+                          #    authoritative client IP (CF strips
+                          #    inbound CF-* headers, so it's safe).
+                          client_ip: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+                          x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+                          cf_connecting_ip: "%REQ(CF-CONNECTING-IP)%"
+                          x_real_ip: "%REQ(X-REAL-IP)%"
+                          # Routing identity.
+                          host: "%REQ(:AUTHORITY)%"
+                          upstream_cluster: "%UPSTREAM_CLUSTER%"
+                          upstream_host: "%UPSTREAM_HOST%"
+                          # Useful for triage.
+                          user_agent: "%REQ(USER-AGENT)%"
+                          referer: "%REQ(REFERER)%"
+                          request_id: "%REQ(X-REQUEST-ID)%"
                 route_config:
                   name: media_stack_routes
                   virtual_hosts: []

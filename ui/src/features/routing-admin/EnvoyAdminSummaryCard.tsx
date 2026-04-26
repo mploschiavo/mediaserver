@@ -428,7 +428,10 @@ export function EnvoyAdminSummaryCard() {
   }, [sparkSamples]);
 
   // Per-cluster active connections — current snapshot, not a series.
-  // Sorted desc; capped at 8 rows for visual hygiene.
+  // Sorted desc; capped at 8 rows for visual hygiene. ``raw``
+  // preserves the unprefixed cluster name so the drill-down handler
+  // can match against the timeseries buffer (which keys on
+  // ``service_<id>``).
   const activeCxBreakdown = useMemo(() => {
     if (!data) return [];
     const entries = Object.entries(data.active_connections);
@@ -436,7 +439,11 @@ export function EnvoyAdminSummaryCard() {
       .filter(([, n]) => n > 0)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 8)
-      .map(([name, n]) => ({ name: prettyCluster(name), value: n }));
+      .map(([name, n]) => ({
+        name: prettyCluster(name),
+        value: n,
+        raw: name,
+      }));
   }, [data]);
 
   // Latency heatmap — every cluster with histogram data, sorted by
@@ -709,6 +716,7 @@ export function EnvoyAdminSummaryCard() {
           rows={perClusterTraffic.rows}
           topClusters={perClusterTraffic.topClusters}
           loading={tsQuery.isLoading}
+          onClusterClick={setDrillCluster}
         />
 
         {/* Active connections by cluster — point-in-time snapshot
@@ -717,7 +725,10 @@ export function EnvoyAdminSummaryCard() {
             has any active connections (the common case for a quiet
             stack). */}
         {activeCxBreakdown.length > 0 ? (
-          <ActiveConnectionsCard data={activeCxBreakdown} />
+          <ActiveConnectionsCard
+            data={activeCxBreakdown}
+            onClusterClick={setDrillCluster}
+          />
         ) : null}
 
         {/* Latency-over-time heatmap — top-6 clusters by worst p99
@@ -1221,6 +1232,7 @@ interface PerClusterTrafficCardProps {
   rows: Record<string, number | string>[];
   topClusters: string[];
   loading: boolean;
+  onClusterClick?: (cluster: string) => void;
 }
 
 /**
@@ -1236,6 +1248,7 @@ function PerClusterTrafficCard({
   rows,
   topClusters,
   loading,
+  onClusterClick,
 }: PerClusterTrafficCardProps) {
   return (
     <div
@@ -1251,9 +1264,40 @@ function PerClusterTrafficCard({
           the top 5 collapses into an "other" line.{" "}
           {rows.length >= 2
             ? `${rows.length} buckets buffered.`
+            : null}{" "}
+          {onClusterClick
+            ? "Click a cluster name in the legend to drill in."
             : null}
         </p>
       </div>
+      {onClusterClick && rows.length >= 2 ? (
+        <div
+          className="flex flex-wrap gap-1.5 pb-1"
+          data-testid="envoy-summary-per-cluster-legend"
+        >
+          {topClusters.map((cluster, i) => (
+            <button
+              key={cluster}
+              type="button"
+              onClick={() => onClusterClick(cluster)}
+              className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid={`envoy-summary-per-cluster-legend-${cluster}`}
+              aria-label={`Drill into ${cluster}`}
+            >
+              <span
+                className="inline-block size-2 rounded-sm"
+                style={{
+                  background: CLUSTER_PALETTE[i % CLUSTER_PALETTE.length],
+                }}
+                aria-hidden
+              />
+              <span className="font-mono text-fg-muted">
+                {prettyCluster(cluster)}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {rows.length < 2 ? (
         <div
           className="flex h-44 w-full items-center justify-center rounded border border-dashed border-border/60 bg-bg-1/40 text-xs text-fg-muted"
@@ -1343,7 +1387,8 @@ function PerClusterTrafficCard({
 }
 
 interface ActiveConnectionsCardProps {
-  data: readonly { name: string; value: number }[];
+  data: readonly { name: string; value: number; raw: string }[];
+  onClusterClick?: (cluster: string) => void;
 }
 
 /**
@@ -1351,7 +1396,7 @@ interface ActiveConnectionsCardProps {
  * the "who's holding open WebSockets / streaming sessions right
  * now?" question. Sized as a max-bar-width fraction of the card.
  */
-function ActiveConnectionsCard({ data }: ActiveConnectionsCardProps) {
+function ActiveConnectionsCard({ data, onClusterClick }: ActiveConnectionsCardProps) {
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
     <div
@@ -1370,11 +1415,22 @@ function ActiveConnectionsCard({ data }: ActiveConnectionsCardProps) {
       <ul className="flex flex-col gap-1">
         {data.map((d) => (
           <li
-            key={d.name}
+            key={d.raw}
             className="flex items-center gap-2 text-xs"
             data-testid={`envoy-summary-active-row-${d.name}`}
           >
-            <span className="w-32 truncate font-mono text-fg">{d.name}</span>
+            {onClusterClick ? (
+              <button
+                type="button"
+                className="w-32 truncate text-left font-mono text-fg hover:underline focus-visible:underline focus-visible:outline-none"
+                onClick={() => onClusterClick(d.raw)}
+                aria-label={`Drill into ${d.raw}`}
+              >
+                {d.name}
+              </button>
+            ) : (
+              <span className="w-32 truncate font-mono text-fg">{d.name}</span>
+            )}
             <div className="relative h-4 flex-1 overflow-hidden rounded bg-bg-2">
               <div
                 className="absolute inset-y-0 left-0 rounded bg-info/60"
@@ -1588,8 +1644,9 @@ function RequestTailCard({ deltas }: RequestTailCardProps) {
       </div>
       <p className="text-xs text-fg-muted">
         Last 20 polling buckets, newest first. Each row is an aggregate
-        rate snapshot — drill into the per-cluster traffic chart above
-        to see which upstream owns the spike.
+        rate snapshot — use the per-cluster traffic legend above to
+        drill into a specific upstream and see which one owns the
+        spike.
       </p>
       <ul
         className="flex flex-col divide-y divide-border/50"
