@@ -5,10 +5,97 @@ from __future__ import annotations
 import json
 import time
 import urllib.request
-from typing import Any
+from collections import deque
+from threading import Lock
+from typing import Any, Deque
 
 from .health import probe_services
 from media_stack.api.services.registry import service_internal_url
+
+
+# Rolling buffer of recent envoy admin-summary samples. Populated as a
+# side-effect of every ``get_envoy_admin_summary()`` call so the
+# Routing tab's polling (30s interval) doubles as the sampling driver.
+# 240 samples × 30s ≈ 2 hours of history — enough to spot a trend
+# without retaining unbounded data.
+#
+# Limitations the operator should know about:
+#   * History only covers the time the panel has been open; close the
+#     tab and the buffer drains as samples age out.
+#   * For durable timeseries, route Envoy /stats into Prometheus via
+#     the existing /metrics endpoint and graph in Grafana.
+_TIMESERIES_MAX = 240
+_timeseries_buf: Deque[dict[str, Any]] = deque(maxlen=_TIMESERIES_MAX)
+_timeseries_lock = Lock()
+
+
+def _record_timeseries_sample(summary: dict[str, Any]) -> None:
+    """Append a compact sample of the latest admin-summary to the
+    rolling buffer. Called at the tail of ``get_envoy_admin_summary``
+    so any consumer of the panel doubles as a sampler. Duplicate
+    same-second samples are skipped (multi-tab clients racing the
+    same poll second)."""
+    breakdown = summary.get("downstream_breakdown") or {}
+    healthy = sum(int(c.get("healthy", 0)) for c in summary.get("clusters", []))
+    total_hosts = sum(int(c.get("hosts", 0)) for c in summary.get("clusters", []))
+    active = sum(
+        int(v) for v in (summary.get("active_connections") or {}).values()
+    )
+    sample = {
+        "ts": int(time.time()),
+        "rq_total": int(breakdown.get("total", 0)),
+        "rq_2xx": int(breakdown.get("rq_2xx", 0)),
+        "rq_4xx": int(breakdown.get("rq_4xx", 0)),
+        "rq_5xx": int(breakdown.get("rq_5xx", 0)),
+        "healthy": healthy,
+        "total_hosts": total_hosts,
+        "active_cx": active,
+        "tls_errors": int(summary.get("tls_handshake_errors", 0) or 0),
+    }
+    with _timeseries_lock:
+        if _timeseries_buf and _timeseries_buf[-1]["ts"] == sample["ts"]:
+            return
+        _timeseries_buf.append(sample)
+
+
+def get_envoy_timeseries(window_seconds: int = 1800) -> dict[str, Any]:
+    """Return rolling buffer samples within the last ``window_seconds``,
+    plus a derived per-bucket request-rate / error-rate series.
+
+    The buffer is populated as a side-effect of
+    ``get_envoy_admin_summary()`` calls (the Routing panel polls every
+    30s), so the response only reflects history since the panel was
+    first opened. Counters are monotonically increasing — request
+    rate is computed as the delta between adjacent samples divided by
+    the time gap.
+    """
+    now = int(time.time())
+    cutoff = now - max(60, int(window_seconds))
+    with _timeseries_lock:
+        samples = [s for s in _timeseries_buf if s["ts"] >= cutoff]
+    deltas: list[dict[str, Any]] = []
+    for prev, cur in zip(samples, samples[1:]):
+        dt = max(1, cur["ts"] - prev["ts"])
+        rq_per_s = max(0.0, (cur["rq_total"] - prev["rq_total"]) / dt)
+        err_per_s = max(
+            0.0,
+            ((cur["rq_4xx"] + cur["rq_5xx"])
+             - (prev["rq_4xx"] + prev["rq_5xx"])) / dt,
+        )
+        deltas.append({
+            "ts": cur["ts"],
+            "rq_per_s": round(rq_per_s, 3),
+            "err_per_s": round(err_per_s, 3),
+            "active_cx": cur["active_cx"],
+            "healthy": cur["healthy"],
+            "total_hosts": cur["total_hosts"],
+        })
+    return {
+        "samples": samples,
+        "deltas": deltas,
+        "window_seconds": int(window_seconds),
+        "now": now,
+    }
 
 
 class MetricsService:
@@ -171,7 +258,14 @@ class MetricsService:
                     }
         except Exception as exc:  # noqa: BLE001
             out["stats_error"] = str(exc)[:80]
+        _record_timeseries_sample(out)
         return out
+
+    def get_envoy_timeseries(self, window_seconds: int = 1800) -> dict[str, Any]:
+        """Thin instance-method shim that delegates to the module-level
+        ``get_envoy_timeseries`` so the buffer stays a single shared
+        deque instead of one-per-instance."""
+        return get_envoy_timeseries(window_seconds)
 
     def get_rss_feed(self, state: Any, cache: Any) -> str:
         """Generate RSS/Atom feed of action events and health changes."""
@@ -238,5 +332,9 @@ _instance = MetricsService()
 get_prometheus_metrics = _instance.get_prometheus_metrics
 get_envoy_stats = _instance.get_envoy_stats
 get_envoy_admin_summary = _instance.get_envoy_admin_summary
+# get_envoy_timeseries is already module-level (defined above the class
+# so it can be called from inside the class). Don't reassign it here —
+# `_instance.get_envoy_timeseries` is a thin shim around the module
+# function and reassigning would shadow the real implementation.
 get_rss_feed = _instance.get_rss_feed
 get_grafana_dashboard = _instance.get_grafana_dashboard

@@ -29,12 +29,17 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import {
+  Area,
+  AreaChart,
+  CartesianGrid,
   Cell,
   Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 import { fetcher } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
@@ -86,12 +91,53 @@ export interface EnvoyAdminSummary {
   stats_error?: string;
 }
 
+interface TimeseriesSample {
+  ts: number;
+  rq_total: number;
+  rq_2xx: number;
+  rq_4xx: number;
+  rq_5xx: number;
+  healthy: number;
+  total_hosts: number;
+  active_cx: number;
+  tls_errors: number;
+}
+
+interface TimeseriesDelta {
+  ts: number;
+  rq_per_s: number;
+  err_per_s: number;
+  active_cx: number;
+  healthy: number;
+  total_hosts: number;
+}
+
+interface EnvoyTimeseries {
+  samples: readonly TimeseriesSample[];
+  deltas: readonly TimeseriesDelta[];
+  window_seconds: number;
+  now: number;
+}
+
 const QUERY_KEY = ["routing", "envoy", "admin-summary"] as const;
+const TS_QUERY_KEY = ["routing", "envoy", "timeseries"] as const;
 
 function useEnvoyAdminSummary(): UseQueryResult<EnvoyAdminSummary> {
   return useQuery<EnvoyAdminSummary>({
     queryKey: QUERY_KEY,
     queryFn: () => fetcher<EnvoyAdminSummary>("api/envoy/admin-summary"),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
+function useEnvoyTimeseries(): UseQueryResult<EnvoyTimeseries> {
+  return useQuery<EnvoyTimeseries>({
+    queryKey: TS_QUERY_KEY,
+    queryFn: () => fetcher<EnvoyTimeseries>("api/envoy/timeseries?window=1800"),
+    // Match the admin-summary cadence so we re-poll at the same beats
+    // — the buffer fills as a side-effect of the admin-summary call,
+    // so an out-of-phase poll would miss the freshest sample.
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -117,7 +163,9 @@ function prettyCluster(name: string): string {
 
 export function EnvoyAdminSummaryCard() {
   const query = useEnvoyAdminSummary();
+  const tsQuery = useEnvoyTimeseries();
   const data = query.data;
+  const ts = tsQuery.data;
 
   const topRoutes = useMemo(() => {
     if (!data) return [];
@@ -224,6 +272,47 @@ export function EnvoyAdminSummaryCard() {
     return rows;
   }, [healthSummary]);
 
+  // Sparkline data extracted from the rolling buffer. Each series
+  // surfaces alongside its KPI Stat so the operator sees direction
+  // ("trending up" / "spiking" / "flat") instead of a single number.
+  // Need ≥2 samples to render a polyline; single-sample fall-throughs
+  // show no sparkline rather than a degenerate dot.
+  const sparkSamples = ts?.samples ?? [];
+  const sparkDeltas = ts?.deltas ?? [];
+  const healthSpark = useMemo(
+    () => sparkSamples.map((s) => s.healthy),
+    [sparkSamples],
+  );
+  const activeCxSpark = useMemo(
+    () => sparkSamples.map((s) => s.active_cx),
+    [sparkSamples],
+  );
+  const errorRateSpark = useMemo(
+    () =>
+      sparkSamples.map((s) => {
+        const t = s.rq_total;
+        return t > 0 ? ((s.rq_4xx + s.rq_5xx) / t) * 100 : 0;
+      }),
+    [sparkSamples],
+  );
+  const tlsErrorsSpark = useMemo(
+    () => sparkSamples.map((s) => s.tls_errors),
+    [sparkSamples],
+  );
+
+  // Live request-rate chart — uses the per-bucket deltas (Δcount/Δt)
+  // because the underlying Envoy counters are monotonic; raw counts
+  // would just plot a staircase up-and-to-the-right.
+  const rateChartData = useMemo(
+    () =>
+      sparkDeltas.map((d) => ({
+        ts: d.ts,
+        rq_per_s: Number(d.rq_per_s.toFixed(2)),
+        err_per_s: Number(d.err_per_s.toFixed(2)),
+      })),
+    [sparkDeltas],
+  );
+
   if (query.isLoading) {
     return (
       <Card data-testid="envoy-admin-summary-loading">
@@ -285,6 +374,7 @@ export function EnvoyAdminSummaryCard() {
                   : "danger"
             }
             testid="envoy-summary-healthy-hosts"
+            spark={healthSpark}
           />
           <Stat
             icon={<Activity className="size-4" />}
@@ -292,6 +382,7 @@ export function EnvoyAdminSummaryCard() {
             value={formatNumber(totalActiveConnections)}
             tone="info"
             testid="envoy-summary-active-cx"
+            spark={activeCxSpark}
           />
           <Stat
             icon={<Gauge className="size-4" />}
@@ -301,6 +392,7 @@ export function EnvoyAdminSummaryCard() {
               errorRate < 1 ? "success" : errorRate < 5 ? "warning" : "danger"
             }
             testid="envoy-summary-error-rate"
+            spark={errorRateSpark}
           />
           <Stat
             icon={<ShieldCheck className="size-4" />}
@@ -308,8 +400,140 @@ export function EnvoyAdminSummaryCard() {
             value={String(data.tls_handshake_errors)}
             tone={data.tls_handshake_errors === 0 ? "success" : "danger"}
             testid="envoy-summary-tls-errors"
+            spark={tlsErrorsSpark}
           />
         </div>
+
+        {/* Live request-rate chart — shows derived rate (Δrequests/Δt)
+            since admin polling started. Not a long-term graph; for
+            durable history graph the Prometheus /metrics feed in
+            Grafana. The chart hides when fewer than 2 deltas have
+            been computed (need 2 buckets to draw a line). */}
+        {rateChartData.length >= 2 && (
+          <div
+            className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+            data-testid="envoy-summary-rate-chart"
+          >
+            <div>
+              <span className="text-sm font-medium text-fg">
+                Request rate (live)
+              </span>
+              <p className="text-xs text-fg-muted">
+                Requests/sec downstream and 4xx+5xx error rate, derived
+                from the rolling buffer. {rateChartData.length} bucket
+                {rateChartData.length === 1 ? "" : "s"} since the panel
+                opened.
+              </p>
+            </div>
+            <div className="h-44 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={[...rateChartData]}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="rqRateFill"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="var(--color-info)"
+                        stopOpacity={0.4}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="var(--color-info)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                    <linearGradient
+                      id="errRateFill"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="var(--color-danger)"
+                        stopOpacity={0.4}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="var(--color-danger)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="2 4"
+                    stroke="var(--color-border)"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="ts"
+                    tickFormatter={(t) =>
+                      new Date(Number(t) * 1000).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    }
+                    tick={{ fill: "var(--color-fg-muted)", fontSize: 10 }}
+                    axisLine={{ stroke: "var(--color-border)" }}
+                    tickLine={false}
+                    minTickGap={24}
+                  />
+                  <YAxis
+                    tick={{ fill: "var(--color-fg-muted)", fontSize: 10 }}
+                    axisLine={{ stroke: "var(--color-border)" }}
+                    tickLine={false}
+                    width={32}
+                  />
+                  <ChartTooltip
+                    contentStyle={{
+                      background: "var(--color-bg-2)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      color: "var(--color-fg)",
+                    }}
+                    labelFormatter={(t) =>
+                      new Date(Number(t) * 1000).toLocaleTimeString()
+                    }
+                    formatter={(v, name) => {
+                      const key = String(name ?? "");
+                      const num = typeof v === "number" ? v : Number(v ?? 0);
+                      return [
+                        `${num} ${key === "rq_per_s" ? "rq/s" : "err/s"}`,
+                        key === "rq_per_s" ? "Requests" : "Errors",
+                      ];
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="rq_per_s"
+                    stroke="var(--color-info)"
+                    fill="url(#rqRateFill)"
+                    strokeWidth={1.5}
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="err_per_s"
+                    stroke="var(--color-danger)"
+                    fill="url(#errRateFill)"
+                    strokeWidth={1.5}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
 
         {/* Pie charts — visual at-a-glance for the three questions
             operators ask first: "what response codes are we serving",
@@ -464,9 +688,22 @@ interface StatProps {
   value: string;
   tone: "success" | "warning" | "danger" | "info";
   testid: string;
+  /**
+   * Optional sparkline series — at least 2 numeric samples renders a
+   * compact trend line under the value. Below 2 samples we render a
+   * placeholder gap so card heights stay aligned across the row.
+   */
+  spark?: readonly number[];
 }
 
-function Stat({ icon, label, value, tone, testid }: StatProps) {
+const TONE_COLOR: Record<StatProps["tone"], string> = {
+  success: "var(--color-success)",
+  warning: "var(--color-warning)",
+  danger: "var(--color-danger)",
+  info: "var(--color-info)",
+};
+
+function Stat({ icon, label, value, tone, testid, spark }: StatProps) {
   const toneClass = {
     success: "border-success/40 bg-success/10 text-success",
     warning: "border-warning/40 bg-warning/10 text-warning",
@@ -488,7 +725,59 @@ function Stat({ icon, label, value, tone, testid }: StatProps) {
         </span>
       </div>
       <div className="text-xl font-semibold tabular-nums text-fg">{value}</div>
+      <Sparkline data={spark ?? []} color={TONE_COLOR[tone]} />
     </div>
+  );
+}
+
+interface SparklineProps {
+  data: readonly number[];
+  color: string;
+  height?: number;
+}
+
+/**
+ * Inline-SVG sparkline. Lightweight on purpose — recharts is too
+ * heavy for a 24px-tall trend line and its ResponsiveContainer
+ * collides with the parent flex layout. The polyline normalises to a
+ * 100×height viewBox so the line scales with the card width.
+ *
+ * <2 samples renders a fixed-height empty span so the Stat card heights
+ * stay aligned even before the rolling buffer has filled.
+ */
+function Sparkline({ data, color, height = 24 }: SparklineProps) {
+  if (data.length < 2) {
+    return <span style={{ height, display: "block" }} aria-hidden />;
+  }
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * 100;
+      const y = ((max - v) / range) * (height - 2) + 1;
+      return `${x},${y.toFixed(2)}`;
+    })
+    .join(" ");
+  return (
+    <svg
+      viewBox={`0 0 100 ${height}`}
+      preserveAspectRatio="none"
+      className="w-full"
+      style={{ height }}
+      role="img"
+      aria-label="trend"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.4}
+        vectorEffect="non-scaling-stroke"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
