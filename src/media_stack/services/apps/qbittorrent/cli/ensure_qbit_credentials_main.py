@@ -3,6 +3,14 @@
 
 This is the Python replacement for bin/ensure-qbit-credentials.sh.
 It keeps CLI/env compatibility while moving non-trivial control flow out of bash.
+
+Note: kept at the legacy ``services/apps/qbittorrent/cli/`` path
+because tests load this file directly by absolute path and patch
+helpers in its module namespace. Phase 16-D batch 3 (download
+clients — qbittorrent) deliberately leaves the CLI helpers in
+place; Phase 16-F or a follow-up batch will revisit once the
+file-path-based test loaders are migrated to import the new module
+path.
 """
 
 from __future__ import annotations

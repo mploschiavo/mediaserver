@@ -70,7 +70,7 @@ import re
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2] / "src" / "media_stack"
+ROOT = Path(__file__).resolve().parents[3] / "src" / "media_stack"
 
 
 # Known core/ → services/ violations as of v1.0.190. These are

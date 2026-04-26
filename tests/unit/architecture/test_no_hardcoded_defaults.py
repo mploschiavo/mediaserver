@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SRC_ROOT = PROJECT_ROOT / "src" / "media_stack"
 
 # Directories that are excluded (contracts and app-specific code are expected

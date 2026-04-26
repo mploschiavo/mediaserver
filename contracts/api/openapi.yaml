@@ -553,6 +553,117 @@ components:
           example: Default
       additionalProperties: true
 
+    IptvCountryEntry:
+      type: object
+      description: |
+        One IPTV country preset emitted by `/api/iptv-countries`. The
+        `tuner_url` may be the empty string when the active tuner
+        provider declares no `url_template` for the country and only
+        opts in via `country_urls` for a different region.
+      required: [code, name, guide_url, tuner_url]
+      properties:
+        code:
+          type: string
+          description: Lowercase ISO-3166-1 alpha-2 country code.
+          example: us
+        name:
+          type: string
+          example: "United States"
+        guide_url:
+          type: string
+          description: |
+            Best-available EPG XMLTV URL resolved from the configured
+            guide-provider chain (priority order from
+            `contracts/epg_providers.yaml`). Empty string when no
+            provider supports this country.
+          example: "https://iptv-epg.org/files/epg-us.xml"
+        tuner_url:
+          type: string
+          description: |
+            M3U tuner URL expanded from the active tuner provider's
+            `url_template` (lowercased `{code}` substitution). Empty
+            string when no tuner template is configured.
+          example: ""
+      additionalProperties: true
+
+    EpgProviderEntry:
+      type: object
+      description: |
+        One EPG/guide provider definition emitted under
+        `/api/epg-providers#providers[]`. Mirrors a row from
+        `contracts/epg_providers.yaml`. `url_template` and
+        `country_urls` are mutually-supplemental: a provider may have
+        either, both, or (rarely) neither when only manual
+        `country_urls` overrides are configured.
+      required: [id, name, format, priority, enabled]
+      properties:
+        id:
+          type: string
+          example: iptv-epg
+        name:
+          type: string
+          example: IPTV-EPG.org
+        format:
+          type: string
+          description: Source-file format (e.g. `xml`, `xml.gz`, `m3u`).
+          example: xml
+        priority:
+          type: integer
+          description: |
+            Lower numbers are tried first when resolving a guide URL
+            for a given country.
+          example: 1
+        enabled:
+          type: boolean
+          example: true
+        url_template:
+          type: string
+          description: |
+            URL template with `{code}` / `{CODE}` placeholders. May be
+            absent for providers that publish per-country URLs via
+            `country_urls` only (e.g. `epgtalk`, `freeview-epg`).
+          example: "https://iptv-epg.org/files/epg-{code}.xml"
+        country_urls:
+          type: object
+          description: |
+            Manual per-country URL overrides. Keys are lowercase
+            country codes, values are full URLs (strings). Schema
+            uses unconstrained ``type: object`` rather than
+            ``additionalProperties: {type: string}`` because the
+            stricter form trips openapi-typescript's literal-vs-
+            index-signature check on imported JSON fixtures
+            (mx/us keys present in some, absent in others). Loosen
+            widens this to Record<string, unknown> at the TS layer.
+        notes:
+          type: string
+          example: "Best for US, EU. ~30 countries. 7-day guide data."
+      additionalProperties: true
+
+    EpgProviderHealthEntry:
+      type: object
+      description: |
+        One cached health-probe result emitted under
+        `/api/epg-providers#health{provider:country}` and used to
+        avoid re-probing inside the configured `interval_hours`
+        window. The map key is `<provider_id>:<country_code>`.
+      required: [ok, ts, url]
+      properties:
+        ok:
+          type: boolean
+          description: Last probe outcome (HTTP 200/206/301/302).
+          example: true
+        ts:
+          type: number
+          description: |
+            UNIX timestamp (seconds, float) of the last probe. Older
+            than `health_check.interval_hours` triggers a re-probe.
+          example: 1777137742.6841
+        url:
+          type: string
+          description: The exact URL that was probed.
+          example: "https://epg.pw/xmltv/epg_AU.xml.gz"
+      additionalProperties: true
+
     PolicyBound:
       type: object
       description: |
@@ -8779,6 +8890,16 @@ paths:
       operationId: runEpgHealth
       tags: [Config]
       summary: Probe EPG providers and report health
+      description: |
+        Synchronously probes every enabled guide provider for every
+        configured country. Returns aggregate counts (`healthy` /
+        `unhealthy`), the totals each is computed against
+        (`countries`, `providers`), and a `details` matrix keyed
+        first by country code then by provider id. The matrix is
+        sparse: only `(provider, country)` pairs the provider has a
+        URL for appear — a missing key means "provider declares no
+        URL for that country", NOT "unhealthy". Aggregate counters
+        are the source of truth for healthy/unhealthy ratios.
       responses:
         "200":
           description: EPG health
@@ -8786,6 +8907,43 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [healthy, unhealthy, countries, providers, details]
+                properties:
+                  healthy:
+                    type: integer
+                    description: |
+                      Number of `(provider, country)` probes that
+                      returned an HTTP success status.
+                    example: 81
+                  unhealthy:
+                    type: integer
+                    description: |
+                      Number of `(provider, country)` probes that
+                      did not return success.
+                    example: 25
+                  countries:
+                    type: integer
+                    description: |
+                      Total country presets considered. Matches
+                      `len(countries)` from `/api/iptv-countries`.
+                    example: 34
+                  providers:
+                    type: integer
+                    description: |
+                      Total enabled guide providers considered.
+                    example: 5
+                  details:
+                    type: object
+                    description: |
+                      Per-country, per-provider probe outcomes. Outer
+                      key is the lowercase country code; inner key is
+                      the provider id. Missing inner keys mean the
+                      provider has no URL for that country (not a
+                      health failure).
+                    additionalProperties:
+                      type: object
+                      additionalProperties:
+                        type: boolean
                 additionalProperties: true
               example:
                 providers: 5
@@ -8810,6 +8968,13 @@ paths:
       operationId: listEpgProviders
       tags: [Config]
       summary: Configured EPG (guide) providers
+      description: |
+        Returns the enabled guide-provider list (sorted by ascending
+        priority, the order in which `resolve_guide_url` will try
+        them) and the cached probe results from the most recent
+        health check. The cache is keyed by `<provider_id>:<country>`
+        — split on the colon if you need to bucket per provider or
+        per country.
       responses:
         "200":
           description: Providers + cached health
@@ -8817,6 +8982,23 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [providers, health]
+                properties:
+                  providers:
+                    type: array
+                    description: |
+                      Enabled guide providers in the order they will
+                      be tried for any given country.
+                    items:
+                      $ref: '#/components/schemas/EpgProviderEntry'
+                  health:
+                    type: object
+                    description: |
+                      Cached probe outcomes keyed by
+                      `<provider_id>:<country>`. May be empty when
+                      no health check has run yet.
+                    additionalProperties:
+                      $ref: '#/components/schemas/EpgProviderHealthEntry'
                 additionalProperties: true
               example:
                 health:
@@ -8828,12 +9010,25 @@ paths:
                     ok: false
                     ts: 1777137729.8048
                     url: "https://epg.pw/xmltv/epg_AR.xml.gz"
+                providers:
+                  - id: iptv-epg
+                    name: IPTV-EPG.org
+                    format: xml
+                    priority: 1
+                    enabled: true
+                    url_template: "https://iptv-epg.org/files/epg-{code}.xml"
 
   /api/iptv-countries:
     get:
       operationId: listIptvCountries
       tags: [Config]
       summary: Available IPTV-country presets
+      description: |
+        Returns the IPTV country presets with pre-resolved guide and
+        tuner URLs. `source` distinguishes `profile` (operator-edited
+        list under `iptv_countries` in the controller profile) from
+        `defaults` (the built-in catalogue from
+        `contracts/ui_defaults/iptv_countries.yaml`).
       responses:
         "200":
           description: Countries
@@ -8841,8 +9036,23 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [countries, source]
+                properties:
+                  countries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IptvCountryEntry'
+                  source:
+                    type: string
+                    description: |
+                      `profile` when the operator has supplied a
+                      custom list; `defaults` when the built-in
+                      catalogue is in effect.
+                    enum: [profile, defaults]
+                    example: defaults
                 additionalProperties: true
               example:
+                source: defaults
                 countries:
                   - code: us
                     name: "United States"
@@ -8902,8 +9112,14 @@ paths:
                     example: false
                   source:
                     type: string
-                    description: Where the configuration was loaded from.
-                    enum: [profile, persisted, defaults]
+                    description: |
+                      Where the configuration was loaded from.
+                      `app_config` indicates a per-app config under
+                      the active media-server's `livetv` section;
+                      `profile` indicates `live_tv_defaults` from the
+                      controller profile; `not_configured` means
+                      neither has any tuners persisted yet.
+                    enum: [app_config, profile, not_configured]
                     example: profile
               example:
                 tuners:

@@ -23,7 +23,7 @@ import pytest
 # Configuration
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SRC_ROOT = PROJECT_ROOT / "src" / "media_stack"
 
 # Service names to scan for (case-insensitive word-boundary match).

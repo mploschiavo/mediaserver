@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 import yaml
 
-ROOT: Path = Path(__file__).resolve().parents[2]
+ROOT: Path = Path(__file__).resolve().parents[3]
 # Phase 5 (ADR-0001) moved k8s/ui.yaml to k8s/base/ui/ui.yaml.
 MANIFEST_PATH: Path = ROOT / "k8s" / "base" / "ui" / "ui.yaml"
 

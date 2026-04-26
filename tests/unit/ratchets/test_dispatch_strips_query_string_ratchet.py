@@ -27,7 +27,7 @@ import unittest
 from pathlib import Path
 
 
-_ROOT = Path(__file__).resolve().parents[2]
+_ROOT = Path(__file__).resolve().parents[3]
 _API_DIR = _ROOT / "src" / "media_stack" / "api"
 
 

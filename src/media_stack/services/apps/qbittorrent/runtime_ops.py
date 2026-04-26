@@ -1,32 +1,15 @@
-#!/usr/bin/env python3
-"""qBittorrent runtime operations."""
+"""Shim — moved to ``media_stack.application.qbittorrent.runtime_ops``
+in ADR-0002 Phase 16-D batch 3 (download clients — qbittorrent).
+Phase 16-F removes this shim.
 
-from __future__ import annotations
+The new module re-exports every callable that the legacy module
+exposed so existing callers and the
+contracts/services/qbittorrent.yaml entry-point handlers keep
+working.
+"""
 
-from media_stack.services.apps.servarr.runtime.qbit_ops import (
-    qbit_create_category,
-    qbit_delete_torrents,
-    qbit_list_completed_torrents,
-    qbit_list_torrents,
-    qbit_login,
-    qbit_set_preferences,
-    setup_qbit_categories,
-    setup_qbit_storage_defaults,
-    setup_torrent_categories,
-    setup_torrent_storage_defaults,
-    torrent_client_login,
-)
+import sys
 
-__all__ = [
-    "torrent_client_login",
-    "qbit_login",
-    "qbit_create_category",
-    "qbit_set_preferences",
-    "qbit_list_torrents",
-    "qbit_list_completed_torrents",
-    "qbit_delete_torrents",
-    "setup_torrent_storage_defaults",
-    "setup_qbit_storage_defaults",
-    "setup_torrent_categories",
-    "setup_qbit_categories",
-]
+from media_stack.application.qbittorrent import runtime_ops as _impl
+
+sys.modules[__name__] = _impl

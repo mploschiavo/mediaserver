@@ -2,6 +2,14 @@
 """Set stack-admin/qB credentials in media-stack-secrets.
 
 Behavior is intentionally backward-compatible with bin/set-qbit-secret.sh.
+
+Note: kept at the legacy ``services/apps/qbittorrent/cli/`` path
+because tests load this file directly by absolute path and patch
+helpers in its module namespace. Phase 16-D batch 3 (download
+clients — qbittorrent) deliberately leaves the CLI helpers in
+place; Phase 16-F or a follow-up batch will revisit once the
+file-path-based test loaders are migrated to import the new module
+path.
 """
 
 from __future__ import annotations

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT: Path = Path(__file__).resolve().parents[2]
+ROOT: Path = Path(__file__).resolve().parents[3]
 CANDIDATE_PATHS: tuple[Path, ...] = (
     ROOT / "docker" / "ui-nginx.conf",
     ROOT / "docker" / "ui-nginx.conf.template",

@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/render";
 import type { JobsResponse } from "@/features/jobs/hooks";
 
@@ -9,6 +9,7 @@ const jobsState = vi.hoisted(() => ({
   isLoading: false,
   error: null as Error | null,
 }));
+const runMutate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/features/jobs/hooks", async () => {
   const actual = await vi.importActual<typeof import("@/features/jobs/hooks")>(
@@ -18,7 +19,7 @@ vi.mock("@/features/jobs/hooks", async () => {
     ...actual,
     useJobs: () => jobsState,
     useRunAction: () => ({
-      mutate: vi.fn(),
+      mutate: runMutate,
       mutateAsync: vi.fn(),
       isPending: false,
       error: null,
@@ -32,6 +33,46 @@ vi.mock("@/features/jobs/hooks", async () => {
   };
 });
 
+// JobDetailPanel uses Tanstack Router's `<Link>` for the View-logs /
+// Audit-history deep-links. The route test doesn't wire a router, so
+// stub it as a plain anchor — same approach JobDetailPanel.test.tsx
+// uses. Without this mock, selecting a parent (which now correctly
+// mounts JobDetailPanel) crashes the renderer.
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+    "@tanstack/react-router",
+  );
+  return {
+    ...actual,
+    Link: ({
+      to,
+      search,
+      children,
+      ...rest
+    }: {
+      to: string;
+      search?: Record<string, unknown>;
+      children: React.ReactNode;
+      [key: string]: unknown;
+    }) => {
+      const qs = search
+        ? `?${Object.entries(search)
+            .filter(([, v]) => v !== undefined && v !== "")
+            .map(
+              ([k, v]) =>
+                `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+            )
+            .join("&")}`
+        : "";
+      return (
+        <a href={`${to}${qs}`} {...rest}>
+          {children}
+        </a>
+      );
+    },
+  };
+});
+
 import { Route as JobsRoute } from "./jobs";
 
 const JobsPage = JobsRoute.options.component as ComponentType;
@@ -41,6 +82,7 @@ describe("jobs route", () => {
     jobsState.data = { jobs: [], tree: [], history: [] } as JobsResponse;
     jobsState.isLoading = false;
     jobsState.error = null;
+    runMutate.mockReset();
   });
 
   it("registers at /jobs", () => {
@@ -110,5 +152,47 @@ describe("jobs route", () => {
     expect(
       screen.getByTestId("jobs-summary-service-jellyfin"),
     ).toHaveTextContent("1");
+  });
+
+  it("renders a Run button for a parent (non-leaf) tree node and triggers the same mutation as leaves", () => {
+    // Parent jobs (bootstrap, configure-*) live in `tree` but NOT
+    // in the flat `jobs[]` catalog (which only has contract-discovered
+    // leaves). Selecting a parent must still mount JobDetailPanel so
+    // the operator can fire `POST /api/actions/<parent>` — which the
+    // controller accepts for registered parents (bootstrap,
+    // configure-media-server, aliases).
+    jobsState.data = {
+      jobs: [
+        // Only the leaf is in the catalog — bootstrap/configure-media-server
+        // are parents synthesized by build_job_framework().
+        { name: "discover-api-keys", service: "controller" },
+      ],
+      tree: [
+        {
+          name: "bootstrap",
+          sub_jobs: [
+            {
+              name: "configure-media-server",
+              sub_jobs: [
+                { name: "discover-api-keys", sub_jobs: [] },
+              ],
+            },
+          ],
+        },
+      ],
+      history: [],
+    } as JobsResponse;
+    renderWithProviders(<JobsPage />);
+    // Click the parent row's name button to select it.
+    fireEvent.click(screen.getByTestId("jobs-tree-name-configure-media-server"));
+    // JobDetailPanel must now be mounted for the parent.
+    const panel = screen.getByTestId("job-detail-panel");
+    expect(panel.getAttribute("data-job-name")).toBe("configure-media-server");
+    // Run button is present, enabled, and clickable.
+    const runBtn = screen.getByTestId("job-detail-run-now");
+    expect(runBtn).toBeInTheDocument();
+    expect(runBtn).not.toBeDisabled();
+    fireEvent.click(runBtn);
+    expect(runMutate).toHaveBeenCalledTimes(1);
   });
 });

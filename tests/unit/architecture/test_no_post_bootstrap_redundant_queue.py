@@ -28,7 +28,7 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 _SERVE = ROOT / "src" / "media_stack" / "cli" / "commands" / "controller_serve.py"

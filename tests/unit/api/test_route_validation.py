@@ -42,7 +42,7 @@ from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts impor
 from media_stack.core.auth.envoy_ext_authz import EXT_AUTHZ_FILTER_NAME
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 CONTRACT_PATH = ROOT / "contracts" / "auth.yaml"
 SERVICES_DIR = ROOT / "contracts" / "services"
 

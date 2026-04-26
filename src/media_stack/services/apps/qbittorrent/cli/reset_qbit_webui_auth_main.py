@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Hard-reset qB WebUI auth and reconcile from stack secret."""
+"""Hard-reset qB WebUI auth and reconcile from stack secret.
+
+Note: kept at the legacy ``services/apps/qbittorrent/cli/`` path
+for parity with the sibling CLI helpers (set-qbit-secret,
+ensure-qbit-credentials), which are tested via file-path-based
+loaders. Phase 16-D batch 3 (download clients — qbittorrent)
+deliberately leaves the CLI helpers in place.
+"""
 
 from __future__ import annotations
 

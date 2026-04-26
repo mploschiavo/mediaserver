@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.auth.users.ip_deny import (  # noqa: E402

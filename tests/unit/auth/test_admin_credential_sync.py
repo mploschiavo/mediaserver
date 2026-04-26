@@ -15,7 +15,7 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.auth.configure_auth_job import ConfigureAuthJob  # noqa: E402
@@ -119,7 +119,7 @@ class DefaultsFileContentTests(unittest.TestCase):
     def test_defaults_users_database_has_no_password(self):
         from pathlib import Path
         import yaml
-        repo_root = Path(__file__).resolve().parents[2]
+        repo_root = Path(__file__).resolve().parents[3]
         path = repo_root / (
             "config/defaults/compose/auth/authelia/users_database.yml"
         )
