@@ -14,15 +14,23 @@
 # =============================================================================
 
 brand:
-  # Display name shown in <title> and the brand-link tooltip.
-  name: "iomio.io"
-
-  # External homepage. Clicked from the header logo and footer "powered by"
-  # tagline. Set to empty string to render a non-link.
-  homepage_url: "https://iomio.io"
-
-  # One-liner tagline used under the wordmark (header + login splash).
+  # Naming convention (matches the controller defaults in handlers_get.py):
+  #   * ``name``    — product short, shown as the sidebar wordmark
+  #     ("Media Stack"). This is what dominates the chrome.
+  #   * ``vendor``  — company / publisher ("iomio"). Rendered as a
+  #     small "by iomio" subtitle, never the primary mark.
+  #   * ``tagline`` — full product name for splash screens / about
+  #     page ("Media Stack Controller").
+  # The dashboard logo always links to ``/`` (the dashboard root),
+  # NOT to ``homepage_url`` — that's only for an "About" external
+  # link in the footer / settings.
+  name: "Media Stack"
+  vendor: "iomio"
   tagline: "Media Stack Controller"
+
+  # External homepage for an About / Powered-by footer link.
+  # The sidebar logo does NOT use this — it always links to /.
+  homepage_url: "https://iomio.io"
 
   # ---------------------------------------------------------------------------
   # Asset paths. Resolve from the controller's static directory:

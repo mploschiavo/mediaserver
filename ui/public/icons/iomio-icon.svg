@@ -1,0 +1,15 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="iomio.io icon">
+  <defs>
+    <linearGradient id="iconGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#33D9B2"/>
+      <stop offset="0.55" stop-color="#FFBE0B"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="#09111E"/>
+  <!-- 'i' (bar + dot) -->
+  <rect x="14" y="22" width="8" height="32" rx="4" fill="url(#iconGrad)"/>
+  <circle cx="18" cy="14" r="5" fill="url(#iconGrad)"/>
+  <!-- 'o' (ring) -->
+  <circle cx="44" cy="38" r="14" fill="none" stroke="url(#iconGrad)" stroke-width="6"/>
+</svg>

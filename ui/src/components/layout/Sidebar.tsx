@@ -183,6 +183,14 @@ export function Sidebar({ onNavigate }: SidebarProps) {
  * available, falling back to the legacy `Activity` glyph + "Media
  * Stack" label so the chrome is never empty during the initial fetch.
  */
+// Bundled fallback icon — served directly by the SPA, doesn't go
+// through the controller's /api/static/ path (which now returns
+// 410 Gone since the UI moved to its own container). Without this
+// the post-login sidebar showed an empty space where the icon
+// should be: the BrandMark requested ``/api/static/iomio-icon.svg``,
+// the controller returned 410, the <img> failed silently.
+const BUNDLED_ICON_URL = "/icons/iomio-icon.svg";
+
 function BrandMark() {
   const branding = useBranding();
   const brand = (branding.data as BrandingShape | undefined)?.brand as
@@ -199,19 +207,27 @@ function BrandMark() {
   //   * ``brand.icon``   — square SVG. We render it WITHOUT the
   //     bg-accent backdrop because most icons carry their own
   //     visual weight; the box-with-icon was the "boring green box
-  //     after login" the operator flagged. The Activity fallback
-  //     (used when no icon URL resolves) keeps the box because the
-  //     monochrome glyph needs the contrast.
+  //     after login" the operator flagged.
+  //
+  // Icon URL resolution: any controller-supplied URL that points
+  // at the legacy ``/api/static/`` path resolves to the bundled
+  // SPA asset instead, since the controller no longer serves
+  // those (returns 410 Gone since v1.0.175). White-label deploys
+  // can still set an absolute URL or a UI-served path.
   const productName =
     (brand && typeof brand.name === "string" && brand.name) ||
     (brand && typeof brand.product_name === "string" && brand.product_name) ||
     "Media Stack";
   const vendor =
     (brand && typeof brand.vendor === "string" && brand.vendor) || "";
-  const iconUrl =
+  const rawIcon =
     (brand && typeof brand.icon === "string" && brand.icon) ||
     (brand && typeof brand.logo_url === "string" && brand.logo_url) ||
     null;
+  const iconUrl =
+    rawIcon && rawIcon.startsWith("/api/static/")
+      ? BUNDLED_ICON_URL
+      : (rawIcon ?? BUNDLED_ICON_URL);
 
   return (
     <Link
@@ -219,19 +235,23 @@ function BrandMark() {
       className="flex items-center gap-2 text-fg outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
       data-testid="sidebar-brand"
     >
-      {iconUrl ? (
-        <img
-          src={iconUrl}
-          alt=""
-          aria-hidden
-          className="size-7 object-contain"
-          data-testid="sidebar-brand-icon"
-        />
-      ) : (
-        <span className="flex size-7 items-center justify-center rounded-md bg-accent text-accent-fg shadow-sm">
-          <Activity className="size-4" aria-hidden />
-        </span>
-      )}
+      <img
+        src={iconUrl}
+        alt=""
+        aria-hidden
+        className="size-7 object-contain"
+        data-testid="sidebar-brand-icon"
+        onError={(e) => {
+          // If the configured URL fails (network blip, white-label
+          // typo), fall back to the bundled asset — never show a
+          // broken-image glyph in the chrome.
+          const img = e.currentTarget;
+          if (img.src !== BUNDLED_ICON_URL) img.src = BUNDLED_ICON_URL;
+        }}
+      />
+      {/* keep Activity fallback only for the screen-reader
+          alternate; the bundled SVG is always reachable so the box
+          is no longer needed in practice */}
       <span className="flex flex-col leading-none">
         <span
           className="text-sm font-semibold tracking-tight"

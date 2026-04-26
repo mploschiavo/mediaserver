@@ -68,9 +68,19 @@ export function TriggeredBanner() {
         <span className="text-xs opacity-80">
           ·{" "}
           <span title="Guardrails are continuous evaluations — they re-evaluate every interval (default 5min) and fire as long as the condition holds. They aren't 'jobs' that finish.">
-            re-evaluating every {formatInterval(query.data?.evaluation_interval_seconds)}
+            re-evaluating every{" "}
+            {formatInterval(query.data?.evaluation_interval_seconds)}
           </span>
-          {" · "}firing for {formatFiringFor(worst.last_triggered_at)}
+          {" · "}
+          firing for {formatFiringFor(worst.last_triggered_at)}
+          {worst.last_triggered_at ? (
+            <>
+              {" "}
+              <span className="text-fg-faint">
+                (since {formatStartedAt(worst.last_triggered_at)})
+              </span>
+            </>
+          ) : null}
         </span>
       </a>
     </div>
@@ -91,4 +101,45 @@ function formatFiringFor(triggeredAt?: number | null): string {
   if (elapsed < 3600) return `${Math.round(elapsed / 60)}min`;
   if (elapsed < 86400) return `${(elapsed / 3600).toFixed(1)}h`;
   return `${(elapsed / 86400).toFixed(1)}d`;
+}
+
+/**
+ * Format a started-at epoch as a user-readable timestamp:
+ *   * Same calendar day → "14:32" (operator knows it's today)
+ *   * Yesterday         → "yesterday 14:32"
+ *   * Older this year   → "Apr 25 14:32"
+ *   * Older year        → "2025-04-26 14:32"
+ *
+ * Locale-aware via toLocale*String — respects the operator's
+ * 12h/24h preference. Shared across long-running banners
+ * (TriggeredBanner / RunningJobsBanner) so "since" formatting
+ * is consistent.
+ */
+function formatStartedAt(epoch: number): string {
+  const start = new Date(epoch * 1000);
+  const now = new Date();
+  const time = start.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (start.toDateString() === now.toDateString()) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (start.toDateString() === yesterday.toDateString()) {
+    return `yesterday ${time}`;
+  }
+  const sameYear = start.getFullYear() === now.getFullYear();
+  if (sameYear) {
+    return (
+      start.toLocaleDateString([], { month: "short", day: "numeric" }) +
+      ` ${time}`
+    );
+  }
+  return (
+    start.toLocaleDateString([], {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }) + ` ${time}`
+  );
 }
