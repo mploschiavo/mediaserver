@@ -1189,6 +1189,37 @@ class PostRequestHandler:
             )
             return
 
+        # POST /api/guardrails/config — operator-editable cadence
+        # for the cross-domain guardrail evaluation loop. Body:
+        # ``{"evaluation_interval_seconds": <int>}``. Sets the
+        # process-wide override that gates ``tick()``; persists for
+        # the controller's lifetime. Default is 300s (5min); legacy
+        # behaviour was 60s via the auto-heal cycle, which polluted
+        # ``/api/jobs.history`` with one row per minute per
+        # already-firing rule. Floor 30s so operators can't ddos
+        # themselves; ceiling 3600s.
+        if handler.path == "/api/guardrails/config":
+            body = handler._read_json_body() or {}
+            try:
+                raw = int(body.get("evaluation_interval_seconds", 300))
+            except (TypeError, ValueError):
+                handler._json_response(
+                    400,
+                    {"error": "evaluation_interval_seconds must be an integer"},
+                )
+                return
+            if raw < 30 or raw > 3600:
+                handler._json_response(
+                    400,
+                    {"error": "evaluation_interval_seconds must be in [30, 3600]"},
+                )
+                return
+            os.environ["MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS"] = str(raw)
+            handler._json_response(200, {
+                "evaluation_interval_seconds": raw,
+            })
+            return
+
         # POST /api/guardrails
         if handler.path == "/api/guardrails":
             body = handler._read_json_body()

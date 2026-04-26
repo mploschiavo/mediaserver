@@ -8,6 +8,14 @@ backing on it keeps the operational footprint minimal.
 it after each cycle. Tests call it directly with a hand-rolled state
 dict.
 
+**Cadence throttle**: storage rules don't change at minute granularity
+— floors flap when free space hovers near the limit, and an
+already-triggered rule re-fires every 60s polluting the operator's
+"Recent batches" view. ``MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS``
+(default 300) gates evaluation: ticks within the window short-circuit
+without writing history. Tests can override via the ``min_interval``
+kwarg on ``tick()``.
+
 History is recorded via ``cli.commands.job_framework._record_history``
 with ``source="guardrail:<rule-id>"`` and ``actor="auto-heal"`` so
 operators see guardrail fires alongside cron + manual runs in the
@@ -17,6 +25,7 @@ existing job-history table.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any, Mapping
 
@@ -26,6 +35,22 @@ from .registry import GuardrailRegistry, default as default_registry
 from .state_collector import collect_state
 
 _log = logging.getLogger("media_stack.guardrails")
+
+# Last-tick timestamp shared across calls. Module-scope rather than
+# bound to a service instance because the tick() function is the
+# public entry; the auto-heal loop calls it directly without going
+# through a class. Tests override via the ``min_interval`` kwarg.
+_last_tick_at: float = 0.0
+
+
+def _resolved_interval(min_interval: float | None) -> float:
+    if min_interval is not None:
+        return float(min_interval)
+    raw = os.environ.get("MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS", "300")
+    try:
+        return float(raw)
+    except ValueError:
+        return 300.0
 
 
 def _record(
@@ -74,6 +99,7 @@ def tick(
     state: Mapping[str, Any] | None = None,
     failed_login_tracker: Any | None = None,
     record_history: bool = True,
+    min_interval: float | None = None,
 ) -> dict[str, Any]:
     """Run one evaluation cycle. Returns the triggers + actions for
     consumers (the auto-heal loop discards the return value; tests
@@ -82,8 +108,22 @@ def tick(
     ``state`` is injectable so unit tests can avoid the live
     ``collect_state`` call entirely.
     ``record_history`` defaults True; tests pass False to keep the
-    on-disk history file untouched."""
+    on-disk history file untouched.
+    ``min_interval`` overrides the env-var-driven cadence floor;
+    tests pass 0 to force every call to run."""
+    global _last_tick_at
     t0 = time.time()
+    interval = _resolved_interval(min_interval)
+    if interval > 0 and (t0 - _last_tick_at) < interval:
+        return {
+            "ran_at": t0,
+            "elapsed": 0.0,
+            "triggers": [],
+            "actions": [],
+            "skipped": "throttled",
+            "next_eligible_at": _last_tick_at + interval,
+        }
+    _last_tick_at = t0
     reg = registry or default_registry()
     snapshot: dict[str, Any] = (
         dict(state) if state is not None
