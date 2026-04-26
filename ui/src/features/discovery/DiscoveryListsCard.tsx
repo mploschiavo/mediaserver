@@ -1,4 +1,6 @@
-import { Telescope, Tv } from "lucide-react";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Telescope, Tv } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -6,9 +8,28 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { fetcher } from "@/api/client";
+import { toast } from "sonner";
 import { useDiscoveryLists, usePopularTv } from "./hooks";
+
+function explain(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 function PopularTvSection() {
   const query = usePopularTv();
@@ -142,12 +163,16 @@ function ConfiguredListsSection() {
 export function DiscoveryListsCard() {
   return (
     <Card data-testid="discovery-lists-card">
-      <CardHeader>
-        <CardTitle>Discovery</CardTitle>
-        <CardDescription>
-          Curated feeds + popular TV picks. Browse-only — wire up an Import
-          List in Sonarr/Radarr to subscribe.
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <CardTitle>Discovery</CardTitle>
+          <CardDescription>
+            Curated feeds + popular TV picks. Add a source below; the
+            controller queues a bootstrap to write the list into the
+            relevant Sonarr/Radarr import-list config.
+          </CardDescription>
+        </div>
+        <AddDiscoverySourceDialog />
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <section aria-label="Configured discovery sources">
@@ -164,5 +189,216 @@ export function DiscoveryListsCard() {
         </section>
       </CardContent>
     </Card>
+  );
+}
+
+interface DiscoverySource {
+  name: string;
+  source: string;
+  url?: string;
+  list_id?: string;
+  target?: "sonarr" | "radarr";
+}
+
+const SOURCE_TYPES = [
+  { value: "trakt_list", label: "Trakt list / watchlist" },
+  { value: "imdb_list", label: "IMDb list" },
+  { value: "rss", label: "RSS feed" },
+  { value: "plex_playlist", label: "Plex playlist" },
+] as const;
+
+/**
+ * "Add discovery source" modal. Three-field form:
+ *   * name — display label
+ *   * source — picker (Trakt / IMDb / RSS / Plex)
+ *   * url or list_id — depends on source kind
+ *   * target — Sonarr (TV) vs Radarr (movies)
+ *
+ * Save POSTs the appended array to /api/discovery-lists; the
+ * controller queues a bootstrap that writes the new list into
+ * the corresponding arr-app's import-list config. The "you must
+ * run bootstrap" note is shown inline because the change isn't
+ * live until that finishes.
+ */
+function AddDiscoverySourceDialog() {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<DiscoverySource>({
+    name: "",
+    source: "trakt_list",
+    target: "sonarr",
+  });
+  const qc = useQueryClient();
+  const lists = useDiscoveryLists();
+
+  const mut = useMutation({
+    mutationFn: async (next: DiscoverySource[]) =>
+      fetcher("api/discovery-lists", {
+        method: "POST",
+        body: JSON.stringify({ lists: next }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["discovery-lists"] });
+      toast.success(
+        "Source saved — bootstrap queued to apply.",
+      );
+      setOpen(false);
+      setDraft({ name: "", source: "trakt_list", target: "sonarr" });
+    },
+    onError: (err) =>
+      toast.error(`Save failed: ${explain(err, "request failed")}`),
+  });
+
+  const handleSave = () => {
+    const existing = Array.isArray(lists.data?.lists)
+      ? (lists.data!.lists as unknown[]).filter(
+          (e): e is DiscoverySource =>
+            !!e && typeof e === "object" && "name" in e,
+        )
+      : [];
+    const cleaned: DiscoverySource = {
+      name: draft.name.trim(),
+      source: draft.source,
+      url: draft.url?.trim() || undefined,
+      list_id: draft.list_id?.trim() || undefined,
+      target: draft.target,
+    };
+    if (!cleaned.name || (!cleaned.url && !cleaned.list_id)) {
+      toast.error(
+        "Name + (URL or list ID) are required.",
+      );
+      return;
+    }
+    mut.mutate([...existing, cleaned]);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="discovery-add-button"
+        >
+          <Plus className="size-3.5" /> Add source
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add discovery source</DialogTitle>
+          <DialogDescription>
+            Curated feeds populate Sonarr / Radarr import lists. The
+            controller writes the entry to the profile YAML and
+            queues a bootstrap; the new list is live after bootstrap
+            completes (usually 30–60s).
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+        >
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ds-name">Name</Label>
+            <Input
+              id="ds-name"
+              value={draft.name}
+              onChange={(e) =>
+                setDraft({ ...draft, name: e.target.value })
+              }
+              placeholder="e.g. Trakt: My watchlist"
+              data-testid="discovery-add-name"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ds-source">Source type</Label>
+            <select
+              id="ds-source"
+              value={draft.source}
+              onChange={(e) =>
+                setDraft({ ...draft, source: e.target.value })
+              }
+              className="rounded-md border border-border bg-bg-1 px-2 py-1 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-ring"
+              data-testid="discovery-add-source-type"
+            >
+              {SOURCE_TYPES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {draft.source === "rss" ? (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ds-url">RSS URL</Label>
+              <Input
+                id="ds-url"
+                type="url"
+                value={draft.url ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, url: e.target.value })
+                }
+                placeholder="https://…/feed.xml"
+                data-testid="discovery-add-url"
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ds-list-id">List ID</Label>
+              <Input
+                id="ds-list-id"
+                value={draft.list_id ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, list_id: e.target.value })
+                }
+                placeholder={
+                  draft.source === "trakt_list"
+                    ? "username/list-name OR watchlist:username"
+                    : draft.source === "imdb_list"
+                      ? "ls012345678"
+                      : "playlist-id"
+                }
+                data-testid="discovery-add-list-id"
+              />
+            </div>
+          )}
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="ds-target">Target</Label>
+            <select
+              id="ds-target"
+              value={draft.target ?? "sonarr"}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  target: e.target.value as "sonarr" | "radarr",
+                })
+              }
+              className="rounded-md border border-border bg-bg-1 px-2 py-1 text-sm text-fg focus:outline-none focus:ring-2 focus:ring-ring"
+              data-testid="discovery-add-target"
+            >
+              <option value="sonarr">Sonarr (TV)</option>
+              <option value="radarr">Radarr (movies)</option>
+            </select>
+          </div>
+        </form>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() => setOpen(false)}
+            data-testid="discovery-add-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={mut.isPending}
+            data-testid="discovery-add-save"
+          >
+            {mut.isPending ? "Saving…" : "Add source"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
