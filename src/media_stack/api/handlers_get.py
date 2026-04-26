@@ -306,7 +306,10 @@ class GetRequestHandler:
             # for the full why. (v1.0.165.)
             try:
                 from media_stack.api.services import route_probe as _route_probe
-                from urllib.parse import urlparse, parse_qs
+                # parse_qs/urlparse imported at module level (line 19).
+                # A local re-import here would shadow them and break
+                # any other branch that references the names earlier in
+                # this same handle() function via UnboundLocalError.
                 qs = parse_qs(urlparse(handler.path).query)
                 target = (qs.get("url") or [""])[0]
                 handler._json_response(HTTPStatus.OK, _route_probe.probe(target))
@@ -331,7 +334,8 @@ class GetRequestHandler:
             #     the operator to type each hostname manually.
             try:
                 from media_stack.api.services import dns_check as _dns_check
-                from urllib.parse import urlparse, parse_qs
+                # parse_qs/urlparse already imported at module level —
+                # see route_probe branch comment for the bug class.
                 qs = parse_qs(urlparse(handler.path).query)
                 host = (qs.get("host") or [""])[0]
                 if host.strip():
