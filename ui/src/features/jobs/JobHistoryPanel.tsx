@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { Drawer as VaulDrawer } from "vaul";
 import { motion, useReducedMotion } from "framer-motion";
 import { History, X } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { cn } from "@/lib/cn";
 import { asArray } from "@/lib/coerce";
@@ -112,6 +114,136 @@ function rowsForBatch(
   return out;
 }
 
+const historyColumns: ColumnDef<JobHistoryEntry>[] = [
+  {
+    id: "when",
+    header: "When",
+    accessorFn: (e) => e.ts ?? 0,
+    sortingFn: "basic",
+    enableColumnFilter: false,
+    cell: ({ row }) => {
+      const entry = row.original;
+      const idx = row.index;
+      return (
+        <div
+          className="flex flex-wrap items-center gap-1.5 tabular-nums text-fg-muted"
+          title={formatAbsolute(entry.ts)}
+        >
+          <span>{formatRelative(epochToIso(entry.ts))}</span>
+          {typeof entry.source === "string" && entry.source ? (
+            <span
+              className="inline-flex items-center rounded-md border border-info/40 bg-info/10 px-1.5 py-0 text-[10px] uppercase tracking-wide text-info"
+              data-testid={`job-history-source-${idx}`}
+              title={`Triggered by ${entry.source}`}
+            >
+              {entry.source}
+            </span>
+          ) : null}
+        </div>
+      );
+    },
+  },
+  {
+    id: "names",
+    header: "Jobs run",
+    accessorFn: (e) => Object.keys(e.jobs ?? {}).join(" "),
+    enableSorting: false,
+    cell: ({ row }) => {
+      const entry = row.original;
+      const idx = row.index;
+      const summary = summariseRunNames(entry);
+      const dotClass =
+        summary.worstStatus === "error"
+          ? "bg-danger"
+          : summary.worstStatus === "skipped"
+            ? "bg-warning"
+            : summary.worstStatus === "ok"
+              ? "bg-success"
+              : "bg-fg-faint";
+      return (
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          data-testid={`job-history-row-${idx}-names`}
+        >
+          <span
+            className={cn("inline-block size-1.5 shrink-0 rounded-full", dotClass)}
+            aria-hidden
+          />
+          {summary.visible.length === 0 ? (
+            <span className="text-fg-faint">—</span>
+          ) : (
+            summary.visible.map((n) => (
+              <span
+                key={n}
+                className="truncate font-mono text-xs text-fg"
+                title={n}
+              >
+                {n}
+              </span>
+            ))
+          )}
+          {summary.hiddenCount > 0 ? (
+            <span className="text-xs text-fg-muted">
+              +{summary.hiddenCount} more
+            </span>
+          ) : null}
+        </div>
+      );
+    },
+  },
+  {
+    id: "elapsed",
+    header: "Elapsed",
+    accessorFn: (e) => e.elapsed ?? 0,
+    sortingFn: "basic",
+    enableColumnFilter: false,
+    cell: ({ row }) => (
+      <span className="font-mono tabular-nums text-fg-muted">
+        {formatElapsed(row.original.elapsed)}
+      </span>
+    ),
+  },
+  {
+    id: "ok",
+    header: "Ok",
+    accessorFn: (e) => e.ok ?? 0,
+    sortingFn: "basic",
+    enableColumnFilter: false,
+    cell: ({ row }) => (
+      <Badge variant="success" className="tabular-nums">
+        {row.original.ok ?? 0}
+      </Badge>
+    ),
+  },
+  {
+    id: "skipped",
+    header: "Skipped",
+    accessorFn: (e) => e.skipped ?? 0,
+    sortingFn: "basic",
+    enableColumnFilter: false,
+    cell: ({ row }) => (
+      <Badge variant="warning" className="tabular-nums">
+        {row.original.skipped ?? 0}
+      </Badge>
+    ),
+  },
+  {
+    id: "errors",
+    header: "Errors",
+    accessorFn: (e) => e.errors ?? 0,
+    sortingFn: "basic",
+    enableColumnFilter: false,
+    cell: ({ row }) => (
+      <Badge
+        variant={(row.original.errors ?? 0) > 0 ? "danger" : "outline"}
+        className="tabular-nums"
+      >
+        {row.original.errors ?? 0}
+      </Badge>
+    ),
+  },
+];
+
 function statusBadge(status: string) {
   if (status === "ok") return <Badge variant="success">ok</Badge>;
   if (status === "skipped") return <Badge variant="warning">skipped</Badge>;
@@ -160,111 +292,13 @@ export function JobHistoryPanel({ history, catalog }: JobHistoryPanelProps) {
           <CardTitle className="text-sm">Recent batches</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-fg-muted">
-                  <th className="py-2 font-medium">When</th>
-                  <th className="py-2 font-medium">Jobs run</th>
-                  <th className="py-2 text-right font-medium">Elapsed</th>
-                  <th className="py-2 text-right font-medium">Ok</th>
-                  <th className="py-2 text-right font-medium">Skipped</th>
-                  <th className="py-2 text-right font-medium">Errors</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry, idx) => {
-                  const summary = summariseRunNames(entry);
-                  const dotClass =
-                    summary.worstStatus === "error"
-                      ? "bg-danger"
-                      : summary.worstStatus === "skipped"
-                        ? "bg-warning"
-                        : summary.worstStatus === "ok"
-                          ? "bg-success"
-                          : "bg-fg-faint";
-                  return (
-                  <tr
-                    key={`${entry.ts ?? "x"}-${idx}`}
-                    onClick={() => setOpenIndex(idx)}
-                    className={cn(
-                      "cursor-pointer border-b border-border/60 last:border-b-0",
-                      "[@media(hover:hover)]:hover:bg-bg-2",
-                    )}
-                    data-testid={`job-history-row-${idx}`}
-                  >
-                    <td
-                      className="py-1.5 tabular-nums text-fg-muted"
-                      title={formatAbsolute(entry.ts)}
-                    >
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span>{formatRelative(epochToIso(entry.ts))}</span>
-                        {typeof entry.source === "string" && entry.source ? (
-                          <span
-                            className="inline-flex items-center rounded-md border border-info/40 bg-info/10 px-1.5 py-0 text-[10px] uppercase tracking-wide text-info"
-                            data-testid={`job-history-source-${idx}`}
-                            title={`Triggered by ${entry.source}`}
-                          >
-                            {entry.source}
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="py-1.5 pr-3" data-testid={`job-history-row-${idx}-names`}>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span
-                          className={cn("inline-block size-1.5 shrink-0 rounded-full", dotClass)}
-                          aria-hidden
-                        />
-                        {summary.visible.length === 0 ? (
-                          <span className="text-fg-faint">—</span>
-                        ) : (
-                          summary.visible.map((n) => (
-                            <span
-                              key={n}
-                              className="truncate font-mono text-xs text-fg"
-                              title={n}
-                            >
-                              {n}
-                            </span>
-                          ))
-                        )}
-                        {summary.hiddenCount > 0 ? (
-                          <span className="text-xs text-fg-muted">
-                            +{summary.hiddenCount} more
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="py-1.5 text-right font-mono tabular-nums text-fg-muted">
-                      {formatElapsed(entry.elapsed)}
-                    </td>
-                    <td className="py-1.5 text-right">
-                      <Badge variant="success" className="tabular-nums">
-                        {entry.ok ?? 0}
-                      </Badge>
-                    </td>
-                    <td className="py-1.5 text-right">
-                      <Badge variant="warning" className="tabular-nums">
-                        {entry.skipped ?? 0}
-                      </Badge>
-                    </td>
-                    <td className="py-1.5 text-right">
-                      <Badge
-                        variant={
-                          (entry.errors ?? 0) > 0 ? "danger" : "outline"
-                        }
-                        className="tabular-nums"
-                      >
-                        {entry.errors ?? 0}
-                      </Badge>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<JobHistoryEntry>
+            data={entries}
+            columns={historyColumns}
+            testId="job-history"
+            getRowId={(_entry, idx) => String(idx)}
+            onRowClick={(row) => setOpenIndex(entries.indexOf(row))}
+          />
         </CardContent>
       </Card>
 
