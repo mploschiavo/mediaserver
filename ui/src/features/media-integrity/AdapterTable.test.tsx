@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import { AdapterTable } from "./AdapterTable";
 import type { MediaIntegrityStatusShape } from "@/api";
@@ -93,5 +94,22 @@ describe("AdapterTable", () => {
     );
     const table = screen.getByTestId("adapter-table");
     expect(table.textContent).not.toContain("Bazarr");
+  });
+
+  it("filters rows in-memory via the per-column adapter filter", async () => {
+    renderWithProviders(<AdapterTable status={makeStatus()} />);
+    // Three adapters: radarr, sonarr, bazarr.
+    expect(
+      screen.getAllByTestId(/^media-integrity-adapters-row-/).length,
+    ).toBe(3);
+    const adapterFilter = screen.getByTestId(
+      "media-integrity-adapters-filter-adapter",
+    );
+    await userEvent.type(adapterFilter, "Radarr");
+    await waitFor(() =>
+      expect(
+        screen.getAllByTestId(/^media-integrity-adapters-row-/).length,
+      ).toBe(1),
+    );
   });
 });

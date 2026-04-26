@@ -105,15 +105,45 @@ describe("AuditLogTable", () => {
       ],
     };
     renderWithProviders(<AuditLogTable />);
-    // Both desktop + mobile branches mount, so values appear at least
-    // once each.
     expect(screen.getAllByText("matt").length).toBeGreaterThan(0);
     expect(screen.getAllByText("alice").length).toBeGreaterThan(0);
     expect(screen.getAllByText("session.revoke").length).toBeGreaterThan(0);
     expect(screen.getAllByText("user.create").length).toBeGreaterThan(0);
-    // Result badges render on both views.
     expect(screen.getAllByText("ok").length).toBeGreaterThan(0);
     expect(screen.getAllByText("fail").length).toBeGreaterThan(0);
+    // DataTable namespaces row testids by row.id (`<testId>-row-<id>`).
+    const rows = screen.getAllByTestId(/^audit-log-rows-row-/);
+    expect(rows.length).toBe(2);
+  });
+
+  it("filters rows in-memory via the per-column actor filter", async () => {
+    auditLogState.data = {
+      entries: [
+        {
+          ts: new Date(Date.now() - 60_000).toISOString(),
+          actor: "matt",
+          action: "session.revoke",
+          target: "user:alice",
+          result: "ok",
+        },
+        {
+          ts: new Date(Date.now() - 5 * 60_000).toISOString(),
+          actor: "alice",
+          action: "user.create",
+          target: "user:bob",
+          result: "fail",
+        },
+      ],
+    };
+    renderWithProviders(<AuditLogTable />);
+    // Two rows initially.
+    expect(screen.getAllByTestId(/^audit-log-rows-row-/).length).toBe(2);
+    // Type into the actor column filter — DataTable narrows in-memory.
+    const actorFilter = screen.getByTestId("audit-log-rows-filter-actor");
+    await userEvent.type(actorFilter, "matt");
+    await waitFor(() =>
+      expect(screen.getAllByTestId(/^audit-log-rows-row-/).length).toBe(1),
+    );
   });
 
   it("threads the action filter to useAuditLog when typed", async () => {

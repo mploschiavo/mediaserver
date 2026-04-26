@@ -61,6 +61,20 @@ export interface DataTableProps<TData> {
   enableFiltering?: boolean;
   /** Set false to drop sort affordances on column headers. */
   enableSorting?: boolean;
+  /**
+   * Per-row HTML attribute hook. The returned record is spread onto
+   * the rendered `<tr>`. Originally added to unblock the LogsTable
+   * migration (which needs `data-source` / `data-level` / `data-tone`
+   * attributes per row for the existing CSS + tests). The function
+   * receives the original row plus its index. Return `{}` for rows
+   * that don't need extra attributes.
+   *
+   * Restrictions: don't return `key`, `onClick`, `data-testid`, or
+   * any Tailwind class hook — those are owned by DataTable itself
+   * and a caller-provided override would silently break sort/click/
+   * test-id behaviour. The runtime guard below strips them.
+   */
+  renderRowAttributes?: (row: TData, index: number) => Record<string, string>;
 }
 
 const ASC_LABEL = "sorted ascending";
@@ -136,7 +150,21 @@ export function DataTable<TData>(
     enableColumnVisibility = true,
     enableFiltering = true,
     enableSorting = true,
+    renderRowAttributes,
   } = props;
+
+  // Strip caller-provided overrides for the attributes DataTable
+  // owns: key, onClick, data-testid, className, data-state. A
+  // mistake here would silently break sort/click/test-id behaviour.
+  const _RESERVED_ATTRS = new Set([
+    "key",
+    "onClick",
+    "onclick",
+    "data-testid",
+    "className",
+    "class",
+    "data-state",
+  ]);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] =
@@ -310,7 +338,15 @@ export function DataTable<TData>(
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              rows.map((row, idx) => {
+                const extra = renderRowAttributes
+                  ? Object.fromEntries(
+                      Object.entries(
+                        renderRowAttributes(row.original, idx),
+                      ).filter(([k]) => !_RESERVED_ATTRS.has(k)),
+                    )
+                  : {};
+                return (
                 <tr
                   key={row.id}
                   data-testid={`${testId}-row-${row.id}`}
@@ -321,6 +357,7 @@ export function DataTable<TData>(
                     onRowClick &&
                       "cursor-pointer focus-within:bg-bg-2/60",
                   )}
+                  {...extra}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
@@ -335,7 +372,8 @@ export function DataTable<TData>(
                     </td>
                   ))}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { RefreshCw, RouteOff } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,11 +10,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
-import {
-  ResponsiveTable,
-  type ResponsiveTableColumn,
-} from "@/components/layout/ResponsiveTable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRoutingProbe, type RoutingProbeRow } from "./hooks";
 
@@ -114,65 +112,95 @@ export function ReachabilityMatrix() {
   const probe = useRoutingProbe();
   const rows = useMemo(() => rowsFromResult(probe.data), [probe.data]);
 
-  const columns: ResponsiveTableColumn<MatrixRow>[] = [
-    {
-      id: "app",
-      header: "App",
-      cell: (row) => <span className="font-medium text-fg">{row.app}</span>,
-    },
-    {
-      id: "internal",
-      header: "Internal URL",
-      cell: (row) =>
-        row.internalUrl ? (
-          <span className="font-mono text-xs text-fg-muted">
-            {row.internalUrl}
+  // Memoised columns. Status is a derived enum (ok/fail) sortable
+  // via accessorFn; latency is numeric (`sortingFn: "basic"`); date
+  // columns drop the per-column filter input — operators filter by
+  // app name + URL, not relative timestamps.
+  const columns = useMemo<ColumnDef<MatrixRow>[]>(
+    () => [
+      {
+        id: "app",
+        accessorFn: (row) => row.app,
+        header: "App",
+        meta: { label: "App" },
+        cell: ({ row }) => (
+          <span className="font-medium text-fg">{row.original.app}</span>
+        ),
+      },
+      {
+        id: "internal",
+        accessorFn: (row) => row.internalUrl,
+        header: "Internal URL",
+        meta: { label: "Internal URL" },
+        cell: ({ row }) =>
+          row.original.internalUrl ? (
+            <span className="font-mono text-xs text-fg-muted">
+              {row.original.internalUrl}
+            </span>
+          ) : (
+            <span className="text-fg-faint">—</span>
+          ),
+      },
+      {
+        id: "external",
+        accessorFn: (row) => row.externalUrl,
+        header: "External URL",
+        meta: { label: "External URL" },
+        cell: ({ row }) =>
+          row.original.externalUrl ? (
+            <a
+              href={row.original.externalUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-xs text-accent hover:underline"
+            >
+              {row.original.externalUrl}
+            </a>
+          ) : (
+            <span className="text-fg-faint">—</span>
+          ),
+      },
+      {
+        id: "status",
+        // Status as a derived enum string ("ok"/"fail") — short
+        // strings let the per-column filter act like an enum
+        // selector ("o" → ok rows, "f" → fail rows).
+        accessorFn: (row) => (row.ok ? "ok" : "fail"),
+        header: "Status",
+        meta: { label: "Status" },
+        cell: ({ row }) => <StatusBadge row={row.original} />,
+      },
+      {
+        id: "latency",
+        accessorFn: (row) =>
+          row.latency !== undefined ? row.latency : Number.POSITIVE_INFINITY,
+        header: "Latency",
+        meta: { label: "Latency" },
+        sortingFn: "basic",
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="font-mono tabular-nums text-fg-muted">
+            {row.original.latency !== undefined
+              ? `${Math.round(row.original.latency)} ms`
+              : "—"}
           </span>
-        ) : (
-          <span className="text-fg-faint">—</span>
         ),
-    },
-    {
-      id: "external",
-      header: "External URL",
-      cell: (row) =>
-        row.externalUrl ? (
-          <a
-            href={row.externalUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono text-xs text-accent hover:underline"
-          >
-            {row.externalUrl}
-          </a>
-        ) : (
-          <span className="text-fg-faint">—</span>
+      },
+      {
+        id: "probed",
+        accessorFn: (row) => row.probedAt,
+        header: "Last probed",
+        meta: { label: "Last probed" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {formatRelative(row.original.probedAt)}
+          </span>
         ),
-    },
-    {
-      id: "status",
-      header: "Status",
-      cell: (row) => <StatusBadge row={row} />,
-    },
-    {
-      id: "latency",
-      header: "Latency",
-      cell: (row) => (
-        <span className="font-mono tabular-nums text-fg-muted">
-          {row.latency !== undefined ? `${Math.round(row.latency)} ms` : "—"}
-        </span>
-      ),
-    },
-    {
-      id: "probed",
-      header: "Last probed",
-      cell: (row) => (
-        <span className="tabular-nums text-fg-muted">
-          {formatRelative(row.probedAt)}
-        </span>
-      ),
-    },
-  ];
+      },
+    ],
+    [],
+  );
 
   return (
     <Card data-testid="reachability-matrix">
@@ -213,51 +241,20 @@ export function ReachabilityMatrix() {
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={RouteOff}
+            title="No probe data"
+            description="The controller has not produced a routing-probe matrix yet."
+          />
         ) : (
-          <ResponsiveTable
-            rows={rows}
-            rowKey={(r) => r.id}
+          <DataTable<MatrixRow>
+            testId="reachability-rows"
             columns={columns}
-            empty={
-              <EmptyState
-                icon={RouteOff}
-                title="No probe data"
-                description="The controller has not produced a routing-probe matrix yet."
-              />
-            }
-            card={(row) => (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-fg">{row.app}</span>
-                  <StatusBadge row={row} />
-                </div>
-                {row.internalUrl ? (
-                  <div className="font-mono text-xs text-fg-muted">
-                    int: {row.internalUrl}
-                  </div>
-                ) : null}
-                {row.externalUrl ? (
-                  <a
-                    href={row.externalUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-xs text-accent hover:underline"
-                  >
-                    ext: {row.externalUrl}
-                  </a>
-                ) : null}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-mono tabular-nums text-fg-muted">
-                    {row.latency !== undefined
-                      ? `${Math.round(row.latency)} ms`
-                      : "—"}
-                  </span>
-                  <span className="tabular-nums text-fg-muted">
-                    {formatRelative(row.probedAt)}
-                  </span>
-                </div>
-              </div>
-            )}
+            data={rows}
+            getRowId={(row) => row.id}
+            caption={`${rows.length} app${rows.length === 1 ? "" : "s"}`}
+            emptyState="No probe data."
           />
         )}
       </CardContent>
