@@ -35,7 +35,7 @@ export function ExposureCard() {
     );
   }
 
-  if (q.error || !q.data) {
+  if (q.error || !q.data || !q.data.config || !q.data.config.exposure) {
     return (
       <Card data-testid="exposure-card-error" role="alert">
         <CardHeader>
@@ -44,7 +44,13 @@ export function ExposureCard() {
         <CardContent>
           <p className="text-sm text-danger">
             Couldn't load v2 routing config:{" "}
-            {q.error ? (q.error as Error).message : "no data"}
+            {q.error
+              ? (q.error as Error).message
+              : !q.data
+                ? "no data"
+                : !q.data.config
+                  ? "missing config field"
+                  : "missing exposure field"}
           </p>
         </CardContent>
       </Card>
@@ -52,8 +58,11 @@ export function ExposureCard() {
   }
 
   const exposure: RoutingV2Exposure = q.data.config.exposure;
-  const enabled = exposure.enabled;
+  const enabled = Boolean(exposure.enabled);
   const bindingLabel = bindingModeLabel(exposure.binding);
+  const publicHostnames = Array.isArray(publicHostnames)
+    ? publicHostnames
+    : [];
 
   return (
     <Card data-testid="exposure-card">
@@ -90,15 +99,15 @@ export function ExposureCard() {
 
         <div className="flex flex-col gap-1">
           <div className="text-xs uppercase tracking-wide text-fg-faint">
-            Public hostnames ({exposure.public_hostnames.length})
+            Public hostnames ({publicHostnames.length})
           </div>
-          {exposure.public_hostnames.length === 0 ? (
+          {publicHostnames.length === 0 ? (
             <span className="text-sm text-fg-muted">
               None — no inbound DNS will resolve this controller.
             </span>
           ) : (
             <ul className="flex flex-wrap gap-1.5">
-              {exposure.public_hostnames.map((h) => (
+              {publicHostnames.map((h) => (
                 <li key={h}>
                   <code className="rounded bg-bg-2 px-1.5 py-0.5 text-xs text-fg">
                     {h}

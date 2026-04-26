@@ -177,6 +177,26 @@ class KubernetesWorkloadInspector:
 
 
 class DockerWorkloadInspector:
+    """Compose-aware container introspector.
+
+    Service IDs in our SERVICES registry (``controller``, ``ui``,
+    ``grabit``, ``jdownloader``...) do NOT always match docker
+    container names. Compose lets each service set ``container_name``
+    independently, and many of our services use prefixed names
+    (``media-stack-controller``, ``media-stack-ui``). Other service
+    IDs in the registry refer to optional services that aren't even
+    deployed in the active compose profile (``authentik`` is K8s-only,
+    ``grabit``/``jdownloader`` ride opt-in profiles).
+
+    Looking up by raw service_id therefore floods the controller log
+    with ``404 Client Error ... No such container`` for every probe
+    cycle. Fix: maintain a service_id → container mapping using the
+    canonical ``com.docker.compose.service`` label that compose stamps
+    on every container it manages, and fall back to the raw name only
+    when no labelled match is found. Service IDs with no live
+    container on either path return a clean ``not running`` state
+    (no exception, no log spam).
+    """
 
     def __init__(self, client) -> None:
         self._client = client
@@ -184,17 +204,74 @@ class DockerWorkloadInspector:
     def list_workloads(
         self, service_ids: Iterable[str],
     ) -> dict[str, WorkloadState]:
+        ids = list(service_ids)
+        # Build the lookup once per probe cycle so a 30-service stack
+        # doesn't pay for 30 docker.list() round-trips.
+        labelled = self._build_labelled_lookup()
         out: dict[str, WorkloadState] = {}
-        for sid in service_ids:
-            out[sid] = self._inspect(sid)
+        for sid in ids:
+            out[sid] = self._inspect(sid, labelled)
         return out
 
-    def _inspect(self, sid: str) -> WorkloadState:
+    def _build_labelled_lookup(self) -> dict[str, object]:
+        """Return ``{compose_service_name: Container}`` for every
+        container the local docker daemon currently manages. Uses the
+        canonical compose label so the mapping survives renames."""
         try:
-            container = self._client.containers.get(sid)
-        except Exception as exc:
-            _log.debug("[DEBUG] inspect %s: get container failed: %s",
-                       sid, exc)
+            containers = list(self._client.containers.list(all=True))
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "[DEBUG] DockerWorkloadInspector: list_all failed: %s", exc,
+            )
+            return {}
+        out: dict[str, object] = {}
+        for container in containers:
+            try:
+                labels = (
+                    getattr(container, "labels", None)
+                    or (getattr(container, "attrs", {}) or {})
+                    .get("Config", {}).get("Labels", {})
+                    or {}
+                )
+            except Exception:  # noqa: BLE001
+                labels = {}
+            svc = str(labels.get("com.docker.compose.service") or "").strip()
+            if svc and svc not in out:
+                out[svc] = container
+        return out
+
+    def _resolve_container(self, sid: str, labelled: dict[str, object]):
+        """Map a service-id to a live container, trying:
+
+        1. The labelled lookup (compose-managed containers).
+        2. The compose ``media-stack-`` prefix (``controller`` →
+           ``media-stack-controller``).
+        3. The raw service_id as a literal container name.
+
+        Returns ``None`` if none match — the inspector treats that as
+        a not-running service rather than crashing.
+        """
+        cand = labelled.get(sid)
+        if cand is not None:
+            return cand
+        prefixed = labelled.get(f"media-stack-{sid}")
+        if prefixed is not None:
+            return prefixed
+        try:
+            return self._client.containers.get(sid)
+        except Exception:  # noqa: BLE001
+            try:
+                return self._client.containers.get(f"media-stack-{sid}")
+            except Exception:  # noqa: BLE001
+                return None
+
+    def _inspect(
+        self, sid: str, labelled: dict[str, object] | None = None,
+    ) -> WorkloadState:
+        labelled = labelled if labelled is not None \
+            else self._build_labelled_lookup()
+        container = self._resolve_container(sid, labelled)
+        if container is None:
             return WorkloadState(sid, False, 0, "", -1)
         try:
             container.reload()
@@ -222,10 +299,14 @@ class DockerWorkloadInspector:
     def previous_logs(
         self, service_id: str, *, tail_lines: int = 200,
     ) -> str:
+        labelled = self._build_labelled_lookup()
+        container = self._resolve_container(service_id, labelled)
+        if container is None:
+            return ""
         try:
-            container = self._client.containers.get(service_id)
             data = container.logs(tail=tail_lines, stdout=True, stderr=True)
-            return data.decode("utf-8", errors="replace") if isinstance(data, bytes) else str(data or "")
+            return data.decode("utf-8", errors="replace") \
+                if isinstance(data, bytes) else str(data or "")
         except Exception as exc:
             _log.debug("[DEBUG] previous_logs %s: %s", service_id, exc)
             return ""
