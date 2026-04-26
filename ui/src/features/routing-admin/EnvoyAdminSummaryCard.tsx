@@ -28,6 +28,14 @@ import {
   Network,
   ShieldCheck,
 } from "lucide-react";
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+} from "recharts";
 import { fetcher } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,6 +54,12 @@ interface ClusterRow {
   hosts: number;
   healthy: number;
   added_via_api: boolean;
+}
+
+interface PieDatum {
+  name: string;
+  value: number;
+  color: string;
 }
 
 interface LatencyPercentiles {
@@ -126,11 +140,6 @@ export function EnvoyAdminSummaryCard() {
     return Object.values(data.active_connections).reduce((a, b) => a + b, 0);
   }, [data]);
 
-  const breakdown = data?.downstream_breakdown;
-  const errorRate = breakdown && breakdown.total > 0
-    ? ((breakdown.rq_5xx + breakdown.rq_4xx) / breakdown.total) * 100
-    : 0;
-
   const healthSummary = useMemo(() => {
     if (!data) return { total: 0, healthy: 0, unhealthy: 0 };
     let total = 0;
@@ -141,6 +150,79 @@ export function EnvoyAdminSummaryCard() {
     }
     return { total, healthy, unhealthy: total - healthy };
   }, [data]);
+
+  const breakdown = data?.downstream_breakdown;
+  const errorRate = breakdown && breakdown.total > 0
+    ? ((breakdown.rq_5xx + breakdown.rq_4xx) / breakdown.total) * 100
+    : 0;
+
+  const responseCodeData = useMemo<readonly PieDatum[]>(() => {
+    if (!breakdown || breakdown.total === 0) return [];
+    // Envoy's /stats doesn't expose `rq_3xx` directly; derive it as
+    // the residual so redirects show up as a real slice instead of
+    // disappearing into rounding error.
+    const rq_3xx = Math.max(
+      0,
+      breakdown.total - breakdown.rq_2xx - breakdown.rq_4xx - breakdown.rq_5xx,
+    );
+    return [
+      { name: "2xx", value: breakdown.rq_2xx, color: "var(--color-success)" },
+      { name: "3xx", value: rq_3xx, color: "var(--color-info)" },
+      { name: "4xx", value: breakdown.rq_4xx, color: "var(--color-warning)" },
+      { name: "5xx", value: breakdown.rq_5xx, color: "var(--color-danger)" },
+    ].filter((r) => r.value > 0);
+  }, [breakdown]);
+
+  const clusterTrafficData = useMemo<readonly PieDatum[]>(() => {
+    if (!data) return [];
+    const sorted = Object.entries(data.request_totals).sort(
+      ([, a], [, b]) => b - a,
+    );
+    const top = sorted.slice(0, 5);
+    const restSum = sorted.slice(5).reduce((acc, [, v]) => acc + v, 0);
+    const palette = [
+      "var(--color-accent)",
+      "var(--color-info)",
+      "var(--color-success)",
+      "var(--color-warning)",
+      "var(--color-danger)",
+    ];
+    const rows: PieDatum[] = top
+      .filter(([, v]) => v > 0)
+      .map(([name, value], i) => ({
+        name: prettyCluster(name),
+        value,
+        color: palette[i % palette.length] ?? "var(--color-accent)",
+      }));
+    if (restSum > 0) {
+      rows.push({
+        name: "other",
+        value: restSum,
+        color: "var(--color-fg-faint)",
+      });
+    }
+    return rows;
+  }, [data]);
+
+  const clusterHealthData = useMemo<readonly PieDatum[]>(() => {
+    if (healthSummary.total === 0) return [];
+    const rows: PieDatum[] = [];
+    if (healthSummary.healthy > 0) {
+      rows.push({
+        name: "Healthy",
+        value: healthSummary.healthy,
+        color: "var(--color-success)",
+      });
+    }
+    if (healthSummary.unhealthy > 0) {
+      rows.push({
+        name: "Unhealthy",
+        value: healthSummary.unhealthy,
+        color: "var(--color-danger)",
+      });
+    }
+    return rows;
+  }, [healthSummary]);
 
   if (query.isLoading) {
     return (
@@ -228,6 +310,40 @@ export function EnvoyAdminSummaryCard() {
             testid="envoy-summary-tls-errors"
           />
         </div>
+
+        {/* Pie charts — visual at-a-glance for the three questions
+            operators ask first: "what response codes are we serving",
+            "where is traffic going", "are upstreams healthy". Each
+            falls back to a no-data caption rather than rendering an
+            empty donut so the panel stays calm when Envoy hasn't seen
+            traffic yet (e.g. immediately post-restart). */}
+        {(responseCodeData.length > 0 ||
+          clusterTrafficData.length > 0 ||
+          clusterHealthData.length > 0) && (
+          <div
+            className="grid grid-cols-1 gap-3 md:grid-cols-3"
+            data-testid="envoy-summary-pies"
+          >
+            <PieCard
+              title="Response codes"
+              description="Downstream response distribution."
+              data={responseCodeData}
+              testid="envoy-summary-pie-response"
+            />
+            <PieCard
+              title="Cluster traffic"
+              description="Top 5 clusters by request volume."
+              data={clusterTrafficData}
+              testid="envoy-summary-pie-traffic"
+            />
+            <PieCard
+              title="Host health"
+              description="Healthy vs unhealthy upstream hosts."
+              data={clusterHealthData}
+              testid="envoy-summary-pie-health"
+            />
+          </div>
+        )}
 
         {/* Downstream breakdown */}
         {breakdown && (
@@ -400,6 +516,77 @@ function Section({ title, description, children, testid }: SectionProps) {
         <p className="text-xs text-fg-muted">{description}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+interface PieCardProps {
+  title: string;
+  description: string;
+  data: readonly PieDatum[];
+  testid: string;
+}
+
+/**
+ * Donut chart wrapper for the three operator-facing rollups (response
+ * codes, cluster traffic share, host health). We use ResponsiveContainer
+ * so the SVG fills the grid cell and recalculates on viewport change;
+ * the `h-44` floor keeps the legend from collapsing the chart on
+ * narrow widths.
+ *
+ * No-data falls through to a muted caption so the panel doesn't render
+ * a degenerate single-slice donut on a fresh Envoy boot.
+ */
+function PieCard({ title, description, data, testid }: PieCardProps) {
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+      data-testid={testid}
+    >
+      <div>
+        <span className="text-sm font-medium text-fg">{title}</span>
+        <p className="text-xs text-fg-muted">{description}</p>
+      </div>
+      {data.length === 0 ? (
+        <span className="text-sm text-fg-muted">No data yet.</span>
+      ) : (
+        <div className="h-44 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={[...data]}
+                dataKey="value"
+                nameKey="name"
+                innerRadius={32}
+                outerRadius={56}
+                paddingAngle={2}
+                strokeWidth={1}
+                stroke="var(--color-bg-1)"
+              >
+                {data.map((d) => (
+                  <Cell key={d.name} fill={d.color} />
+                ))}
+              </Pie>
+              <ChartTooltip
+                contentStyle={{
+                  background: "var(--color-bg-2)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "var(--color-fg)",
+                }}
+                itemStyle={{ color: "var(--color-fg)" }}
+              />
+              <Legend
+                verticalAlign="bottom"
+                height={24}
+                iconSize={8}
+                wrapperStyle={{ fontSize: 11, color: "var(--color-fg-muted)" }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }

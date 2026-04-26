@@ -66,7 +66,9 @@ describe("Breadcrumb", () => {
     locationState.pathname = "/logs/abc";
     render(<Breadcrumb />);
     expect(screen.getByText("Logs")).toBeInTheDocument();
-    expect(screen.getByText("Library")).toBeInTheDocument();
+    // Logs lives under Observability after the Wave-7 IA reshuffle —
+    // it used to sit under Library for historical reasons.
+    expect(screen.getByText("Observability")).toBeInTheDocument();
   });
 
   it("falls back to root-only when path has no nav match", () => {
