@@ -30,7 +30,7 @@ function RoutingPage() {
       transition={{ duration: 0.25, ease: "easeOut" }}
     >
       <PageHeader
-        title="Routing"
+        title="Edge Gateway"
         description="Strategy + reachability + TLS for the controller's edge."
       />
 

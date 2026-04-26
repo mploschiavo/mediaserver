@@ -17,7 +17,7 @@
 // because most of the values (p99 latency in particular) move on a
 // minute timescale anyway and a noisier poll just burns cluster CPU.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   Activity,
@@ -122,24 +122,48 @@ interface EnvoyTimeseries {
 const QUERY_KEY = ["routing", "envoy", "admin-summary"] as const;
 const TS_QUERY_KEY = ["routing", "envoy", "timeseries"] as const;
 
-function useEnvoyAdminSummary(): UseQueryResult<EnvoyAdminSummary> {
+// Grafana-style refresh cadences. Picked to cover the operator's
+// usual rhythms: "watching a deploy" (2-5s, hot polling), "background
+// dashboard" (15-30s), and "left it open as a sanity check" (60s-5m).
+// Anything below 2s tends to overrun the controller's poll-of-Envoy
+// round-trip and just stacks queued requests.
+export interface RefreshOption {
+  label: string;
+  intervalMs: number;
+}
+
+export const REFRESH_OPTIONS: readonly RefreshOption[] = [
+  { label: "2s", intervalMs: 2_000 },
+  { label: "5s", intervalMs: 5_000 },
+  { label: "10s", intervalMs: 10_000 },
+  { label: "15s", intervalMs: 15_000 },
+  { label: "30s", intervalMs: 30_000 },
+  { label: "60s", intervalMs: 60_000 },
+  { label: "5m", intervalMs: 300_000 },
+] as const;
+
+const DEFAULT_INTERVAL_MS = 30_000;
+
+function useEnvoyAdminSummary(intervalMs: number): UseQueryResult<EnvoyAdminSummary> {
   return useQuery<EnvoyAdminSummary>({
     queryKey: QUERY_KEY,
     queryFn: () => fetcher<EnvoyAdminSummary>("api/envoy/admin-summary"),
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    refetchInterval: intervalMs,
+    // Stale time half the refetch interval — keeps tooltips/legends
+    // from re-fetching on every hover when the cadence is slow.
+    staleTime: Math.max(1_000, Math.floor(intervalMs / 2)),
   });
 }
 
-function useEnvoyTimeseries(): UseQueryResult<EnvoyTimeseries> {
+function useEnvoyTimeseries(intervalMs: number): UseQueryResult<EnvoyTimeseries> {
   return useQuery<EnvoyTimeseries>({
     queryKey: TS_QUERY_KEY,
     queryFn: () => fetcher<EnvoyTimeseries>("api/envoy/timeseries?window=1800"),
     // Match the admin-summary cadence so we re-poll at the same beats
     // — the buffer fills as a side-effect of the admin-summary call,
     // so an out-of-phase poll would miss the freshest sample.
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    refetchInterval: intervalMs,
+    staleTime: Math.max(1_000, Math.floor(intervalMs / 2)),
   });
 }
 
@@ -162,8 +186,9 @@ function prettyCluster(name: string): string {
 }
 
 export function EnvoyAdminSummaryCard() {
-  const query = useEnvoyAdminSummary();
-  const tsQuery = useEnvoyTimeseries();
+  const [intervalMs, setIntervalMs] = useState<number>(DEFAULT_INTERVAL_MS);
+  const query = useEnvoyAdminSummary(intervalMs);
+  const tsQuery = useEnvoyTimeseries(intervalMs);
   const data = query.data;
   const ts = tsQuery.data;
 
@@ -365,11 +390,19 @@ export function EnvoyAdminSummaryCard() {
   return (
     <Card data-testid="envoy-admin-summary">
       <CardHeader>
-        <CardTitle>Edge gateway summary</CardTitle>
-        <CardDescription>
-          Live data from Envoy's admin API — cluster health, traffic,
-          latency, and TLS state. Refreshes every 30 seconds.
-        </CardDescription>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <CardTitle>Edge gateway summary</CardTitle>
+            <CardDescription>
+              Live data from Envoy's admin API — cluster health,
+              traffic, latency, and TLS state.
+            </CardDescription>
+          </div>
+          <RefreshSelector
+            value={intervalMs}
+            onChange={setIntervalMs}
+          />
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {/* KPI row */}
@@ -909,6 +942,44 @@ function Section({ title, description, children, testid }: SectionProps) {
       </div>
       {children}
     </div>
+  );
+}
+
+interface RefreshSelectorProps {
+  value: number;
+  onChange: (intervalMs: number) => void;
+}
+
+/**
+ * Compact Grafana-style refresh-rate selector. Rendered in the
+ * CardHeader so the operator can drop into hot-poll mode (2-5s) when
+ * watching a deploy and back off to background cadence (60s-5m) when
+ * leaving the panel open as a sanity check. Uses a native <select>
+ * for keyboard-accessibility without dragging in a combobox lib.
+ */
+function RefreshSelector({ value, onChange }: RefreshSelectorProps) {
+  return (
+    <label
+      className="flex items-center gap-2 text-xs text-fg-muted"
+      data-testid="envoy-summary-refresh-selector"
+    >
+      <span className="hidden sm:inline">Refresh</span>
+      <select
+        className={cn(
+          "rounded-md border border-border bg-bg-1 px-2 py-1 text-xs text-fg",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+        value={value}
+        onChange={(e) => onChange(Number(e.currentTarget.value))}
+        aria-label="Refresh interval"
+      >
+        {REFRESH_OPTIONS.map((opt) => (
+          <option key={opt.intervalMs} value={opt.intervalMs}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
