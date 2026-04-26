@@ -29,7 +29,7 @@ from typing import Iterable
 
 import yaml
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _API_DIR = _REPO_ROOT / "src" / "media_stack" / "api"
 _HANDLERS_GET = _API_DIR / "handlers_get.py"
 _HANDLERS_POST = _API_DIR / "handlers_post.py"

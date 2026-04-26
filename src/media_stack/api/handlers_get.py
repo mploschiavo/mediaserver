@@ -1177,104 +1177,49 @@ class _UserMgmtGetHelper:
 _user_mgmt_get_helper = _UserMgmtGetHelper()
 
 class _GatewayHostnameProbe:
-    """Extract the list of hostnames Envoy is serving from its
-    generated config. Used by the Routing tab to render a /etc/hosts
-    snippet that includes non-service vhosts (Authelia portal,
-    controller sub-host, etc.) alongside the per-service entries."""
+    """Hostnames Envoy is serving, derived from the routing config.
 
-    _HOST_RE = re.compile(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+")
-
-    def __init__(self) -> None:
-        self._env = os.environ
+    Routing config IS the source of truth — it drives the envoy.yaml
+    render and the K8s Ingress patcher. A previous revision additionally
+    regex-scraped the rendered envoy.yaml as a "secondary" source; that
+    was redundant (everything in envoy.yaml came from routing config in
+    the first place) and unsafe — the regex matched inline-Lua
+    identifiers (`string.find`, `string.gsub`), Envoy proto type URLs
+    (`envoy.extensions.filters.http.ext_authz.v3`,
+    `type.googleapis.com`), and minified-JS variable accesses
+    (`a.get`, `el.parent`, `u.hash`) that happen to be embedded in
+    Envoy's filter chain definitions. Operators saw all that garbage
+    in the Routing tab's "Gateway hostnames" panel. The fix: trust the
+    config — if a hostname isn't in routing config, it isn't being
+    served, period."""
 
     def read(self) -> list[str]:
-        # Primary source: routing config. The dashboard renders this
-        # list as the "hostnames Envoy serves" inventory — the routing
-        # config IS the source of truth for that, since it drives both
-        # the envoy.yaml render and the Ingress patcher. Pulling from
-        # config also works on K8s where the controller writes
-        # envoy.yaml into a ConfigMap, not a path the controller pod
-        # itself can read back, so the regex-over-file path returns
-        # empty even when the gateway is fully configured.
         hostnames: set[str] = set()
         try:
             from media_stack.api.services import config as config_svc
             from media_stack.api.services.registry import SERVICES
         except Exception as exc:  # noqa: BLE001
             log_swallowed(exc)
-            SERVICES = []  # type: ignore[assignment]
-            config_svc = None  # type: ignore[assignment]
-        if config_svc is not None:
-            try:
-                routing = config_svc.get_routing()
-            except Exception as exc:  # noqa: BLE001
-                log_swallowed(exc)
-                routing = {}
-            base = str(routing.get("base_domain") or "").strip()
-            sub = str(routing.get("stack_subdomain") or "").strip()
-            gw_host = str(routing.get("gateway_host") or "").strip()
-            if gw_host:
-                hostnames.add(gw_host)
-            if base and sub:
-                for svc in SERVICES:
-                    hostnames.add(f"{svc.id}.{sub}.{base}")
-            direct_hosts = routing.get("direct_hosts") or {}
-            if isinstance(direct_hosts, dict):
-                for value in direct_hosts.values():
-                    if isinstance(value, str) and value.strip():
-                        hostnames.add(value.strip())
-
-        # Secondary source: regex over envoy.yaml when present.
-        # Filtered by the configured ``GATEWAY_DOMAIN_SUFFIX`` only when
-        # the env var is explicitly set — defaulting to ".media-stack.local"
-        # silently dropped every legitimate hostname on real
-        # deployments (m.iomio.io, *.example.com). When the suffix is
-        # left at its default, we accept any host the regex finds so
-        # the file-derived list isn't empty in practice.
-        cfg_path = self._locate_envoy_yaml()
-        if cfg_path is not None:
-            try:
-                text = cfg_path.read_text(encoding="utf-8")
-            except OSError:
-                text = ""
-            if text:
-                explicit_suffix = self._env.get("GATEWAY_DOMAIN_SUFFIX", "").strip()
-                for match in self._HOST_RE.finditer(text):
-                    host = match.group(0)
-                    if explicit_suffix:
-                        if not host.endswith(explicit_suffix):
-                            continue
-                    elif not self._looks_like_hostname(host):
-                        # Without an explicit suffix the regex will
-                        # also match IPs, image tags, and version
-                        # strings ("1.2.3.4", "envoyproxy/envoy:1.34.0").
-                        # Reject those defensively so the file-derived
-                        # set doesn't pollute the operator's hostname
-                        # inventory.
-                        continue
-                    hostnames.add(host)
+            return []
+        try:
+            routing = config_svc.get_routing()
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
+            routing = {}
+        base = str(routing.get("base_domain") or "").strip()
+        sub = str(routing.get("stack_subdomain") or "").strip()
+        gw_host = str(routing.get("gateway_host") or "").strip()
+        if gw_host:
+            hostnames.add(gw_host)
+        if base and sub:
+            for svc in SERVICES:
+                hostnames.add(f"{svc.id}.{sub}.{base}")
+        direct_hosts = routing.get("direct_hosts") or {}
+        if isinstance(direct_hosts, dict):
+            for value in direct_hosts.values():
+                if isinstance(value, str) and value.strip():
+                    hostnames.add(value.strip())
         return sorted(hostnames)
-
-    @staticmethod
-    def _looks_like_hostname(value: str) -> bool:
-        """Heuristic — accept only labels that contain a non-numeric
-        first component. Filters out ``1.2.3.4``-style IP addresses
-        and ``v1.2.3``-style version pins that the Envoy config has
-        no business advertising as a virtual host."""
-        head = value.split(".", 1)[0]
-        if not head:
-            return False
-        return not head.isdigit() and not (head[0] == "v" and head[1:].isdigit())
-
-    def _locate_envoy_yaml(self) -> Path | None:
-        for candidate in (
-            Path(self._env.get("CONFIG_ROOT", "/srv-config"))
-            / "envoy" / "envoy.yaml",
-            Path("/etc/envoy/envoy.yaml"),
-        ):
-            if candidate.is_file():
-                return candidate
-        return None
 
 
 _gateway_hostname_probe = _GatewayHostnameProbe()

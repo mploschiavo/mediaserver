@@ -33,7 +33,7 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 HANDLERS_GET = ROOT / "src" / "media_stack" / "api" / "handlers_get.py"
 
 # Handler names that are INTENTIONALLY allowed to reference raw key
