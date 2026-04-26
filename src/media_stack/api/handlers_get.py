@@ -714,6 +714,21 @@ class GetRequestHandler:
             # rates + p50/p95/p99 latency + active connections + TLS
             # handshake errors. Surfaced on the Routing tab.
             handler._json_response(200, metrics_svc.get_envoy_admin_summary())
+        elif path == "/api/envoy/timeseries":
+            # Rolling buffer of recent admin-summary samples + derived
+            # rate deltas. Populated as a side-effect of the
+            # admin-summary polling, so series only covers the time the
+            # Routing panel has been open. ``window_seconds`` query
+            # param defaults to 1800 (30 min); clamps to ≥60s.
+            qs = parse_qs(urlparse(handler.path).query)
+            try:
+                window = int((qs.get("window") or ["1800"])[0])
+            except (TypeError, ValueError):
+                window = 1800
+            handler._json_response(
+                200,
+                metrics_svc.get_envoy_timeseries(window),
+            )
         elif path == "/api/feed.xml":
             handler._raw_response(200, "application/rss+xml; charset=utf-8",
                                   metrics_svc.get_rss_feed(handler.state, api_cache).encode("utf-8"))

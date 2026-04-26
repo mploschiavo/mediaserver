@@ -154,5 +154,108 @@ class TestGetGrafanaDashboard(unittest.TestCase):
         self.assertTrue(result["overwrite"])
 
 
+class TestEnvoyTimeseries(unittest.TestCase):
+    """The rolling-buffer timeseries feeds the Routing tab's
+    sparklines and live request-rate chart. The buffer is populated as
+    a side-effect of every ``get_envoy_admin_summary()`` call."""
+
+    def setUp(self):
+        # Each test starts from a clean buffer so order doesn't matter.
+        metrics_mod._timeseries_buf.clear()
+
+    def _sample(self, total: int, _4xx: int = 0, _5xx: int = 0,
+                healthy: int = 2, hosts: int = 2, active: int = 0) -> dict:
+        return {
+            "downstream_breakdown": {
+                "total": total,
+                "rq_2xx": max(0, total - _4xx - _5xx),
+                "rq_4xx": _4xx,
+                "rq_5xx": _5xx,
+            },
+            "clusters": [{"hosts": hosts, "healthy": healthy}],
+            "active_connections": {"a": active},
+            "tls_handshake_errors": 0,
+        }
+
+    def test_empty_buffer_returns_empty_arrays(self):
+        ts = metrics_mod.get_envoy_timeseries(60)
+        self.assertEqual(ts["samples"], [])
+        self.assertEqual(ts["deltas"], [])
+
+    def test_record_dedupes_same_second_samples(self):
+        # Two records with identical ts (same wall-clock second) must
+        # collapse to one — multiple panel tabs racing the same poll.
+        with patch("media_stack.api.services.metrics.time") as mock_time:
+            mock_time.time.return_value = 1_000_000
+            metrics_mod._record_timeseries_sample(self._sample(100))
+            metrics_mod._record_timeseries_sample(self._sample(150))
+        self.assertEqual(len(metrics_mod._timeseries_buf), 1)
+
+    def test_deltas_compute_request_rate_from_counter_differences(self):
+        # Envoy counters are monotonic; rate = Δcount / Δt.
+        with patch("media_stack.api.services.metrics.time") as mock_time:
+            mock_time.time.return_value = 1_000_000
+            metrics_mod._record_timeseries_sample(self._sample(100))
+            mock_time.time.return_value = 1_000_010  # +10s
+            metrics_mod._record_timeseries_sample(
+                self._sample(200, _4xx=5, _5xx=5),
+            )
+            # Read while the patched clock is still pinned, otherwise
+            # the cutoff filter (now − window) drops both samples.
+            ts = metrics_mod.get_envoy_timeseries(60)
+        self.assertEqual(len(ts["samples"]), 2)
+        self.assertEqual(len(ts["deltas"]), 1)
+        delta = ts["deltas"][0]
+        # 100 requests over 10s = 10 rq/s
+        self.assertAlmostEqual(delta["rq_per_s"], 10.0)
+        # 4xx+5xx went 0 → 10 over 10s = 1 err/s
+        self.assertAlmostEqual(delta["err_per_s"], 1.0)
+
+    def test_window_clamps_to_minimum_60s(self):
+        # window_seconds must clamp to ≥60s so nonsense values
+        # (negative, zero) don't return a degenerate 1-sample series.
+        with patch("media_stack.api.services.metrics.time") as mock_time:
+            mock_time.time.return_value = 1_000_000
+            metrics_mod._record_timeseries_sample(self._sample(100))
+            mock_time.time.return_value = 1_000_005
+            metrics_mod._record_timeseries_sample(self._sample(110))
+            ts = metrics_mod.get_envoy_timeseries(window_seconds=0)
+        # Both samples fall within the clamped 60s window.
+        self.assertEqual(len(ts["samples"]), 2)
+        self.assertEqual(ts["window_seconds"], 0)
+
+    def test_window_excludes_samples_older_than_cutoff(self):
+        with patch("media_stack.api.services.metrics.time") as mock_time:
+            # Old sample at t=1_000_000.
+            mock_time.time.return_value = 1_000_000
+            metrics_mod._record_timeseries_sample(self._sample(100))
+            # Current sample 1 hour later.
+            mock_time.time.return_value = 1_003_700  # +1h+100s
+            metrics_mod._record_timeseries_sample(self._sample(500))
+            # Now query a 60s window — only the second sample should
+            # land in the response.
+            ts = metrics_mod.get_envoy_timeseries(window_seconds=60)
+            self.assertEqual(len(ts["samples"]), 1)
+            self.assertEqual(ts["samples"][0]["rq_total"], 500)
+
+    def test_record_called_from_get_envoy_admin_summary(self):
+        # The buffer should populate as a side-effect of the panel's
+        # 30s polling. Mock the underlying urlopen so we don't reach
+        # out to a real Envoy.
+        import json
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({
+                "cluster_statuses": [],
+                "stats": [],
+                "histograms": {},
+            }).encode()
+            resp.__enter__ = MagicMock(return_value=resp)
+            resp.__exit__ = MagicMock(return_value=False)
+            mock_urlopen.return_value = resp
+            metrics_mod.get_envoy_admin_summary()
+        self.assertEqual(len(metrics_mod._timeseries_buf), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
