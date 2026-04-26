@@ -1,7 +1,8 @@
 import { asArray } from "@/lib/coerce";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { LogOut, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,14 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import { formatRelative } from "@/features/media-integrity/format";
 import {
   useMe,
@@ -33,6 +27,23 @@ import {
 
 function sessionId(s: MeSession): string {
   return String(s.session_id ?? s.id ?? "");
+}
+
+/**
+ * The controller surfaces a synth caller-row when the cross-provider
+ * aggregate is empty but the operator is clearly authenticated (the
+ * SSO case — see ``_synth_caller_session`` in
+ * ``security_get_handlers.py``). Synth rows have ``revokable: false``
+ * AND ``session_id: ""`` because the controller didn't mint the
+ * underlying cookie — Authelia did, and the operator revokes via the
+ * Authelia portal (or the user-menu sign-out), not via this list.
+ * Detecting this lets us hide the "Sign out" / "This wasn't me"
+ * affordances that have no session_id to act on, instead of letting
+ * the operator click dead buttons.
+ */
+function isSynthRow(s: MeSession): boolean {
+  if (s.revokable === false) return true;
+  return sessionId(s) === "";
 }
 
 function sessionIp(s: MeSession): string {
@@ -54,6 +65,13 @@ function errMsg(err: unknown, fallback: string): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return fallback;
+}
+
+interface SessionRow {
+  session: MeSession;
+  rowKey: string;
+  isCurrent: boolean;
+  synth: boolean;
 }
 
 /**
@@ -120,6 +138,132 @@ export function SessionsCard() {
     [thisWasntMe],
   );
 
+  // Wrap each session in a row descriptor — TanStack Table works with
+  // homogeneous rows, and we need stable testid keys for synth rows
+  // (which have empty session_id) so we precompute rowKey here.
+  const rows = useMemo<SessionRow[]>(() => {
+    return sessions.map((s, i) => {
+      const id = sessionId(s);
+      const synth = isSynthRow(s);
+      return {
+        session: s,
+        rowKey: id || `synth-${i}`,
+        isCurrent:
+          Boolean(s.current) ||
+          synth ||
+          (currentId !== "" && id === currentId),
+        synth,
+      };
+    });
+  }, [sessions, currentId]);
+
+  const columns = useMemo<ColumnDef<SessionRow>[]>(
+    () => [
+      {
+        id: "device",
+        accessorFn: (r) => sessionDevice(r.session),
+        header: "Device",
+        meta: { label: "Device" },
+        cell: ({ row }) => {
+          const s = row.original.session;
+          return (
+            <div className="flex flex-col gap-0.5">
+              <span className="flex items-center gap-2 font-medium text-fg">
+                {sessionDevice(s)}
+                {row.original.isCurrent ? (
+                  <Badge variant="info">this session</Badge>
+                ) : null}
+              </span>
+              {s.provider ? (
+                <span className="text-xs text-fg-muted">{s.provider}</span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        id: "ip",
+        accessorFn: (r) => sessionIp(r.session),
+        header: "IP",
+        meta: { label: "IP" },
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-fg-muted">
+            {sessionIp(row.original.session)}
+          </span>
+        ),
+      },
+      {
+        id: "last_activity",
+        accessorFn: (r) => lastSeen(r.session),
+        header: "Last activity",
+        meta: { label: "Last activity" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-fg-muted">
+            {formatRelative(lastSeen(row.original.session))}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => {
+          const { session: s, rowKey, synth, isCurrent } = row.original;
+          const id = sessionId(s);
+          if (synth) {
+            return (
+              <div
+                className="flex items-center justify-end text-xs text-fg-muted"
+                data-testid={`session-synth-help-${rowKey}`}
+              >
+                Sign out from the user menu
+              </div>
+            );
+          }
+          return (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => handleThisWasntMe(s)}
+                disabled={thisWasntMe.isPending}
+                className="text-xs text-danger underline-offset-2 [@media(hover:hover)]:hover:underline disabled:opacity-50"
+                data-testid={`session-wasnt-me-${id}`}
+                aria-label={`Report session ${id} as not mine`}
+              >
+                <span className="inline-flex items-center gap-1">
+                  <ShieldAlert aria-hidden className="size-3.5" />
+                  This wasn't me
+                </span>
+              </button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handleRevokeOne(id)}
+                disabled={
+                  isCurrent || revokeOne.isPending || !userId || !id
+                }
+                data-testid={`session-signout-${id}`}
+              >
+                <LogOut aria-hidden className="size-3.5" />
+                Sign out
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [
+      handleRevokeOne,
+      handleThisWasntMe,
+      revokeOne.isPending,
+      thisWasntMe.isPending,
+      userId,
+    ],
+  );
+
   return (
     <Card data-testid="sessions-card">
       <CardHeader>
@@ -148,80 +292,16 @@ export function SessionsCard() {
             No active sessions.
           </p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Device</TableHead>
-                <TableHead>IP</TableHead>
-                <TableHead>Last activity</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.map((s) => {
-                const id = sessionId(s);
-                const isCurrent =
-                  Boolean(s.current) || (currentId !== "" && id === currentId);
-                return (
-                  <TableRow key={id} data-testid={`session-row-${id}`}>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="flex items-center gap-2 font-medium text-fg">
-                          {sessionDevice(s)}
-                          {isCurrent ? (
-                            <Badge variant="info">this session</Badge>
-                          ) : null}
-                        </span>
-                        {s.provider ? (
-                          <span className="text-xs text-fg-muted">
-                            {s.provider}
-                          </span>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-fg-muted">
-                      {sessionIp(s)}
-                    </TableCell>
-                    <TableCell className="text-xs tabular-nums text-fg-muted">
-                      {formatRelative(lastSeen(s))}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleThisWasntMe(s)}
-                          disabled={thisWasntMe.isPending}
-                          className="text-xs text-danger underline-offset-2 [@media(hover:hover)]:hover:underline disabled:opacity-50"
-                          data-testid={`session-wasnt-me-${id}`}
-                          aria-label={`Report session ${id} as not mine`}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            <ShieldAlert aria-hidden className="size-3.5" />
-                            This wasn't me
-                          </span>
-                        </button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleRevokeOne(id)}
-                          disabled={
-                            isCurrent ||
-                            revokeOne.isPending ||
-                            !userId ||
-                            !id
-                          }
-                          data-testid={`session-signout-${id}`}
-                        >
-                          <LogOut aria-hidden className="size-3.5" />
-                          Sign out
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="px-6 pb-6">
+            <DataTable<SessionRow>
+              testId="session"
+              columns={columns}
+              data={rows}
+              getRowId={(r) => r.rowKey}
+              caption={`${rows.length} session${rows.length === 1 ? "" : "s"}`}
+              emptyState="No active sessions."
+            />
+          </div>
         )}
       </CardContent>
       <div className="flex items-center justify-end border-t border-border px-6 py-4">

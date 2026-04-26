@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 
 const failedLoginsState = vi.hoisted(() => ({
@@ -88,6 +89,36 @@ describe("FailedLoginsCard", () => {
       "href",
       "/audit-log?action=auth.login.failed&actor=10.0.0.0%2F24",
     );
+  });
+
+  it("filters clusters via the DataTable identifier filter", async () => {
+    failedLoginsState.data = {
+      clusters: [
+        {
+          ip_prefix: "192.168.1.0/24",
+          attempt_count: 12,
+          first_seen: new Date(Date.now() - 600_000).toISOString(),
+          last_seen: new Date(Date.now() - 60_000).toISOString(),
+        },
+        {
+          username: "carol",
+          attempt_count: 3,
+          first_seen: new Date(Date.now() - 120_000).toISOString(),
+          last_seen: new Date(Date.now() - 30_000).toISOString(),
+        },
+      ],
+    };
+    renderWithProviders(<FailedLoginsCard />);
+    expect(
+      screen.getByTestId("failed-login-row-192.168.1.0/24"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("failed-login-row-carol")).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByTestId("failed-login-filter-identifier"),
+      "carol",
+    );
+    expect(screen.queryByTestId("failed-login-row-192.168.1.0/24")).toBeNull();
+    expect(screen.getByTestId("failed-login-row-carol")).toBeInTheDocument();
   });
 
   it("opens the raw-details dialog when audit-log is unavailable", async () => {

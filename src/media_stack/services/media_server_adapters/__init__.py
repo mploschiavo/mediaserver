@@ -1,17 +1,40 @@
-"""Media-server adapter package.
+"""Shim — moved to ``media_stack.application.media_server_adapters``,
+``media_stack.adapters.media_server_adapters``, and
+``media_stack.domain.media_server_adapters`` in ADR-0002 Phase 16-E
+(media_server_adapters). Phase 16-F removes this shim.
 
-App-specific adapters (e.g. for media servers) are loaded dynamically
-from the service contracts' adapter_classes field — no hardcoded imports.
+The legacy ``services.media_server_adapters`` package re-exports the
+public surface from the relocated layers and preserves the dynamic
+``__getattr__`` that loads app-specific adapter classes
+(``JellyfinMediaServerAdapter``, ``PlexMediaServerAdapter``, …) by
+service id from the ``services.apps.<id>.media_server_adapter``
+modules — that lazy-load path is what the bootstrap tests exercise.
+
+This module cannot use the ``sys.modules[__name__] = _impl`` trick
+the leaf shims use because it is a package — replacing the package
+object would break the ``services.media_server_adapters.<leaf>``
+import paths the leaf shims plus ``contracts/services/*.yaml`` rely
+on. Instead we re-export the public names explicitly and let the
+leaf shims handle per-module aliasing.
 """
+
+from __future__ import annotations
 
 import importlib
 
-from .base import MediaServerAdapterBase, MediaServerAdapterContext
-from .emby import EmbyMediaServerAdapter
-from .factory import MediaServerAdapterFactory
-from .generic import GenericMediaServerAdapter
-from .mythtv import MythTvMediaServerAdapter
-from .planned import PlannedMediaServerAdapter
+from media_stack.adapters.media_server_adapters.emby import EmbyMediaServerAdapter
+from media_stack.adapters.media_server_adapters.generic import GenericMediaServerAdapter
+from media_stack.adapters.media_server_adapters.mythtv import MythTvMediaServerAdapter
+from media_stack.application.media_server_adapters.factory import (
+    MediaServerAdapterFactory,
+)
+from media_stack.application.media_server_adapters.planned import (
+    PlannedMediaServerAdapter,
+)
+from media_stack.domain.media_server_adapters.protocols import (
+    MediaServerAdapterBase,
+    MediaServerAdapterContext,
+)
 
 
 def _lazy_adapter(module_path: str, class_name: str):

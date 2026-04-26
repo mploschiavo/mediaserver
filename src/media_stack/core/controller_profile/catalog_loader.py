@@ -25,9 +25,27 @@ from media_stack.core.controller_profile.normalizers import (
     _to_positive_int,
 )
 
-_DEFAULT_PROFILE_CATALOG_PATH = (
-    Path(__file__).resolve().parents[4] / "contracts" / "media-stack.catalog.yaml"
+import sys as _sys
+
+# Resolve media-stack.catalog.yaml across deploy modes — same
+# install-path bug class as v1.0.231 / v1.0.235; see
+# test_install_path_resolvers_ratchet.
+_DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES = (
+    Path(__file__).resolve().parents[4] / "contracts" / "media-stack.catalog.yaml",
+    Path("/opt/media-stack/contracts/media-stack.catalog.yaml"),
+    Path(_sys.prefix) / "share" / "media-stack" / "contracts" / "media-stack.catalog.yaml",
+    Path("/contracts/media-stack.catalog.yaml"),
 )
+
+
+def _resolve_profile_catalog() -> Path:
+    for p in _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES:
+        if p.is_file():
+            return p
+    return _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES[0]
+
+
+_DEFAULT_PROFILE_CATALOG_PATH = _resolve_profile_catalog()
 
 
 

@@ -108,6 +108,29 @@ describe("ProviderReconcileCard", () => {
     );
   });
 
+  it("filters provider rows via the DataTable user filter", async () => {
+    providersState.data = {
+      providers: [
+        {
+          user_id: "u1",
+          username: "alice",
+          providers: { authelia: { external_id: "ext-1" } },
+        },
+        {
+          user_id: "u2",
+          username: "bob",
+          providers: { authelia: { external_id: "ext-2" } },
+        },
+      ],
+    };
+    renderWithProviders(<ProviderReconcileCard />);
+    expect(screen.getByTestId("provider-row-u1")).toBeInTheDocument();
+    expect(screen.getByTestId("provider-row-u2")).toBeInTheDocument();
+    await userEvent.type(screen.getByTestId("provider-filter-user"), "bob");
+    expect(screen.queryByTestId("provider-row-u1")).toBeNull();
+    expect(screen.getByTestId("provider-row-u2")).toBeInTheDocument();
+  });
+
   it("renders pending diffs and offers a Link button for orphans", async () => {
     providersState.data = { providers: [{ user_id: "u1", username: "alice" }] };
     reconcileState.data = {

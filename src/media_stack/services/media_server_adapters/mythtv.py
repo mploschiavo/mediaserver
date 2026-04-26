@@ -1,11 +1,20 @@
-"""MythTV media-server adapter."""
+"""Shim — moved to
+``media_stack.adapters.media_server_adapters.mythtv`` in ADR-0002
+Phase 16-E (media_server_adapters). Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+of the form ``mock.patch.object(MODULE, "_helper", ...)`` (where
+``MODULE`` is the legacy shim path) work transparently — the shim
+import resolves to the impl module itself, so attribute patches land
+on the same module the impl function's body looks up names from.
 
-from .planned import PlannedMediaServerAdapter
+The legacy import path ``media_stack.services.media_server_adapters.mythtv:MythTvMediaServerAdapter``
+is referenced by ``contracts/services/mythtv.yaml`` — keep this shim
+until that manifest entry is relocated.
+"""
 
+import sys
 
-class MythTvMediaServerAdapter(PlannedMediaServerAdapter):
-    """MythTV backend adapter driven by configured phase plans."""
+from media_stack.adapters.media_server_adapters import mythtv as _impl
 
-    pass
+sys.modules[__name__] = _impl

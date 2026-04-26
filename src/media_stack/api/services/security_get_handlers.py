@@ -274,11 +274,15 @@ class _SessionVisibilityGetHelper:
 
     def _my_tokens(self, handler: Any) -> None:
         """GET /api/me/tokens. Authz: authenticated, scoped to self.
-        Bucket: global. Shape: ``{"tokens": [...]}``."""
+        Bucket: global. Shape: ``{"tokens": [...]}``. The legacy
+        fallback (``_legacy_owner_repr_matches``) is documented in
+        that helper — see it for the Bug-1 history."""
         def _run(actor: Actor) -> dict:
             self._plumb.require_authenticated(actor)
-            rows = self._token_store_getter().list_all(
-                owner_username=actor.username,
+            store = self._token_store_getter()
+            rows = list(store.list_all(owner_username=actor.username))
+            rows.extend(
+                _legacy_owner_repr_matches(store, actor.username),
             )
             return {"tokens": [r.to_dict() for r in rows]}
         self._serve(handler, _run)
@@ -318,6 +322,36 @@ class _SessionVisibilityGetHelper:
             )
             return {"entries": list(entries)}
         self._serve(handler, _run)
+
+
+def _legacy_owner_repr_matches(store: Any, username: str) -> list:
+    """Return tokens whose ``owner_username`` is a corrupted dataclass
+    repr that *embeds* this caller's real username.
+
+    See ``_my_tokens`` docstring for the bug history. The repr looks
+    like ``Actor(username='alice', roles=frozenset({'admin'}), ...)``
+    so we match on the literal substring ``username='<caller>'``. The
+    surrounding quotes pin the match — bare username substrings could
+    yield a false positive (e.g. an ``alice`` matcher hitting an
+    unrelated ``alicent`` token), but the quoted form only appears
+    inside an ``Actor(...)`` repr written by the broken code path.
+    Returns ``[]`` when ``username`` is empty or the store doesn't
+    expose ``list_all()``.
+    """
+    if not username:
+        return []
+    needle = f"username='{username}'"
+    try:
+        all_rows = list(store.list_all())
+    except TypeError:
+        # Some test stubs require an ``owner_username`` argument.
+        try:
+            all_rows = list(store.list_all(owner_username=""))
+        except Exception:  # noqa: BLE001
+            return []
+    except Exception:  # noqa: BLE001
+        return []
+    return [r for r in all_rows if needle in str(getattr(r, "owner_username", ""))]
 
 
 def _synth_caller_session(actor: Actor) -> dict:

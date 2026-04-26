@@ -50,6 +50,11 @@ export interface MeSession {
   last_activity?: string;
   last_seen_at?: string;
   current?: boolean;
+  // Synth caller-rows under SSO arrive with revokable=false; the UI
+  // suppresses sign-out affordances on those rows since the cookie
+  // is owned by Authelia (not the controller). See
+  // ``_synth_caller_session`` in ``security_get_handlers.py``.
+  revokable?: boolean;
   [key: string]: unknown;
 }
 

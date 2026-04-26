@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { onAuthEvent } from "@/api/client";
 import { routeTree } from "@/routeTree";
+import { toast } from "sonner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -75,16 +76,81 @@ export function App() {
   //    the user hits the dashboard root anyway.
   useEffect(() => {
     let redirected = false;
-    return onAuthEvent((event) => {
-      if (event !== "unauthenticated") return;
-      if (redirected) return;
-      const path = window.location.pathname;
-      if (path.startsWith("/app/authelia") || path.startsWith("/api/verify")) {
-        return;
-      }
+    const path = window.location.pathname;
+    const isAuthPath =
+      path.startsWith("/app/authelia") || path.startsWith("/api/verify");
+
+    const redirectToLogin = () => {
+      if (redirected || isAuthPath) return;
       redirected = true;
-      window.location.replace("/app/authelia/");
+      // Brief, non-blocking toast before the hard redirect — operator
+      // sees what happened instead of jarring nav. 1.5s is short
+      // enough nobody waits, long enough that the toast registers.
+      try {
+        toast.warning("Session expired — redirecting to sign in…", {
+          duration: 1500,
+        });
+      } catch {
+        // Toaster may not be mounted on the auth path; redirect is
+        // the load-bearing step.
+      }
+      window.setTimeout(() => {
+        window.location.replace("/app/authelia/");
+      }, 1500);
+    };
+
+    // Listener 1 — existing 401-from-API path.
+    const offAuth = onAuthEvent((event) => {
+      if (event === "unauthenticated") redirectToLogin();
     });
+
+    // Listener 2 — idle-tab liveness probe. Without it, an idle tab
+    // past Authelia's `inactivity` window stays mounted in a stale
+    // "you're signed in" state because no fetch fires to trigger
+    // the 401-event path. Probe every 60s while foregrounded; pause
+    // when hidden; immediate probe on mount + on tab-focus.
+    let intervalId: number | undefined;
+    const probe = async () => {
+      if (redirected || isAuthPath) return;
+      try {
+        const res = await fetch("/api/me", {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        if (res.status === 401) redirectToLogin();
+      } catch {
+        // Transient network blip — don't redirect.
+      }
+    };
+    const startPolling = () => {
+      if (intervalId !== undefined) return;
+      intervalId = window.setInterval(probe, 60_000);
+    };
+    const stopPolling = () => {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void probe();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+    if (!isAuthPath && document.visibilityState === "visible") {
+      void probe();
+      startPolling();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      offAuth();
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   return (

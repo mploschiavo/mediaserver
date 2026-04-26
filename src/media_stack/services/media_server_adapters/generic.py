@@ -1,11 +1,16 @@
-"""Generic media-server adapter fallback."""
+"""Shim — moved to
+``media_stack.adapters.media_server_adapters.generic`` in ADR-0002
+Phase 16-E (media_server_adapters). Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+of the form ``mock.patch.object(MODULE, "_helper", ...)`` (where
+``MODULE`` is the legacy shim path) work transparently — the shim
+import resolves to the impl module itself, so attribute patches land
+on the same module the impl function's body looks up names from.
+"""
 
-from .base import MediaServerAdapterBase
+import sys
 
+from media_stack.adapters.media_server_adapters import generic as _impl
 
-class GenericMediaServerAdapter(MediaServerAdapterBase):
-    """Fallback adapter (no-op)."""
-
-    pass
+sys.modules[__name__] = _impl

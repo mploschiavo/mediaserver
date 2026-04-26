@@ -20,6 +20,20 @@ import {
   type LoginHistoryEntry,
 } from "./hooks";
 
+/**
+ * Confirmation prompt shown before posting "this wasn't me" so the
+ * operator understands the consequence: the controller will revoke
+ * every live session belonging to the caller (including the current
+ * one, signing them out everywhere) and write an
+ * ``ANOMALY_CREDENTIAL_STUFFING`` audit entry that the admin sees in
+ * the security report.  Without this gate the click looks dead — the
+ * operator gets logged out and has no idea why.  Module-level so
+ * tests can stub it directly without re-rendering the component.
+ */
+const REPORT_CONFIRM_PROMPT =
+  "Report this sign-in as suspicious? This will sign you out of every " +
+  "device immediately and notify your admin via the audit log.";
+
 function entryId(e: LoginHistoryEntry, i: number): string {
   return String(e.id ?? e.timestamp ?? e.ts ?? i);
 }
@@ -83,6 +97,21 @@ export function LoginHistoryCard() {
   const handleReport = useCallback(
     (entry: LoginHistoryEntry) => {
       if (thisWasntMe.isPending) return;
+      // Ask before nuking every session — see REPORT_CONFIRM_PROMPT
+      // for why this gate exists.  ``window.confirm`` is intentional:
+      // a modal would be more polished but the action is rare and
+      // the consequence is irreversible enough that a hard sync
+      // prompt beats a passively-dismissable banner.  In headless
+      // test envs ``window.confirm`` is mocked to ``true`` by
+      // ``renderWithProviders``; in JSDOM it returns ``true``
+      // unconditionally — both keep existing tests green.
+      if (
+        typeof window !== "undefined" &&
+        typeof window.confirm === "function" &&
+        !window.confirm(REPORT_CONFIRM_PROMPT)
+      ) {
+        return;
+      }
       const when = entryWhen(entry);
       const body: {
         session_id?: string;
@@ -95,7 +124,9 @@ export function LoginHistoryCard() {
       if (typeof entry.ip === "string") body.flagged_ip = entry.ip;
       thisWasntMe.mutate(body, {
         onSuccess: () =>
-          toast.success("Reported. Your admin has been alerted."),
+          toast.success(
+            "Reported. Signing you out of every device — your admin has been alerted.",
+          ),
         onError: (err) => toast.error(errMsg(err, "Report failed")),
       });
     },
@@ -186,7 +217,8 @@ export function LoginHistoryCard() {
                         disabled={thisWasntMe.isPending}
                         className="text-xs text-danger underline-offset-2 [@media(hover:hover)]:hover:underline disabled:opacity-50"
                         data-testid={`login-history-wasnt-me-${id}`}
-                        aria-label={`Report login at ${when || "unknown time"} as not mine`}
+                        aria-label={`Report login at ${when || "unknown time"} as not mine — signs you out of every device`}
+                        title="Signs you out of every device and alerts your admin via the audit log."
                       >
                         <span className="inline-flex items-center gap-1">
                           <ShieldAlert aria-hidden className="size-3.5" />

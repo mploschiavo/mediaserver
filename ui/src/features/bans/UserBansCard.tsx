@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Ban, Plus, UserX } from "lucide-react";
 import { toast } from "sonner";
+import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,14 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { cn } from "@/lib/cn";
 import {
@@ -121,6 +115,82 @@ export function UserBansCard() {
       },
     );
   };
+
+  const columns = useMemo<ColumnDef<UserBan>[]>(
+    () => [
+      {
+        id: "username",
+        accessorFn: (b) => b.username,
+        header: "Username",
+        meta: { label: "Username" },
+        cell: ({ row }) => (
+          <span className="font-medium text-fg">{row.original.username}</span>
+        ),
+      },
+      {
+        id: "reason",
+        accessorFn: (b) => b.reason ?? b.reason_detail ?? "",
+        header: "Reason",
+        meta: { label: "Reason" },
+        cell: ({ row }) => (
+          <span className="text-fg-muted">
+            {row.original.reason || row.original.reason_detail || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "banned_at",
+        accessorFn: (b) => b.banned_at ?? "",
+        header: "Banned at",
+        meta: { label: "Banned at" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {fmtDate(row.original.banned_at)}
+          </span>
+        ),
+      },
+      {
+        id: "expires_at",
+        accessorFn: (b) => b.expires_at ?? "",
+        header: "Until",
+        meta: { label: "Until" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="tabular-nums text-fg-muted">
+            {fmtUntil(row.original.expires_at)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => {
+          const b = row.original;
+          return (
+            <div className="flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handleLift(b)}
+                loading={remove.isPending && pendingRemove === b.username}
+                disabled={remove.isPending}
+                data-testid={`user-ban-lift-${b.username}`}
+                aria-label={`Lift ban on ${b.username}`}
+              >
+                Lift ban
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [remove.isPending, pendingRemove],
+  );
 
   return (
     <motion.div
@@ -261,53 +331,16 @@ export function UserBansCard() {
               />
             </div>
           ) : (
-            <Table data-testid="user-bans-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Username</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Banned at</TableHead>
-                  <TableHead>Until</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bans.data.map((b) => (
-                  <TableRow
-                    key={b.username}
-                    data-testid={`user-ban-row-${b.username}`}
-                  >
-                    <TableCell className="font-medium text-fg">
-                      {b.username}
-                    </TableCell>
-                    <TableCell className="text-fg-muted">
-                      {b.reason || b.reason_detail || "—"}
-                    </TableCell>
-                    <TableCell className="tabular-nums text-fg-muted">
-                      {fmtDate(b.banned_at)}
-                    </TableCell>
-                    <TableCell className="tabular-nums text-fg-muted">
-                      {fmtUntil(b.expires_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleLift(b)}
-                        loading={
-                          remove.isPending && pendingRemove === b.username
-                        }
-                        disabled={remove.isPending}
-                        data-testid={`user-ban-lift-${b.username}`}
-                        aria-label={`Lift ban on ${b.username}`}
-                      >
-                        Lift ban
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="px-6 pb-6">
+              <DataTable<UserBan>
+                testId="user-ban"
+                columns={columns}
+                data={bans.data}
+                getRowId={(b) => b.username}
+                caption={`${bans.data.length} ban${bans.data.length === 1 ? "" : "s"}`}
+                emptyState="No user bans."
+              />
+            </div>
           )}
         </CardContent>
       </Card>

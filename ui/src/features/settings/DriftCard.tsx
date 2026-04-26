@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { GitCompareArrows } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,14 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable } from "@/components/data-table";
 import { asArray } from "@/lib/coerce";
 import { useConfigDrift, type DriftEntry } from "./hooks";
 
@@ -51,6 +46,11 @@ function fmt(v: unknown): string {
   }
 }
 
+interface DriftRow {
+  key: string;
+  entry: DriftEntry;
+}
+
 /**
  * Drift card — surfaces every key whose live value diverged from
  * the profile snapshot. The "Reconcile" button kicks over to the
@@ -61,6 +61,61 @@ export function DriftCard() {
   const drift = useConfigDrift();
   const entries = asArray<DriftEntry>(
     drift.data?.drift ?? drift.data?.entries,
+  );
+
+  const rows = useMemo<DriftRow[]>(
+    () => entries.map((d, i) => ({ key: entryKey(d, i), entry: d })),
+    [entries],
+  );
+
+  const columns = useMemo<ColumnDef<DriftRow>[]>(
+    () => [
+      {
+        id: "key",
+        accessorFn: (r) => r.key,
+        header: "Key",
+        meta: { label: "Key" },
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-fg">{row.original.key}</span>
+        ),
+      },
+      {
+        id: "profile",
+        accessorFn: (r) => fmt(r.entry.profile_value),
+        header: "Profile",
+        meta: { label: "Profile" },
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-fg-muted">
+            {fmt(row.original.entry.profile_value)}
+          </span>
+        ),
+      },
+      {
+        id: "live",
+        accessorFn: (r) => fmt(r.entry.live_value),
+        header: "Live",
+        meta: { label: "Live" },
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-fg-muted">
+            {fmt(row.original.entry.live_value)}
+          </span>
+        ),
+      },
+      {
+        id: "severity",
+        accessorFn: (r) => r.entry.severity ?? "info",
+        header: "Severity",
+        meta: { label: "Severity" },
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end">
+            <Badge variant={severityVariant(row.original.entry.severity)}>
+              {row.original.entry.severity ?? "info"}
+            </Badge>
+          </div>
+        ),
+      },
+    ],
+    [],
   );
 
   return (
@@ -93,7 +148,7 @@ export function DriftCard() {
           >
             {drift.error.message}
           </div>
-        ) : entries.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p
             className="px-6 py-4 text-sm text-fg-muted"
             data-testid="drift-card-empty"
@@ -101,39 +156,16 @@ export function DriftCard() {
             No drift — profile and live state match.
           </p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Key</TableHead>
-                <TableHead>Profile</TableHead>
-                <TableHead>Live</TableHead>
-                <TableHead className="text-right">Severity</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map((d, i) => {
-                const k = entryKey(d, i);
-                return (
-                  <TableRow key={k} data-testid={`drift-row-${k}`}>
-                    <TableCell className="font-mono text-xs text-fg">
-                      {k}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-fg-muted">
-                      {fmt(d.profile_value)}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-fg-muted">
-                      {fmt(d.live_value)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={severityVariant(d.severity)}>
-                        {d.severity ?? "info"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="px-6 pb-6">
+            <DataTable<DriftRow>
+              testId="drift"
+              columns={columns}
+              data={rows}
+              getRowId={(r) => r.key}
+              caption={`${rows.length} drifted key${rows.length === 1 ? "" : "s"}`}
+              emptyState="No drift — profile and live state match."
+            />
+          </div>
         )}
       </CardContent>
     </Card>

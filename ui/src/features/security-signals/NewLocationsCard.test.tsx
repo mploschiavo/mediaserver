@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 
 const newLocationsState = vi.hoisted(() => ({
@@ -65,6 +66,38 @@ describe("NewLocationsCard", () => {
     expect(screen.getByText("203.0.113.7")).toBeInTheDocument();
     expect(screen.getByText("London, GB")).toBeInTheDocument();
     expect(screen.getByText("authelia")).toBeInTheDocument();
+  });
+
+  it("filters alerts via the DataTable user filter", async () => {
+    newLocationsState.data = {
+      alerts: [
+        {
+          username: "alice",
+          provider: "authelia",
+          prior_ip: "10.0.0.5",
+          ip: "203.0.113.7",
+          observed_at: new Date(0).toISOString(),
+        },
+        {
+          username: "bob",
+          provider: "authelia",
+          prior_ip: "10.0.0.6",
+          ip: "203.0.113.8",
+          observed_at: new Date(0).toISOString(),
+        },
+      ],
+    };
+    renderWithProviders(<NewLocationsCard />);
+    expect(
+      screen.getByTestId(/^new-location-row-alice/),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId(/^new-location-row-bob/)).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByTestId("new-location-filter-user"),
+      "bob",
+    );
+    expect(screen.queryByTestId(/^new-location-row-alice/)).toBeNull();
+    expect(screen.getByTestId(/^new-location-row-bob/)).toBeInTheDocument();
   });
 
   it("renders an Acknowledge button that is disabled with a pending tooltip", () => {

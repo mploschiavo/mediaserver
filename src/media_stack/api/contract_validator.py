@@ -49,9 +49,26 @@ import yaml
 from jsonschema import Draft202012Validator, RefResolver
 from jsonschema.exceptions import ValidationError
 
-_SPEC_PATH = (
-    Path(__file__).resolve().parents[3] / "contracts" / "api" / "openapi.yaml"
+import sys as _sys
+
+# Resolve openapi.yaml across deploy modes — same install-path bug
+# class as v1.0.231 / v1.0.235; see test_install_path_resolvers_ratchet.
+_SPEC_PATH_CANDIDATES = (
+    Path(__file__).resolve().parents[3] / "contracts" / "api" / "openapi.yaml",
+    Path("/opt/media-stack/contracts/api/openapi.yaml"),
+    Path(_sys.prefix) / "share" / "media-stack" / "contracts" / "api" / "openapi.yaml",
+    Path("/contracts/api/openapi.yaml"),
 )
+
+
+def _resolve_spec_path() -> Path:
+    for p in _SPEC_PATH_CANDIDATES:
+        if p.is_file():
+            return p
+    return _SPEC_PATH_CANDIDATES[0]
+
+
+_SPEC_PATH = _resolve_spec_path()
 
 
 @functools.lru_cache(maxsize=1)

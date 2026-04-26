@@ -1,102 +1,17 @@
-"""Resolve technology bindings into active runtime integrations."""
+"""Shim — moved to
+``media_stack.application.runtime_factory.binding_resolver`` in
+ADR-0002 Phase 16-E (cross-cutting runtime_factory). Phase 16-F
+removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+of the form ``mock.patch.object(MODULE, "_helper", ...)`` (where
+``MODULE`` is the legacy shim path) work transparently — the shim
+import resolves to the impl module itself, so attribute patches land
+on the same module the impl function's body looks up names from.
+"""
 
-from dataclasses import dataclass, field
-from typing import Any
+import sys
 
-from ..apps.download_clients.config_models import DownloadClientsConfig, TechnologyBindingsConfig
+from media_stack.application.runtime_factory import binding_resolver as _impl
 
-
-@dataclass(frozen=True)
-class RuntimeBindingResolution:
-    technology_aliases: dict[str, str] = field(default_factory=dict)
-    torrent_client_key: str = ""
-    usenet_client_key: str = ""
-    media_server_backend: str = ""
-    request_manager_key: str = ""
-    torrent_client_cfg: dict[str, Any] = field(default_factory=dict)
-    usenet_client_cfg: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class RuntimeBindingResolver:
-    def _aliases(self, adapter_hooks_cfg: dict[str, Any]) -> dict[str, str]:
-        raw_aliases = (adapter_hooks_cfg or {}).get("technology_aliases") or {}
-        aliases: dict[str, str] = {}
-        if not isinstance(raw_aliases, dict):
-            return aliases
-        for source, target in raw_aliases.items():
-            src = str(source or "").strip().lower()
-            dst = str(target or "").strip().lower()
-            if src and dst:
-                aliases[src] = dst
-        return aliases
-
-    def _canonical(self, value: str, aliases: dict[str, str]) -> str:
-        token = str(value or "").strip().lower()
-        if not token:
-            return ""
-        return aliases.get(token, token)
-
-    def resolve(
-        self,
-        *,
-        technology_bindings: TechnologyBindingsConfig,
-        adapter_hooks_cfg: dict[str, Any],
-        download_clients: DownloadClientsConfig,
-        media_server_cfg: dict[str, Any],
-    ) -> RuntimeBindingResolution:
-        aliases = self._aliases(adapter_hooks_cfg)
-        configured_download_client_keys = download_clients.configured_keys()
-
-        def _resolve_optional_download_client(
-            binding_value: str, binding_name: str
-        ) -> tuple[str, dict[str, Any]]:
-            canonical = self._canonical(binding_value, aliases)
-            if not canonical:
-                return "", {}
-            selected = download_clients.get(canonical)
-            if not selected:
-                raise ValueError(
-                    "technology_bindings."
-                    f"{binding_name}='{canonical}' does not match a configured download client. "
-                    f"Configured clients: {', '.join(configured_download_client_keys) or '<none>'}"
-                )
-            return canonical, selected.raw
-
-        torrent_client_key, torrent_client_cfg = _resolve_optional_download_client(
-            technology_bindings.torrent_client,
-            "torrent_client",
-        )
-        usenet_client_key, usenet_client_cfg = _resolve_optional_download_client(
-            technology_bindings.usenet_client,
-            "usenet_client",
-        )
-
-        media_server_backend = self._canonical(
-            str(media_server_cfg.get("backend") or technology_bindings.media_server),
-            aliases,
-        )
-        if not media_server_backend:
-            raise ValueError(
-                "Missing media server binding. Set technology_bindings.media_server "
-                "or media_server.backend in bootstrap config."
-            )
-
-        request_manager_key = self._canonical(
-            technology_bindings.request_manager,
-            aliases,
-        )
-        if not request_manager_key:
-            request_manager_key = technology_bindings.default_request_manager
-
-        return RuntimeBindingResolution(
-            technology_aliases=aliases,
-            torrent_client_key=torrent_client_key,
-            usenet_client_key=usenet_client_key,
-            media_server_backend=media_server_backend,
-            request_manager_key=request_manager_key,
-            torrent_client_cfg=torrent_client_cfg,
-            usenet_client_cfg=usenet_client_cfg,
-        )
+sys.modules[__name__] = _impl
