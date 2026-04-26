@@ -131,6 +131,8 @@ def _service_route(
         websocket = False
         response_set: dict[str, str] = {}
         response_remove: list[str] = []
+        rate_limit = None      # tier-2 (PR-8)
+        geo_acl = None         # tier-2 (PR-8)
 
         if defaults is not None:
             timeout = int(getattr(defaults, "timeout_seconds", 0) or 0)
@@ -158,6 +160,8 @@ def _service_route(
                 for h in (getattr(h_headers, "response_remove", []) or []):
                     if h not in response_remove:
                         response_remove.append(h)
+            rate_limit = getattr(host, "rate_limit", None)
+            geo_acl = getattr(host, "geo_acl", None)
 
         if timeout > 0:
             # Envoy route timeout uses the gRPC duration string format
@@ -180,6 +184,63 @@ def _service_route(
             ]
         if response_remove:
             route["response_headers_to_remove"] = list(response_remove)
+
+        # Tier-2 rate-limit (PR-8). The route-level rate_limits block
+        # references descriptors the operator's listener-level filter
+        # consumes. We emit a single per-route descriptor; the global
+        # http_filters wiring is in PR-8.5 with the listener template.
+        if rate_limit is not None:
+            ps = int(getattr(rate_limit, "per_second", 0) or 0)
+            burst = int(getattr(rate_limit, "burst", 0) or 0)
+            if ps > 0:
+                route["rate_limits"] = [{
+                    "actions": [{
+                        "generic_key": {
+                            "descriptor_value": (
+                                f"per_route_{prefix.strip('/').replace('/', '_') or 'root'}"
+                            ),
+                        },
+                    }],
+                    "stage": 0,
+                }]
+                # Annotate the route so a downstream filter wiring step
+                # (PR-8.5) can find which routes need rate-limit token
+                # buckets configured. Envoy ignores unknown metadata
+                # fields under typed_per_filter_config.
+                route["typed_per_filter_config"] = route.get(
+                    "typed_per_filter_config", {},
+                )
+                route["typed_per_filter_config"]["envoy.filters.http.local_ratelimit"] = {
+                    "@type": "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit",
+                    "stat_prefix": "edge_rl",
+                    "token_bucket": {
+                        "max_tokens": burst if burst > 0 else ps,
+                        "tokens_per_fill": ps,
+                        "fill_interval": "1s",
+                    },
+                    "filter_enabled": {
+                        "runtime_key": "edge_rl_enabled",
+                        "default_value": {"numerator": 100, "denominator": "HUNDRED"},
+                    },
+                    "filter_enforced": {
+                        "runtime_key": "edge_rl_enforced",
+                        "default_value": {"numerator": 100, "denominator": "HUNDRED"},
+                    },
+                }
+
+        # Tier-2 geo ACL (PR-8). Render allow/deny lists onto the
+        # route's request_headers_to_add for downstream filters that
+        # honour an X-Geo-Country header (Envoy doesn't ship a built-in
+        # geo filter; this lays the contract for a Wasm or Lua plugin
+        # to consume — full enforcement in PR-8.5).
+        if geo_acl is not None:
+            allow = list(getattr(geo_acl, "allow", []) or [])
+            deny = list(getattr(geo_acl, "deny", []) or [])
+            if allow or deny:
+                route.setdefault("metadata", {}).setdefault("filter_metadata", {})[
+                    "edge.geo_acl"
+                ] = {"allow": allow, "deny": deny}
+
         return route
 
     # No host context — the bare service-route case (e.g. an alias's
