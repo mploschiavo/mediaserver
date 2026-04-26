@@ -34,9 +34,9 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 import { formatRelative } from "@/features/media-integrity/format";
+import { ResetPasswordDialog } from "./ResetPasswordDialog";
 import {
   usePatchUser,
-  useResetUserPassword,
   useRevokeUserSession,
   useRevokeUserSessions,
   useSetUserRole,
@@ -206,10 +206,10 @@ function ProfilePanel({
   const [email, setEmail] = useState(user.email ?? "");
   const [displayName, setDisplayName] = useState(user.display_name ?? "");
   const [role, setRole] = useState(userRole(user));
+  const [resetOpen, setResetOpen] = useState(false);
 
   const patch = usePatchUser();
   const setUserRole = useSetUserRole();
-  const reset = useResetUserPassword();
 
   const handleSubmit = (ev: FormEvent) => {
     ev.preventDefault();
@@ -235,16 +235,12 @@ function ProfilePanel({
     }
   };
 
-  const handleReset = () => {
-    reset.mutate(
-      { user_id: user.id },
-      {
-        onSuccess: () => toast.success("Password reset issued"),
-        onError: (err) =>
-          toast.error(`Reset failed: ${explain(err, "request failed")}`),
-      },
-    );
-  };
+  // Old "Reset password" click-and-go silently rotated the password
+  // to a random value the operator could never see — it locked admins
+  // out of their own accounts. The new flow opens a dialog with two
+  // modes: type-explicitly (admin sets the value) or generate-random
+  // (UI consumes the ticket and shows the plaintext once).
+  const handleReset = () => setResetOpen(true);
 
   const roleOptions = roles.length
     ? roles.map((r) => ({ value: r.slug, label: r.name ?? r.slug }))
@@ -312,12 +308,17 @@ function ProfilePanel({
           type="button"
           variant="secondary"
           onClick={handleReset}
-          loading={reset.isPending}
           data-testid="user-profile-reset-password"
         >
-          <KeyRound aria-hidden /> Reset password
+          <KeyRound aria-hidden /> Reset password…
         </Button>
       </div>
+      <ResetPasswordDialog
+        open={resetOpen}
+        onOpenChange={setResetOpen}
+        userId={user.id}
+        username={user.username}
+      />
     </form>
   );
 }

@@ -8,6 +8,7 @@ import {
   SessionsCard,
   TokensCard,
 } from "@/features/me";
+import { ChangePasswordCard } from "@/features/me/ChangePasswordCard";
 import { Route as RootRoute } from "@/routes/__root";
 
 /**
@@ -32,6 +33,8 @@ function MePage() {
       />
 
       <ProfileCard />
+
+      <ChangePasswordCard />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <SessionsCard />
