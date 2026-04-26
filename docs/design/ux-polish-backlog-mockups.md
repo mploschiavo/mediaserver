@@ -538,3 +538,488 @@ order:
 The polish backlog in memory references this doc by path so a future
 agent picking up any of these reads the design first instead of
 inventing one.
+
+---
+
+# Cutting-edge gaps (Phase B)
+
+The 7 sections above are catch-up to industry-standard for self-hosted
+admin UIs (Portainer, Coolify, Authelia UI). Below are the gaps
+between the catch-up bar and a 2026 cutting-edge product. Land them
+after Phase A, in the order suggested at the bottom.
+
+## 8. SSE / real-time everywhere
+
+**Operator question:** "Why does the dashboard feel laggy? I clicked
+Run-now and the running banner took 30s to appear."
+
+**Current gap:** Every card polls on a 30s timer. Throughput
+graphs, running-jobs banner, access log, health pills — all the same
+cadence. On Linear / Vercel / Stripe the equivalent surfaces stream.
+
+### Design
+
+A single endpoint:
+
+```
+GET /api/events?topics=jobs,access_log,health,guardrails,sessions
+Accept: text/event-stream
+```
+
+Streams JSON-line events:
+
+```
+event: job.started
+data: {"job_id":"bootstrap-1","name":"bootstrap","at":1714175432}
+
+event: access_log.entry
+data: {"trace_id":"abc","host":"jf.iomio.io","status":200,"ms":24}
+
+event: health.transition
+data: {"service":"radarr","from":"healthy","to":"degraded"}
+
+event: guardrail.firing
+data: {"id":"storage:free_space_floor","since":1714175400}
+```
+
+UI subscribes once at app boot, fans out to TanStack Query caches
+via `queryClient.setQueryData(...)`. Existing 30s polls remain as a
+safety net (poll cadence drops to 5min when SSE is connected) so a
+broken stream doesn't blank the dashboard.
+
+### Backend
+
+* New `/api/events` endpoint reading from a per-process event bus.
+* Existing rolling-buffer writers in `envoy_access_log.py`,
+  `JobRunner.run`, guardrail evaluator, health probe etc. publish
+  to that bus when they already write to disk.
+* Reverse-proxy must allow `Cache-Control: no-cache` + chunked —
+  Envoy already does; document for nginx / Cloudflare users.
+
+### UI
+
+* `useEventStream(topic)` hook returns the event firehose; cards
+  subscribe by topic and route updates into their query caches.
+* Connection status pill in the header ("● live" / "○ polling")
+  so operators know which mode they're in.
+
+**Estimate:** 2 PRs (backend bus + endpoint, then UI subscription
+layer), ~2 weeks. Foundation for #11 (anomaly tinting) and #12
+(trace UI).
+
+---
+
+## 9. Command palette (⌘K)
+
+**Operator question:** "I know what I want to do but I can never
+remember which page it lives on."
+
+**Current gap:** Every action requires nav → page → button. Linear
+/ Vercel / Notion / Raycast all ship a global ⌘K palette that
+combines navigation, actions, and search.
+
+### Design
+
+```
+⌘K (or Ctrl+K) opens a centred input with fuzzy search.
+
+┌────────────────────────────────────────────────────────────────────┐
+│ > restart son                                                      │
+├────────────────────────────────────────────────────────────────────┤
+│ Run         Restart Sonarr                              ↵          │
+│ Run         Restart Radarr                                         │
+│ ─                                                                  │
+│ Navigate    /content/sonarr                                        │
+│ Navigate    /admin/services → Sonarr                               │
+│ ─                                                                  │
+│ Audit       Last 5 actions on sonarr                               │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### Corpus
+
+Each entry is `{kind, label, hint, run}`. Sources:
+
+* **Routes** — every `<Route>` in the router tree with its title.
+* **Services** — every entry in the SERVICES registry.
+* **Actions** — every audit-action verb (`restart`, `reset-password`,
+  `rotate-keys`, `bootstrap`, `media-integrity:scan`...).
+* **Users** — every user from `/api/users` (admin-only).
+* **Audit search** — `audit:<query>` runs a query against the
+  audit log endpoint.
+* **Recent** — last 10 actions taken by this user (LRU in
+  localStorage).
+
+### Backend
+
+Mostly UI-only. One new endpoint:
+
+* `GET /api/search?q=foo&kinds=service,user,audit` — for cases
+  where the corpus is too big to ship to the client (e.g. searching
+  the audit log). Re-uses the existing audit-log filter logic.
+
+### UI
+
+* `cmdk` library (already in the React ecosystem, ~3kb gz).
+* Global keyboard binding registered at `__root.tsx`.
+* A floating modal that overlays any page; returns focus on close.
+
+**Estimate:** 1 PR, ~3-4 days. Independent — can land in parallel
+with anything. Great showcase feature.
+
+---
+
+## 10. AI debug assistance
+
+**Operator question:** "Why did media-integrity:scan fail?" — they
+read the audit log entry, the failure says "X jobs marked broken,
+13 reports stale". They click around for 5min trying to find which
+ones.
+
+**Current gap:** The audit log is structured but operators still
+have to be the LLM. A "Why?" button on every failure surface that
+streams a 200-word explanation rooted in the audit log would be
+genuinely cutting-edge.
+
+### Design
+
+```
+┌─ media-integrity:scan failed (3 min ago)              [✕]         │
+│ Failure detail:                                                    │
+│   13 reports flagged as stale (>24h since last hash check)         │
+│   2 jobs marked broken (radarr-quality-config, plex-prewarm)       │
+│                                                                    │
+│   [💡 Explain this with AI]                                         │
+│                                                                    │
+│ ┌─ AI explanation ─────────────────────────────────────────────┐  │
+│ │ The scan failed primarily because Radarr's quality-config    │  │
+│ │ job hasn't run for 26 hours — its scheduled cron stopped     │  │
+│ │ firing after the controller restart at 03:14 today (see      │  │
+│ │ audit row #8412). The 13 stale reports are downstream of     │  │
+│ │ that: media-integrity inherits Radarr's last-known state,    │  │
+│ │ which is now older than the 24h threshold. Likely root       │  │
+│ │ cause: the new ENVOY_LISTENER_PORT env var didn't propagate  │  │
+│ │ to the controller's job scheduler on restart.                │  │
+│ │                                                              │  │
+│ │ Suggested action: run `bootstrap` to re-register cron        │  │
+│ │ schedules, then media-integrity:scan once more.              │  │
+│ │                                                              │  │
+│ │ Sources: audit #8412, audit #8501, /api/jobs/quality-config  │  │
+│ └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### Backend
+
+```
+POST /api/admin/explain
+{
+  "subject": {"kind": "job", "id": "media-integrity-scan-2"},
+  "max_audit_rows": 50,
+  "model": "claude-haiku-4-5"
+}
+→ streams text/event-stream tokens
+```
+
+Server-side:
+
+1. Resolve subject — for `kind=job` walk job history; for
+   `kind=guardrail` walk recent firings; for `kind=service`
+   walk health transitions.
+2. Gather context: last N audit rows touching the subject + any
+   error fields + relevant config diffs.
+3. Compose a prompt with explicit "do not invent endpoints / file
+   paths / job IDs not in the context" instruction.
+4. Stream from the LLM API straight into the response.
+5. Audit-log every call as `ai.explain` so operators can review
+   what was asked.
+
+### UI
+
+* "💡 Explain" button on every failure surface (banner, jobs row,
+  audit drawer, guardrail card).
+* Streamed response renders progressively; sources rendered as
+  pill-links at the bottom that scroll the audit log to the row.
+
+### Cost guard
+
+* Hard cap on context size (50 audit rows + 5 config diffs, ~8kb).
+* Per-day call budget per operator (default 50, env-tunable).
+* The model defaults to Haiku — explanations are short, accuracy
+  matters less than latency, the cost model cares.
+
+**Estimate:** 1 PR backend + 1 PR UI, ~1 week. Highest "wow" per
+hour. Depends on #9 (⌘K) only optionally — the Explain button can
+be inline without ⌘K, but exposing it through ⌘K (`> explain
+last failure`) makes the feature discoverable.
+
+---
+
+## 11. Anomaly tinting on every chart
+
+**Operator question:** "Is this current spike normal? It looks
+high but I don't have a baseline in my head."
+
+**Current gap:** Every chart renders the line. None of them tell
+you whether *this* point is unusual.
+
+### Design
+
+```
+Throughput (MB/s) — last 60min
+   │
+ 8 │              ╭╮
+ 6 │      ╭╮     │ │
+ 4 │  ╭───╯ ╰────╯ ╰───╮     ▓▓▓▓▓▓
+ 2 │──╯                ╰─────▓▓▓▓▓▓──╮
+ 0 ┴────────────────────────────────────╯
+   55m ago      30m         5m       now
+                            ^^^^^ tinted: 3.2σ above baseline
+```
+
+The tinted band flags the operator: "this section is anomalous,
+look here first." Severity → tint colour (yellow at 2σ, orange at
+3σ, red at 4σ).
+
+### Backend
+
+Each timeseries endpoint already has a rolling buffer. Augment the
+response:
+
+```json
+{
+  "series": [{"ts": 1714175400, "value": 42}, …],
+  "anomalies": [
+    {"from": 1714175200, "to": 1714175260,
+     "severity": "warn", "z_score": 3.2, "metric": "rps"},
+    …
+  ],
+  "baseline": {"mean": 38, "std_dev": 4.1, "window": "1h"}
+}
+```
+
+Anomaly detection: rolling z-score on a 1h window with a 5min
+inhibit (don't re-fire within 5min of the previous flag). Cheap;
+runs in the same accumulator that already maintains the buffer.
+
+### UI
+
+Recharts' `<ReferenceArea x1={from} x2={to} fill={tone}>` overlays
+the tinted band. No new chart library. One helper:
+
+```tsx
+{anomalies.map((a) => (
+  <ReferenceArea
+    x1={a.from} x2={a.to}
+    fill={toneFor(a.severity)} fillOpacity={0.2}
+    label={`${a.z_score.toFixed(1)}σ`}
+  />
+))}
+```
+
+### Ratchet
+
+`tests/unit/ratchets/test_timeseries_endpoints_emit_anomalies.py`
+— scans every endpoint that returns a `series` field, asserts it
+also returns `anomalies` (or an explicit `anomalies: []`).
+
+**Estimate:** 1 PR backend (anomaly accumulator + extend each
+endpoint), 1 PR UI (overlay component + apply to every chart),
+~1 week. Independent. Looks great on screenshots.
+
+---
+
+## 12. Live distributed tracing UI
+
+**Operator question:** "Why is `jf.iomio.io` slow right now? Is
+it Envoy, ext_authz to Authelia, the Jellyfin container itself, or
+the upstream filesystem?"
+
+**Current gap:** Envoy already emits `x-request-id` and (when
+configured) B3 trace headers. Nothing surfaces the per-hop
+breakdown.
+
+### Design
+
+```
+Trace abc123 — GET /Users — total 287ms
+┌────────────────────────────────────────────────────────────────────┐
+│ envoy:listener      ▓▓ 4ms                                         │
+│ envoy:auth (ext)      ▓▓▓▓▓▓ 18ms (→ authelia)                     │
+│ envoy:route                  ▓ 2ms                                  │
+│ jellyfin:tcp                   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 245ms              │
+│   └─ time-to-first-byte                          ▓▓▓ 18ms          │
+│   └─ body                                        ▓▓▓▓▓▓ 227ms      │
+│ envoy:response                                              ▓ 2ms  │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Click any access-log row → opens this drawer with the full trace.
+
+### Backend
+
+* Envoy access log already includes `request_id` + start + duration.
+* New aggregator: when a request crosses ext_authz, an Envoy filter
+  emits `auth_duration_ms`. Same for upstream — Envoy's
+  `upstream_service_time` header.
+* `GET /api/traces/{request_id}` returns the assembled span list.
+* Storage: rolling buffer of last 10k traces, ~30min retention.
+  Anything beyond that needs a real trace store (out of scope for
+  v1).
+
+### UI
+
+Flame chart component (50 LOC SVG). Each span is a `<rect>`
+positioned by `start`, sized by `duration`, coloured by tier
+(envoy / auth / upstream). Hover → tooltip with the raw fields.
+
+### Ratchet
+
+* Every access-log row in `/api/envoy/access-log` carries a
+  `request_id`.
+* Every `request_id` resolves to a non-empty trace within retention.
+
+**Estimate:** 2 PRs (trace assembly + UI), ~2 weeks. Independent.
+Massive differentiator vs every other self-hosted media stack.
+
+---
+
+## 13. Mobile-first
+
+**Operator question:** "I'm at dinner and got a 3am page about
+storage. Can I triage from my phone or do I have to find a laptop?"
+
+**Current gap:** Wide tables overflow, drawers open at desktop
+widths, no sticky filter row, the grid layouts assume ≥1024px.
+
+### Design (per-page audit on a 360px viewport)
+
+| Surface | Adaptation |
+|---|---|
+| Wide tables (audit log, jobs, users) | Convert to card list under 768px — each row is a stacked card with the same fields |
+| Sticky filters | Stick to the top of the scroll container so changing filter doesn't lose scroll position |
+| Drawers | Slide up from bottom (sheet pattern) instead of right (drawer pattern) |
+| KPI grids | Single column under 480px; wrap to 2-col 480-768px |
+| Charts | Hide x-axis labels under 480px; tooltip-only |
+| Action buttons | Floating action button for primary action; secondary in overflow menu |
+
+### Per-area effort
+
+1. **Audit log** (1 day) — table → cards, sticky filter
+2. **Jobs** (1 day) — table → cards, pull-to-refresh
+3. **Users** (1 day) — same pattern + sheet drawer
+4. **Routing** (2 days) — most table-heavy surface
+5. **Ops dashboard** (1 day) — KPI grid responsiveness
+6. **Visual review pass** every page on iOS Safari + Android Chrome.
+
+### Ratchet
+
+Playwright suite covers happy-path on a 360×800 viewport.
+`test_layout_mobile_smoke.spec.ts` — boots each route, asserts
+no horizontal scroll on the body, all interactive controls
+≥44×44 px.
+
+**Estimate:** 1 PR per area × 5 areas + 1 PR for the test ratchet,
+~1 week. Independent of everything else.
+
+---
+
+## 14. Stack-wide search + impersonation
+
+**Operator question:** "Find every config that mentions
+`jellyfin.iomio.io`." / "I need to act as user X to debug their
+session."
+
+**Current gap:** Search is page-local. Impersonation doesn't
+exist; admins guess at user state.
+
+### Design — search
+
+```
+Search: jellyfin.iomio.io
+┌────────────────────────────────────────────────────────────────────┐
+│ Routing       Host map: jf.iomio.io → service jellyfin (1 hit)    │
+│ Service       jellyfin → public_url=https://jf.iomio.io           │
+│ Audit         12 mentions in the last 7 days [show]               │
+│ Service-policy bazarr → upstream_url contains jellyfin.iomio.io   │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+`GET /api/search?q=…&kinds=routing,service,audit,policy` walks each
+domain registry and returns `{kind, surface, snippet, deep_link}`.
+
+### Design — impersonation
+
+Admin opens user → "Impersonate" button:
+
+```
+┌─ Impersonate user "alice"? ───────────────────────────────────┐
+│                                                                │
+│ You will see the dashboard exactly as alice does, including:   │
+│   • Their permitted routes and service list                    │
+│   • Their session history view                                 │
+│                                                                │
+│ Every action you take will be audit-logged with:              │
+│   actor=admin, acting_as=alice                                │
+│                                                                │
+│ Use the "Stop impersonation" pill at the top to return to     │
+│ your own session.                                             │
+│                                                                │
+│              [Cancel]  [Start impersonation, 30min limit]    │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Backend
+
+* `POST /api/auth/impersonate` (admin-only) — mints a session
+  cookie tagged `acting_as=<user_id>`, hard-capped TTL of 30min.
+* All audit-log writes resolve `actor=real_user, acting_as=cookie`
+  so every row preserves the chain of accountability.
+* `POST /api/auth/stop-impersonation` — clears the tag, restores
+  the original session.
+* New audit kinds: `auth.impersonate.start`,
+  `auth.impersonate.stop`, both linked to the impersonation
+  session ID for forensic trails.
+
+### UI
+
+* "Impersonate" button on the user-detail drawer.
+* Top-of-page warning pill while impersonating: "Acting as alice —
+  Stop" with a single-click exit.
+* All theme tokens get a slight orange tint while impersonating
+  so the operator can't forget they're in another user's session
+  (subtle but unmissable).
+
+### Ratchet
+
+`tests/unit/audit/test_impersonation_audit_chain.py` — every
+impersonated mutation must have both `actor` and `acting_as`
+fields populated; missing either is a CI failure.
+
+**Estimate:** 2 PRs (search + impersonation), ~1.5 weeks total.
+Independent of everything else, can run in parallel.
+
+---
+
+# Phase B suggested order
+
+After Phase A's 5 catch-up items ship, drive Phase B in this order:
+
+1. **#8 SSE / real-time** — foundation for #11/#12, biggest perceived
+   speedup, ~2 weeks.
+2. **#9 ⌘K command palette** — independent, smallest scope, dramatic
+   UX win, ~3-4 days.
+3. **#10 AI debug** — highest "wow" per hour invested, depends on
+   ⌘K for the trigger (`> explain last failure`), ~1 week.
+4. **#11 Anomaly tinting** — needs SSE for live tinting; server-side
+   anomaly computation can land first, ~1 week.
+5. **#12 Distributed tracing UI** — independent, niche but powerful
+   for ops users, ~2 weeks.
+6. **#13 Mobile-first** — independent; can run in parallel with any
+   of the above, ~1 week.
+7. **#14 Stack-wide search + impersonation** — independent; can run
+   in parallel, ~1.5 weeks.
+
+Phase A + Phase B ≈ 8-10 weeks of focused work at a 1-PR-per-2-3-day
+cadence. Each item above stands alone; the order is optimization,
+not dependency.
