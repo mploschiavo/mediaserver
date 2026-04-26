@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { Activity, Loader2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, Loader2, Square } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +11,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { fetcher } from "@/api/client";
 
 interface RunningJob {
@@ -123,6 +134,33 @@ function RunningRow({ job }: { job: RunningJob }) {
   const startedAt = job.started_at
     ? formatStartedAt(job.started_at)
     : "unknown start";
+  const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const cancel = useMutation({
+    mutationFn: () =>
+      fetcher("api/actions/cancel", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      toast.success(
+        `Cancellation requested for ${job.name}. The runner stops at the next safe checkpoint.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["jobs", "running"] });
+      setConfirmOpen(false);
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "Cancel failed";
+      toast.error(msg);
+    },
+  });
+
+  // Only the in-process controller action can be cancelled today —
+  // K8s CronJob pods are managed by the scheduler. Surface a
+  // disabled tooltip in that case rather than a broken button.
+  const cancellable = job.kind === "action";
+
   return (
     <li
       className="flex flex-col gap-0.5 px-2 py-1.5 text-xs"
@@ -132,7 +170,28 @@ function RunningRow({ job }: { job: RunningJob }) {
         <span className="truncate font-mono text-fg" title={job.name}>
           {job.name}
         </span>
-        <span className="text-fg-faint tabular-nums">{elapsed}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-fg-faint tabular-nums">{elapsed}</span>
+          {cancellable ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                // The popover swallows clicks by default; stop here
+                // so the dropdown doesn't close before the dialog
+                // renders.
+                e.preventDefault();
+                e.stopPropagation();
+                setConfirmOpen(true);
+              }}
+              className="rounded p-0.5 text-fg-muted hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Cancel ${job.name}`}
+              data-testid={`running-jobs-banner-cancel-${job.id}`}
+              disabled={cancel.isPending}
+            >
+              <Square className="size-3" aria-hidden />
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="flex items-center justify-between text-fg-muted">
         <span>{kindLabel(job.kind)}</span>
@@ -144,6 +203,36 @@ function RunningRow({ job }: { job: RunningJob }) {
           {job.active_pods ? <span>{job.active_pods} pod(s)</span> : null}
         </div>
       ) : null}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent data-testid="running-jobs-banner-cancel-dialog">
+          <DialogHeader>
+            <DialogTitle>Cancel {job.name}?</DialogTitle>
+            <DialogDescription>
+              The job will stop at the next safe checkpoint — partial
+              work may need cleanup. Safe to re-run from the Jobs page
+              once the cancellation completes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep running
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              loading={cancel.isPending}
+              onClick={() => cancel.mutate()}
+              data-testid="running-jobs-banner-cancel-confirm"
+            >
+              Cancel job
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
