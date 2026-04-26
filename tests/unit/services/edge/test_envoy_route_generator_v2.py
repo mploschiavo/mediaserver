@@ -63,7 +63,9 @@ class TestScenario1SubdomainHostnameToService(unittest.TestCase):
         self.assertEqual(vh["domains"], ["jf.iomio.io"])
         self.assertEqual(len(vh["routes"]), 1)
         self.assertEqual(vh["routes"][0]["match"], {"prefix": "/"})
-        self.assertEqual(vh["routes"][0]["route"], {"cluster": "service_jellyfin"})
+        # Cluster name is the locked invariant; other route fields
+        # may be populated by the global defaults (timeout, etc.).
+        self.assertEqual(vh["routes"][0]["route"]["cluster"], "service_jellyfin")
 
 
 class TestScenario2AuthHostname(unittest.TestCase):

@@ -92,13 +92,102 @@ def _redirect_route_to_canonical(canonical: str) -> dict[str, Any]:
     }
 
 
-def _service_route(prefix: str, service_id: str) -> dict[str, Any]:
-    """Forward a path prefix to the service's upstream cluster."""
-    route: dict[str, Any] = {
+def _service_route(
+    prefix: str,
+    service_id: str,
+    *,
+    host=None,
+    defaults=None,
+) -> dict[str, Any]:
+    """Forward a path prefix to the service's upstream cluster.
+
+    When ``host`` is provided, applies Tier-1 per-host knobs:
+
+      * ``maintenance`` → 503 direct_response (route bypassed entirely)
+      * ``timeout_seconds`` → ``route.timeout``
+      * ``websocket`` → ``route.upgrade_configs``
+      * ``headers.response_set`` → ``response_headers_to_add``
+      * ``headers.response_remove`` → ``response_headers_to_remove``
+
+    ``defaults`` fills any field the host left at zero / None /
+    empty. Operator-explicit values always win.
+    """
+    # Maintenance short-circuit — replace the entire route with a 503.
+    if host is not None and getattr(host, "maintenance", False):
+        return {
+            "match": {"prefix": prefix},
+            "direct_response": {
+                "status": 503,
+                "body": {"inline_string": (
+                    f"Service '{service_id}' is in maintenance mode."
+                )},
+            },
+        }
+
+    route_action: dict[str, Any] = {"cluster": _cluster_name(service_id)}
+
+    if host is not None or defaults is not None:
+        timeout = 0
+        websocket = False
+        response_set: dict[str, str] = {}
+        response_remove: list[str] = []
+
+        if defaults is not None:
+            timeout = int(getattr(defaults, "timeout_seconds", 0) or 0)
+            websocket = bool(getattr(defaults, "websocket", False))
+            d_headers = getattr(defaults, "headers", None)
+            if d_headers is not None:
+                response_set.update(getattr(d_headers, "response_set", {}) or {})
+                response_remove.extend(
+                    getattr(d_headers, "response_remove", []) or [],
+                )
+
+        if host is not None:
+            host_to = int(getattr(host, "timeout_seconds", 0) or 0)
+            if host_to > 0:
+                timeout = host_to
+            if getattr(host, "websocket", False):
+                websocket = True
+            h_headers = getattr(host, "headers", None)
+            if h_headers is not None:
+                # Per-host headers MERGE on top of defaults — that's the
+                # natural intuition (a host extends the default set).
+                response_set.update(getattr(h_headers, "response_set", {}) or {})
+                # response_remove is additive too: if either layer
+                # strips a header, it's stripped.
+                for h in (getattr(h_headers, "response_remove", []) or []):
+                    if h not in response_remove:
+                        response_remove.append(h)
+
+        if timeout > 0:
+            # Envoy route timeout uses the gRPC duration string format
+            # ("60s", "30s", …). Zero = unset → Envoy's default 15s.
+            route_action["timeout"] = f"{timeout}s"
+        if websocket:
+            route_action["upgrade_configs"] = [{"upgrade_type": "websocket"}]
+
+        route: dict[str, Any] = {
+            "match": {"prefix": prefix},
+            "route": route_action,
+        }
+        if response_set:
+            route["response_headers_to_add"] = [
+                {
+                    "header": {"key": k, "value": v},
+                    "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
+                }
+                for k, v in response_set.items()
+            ]
+        if response_remove:
+            route["response_headers_to_remove"] = list(response_remove)
+        return route
+
+    # No host context — the bare service-route case (e.g. an alias's
+    # canonical-only redirect). Return the minimum.
+    return {
         "match": {"prefix": prefix},
-        "route": {"cluster": _cluster_name(service_id)},
+        "route": route_action,
     }
-    return route
 
 
 def _apex_route(cfg: RoutingConfigV2) -> dict[str, Any] | None:
@@ -206,10 +295,12 @@ def _split_hosts_by_role(cfg: RoutingConfigV2) -> tuple[list, list]:
     return gateway_hosts, other_hosts
 
 
-def _build_subdomain_vhost(host) -> dict[str, Any]:
+def _build_subdomain_vhost(host, defaults=None) -> dict[str, Any]:
     """A subdomain host gets a vhost matching just its canonical and
-    a single forward route."""
-    routes = [_service_route("/", host.service_id)]
+    a single forward route. ``defaults`` is threaded through so
+    inherited timeouts/headers/websocket land on the route action."""
+    routes = [_service_route("/", host.service_id,
+                              host=host, defaults=defaults)]
     return {
         "name": f"vh_{host.role or host.service_id}_{host.canonical}",
         "domains": [host.canonical],
@@ -270,7 +361,8 @@ def _build_gateway_vhost(
         prefix = h.path_prefix
         if not prefix.endswith("/"):
             prefix = prefix + "/"
-        routes.append(_service_route(prefix, h.service_id))
+        routes.append(_service_route(prefix, h.service_id,
+                                       host=h, defaults=cfg.defaults))
 
     # 3. Service routes for hosts whose canonical IS the gateway host
     # but with no path_prefix (e.g. "m.iomio.io" → homepage at root).
@@ -279,7 +371,8 @@ def _build_gateway_vhost(
         if not h.path_prefix:
             # Skip if apex already redirects "/", which evaluates first
             # via exact-path matching anyway.
-            routes.append(_service_route("/", h.service_id))
+            routes.append(_service_route("/", h.service_id,
+                                           host=h, defaults=cfg.defaults))
 
     # 4. Apex route (exact "/" match — Envoy evaluates exact-path
     # before prefix, so this naturally beats the catch-all).
@@ -336,7 +429,7 @@ def generate_route_config_v2(cfg: RoutingConfigV2) -> dict[str, Any]:
     # Subdomain hosts that are not the gateway — one vhost per
     # canonical, plus an alias-redirect vhost when aliases exist.
     for h in sorted(other_hosts, key=lambda x: x.canonical):
-        vhosts.append(_build_subdomain_vhost(h))
+        vhosts.append(_build_subdomain_vhost(h, defaults=cfg.defaults))
         alias_vhost = _build_alias_redirect_vhost(h)
         if alias_vhost is not None:
             vhosts.append(alias_vhost)

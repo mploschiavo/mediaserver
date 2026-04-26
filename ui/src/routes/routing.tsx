@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { DnsCheckCard } from "@/features/routing-admin/DnsCheckCard";
 import { EnvoyAdminSummaryCard } from "@/features/routing-admin/EnvoyAdminSummaryCard";
 import { ApexCatchAllCard } from "@/features/routing-admin/ApexCatchAllCard";
+import { DefaultsCard } from "@/features/routing-admin/DefaultsCard";
 import { ExposureCard } from "@/features/routing-admin/ExposureCard";
 import { GatewayHostnamesCard } from "@/features/routing-admin/GatewayHostnamesCard";
 import { HostnamesMatrix } from "@/features/routing-admin/HostnamesMatrix";
@@ -52,6 +53,8 @@ function RoutingPage() {
       <PathAliasesCard />
 
       <ApexCatchAllCard />
+
+      <DefaultsCard />
 
       <EnvoyAdminSummaryCard />
 
