@@ -158,6 +158,73 @@ export function useRoutingV2(): UseQueryResult<RoutingV2Response> {
   });
 }
 
+// ---- Route table -----------------------------------------------------------
+
+export interface RouteRow {
+  host: string;
+  match: string;
+  target: string;
+  target_kind: "service" | "redirect" | "static" | "404" | "block";
+  kind:
+    | "auto_path"
+    | "subdomain"
+    | "explicit_path"
+    | "host_alias"
+    | "path_alias"
+    | "apex"
+    | "catch_all";
+  source: string;
+}
+
+export interface RouteTableResponse {
+  rows: RouteRow[];
+  summary: {
+    strategy: string;
+    gateway_host: string;
+    app_path_prefix: string;
+    active_service_count: number;
+  };
+}
+
+export function useRouteTable(): UseQueryResult<RouteTableResponse> {
+  return useQuery({
+    queryKey: ["routing", "routes"],
+    queryFn: () => fetcher<RouteTableResponse>("api/routing/routes"),
+    staleTime: 30_000,
+  });
+}
+
+// ---- Routing v2 mutation (PR-9c) ------------------------------------------
+
+export interface RoutingV2UpdateResult {
+  status: "ok" | "validation_failed";
+  config?: RoutingV2Config;
+  validation?: RoutingV2ValidationError[];
+}
+
+export function useRoutingV2Mutation(): UseMutationResult<
+  RoutingV2UpdateResult,
+  Error,
+  Partial<RoutingV2Config>
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch) => {
+      const body = JSON.stringify(patch);
+      return await fetcher<RoutingV2UpdateResult>("api/routing/v2", {
+        method: "POST",
+        body,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ROUTING_V2_KEY });
+      qc.invalidateQueries({ queryKey: ["routing", "routes"] });
+      qc.invalidateQueries({ queryKey: ROUTING_KEY });
+    },
+  });
+}
+
 // ---- Routing config (POST /api/routing) -----------------------------------
 
 export type RoutingStrategyValue = "hybrid" | "subdomain" | "path";
