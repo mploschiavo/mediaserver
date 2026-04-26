@@ -565,6 +565,53 @@ class GetRequestHandler:
                 handler._json_response(
                     500, {"error": str(exc)[:200]},
                 )
+        elif path == "/api/routing/preview":
+            # Pure-function preview: returns the Envoy route_config + the
+            # active EdgeBindingAdapter's ApplyPlan for the *current* v2
+            # config (no body to POST in PR-5; that lands in a follow-up).
+            # Operators see what would actually get applied without
+            # touching the cluster.
+            from media_stack.api.services.config.routing import migrate_v1_to_v2
+            from media_stack.services.edge.envoy_route_generator_v2 import (
+                generate_route_config_v2,
+            )
+            from media_stack.services.edge.k8s_ingress_adapter import (
+                K8sIngressAdapter,
+            )
+            try:
+                v1 = config_svc.get_routing()
+                ms_id = None
+                try:
+                    ms_id = config_svc._profile.media_server_id()  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    ms_id = None
+                cfg = migrate_v1_to_v2(v1, media_server_id=ms_id)
+                route_config = generate_route_config_v2(cfg)
+                # K8s adapter is the only one shipped today; pick it
+                # unconditionally. PR-7 extends with auto-detect.
+                plan = K8sIngressAdapter().compute_apply_plan(cfg)
+                handler._json_response(200, {
+                    "envoy": {
+                        "route_config": route_config,
+                        "vhost_count": len(route_config.get("virtual_hosts", [])),
+                    },
+                    "binding": {
+                        "adapter": "k8s_ingress",
+                        "steps": [
+                            {
+                                "kind": s.kind,
+                                "description": s.description,
+                                "payload": s.payload,
+                            }
+                            for s in plan.steps
+                        ],
+                        "warnings": list(plan.warnings),
+                    },
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(
+                    500, {"error": str(exc)[:200]},
+                )
         elif path == "/api/routing/effective":
             # Same as /api/routing/v2 but with `defaults` merged into
             # every host's per-field knobs, so the UI shows what Envoy
