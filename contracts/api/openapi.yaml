@@ -2762,7 +2762,17 @@ paths:
         `base_domain` updates `gateway_host`, and vice versa.
 
         Allowed keys: `base_domain`, `stack_subdomain`, `gateway_host`,
-        `gateway_port`, `app_path_prefix`, `strategy`, `internet_exposed`.
+        `gateway_port`, `app_path_prefix`, `strategy`, `internet_exposed`,
+        `direct_hosts`.
+
+        `direct_hosts` is a per-role hostname map (e.g.
+        `{"media_server": "jf.example.com", "auth": "auth.example.com"}`).
+        Sub-keys are merged into the existing config — set a sub-key to
+        an empty string to clear that one role without touching the
+        others. Well-known roles: `media_server` (resolves via
+        `technology_bindings` to jellyfin/plex/emby), `auth` (resolves
+        to the configured auth provider). Any other key is treated as
+        a literal service id.
       x-codeSamples:
         - lang: curl
           label: cURL
@@ -2819,9 +2829,22 @@ paths:
                   enum: [hybrid, subdomain, path]
                 internet_exposed:
                   type: boolean
+                direct_hosts:
+                  type: object
+                  description: |
+                    Per-role hostname overrides. Sub-keys are merged into
+                    the existing direct_hosts config; pass an empty string
+                    to clear a role without affecting the others.
+                  additionalProperties:
+                    type: string
+                  example:
+                    media_server: jf.iomio.io
+                    auth: auth.iomio.io
             example:
               base_domain: home.lan
               strategy: path
+              direct_hosts:
+                media_server: jf.home.lan
       responses:
         "200":
           description: Routing update result

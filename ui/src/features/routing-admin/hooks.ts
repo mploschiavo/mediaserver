@@ -54,6 +54,10 @@ export type RoutingStrategyValue = "hybrid" | "subdomain" | "path";
  * Routing-config payload accepted by `POST /api/routing`. Only the
  * keys explicitly listed by the OpenAPI spec are sent. The controller
  * auto-syncs related fields (e.g. base_domain ↔ gateway_host).
+ *
+ * `direct_hosts` is a per-role hostname map. The backend merges
+ * sub-keys into the existing config — set a sub-key to empty string
+ * to clear that role without touching the others.
  */
 export interface RoutingConfigInput {
   base_domain?: string;
@@ -63,6 +67,7 @@ export interface RoutingConfigInput {
   app_path_prefix?: string;
   strategy?: RoutingStrategyValue;
   internet_exposed?: boolean;
+  direct_hosts?: Record<string, string>;
 }
 
 export interface RoutingUpdateResult {

@@ -56,6 +56,15 @@ export function RoutingStrategyCard({
   const [editing, setEditing] = useState(false);
 
   if (editing) {
+    // Coerce direct_hosts: the OpenAPI shape allows undefined values
+    // and the controller never emits them, but the type permits it,
+    // so filter to a clean Record<string, string> for the editor.
+    const directHosts: Record<string, string> = {};
+    if (data?.direct_hosts) {
+      for (const [k, v] of Object.entries(data.direct_hosts)) {
+        if (typeof v === "string" && v) directHosts[k] = v;
+      }
+    }
     return (
       <RoutingEditor
         initial={
@@ -66,6 +75,7 @@ export function RoutingStrategyCard({
                   "hybrid",
                 base_domain: data.base_domain ?? "",
                 external_hostname: data.gateway_host ?? "",
+                direct_hosts: directHosts,
               }
             : undefined
         }

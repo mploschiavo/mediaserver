@@ -192,6 +192,11 @@ export interface RoutingStrategyShape {
   strategy: "subdomain" | "path" | "hybrid";
   base_domain: string;
   external_hostname: string;
+  // Per-role hostname overrides keyed by role:
+  //   media_server → jellyfin/plex/emby (resolved via technology_bindings)
+  //   auth         → the configured auth provider (authelia/...)
+  //   <other>      → tried as a literal service id
+  direct_hosts?: Record<string, string>;
 }
 
 export interface RoutedAppShape {
