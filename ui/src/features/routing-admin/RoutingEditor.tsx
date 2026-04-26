@@ -23,6 +23,10 @@ import {
   type RoutingConfigInput,
   type RoutingStrategyValue,
 } from "./hooks";
+import {
+  DirectHostsEditor,
+  collectDirectHostErrors,
+} from "./DirectHostsEditor";
 
 interface RoutingEditorProps {
   /** Current strategy snapshot — used to seed the form. */
@@ -35,6 +39,7 @@ interface FormState {
   strategy: RoutingStrategyValue;
   base_domain: string;
   external_hostname: string;
+  direct_hosts: Record<string, string>;
 }
 
 const STRATEGIES: readonly RoutingStrategyValue[] = [
@@ -61,6 +66,7 @@ function seedForm(initial?: RoutingStrategyShape): FormState {
     strategy,
     base_domain: initial?.base_domain ?? "",
     external_hostname: initial?.external_hostname ?? "",
+    direct_hosts: { ...(initial?.direct_hosts ?? {}) },
   };
 }
 
@@ -77,6 +83,13 @@ function looksLikeHost(s: string): boolean {
 interface FormErrors {
   base_domain?: string;
   external_hostname?: string;
+  /**
+   * Aggregated list of direct_hosts errors. Submit is blocked when
+   * non-empty; the per-row messages are surfaced inside the editor
+   * itself. We only need to know "is anything broken" at the form
+   * level so we can disable Save.
+   */
+  direct_hosts?: readonly string[];
 }
 
 function validate(form: FormState): FormErrors {
@@ -88,7 +101,35 @@ function validate(form: FormState): FormErrors {
     errors.external_hostname =
       "Looks invalid — no spaces, schemes, or paths.";
   }
+  const dh = collectDirectHostErrors(form.direct_hosts, form.external_hostname);
+  if (dh.length > 0) errors.direct_hosts = dh;
   return errors;
+}
+
+/**
+ * Diff direct_hosts maps. The backend merges sub-keys, so we only
+ * send roles that changed. Removed roles are sent as empty strings
+ * (the controller's signal to clear the slot).
+ */
+function diffDirectHosts(
+  next: Record<string, string>,
+  prev: Record<string, string>,
+): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  let changed = false;
+  for (const [role, host] of Object.entries(next)) {
+    if (host !== (prev[role] ?? "")) {
+      out[role] = host;
+      changed = true;
+    }
+  }
+  for (const role of Object.keys(prev)) {
+    if (!(role in next) && prev[role]) {
+      out[role] = "";
+      changed = true;
+    }
+  }
+  return changed ? out : null;
 }
 
 /** Build the diff payload — only include keys the operator changed. */
@@ -104,6 +145,8 @@ function buildPayload(
   if (form.external_hostname !== initial.external_hostname) {
     payload.gateway_host = form.external_hostname;
   }
+  const dhDiff = diffDirectHosts(form.direct_hosts, initial.direct_hosts);
+  if (dhDiff) payload.direct_hosts = dhDiff;
   return payload;
 }
 
@@ -123,7 +166,10 @@ export function RoutingEditor({
     () => buildPayload(form, initialState),
     [form, initialState],
   );
-  const hasErrors = Object.values(errors).some(Boolean);
+  const hasErrors =
+    Boolean(errors.base_domain) ||
+    Boolean(errors.external_hostname) ||
+    (errors.direct_hosts?.length ?? 0) > 0;
   const hasChanges = Object.keys(payload).length > 0;
 
   const onSubmit = () => {
@@ -225,6 +271,14 @@ export function RoutingEditor({
             </p>
           ) : null}
         </div>
+
+        <DirectHostsEditor
+          value={form.direct_hosts}
+          onChange={(next) =>
+            setForm((f) => ({ ...f, direct_hosts: next }))
+          }
+          gatewayHost={form.external_hostname}
+        />
 
         {showPreview && hasChanges ? (
           <div
