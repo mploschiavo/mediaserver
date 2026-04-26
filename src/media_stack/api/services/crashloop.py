@@ -337,6 +337,88 @@ def _default() -> CrashloopClassifier:
     return _DEFAULT
 
 
+def list_non_registry_problem_pods() -> list[dict]:
+    """List pods in the controller's namespace that are NOT in the
+    SERVICES registry but ARE in trouble (Failed / CrashLoopBackOff /
+    Error / OOMKilled). The user feedback that prompted this:
+    operators saw the registry-tracked Crashloops tile show "all
+    clear" while CronJob pods (jellyfin-prewarm-…) and ad-hoc deploys
+    sat in Error state, undetected by the registry-bound check.
+
+    Best-effort: returns [] when not on K8s, or when the kubernetes
+    client can't reach the API. The caller MUST be tolerant of that
+    — this is supplementary, not load-bearing.
+    """
+    import os as _os
+    if not _os.environ.get("KUBERNETES_SERVICE_HOST"):
+        return []
+    try:
+        from kubernetes import client, config as kconfig
+        try:
+            kconfig.load_incluster_config()
+        except Exception:  # noqa: BLE001
+            kconfig.load_kube_config()
+        v1 = client.CoreV1Api()
+        ns = _os.environ.get("MEDIA_STACK_NAMESPACE", "media-stack")
+        pods = v1.list_namespaced_pod(namespace=ns, limit=100)
+    except Exception as exc:  # noqa: BLE001
+        _log.debug("[crashloop] non-registry probe failed: %s", exc)
+        return []
+
+    registry_ids = {s.id for s in SERVICES}
+    out: list[dict] = []
+    for pod in pods.items or []:
+        # The registry maps service_id → ``app=<id>`` label; pods
+        # whose ``app`` label is in the registry are skipped (handled
+        # by check_all). Pods owned by Jobs / CronJobs / one-offs
+        # land here.
+        labels = (pod.metadata.labels or {})
+        app = labels.get("app", "")
+        if app in registry_ids:
+            continue
+        phase = (pod.status.phase or "") if pod.status else ""
+        terminations: list[str] = []
+        max_restarts = 0
+        for cs in (pod.status.container_statuses or []) if pod.status else []:
+            max_restarts = max(max_restarts, int(cs.restart_count or 0))
+            term = (cs.last_state.terminated if cs.last_state else None)
+            if term and term.reason:
+                terminations.append(str(term.reason))
+            wait = (cs.state.waiting if cs.state else None)
+            if wait and wait.reason in ("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull"):
+                terminations.append(str(wait.reason))
+        is_problem = (
+            phase in ("Failed",)
+            or max_restarts >= _RESTART_THRESHOLD
+            or any(t in {"CrashLoopBackOff", "OOMKilled", "Error", "ImagePullBackOff", "ErrImagePull"} for t in terminations)
+        )
+        if not is_problem:
+            continue
+        # Identify the controlling resource — Jobs vs CronJob fires
+        # vs raw deployments — so the UI can group them.
+        owner = ""
+        owner_kind = ""
+        for ref in (pod.metadata.owner_references or []):
+            owner = ref.name
+            owner_kind = ref.kind
+            break
+        out.append({
+            "pod": pod.metadata.name,
+            "namespace": pod.metadata.namespace,
+            "phase": phase,
+            "restart_count": max_restarts,
+            "last_terminated_reason": ", ".join(sorted(set(terminations))) or phase,
+            "owner": owner,
+            "owner_kind": owner_kind,
+            "started_at": (
+                pod.status.start_time.timestamp()
+                if pod.status and pod.status.start_time else None
+            ),
+        })
+    out.sort(key=lambda r: (r.get("owner_kind", ""), r.get("pod", "")))
+    return out
+
+
 def check_all() -> dict[str, dict]:
     return _default().check_all()
 

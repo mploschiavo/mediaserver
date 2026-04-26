@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { useProfileYaml } from "./hooks";
 
 const EXCERPT_LINES = 20;
@@ -73,13 +74,10 @@ export function ProfileViewPage() {
               data-testid="profile-view-loading"
             />
           ) : profile.error ? (
-            <div
-              role="alert"
-              data-testid="profile-view-error"
-              className="text-sm text-danger"
-            >
-              {profile.error.message}
-            </div>
+            <ApiErrorTile
+              error={profile.error}
+              onRetry={() => void profile.refetch()}
+            />
           ) : yaml ? (
             <pre
               data-testid="profile-view-excerpt"

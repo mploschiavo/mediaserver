@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { ApiErrorTile } from "@/components/ApiErrorTile";
 import { asArray, asObjectMap } from "@/lib/coerce";
 import { useProfileYaml, type ProfileResponse } from "./hooks";
 
@@ -410,13 +411,10 @@ export function EffectiveProfileCard() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : profile.error ? (
-          <div
-            role="alert"
-            data-testid="effective-profile-error"
-            className="text-sm text-danger"
-          >
-            {profile.error.message}
-          </div>
+          <ApiErrorTile
+            error={profile.error}
+            onRetry={() => void profile.refetch()}
+          />
         ) : !yaml ? (
           <p
             className="text-sm text-fg-muted"

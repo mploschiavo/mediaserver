@@ -94,8 +94,26 @@ export function App() {
         // Toaster may not be mounted on the auth path; redirect is
         // the load-bearing step.
       }
+      // Clear the authelia session cookies BEFORE the redirect.
+      // Without this, an expired cookie keeps signalling "you're
+      // signed in" to the portal in incognito tabs and the redirect
+      // loops or shows a stale "already authenticated" state — the
+      // operator's "I have to close the browser to sign in again"
+      // bug. Path="/" matches how authelia sets it.
+      try {
+        document.cookie =
+          "authelia_session=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie =
+          "authelia_session_remember=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      } catch {
+        // best-effort
+      }
+      // Pass the current URL as `?rd=` so post-auth lands back
+      // where the operator was, not on /ops.
+      const here = window.location.pathname + window.location.search;
+      const rd = encodeURIComponent(here);
       window.setTimeout(() => {
-        window.location.replace("/app/authelia/");
+        window.location.replace(`/app/authelia/?rd=${rd}`);
       }, 1500);
     };
 

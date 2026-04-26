@@ -229,6 +229,11 @@ class GetRequestHandler:
             from .services import crashloop as crashloop_svc
             handler._json_response(200, {
                 "services": crashloop_svc.check_all(),
+                # CronJob pods + non-registry workloads. Empty list
+                # outside K8s. Surfaces in a separate UI section so
+                # registry hygiene stays distinct from one-off pod
+                # noise (jellyfin-prewarm, anythingllm, etc.).
+                "non_registry_pods": crashloop_svc.list_non_registry_problem_pods(),
                 "checked_at": time.time(),
             })
         elif path == "/api/auto-heal":
@@ -846,6 +851,85 @@ class GetRequestHandler:
                 handler._json_response(200, push_telemetry())
             else:
                 handler._json_response(200, collect_metrics())
+        elif path == "/api/jobs/running":
+            # Aggregator: every job, action, scan, or operation the
+            # controller currently has in-flight. Surfaced in the
+            # global banner so operators see "3 things are happening
+            # right now" from any page, not one source at a time.
+            #
+            # Sources combined here:
+            #   1. ActionRecord-tracked actions (bootstrap, reconcile,
+            #      mass-search, etc.) with status=RUNNING
+            #   2. Job framework executions in progress
+            #   3. K8s Jobs in Active phase (CronJob fires that haven't
+            #      completed yet) — best-effort via the K8s client
+            try:
+                running: list[dict] = []
+                # 1. ActionRecord state.
+                try:
+                    state = handler.state
+                    cur = getattr(state, "current_action", None)
+                    if cur is not None and not getattr(cur, "is_terminal", True):
+                        running.append({
+                            "id": cur.id,
+                            "name": cur.name,
+                            "kind": "action",
+                            "started_at": cur.started_at,
+                            "elapsed_seconds": cur.elapsed_seconds,
+                            "triggered_by": getattr(cur, "triggered_by", ""),
+                        })
+                    # action_history may also contain still-running rows
+                    # from re-entrant actions; pick those out too.
+                    for a in getattr(state, "action_history", []):
+                        if (
+                            a is not cur
+                            and getattr(a, "status", None)
+                            and a.status.value == "running"
+                            and not getattr(a, "is_terminal", True)
+                        ):
+                            running.append({
+                                "id": a.id, "name": a.name, "kind": "action",
+                                "started_at": a.started_at,
+                                "elapsed_seconds": a.elapsed_seconds,
+                                "triggered_by": getattr(a, "triggered_by", ""),
+                            })
+                except Exception as exc:  # noqa: BLE001
+                    log_swallowed(exc)
+                # 2. K8s active CronJob/Job pods (best-effort).
+                if os.environ.get("KUBERNETES_SERVICE_HOST"):
+                    try:
+                        from kubernetes import client, config as kconfig
+                        try:
+                            kconfig.load_incluster_config()
+                        except Exception:  # noqa: BLE001
+                            kconfig.load_kube_config()
+                        v1batch = client.BatchV1Api()
+                        ns = os.environ.get("MEDIA_STACK_NAMESPACE", "media-stack")
+                        jobs = v1batch.list_namespaced_job(
+                            namespace=ns, limit=50,
+                        )
+                        for j in jobs.items:
+                            active = (j.status.active or 0) if j.status else 0
+                            if active > 0:
+                                running.append({
+                                    "id": j.metadata.name,
+                                    "name": j.metadata.name,
+                                    "kind": "k8s_job",
+                                    "started_at": (
+                                        j.status.start_time.timestamp()
+                                        if j.status and j.status.start_time
+                                        else None
+                                    ),
+                                    "active_pods": active,
+                                })
+                    except Exception as exc:  # noqa: BLE001
+                        log_swallowed(exc)
+                handler._json_response(200, {
+                    "running": running,
+                    "count": len(running),
+                })
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(500, {"error": str(exc)[:200], "running": []})
         elif path == "/api/jobs":
             from media_stack.services.jobs.framework import discover_jobs_from_contracts, build_job_framework, get_job_history
             jobs = discover_jobs_from_contracts()
