@@ -1,0 +1,179 @@
+# =============================================================================
+# mkdocs.yml — Diataxis-style documentation site
+# =============================================================================
+#
+# ADR-0001 Phase 15. Renders the existing docs/ tree (Tutorials, How-To,
+# Reference, Architecture) into a navigable mkdocs-material site that can
+# be served from GitHub Pages or any static host.
+#
+# Source-of-truth rules:
+#   * Tutorials, how-tos, architecture pages — hand-authored, edit
+#     in place.
+#   * docs/reference/api/, docs/reference/cli/, docs/reference/services.md,
+#     docs/reference/promises.md — AUTO-GENERATED. Re-run
+#     `bash bin/ops/generate-reference-docs.sh` after editing the
+#     canonical source (contracts/api/openapi.yaml, [project.scripts]
+#     in pyproject.toml, contracts/services/*.yaml,
+#     .ratchets/promises/promises.yaml).
+#
+# CI gates (see .github/workflows/ci.yml):
+#   * `mkdocs build` — surfaces nav warnings, missing page references,
+#     and broken intra-doc anchors in the job log. Will tighten to
+#     `--strict` once the legacy `internals/*` links in docs/README.md
+#     are migrated.
+#   * `bin/ops/lychee.sh --offline` — flags broken markdown links
+#     inside docs/ (relative paths only in --offline mode). Currently
+#     `continue-on-error: true` while the link backlog is worked down.
+# =============================================================================
+
+site_name: Media Stack
+site_description: >-
+  Documentation for the Media Stack controller — a self-hosted media
+  automation platform that orchestrates Sonarr, Radarr, Lidarr, Readarr,
+  Prowlarr, Bazarr, Jellyfin, qBittorrent, SABnzbd and supporting
+  edge/auth/observability services on Docker Compose and Kubernetes.
+site_url: https://mploschiavo.github.io/mediaserver/
+repo_url: https://github.com/mploschiavo/mediaserver
+repo_name: mploschiavo/mediaserver
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+# Strict mode is enforced in CI (`mkdocs build --strict`). Locally the
+# default flags are fine — strict catches missing-link warnings and
+# nav typos, both of which we want as hard failures on PRs.
+strict: false
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+  - include-markdown
+
+# Diataxis nav — mirrors docs/ subdirectory layout. Each section is
+# a single Diataxis quadrant; cross-quadrant links stay as relative
+# markdown links and are validated by lychee.
+nav:
+  - Home: README.md
+  - Tutorials:
+      - tutorials/quickstart.md
+  - How-To:
+      - Auth: how-to/auth.md
+      - Connecting devices: how-to/connecting-devices.md
+      - Deploy parity: how-to/deploy-parity.md
+      - Deployment: how-to/deployment.md
+      - Intel transcoding: how-to/intel-transcoding.md
+      - Media integrity: how-to/media-integrity.md
+      - Networking: how-to/networking.md
+      - OpenAPI regen: how-to/openapi-regen.md
+      - Operations: how-to/operations.md
+      - Security: how-to/security.md
+      - Storage: how-to/storage.md
+      - Teardown: how-to/teardown.md
+      - Troubleshooting: how-to/troubleshooting.md
+      - UI container: how-to/ui-container.md
+      - Upgrades: how-to/upgrades.md
+      - User management: how-to/user-management.md
+  - Reference:
+      - Configuration: reference/configuration.md
+      - Service catalog: reference/service-catalog.md
+      - Services (auto-generated): reference/services.md
+      - Promises: reference/promises.md
+      - Maintainerr rules: reference/maintainerr-rules.md
+      - Security & a11y contract: reference/security-a11y-contract.md
+      - UI design system: reference/ui-design-system.md
+      - API:
+          - Overview: reference/api/index.md
+      - CLI:
+          - Overview: reference/cli/index.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Principles: architecture/principles.md
+      - Repo layout: architecture/repo-layout.md
+      - Bootstrap runtime: architecture/bootstrap-runtime.md
+      - Service registry: architecture/service-registry.md
+      - Adding a service: architecture/adding-a-service.md
+      - Technology swaps: architecture/technology-swaps.md
+      - Indexer pipeline: architecture/indexer-pipeline.md
+      - K8s deploy pipeline: architecture/k8s-deploy-pipeline.md
+      - API keys: architecture/api-keys.md
+      - Promises registry: architecture/promises-registry.md
+      - Premium UX: architecture/premium-ux.md
+      - GitOps: architecture/gitops.md
+      - Supply chain: architecture/supply-chain.md
+      - SDLC: architecture/sdlc.md
+      - Testing: architecture/testing.md
+      - Security roadmap: architecture/security-roadmap.md
+      - ADRs:
+          - "ADR-0001 Repo restructure": architecture/adr/0001-repo-restructure.md
+          - "ADR-0002 Hexagonal restructure": architecture/adr/0002-hexagonal-restructure.md
+  - Diagrams: diagrams/README.md
+  - Roadmap:
+      - Session visibility — followups: roadmap/session-visibility-followups.md
+      - Session visibility — resume: roadmap/session-visibility-resume.md
+
+# Auto-generated reference subpages aren't pinned individually in
+# `nav` (they'd require regenerating mkdocs.yml on every contract
+# bump). `not_in_nav` uses gitignore-style patterns relative to
+# `docs_dir` and tells `mkdocs --strict` to treat the listed files as
+# known orphans instead of warning. The two `index.md` files ARE in
+# nav, so they're excluded from `not_in_nav` via the `!` prefix.
+not_in_nav: |
+  reference/api/*.md
+  !reference/api/index.md
+  reference/cli/*.md
+  !reference/cli/index.md

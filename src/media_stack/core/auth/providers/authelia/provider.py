@@ -1,5 +1,6 @@
-"""Built-in auth provider spec for Authelia."""
+"""Phase 16-B migration shim — moved to media_stack.adapters.auth.providers.authelia.provider."""
 
-PROVIDER_KEY = "authelia"
-DEFAULT_MIDDLEWARE = "authelia@docker"
-COMPOSE_SERVICE_NAMES: tuple[str, ...] = ("authelia",)
+from media_stack.adapters.auth.providers.authelia.provider import *  # noqa: F401, F403
+from media_stack.adapters.auth.providers.authelia import provider as _impl
+
+globals().update({k: v for k, v in vars(_impl).items() if not k.startswith("__")})

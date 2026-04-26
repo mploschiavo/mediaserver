@@ -32,7 +32,7 @@ After a wide change (new spec version, batch handler edit), regenerate
 every fixture in one go:
 
 ```bash
-bash tools/recapture-all-fixtures.sh
+bash bin/ops/recapture-all-fixtures.sh
 ```
 
 The script walks `openapi.yaml` for `/api/...` GET paths with no

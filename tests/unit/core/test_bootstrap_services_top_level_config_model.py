@@ -1,0 +1,91 @@
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "src"))
+
+from media_stack.services.top_level_config_model import TopLevelBootstrapConfig  # noqa: E402
+
+
+class TopLevelBootstrapConfigModelTests(unittest.TestCase):
+    def test_from_dict_accepts_known_sections(self):
+        model = TopLevelBootstrapConfig.from_dict(
+            {
+                "config_version": 2,
+                "prowlarr_url": "http://prowlarr:9696",
+                "arr_apps": [],
+                "download_clients": {},
+                "technology_bindings": {
+                    "torrent_client": "qbittorrent",
+                    "usenet_client": "sabnzbd",
+                    "media_server": "jellyfin",
+                },
+                "prowlarr_indexer_reputation": {"enabled": True},
+                "arr_indexer_sync": {"prune_stale_indexers": True},
+            }
+        )
+        self.assertEqual(model.prowlarr_url, "http://prowlarr:9696")
+        self.assertTrue(model.prowlarr_indexer_reputation.get("enabled"))
+        self.assertTrue(model.arr_indexer_sync.get("prune_stale_indexers"))
+
+    def test_from_dict_rejects_unknown_top_level_keys(self):
+        with self.assertRaises(ValueError):
+            TopLevelBootstrapConfig.from_dict(
+                {
+                    "config_version": 2,
+                    "prowlarr_url": "http://prowlarr:9696",
+                    "arr_apps": [],
+                    "download_clients": {},
+                    "technology_bindings": {
+                        "torrent_client": "qbittorrent",
+                        "usenet_client": "sabnzbd",
+                        "media_server": "jellyfin",
+                    },
+                    "unknown_key": {"value": 1},
+                }
+            )
+
+    def test_from_dict_allows_optional_download_bindings_when_media_server_set(self):
+        model = TopLevelBootstrapConfig.from_dict(
+            {
+                "config_version": 2,
+                "prowlarr_url": "http://prowlarr:9696",
+                "arr_apps": [],
+                "download_clients": {},
+                "technology_bindings": {
+                    "media_server": "jellyfin",
+                },
+            }
+        )
+        self.assertEqual(model.technology_bindings.get("media_server"), "jellyfin")
+
+    def test_from_dict_rejects_wrong_top_level_types(self):
+        with self.assertRaises(ValueError):
+            TopLevelBootstrapConfig.from_dict(
+                {
+                    "config_version": 2,
+                    "prowlarr_url": 123,
+                    "arr_apps": [],
+                }
+            )
+
+    def test_from_dict_requires_supported_config_version(self):
+        with self.assertRaises(ValueError):
+            TopLevelBootstrapConfig.from_dict(
+                {
+                    "config_version": 1,
+                    "prowlarr_url": "http://prowlarr:9696",
+                    "arr_apps": [],
+                    "download_clients": {},
+                    "technology_bindings": {
+                        "torrent_client": "qbittorrent",
+                        "usenet_client": "sabnzbd",
+                        "media_server": "jellyfin",
+                    },
+                }
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
