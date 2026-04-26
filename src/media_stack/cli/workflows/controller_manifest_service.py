@@ -89,7 +89,7 @@ class ControllerManifestService:
         return names
 
     def ensure_bootstrap_pvc_prereqs(self) -> None:
-        storage_manifest = self.cfg.root_dir / "k8s" / "storage-pvc.yaml"
+        storage_manifest = self.cfg.root_dir / "deploy" / "k8s" / "storage-pvc.yaml"
         if not storage_manifest.exists():
             raise ConfigError(
                 f"PVC manifest required for bootstrap prerequisites: {storage_manifest}"

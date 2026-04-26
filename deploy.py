@@ -6,7 +6,7 @@ kubectl (for Kubernetes) or docker compose (for Compose).
 
 Usage:
     python deploy.py k8s                                         # K8s default profile
-    python deploy.py k8s examples/bootstrap-profiles/media-k8s-standard.yaml
+    python deploy.py k8s deploy/examples/bootstrap-profiles/media-k8s-standard.yaml
     python deploy.py k8s --delete                                # teardown + redeploy
     python deploy.py compose                                     # Docker Compose
     python deploy.py compose --delete                            # teardown + redeploy
@@ -65,7 +65,7 @@ def deploy_k8s(args: argparse.Namespace) -> None:
     if not namespace:
         sys.exit("ERROR: metadata.name is required in profile")
 
-    profile_dir = SCRIPT_DIR / "k8s" / "profiles" / install_profile
+    profile_dir = SCRIPT_DIR / "deploy" / "k8s" / "profiles" / install_profile
     if not profile_dir.exists():
         sys.exit(f"ERROR: K8s profile dir not found: {profile_dir}")
 
@@ -197,7 +197,7 @@ def deploy_k8s(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 def deploy_compose(args: argparse.Namespace) -> None:
-    compose_file = SCRIPT_DIR / "docker" / "docker-compose.yml"
+    compose_file = SCRIPT_DIR / "deploy" / "compose" / "docker-compose.yml"
 
     if args.delete:
         print("Tearing down compose stack...")
@@ -279,7 +279,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="target", required=True)
 
     k8s = sub.add_parser("k8s", help="Deploy to Kubernetes")
-    k8s.add_argument("profile", nargs="?", default="examples/bootstrap-profiles/media-k8s-standard.yaml",
+    k8s.add_argument("profile", nargs="?", default="deploy/examples/bootstrap-profiles/media-k8s-standard.yaml",
                       help="Path to bootstrap profile YAML")
     k8s.add_argument("--delete", action="store_true", help="Teardown namespace before deploy")
 

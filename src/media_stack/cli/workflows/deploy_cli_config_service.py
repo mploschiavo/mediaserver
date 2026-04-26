@@ -57,8 +57,8 @@ class DeployStackConfig:
     generate_secrets_on_rebuild: str = "0"
     preserve_secret_on_rebuild: str = "1"
     node_ip: str = ""
-    compose_file: Path = Path("docker/docker-compose.yml")
-    compose_env_file: Path = Path("docker/.env")
+    compose_file: Path = Path("deploy/compose/docker-compose.yml")
+    compose_env_file: Path = Path("deploy/compose/.env")
     compose_project_name: str = ""
     compose_profiles: str = ""
     bootstrap_runner_image: str = ""
@@ -180,7 +180,7 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         description=(
             "Deploy and bootstrap the media stack. "
             "All deployment settings are sourced from the bootstrap profile YAML. "
-            "See examples/bootstrap-profiles/ for reference profiles."
+            "See deploy/examples/bootstrap-profiles/ for reference profiles."
         ),
     )
     parser.add_argument(
@@ -195,7 +195,7 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         default=None,
         metavar="FILE",
         help=(
-            "Path to a bootstrap profile YAML (see examples/bootstrap-profiles/). "
+            "Path to a bootstrap profile YAML (see deploy/examples/bootstrap-profiles/). "
             "Falls back to BOOTSTRAP_PROFILE_FILE env var or "
             "contracts/media-stack.profile.yaml if present."
         ),

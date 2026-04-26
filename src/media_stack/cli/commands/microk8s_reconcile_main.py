@@ -231,9 +231,9 @@ class Microk8sReconcileRunner:
         }
 
     def _handle_apply_base_kustomize(self) -> None:
-        k8s_dir = self.cfg.root_dir / "k8s"
+        k8s_dir = self.cfg.root_dir / "deploy" / "k8s"
         if not k8s_dir.is_dir():
-            raise ConfigError(f"k8s directory not found: {k8s_dir}")
+            raise ConfigError(f"deploy/k8s directory not found: {k8s_dir}")
         print(f"[INFO] Applying core manifests from {k8s_dir}")
         self._run(["apply", "-k", str(k8s_dir)])
 

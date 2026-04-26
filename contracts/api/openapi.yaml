@@ -4088,6 +4088,19 @@ paths:
                     type: string
                   note:
                     type: string
+              example:
+                type: kubernetes
+                namespace: media-stack
+                deployments: 21
+                services:
+                  - name: sonarr
+                    image: lscr.io/linuxserver/sonarr@sha256:76414c033f290d3c9f1f9dfad71150abe71d92592369a3377a5903d579e6e2b2
+                  - name: radarr
+                    image: lscr.io/linuxserver/radarr@sha256:ca43905eaf2dd11425efdcfe184892e43806b1ae0a830440c825cecbc2629cfb
+                  - name: jellyfin
+                    image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
+                  - name: media-stack-controller
+                    image: harbor.iomio.io/library/media-stack-controller:v1.0.206
 
   /api/backup:
     get:
@@ -4159,6 +4172,27 @@ paths:
                     type: array
                     items:
                       type: string
+              example:
+                timestamp: "2026-04-25T14:30:22Z"
+                version: "v1.0.206"
+                env:
+                  namespace: media-stack
+                  node_count: 1
+                state:
+                  phase: complete
+                profile_raw: "{\"services\": [...]}"
+                service_configs:
+                  "sonarr/config.xml": "<Config>...</Config>"
+                  "radarr/config.xml": "<Config>...</Config>"
+                api_keys_masked:
+                  SONARR_API_KEY: "e1402d3d..."
+                  RADARR_API_KEY: "f7d9a576..."
+                api_keys:
+                  SONARR_API_KEY: "***"
+                  RADARR_API_KEY: "***"
+                valid_config_paths:
+                  - sonarr/config.xml
+                  - radarr/config.xml
           headers:
             Content-Disposition:
               schema:
@@ -4357,6 +4391,16 @@ paths:
                     type: object
                   overwrite:
                     type: boolean
+              example:
+                dashboard:
+                  title: Media Stack
+                  panels:
+                    - title: Healthy services
+                      type: stat
+                      targets:
+                        - expr: media_stack_healthy_total
+                  schemaVersion: 38
+                overwrite: true
 
   /api/openapi.json:
     get:
@@ -4373,6 +4417,15 @@ paths:
             application/json:
               schema:
                 type: object
+              example:
+                openapi: "3.0.3"
+                info:
+                  title: Media Stack Controller API
+                  version: "v1.0.206"
+                paths:
+                  /api/health:
+                    get:
+                      summary: Service health
 
   /api/openapi.yaml:
     get:
@@ -4845,6 +4898,14 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              mode: authelia
+              internet_exposed: false
+              oidc_provider: local
+              app_auth:
+                enabled: true
+                method: None
+                required: DisabledForLocalAddresses
       responses:
         "200":
           description: Updated auth config
@@ -4853,6 +4914,19 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                mode: authelia
+                internet_exposed: false
+                oidc_provider: local
+                oidc_config: {}
+                per_service: {}
+                app_auth:
+                  enabled: true
+                  method: None
+                  required: DisabledForLocalAddresses
+                  fail_on_error: false
+                app_auth_method: None
+                app_auth_summary: "SSO gateway — arr apps trust local network (no second login)"
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -4883,6 +4957,12 @@ paths:
                     type: string
                   groups:
                     type: string
+              example:
+                authenticated: true
+                user: admin
+                display_name: admin
+                email: ""
+                groups: ""
 
   /api/auth/login:
     post:
@@ -4900,6 +4980,9 @@ paths:
                   type: string
                 password:
                   type: string
+            example:
+              username: admin
+              password: "***"
       responses:
         "200":
           description: Session established; Set-Cookie set
@@ -4961,6 +5044,32 @@ paths:
                           description: Service id of the auth provider, or empty when in-process.
                           example: authelia
                       additionalProperties: true
+              example:
+                modes:
+                  - key: none
+                    display_name: No Authentication
+                    description: No authentication on gateway or controller. Trusted LAN only.
+                    controller_auth: none
+                    gateway_auth: false
+                    provider_service: ""
+                  - key: basic
+                    display_name: Basic Auth
+                    description: HTTP Basic Auth on the controller. No gateway-level auth.
+                    controller_auth: basic
+                    gateway_auth: false
+                    provider_service: ""
+                  - key: authelia
+                    display_name: Authelia (SSO)
+                    description: Authelia forward-auth via Envoy ext_authz.
+                    controller_auth: forwarded
+                    gateway_auth: true
+                    provider_service: authelia
+                  - key: authentik
+                    display_name: Authentik (IdP)
+                    description: Authentik forward-auth via Envoy ext_authz.
+                    controller_auth: forwarded
+                    gateway_auth: true
+                    provider_service: authentik
 
   /api/auth/oidc-providers:
     get:
@@ -4980,6 +5089,24 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                providers:
+                  - key: local
+                    display_name: Local Accounts
+                    description: File-based users managed by the auth provider directly
+                    required_fields: []
+                  - key: google
+                    display_name: Google
+                    description: Google Workspace or personal Gmail accounts
+                    required_fields: [client_id, client_secret]
+                  - key: microsoft
+                    display_name: Microsoft Entra ID
+                    description: Azure AD / Microsoft 365 accounts
+                    required_fields: [tenant_id, client_id, client_secret]
+                  - key: keycloak
+                    display_name: Keycloak
+                    description: Self-hosted open-source IdP
+                    required_fields: [host, realm, client_id, client_secret]
 
   /api/auth/parse-oidc:
     post:
@@ -4996,6 +5123,11 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              provider: google
+              client_id: "1234567890.apps.googleusercontent.com"
+              client_secret: "***"
+              discovery_url: "https://accounts.google.com/.well-known/openid-configuration"
       responses:
         "200":
           description: Parsed OIDC config
@@ -5004,6 +5136,14 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                provider: google
+                issuer: "https://accounts.google.com"
+                authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth"
+                token_endpoint: "https://oauth2.googleapis.com/token"
+                userinfo_endpoint: "https://openidconnect.googleapis.com/v1/userinfo"
+                scopes_supported: [openid, email, profile]
         "400":
           $ref: '#/components/responses/BadRequest'
 
@@ -5046,6 +5186,28 @@ paths:
                           type: string
                           enum: [contract, override]
                       additionalProperties: true
+              example:
+                services:
+                  - service_id: sonarr
+                    service_name: Sonarr
+                    category: automation
+                    policy: protected
+                    source: contract
+                  - service_id: jellyfin
+                    service_name: Jellyfin
+                    category: media
+                    policy: native
+                    source: contract
+                  - service_id: authelia
+                    service_name: Authelia
+                    category: infrastructure
+                    policy: public
+                    source: contract
+                  - service_id: qbittorrent
+                    service_name: qBittorrent
+                    category: downloads
+                    policy: protected
+                    source: contract
 
   # =========================================================================
   # Me (self-service)
@@ -5064,6 +5226,16 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                authenticated: true
+                id: "50c37f20-4984-460f-893b-643d6faddbfe"
+                username: admin
+                display_name: Administrator
+                email: admin@local
+                role_slug: superadmin
+                source: env-legacy
+                last_login_at: ""
+                needs_rotation: true
 
   /api/me/mfa-state:
     get:
@@ -5083,6 +5255,12 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                enrolled: false
+                enrolled_methods: []
+                last_used_at: ""
+                last_used_method: ""
+                required: false
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -5106,6 +5284,8 @@ paths:
                 properties:
                   revoked:
                     type: integer
+              example:
+                revoked: 3
         "401":
           $ref: '#/components/responses/Unauthorized'
         "429":
@@ -5134,6 +5314,9 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                current_session_id: ""
+                sessions: []
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -5158,6 +5341,9 @@ paths:
                   type: string
                 audit_id:
                   type: string
+            example:
+              session_id: "sess-7e8a1884d5ff45f8"
+              audit_id: "audit-2026-04-25-00042"
       responses:
         "200":
           description: Disowned; session revoked, password forced-rotate
@@ -5189,6 +5375,8 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                tokens: []
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -5217,6 +5405,32 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                users:
+                  - id: "50c37f20-4984-460f-893b-643d6faddbfe"
+                    username: admin
+                    display_name: Administrator
+                    email: admin@local
+                    role_slug: superadmin
+                    state: active
+                    source: env-legacy
+                    provider_refs:
+                      authelia: admin
+                    created_at: "2026-04-23T23:15:57+00:00"
+                    updated_at: "2026-04-23T23:15:57+00:00"
+                    last_login_at: ""
+                  - id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+                    username: "alice"
+                    display_name: "Alice"
+                    email: "alice@local"
+                    role_slug: adult
+                    state: active
+                    source: ""
+                    provider_refs:
+                      authelia: alice
+                    created_at: "2026-04-24T15:14:14+00:00"
+                    updated_at: "2026-04-24T15:14:15+00:00"
+                    last_login_at: ""
         "401":
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -5244,6 +5458,12 @@ paths:
                 password:
                   type: string
               required: [username, role_slug]
+            example:
+              username: alice
+              display_name: Alice
+              email: alice@local
+              role_slug: adult
+              password: "***"
       responses:
         "200":
           description: User created (plaintext password never returned; see `/api/password-tickets/{id}`)
@@ -5252,6 +5472,16 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                user:
+                  id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+                  username: alice
+                  display_name: Alice
+                  email: alice@local
+                  role_slug: adult
+                  state: active
+                password_ticket_id: "tkt-7e8a1884d5ff45f8"
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -5276,6 +5506,14 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              users:
+                - username: alice
+                  email: alice@local
+                  role_slug: adult
+                - username: bob
+                  email: bob@local
+                  role_slug: teen
       responses:
         "200":
           description: Import result
@@ -5284,6 +5522,16 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                created: 2
+                updated: 0
+                skipped: 0
+                errors: []
+                tickets:
+                  - username: alice
+                    ticket_id: "tkt-aa11"
+                  - username: bob
+                    ticket_id: "tkt-bb22"
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -5310,6 +5558,28 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                diffs:
+                  - provider: authelia
+                    matched: 2
+                    orphans: []
+                    ghosts: []
+                  - provider: jellyfin
+                    matched: 0
+                    orphans:
+                      - username: alice
+                        external_id: "8ea2c23f0c5b42988da8a6d175fa185f"
+                        email: ""
+                        groups: []
+                    ghosts: []
+                  - provider: jellyseerr
+                    matched: 0
+                    orphans:
+                      - username: admin
+                        external_id: "1"
+                        email: admin
+                        groups: []
+                    ghosts: []
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -5335,6 +5605,10 @@ paths:
                 role_slug:
                   type: string
               required: [provider_name, external_id]
+            example:
+              provider_name: jellyfin
+              external_id: "8ea2c23f0c5b42988da8a6d175fa185f"
+              role_slug: adult
       responses:
         "200":
           description: Imported user
@@ -5343,6 +5617,12 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                user_id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+                username: alice
+                role_slug: adult
+                provider: jellyfin
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -5368,6 +5648,9 @@ paths:
                 provider_name:
                   type: string
               required: [user_id, provider_name]
+            example:
+              user_id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+              provider_name: jellyfin
       responses:
         "200":
           description: Unlinked
@@ -5376,6 +5659,10 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                user_id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+                provider: jellyfin
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -5402,6 +5689,20 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                providers:
+                  - name: authelia
+                    ok: true
+                    detail: ""
+                    source_of_truth: true
+                  - name: jellyfin
+                    ok: true
+                    detail: "status=200"
+                    source_of_truth: false
+                  - name: jellyseerr
+                    ok: true
+                    detail: "status=200"
+                    source_of_truth: false
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -5427,6 +5728,19 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                id: "50c37f20-4984-460f-893b-643d6faddbfe"
+                username: admin
+                display_name: Administrator
+                email: admin@local
+                role_slug: superadmin
+                state: active
+                source: env-legacy
+                provider_refs:
+                  authelia: admin
+                created_at: "2026-04-23T23:15:57+00:00"
+                updated_at: "2026-04-23T23:15:57+00:00"
+                last_login_at: ""
         "401":
           $ref: '#/components/responses/Unauthorized'
         "404":
@@ -5485,6 +5799,20 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                entries:
+                  - timestamp: "2026-04-25T08:42:11Z"
+                    ip: "192.168.1.42"
+                    user_agent: "Mozilla/5.0"
+                    location: "Local network"
+                    new_location: false
+                    succeeded: true
+                  - timestamp: "2026-04-24T23:18:55Z"
+                    ip: "203.0.113.7"
+                    user_agent: "curl/8.4.0"
+                    location: "Boston, US"
+                    new_location: true
+                    succeeded: true
         "401":
           $ref: '#/components/responses/Unauthorized'
         "404":
@@ -5513,6 +5841,8 @@ paths:
               properties:
                 password:
                   type: string
+            example:
+              password: "***"
       responses:
         "200":
           description: Ticket-bearing response
@@ -5521,6 +5851,12 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                user_id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+                ticket_id: "tkt-7e8a1884d5ff45f8"
+                ticket_url: "/api/password-tickets/tkt-7e8a1884d5ff45f8"
+                expires_at: "2026-04-25T15:30:00Z"
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -5550,6 +5886,10 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                user_id: "92337a56-dee0-4ff8-87fa-e4d25bede330"
+                revoked: 2
         "401":
           $ref: '#/components/responses/Unauthorized'
         "404":
@@ -5579,6 +5919,8 @@ paths:
               properties:
                 role_slug:
                   type: string
+            example:
+              role_slug: family_admin
       responses:
         "200":
           description: Role updated
@@ -5616,6 +5958,14 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                sessions:
+                  - id: "sess-7e8a1884d5ff45f8"
+                    provider: authelia
+                    created_at: "2026-04-25T08:42:11Z"
+                    last_seen_at: "2026-04-25T14:18:00Z"
+                    ip: "192.168.1.42"
+                    user_agent: "Mozilla/5.0"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "404":
@@ -5675,6 +6025,8 @@ paths:
                 state:
                   type: string
                   enum: [active, disabled, deleted]
+            example:
+              state: disabled
       responses:
         "200":
           description: State updated
@@ -5706,6 +6058,36 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                roles:
+                  - slug: superadmin
+                    name: Super Admin
+                    description: Full control of the stack, user management, and all services.
+                    controller_admin: true
+                    propagate_to_service_admins: true
+                    require_2fa: false
+                    sso_groups: [admins]
+                  - slug: family_admin
+                    name: Family Admin
+                    description: Manage household requests and library settings.
+                    controller_admin: false
+                    propagate_to_service_admins: false
+                    require_2fa: false
+                    sso_groups: [family, family_admins]
+                  - slug: adult
+                    name: Adult
+                    description: Standard user; full library access, can request content.
+                    controller_admin: false
+                    propagate_to_service_admins: false
+                    require_2fa: false
+                    sso_groups: [family]
+                  - slug: kid
+                    name: Kid
+                    description: Kids library only, G/PG rating ceiling.
+                    controller_admin: false
+                    propagate_to_service_admins: false
+                    require_2fa: false
+                    sso_groups: [family, kids]
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -5730,6 +6112,21 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              name: Adult
+              description: Standard user; full library access, can request content.
+              sso_groups: [family]
+              provider_payloads:
+                jellyfin:
+                  EnableAllFolders: true
+                  EnableRemoteAccess: true
+                  IsAdministrator: false
+                  MaxActiveSessions: 3
+                jellyseerr:
+                  permissions: 32
+                  request_quota:
+                    movies: 10
+                    tv: 10
       responses:
         "200":
           description: Role updated
@@ -5763,6 +6160,8 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                invites: []
         "401":
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -5779,6 +6178,10 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              email: alice@local
+              role_slug: adult
+              expires_in_hours: 168
       responses:
         "200":
           description: Invite created
@@ -5799,6 +6202,10 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              token: "inv-7e8a1884d5ff45f8b24eabf5a5402c24"
+              username: alice
+              password: "***"
       responses:
         "200":
           description: Accepted
@@ -5852,6 +6259,19 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                tokens:
+                  - id: "1dbd6d2b-ed28-450d-82e1-e5364b49f282"
+                    name: "controller-ui"
+                    kind: long_lived
+                    scope: admin
+                    owner_username: admin
+                    family_id: ""
+                    parent_id: ""
+                    revoked: false
+                    created_at: "2026-04-25T08:55:06Z"
+                    expires_at: ""
+                    last_used_at: ""
         "401":
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -5868,6 +6288,11 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              name: "ci-deploys"
+              scope: admin
+              kind: long_lived
+              expires_in_days: 90
       responses:
         "200":
           description: Token issued (raw value returned once)
@@ -5891,6 +6316,8 @@ paths:
                 refresh_token:
                   type: string
               required: [refresh_token]
+            example:
+              refresh_token: "***"
       responses:
         "200":
           description: New access token
@@ -5914,6 +6341,9 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              family_id: "fam-7e8a1884d5ff45f8"
+              reason: "credential leak"
       responses:
         "200":
           description: Family revoked
@@ -5971,6 +6401,8 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                sessions: []
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6003,6 +6435,8 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                bans: []
         "401":
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -6028,6 +6462,10 @@ paths:
                 expires_at:
                   type: string
               required: [cidr]
+            example:
+              cidr: "203.0.113.0/24"
+              reason: "brute-force attempts on /api/auth/login"
+              expires_at: "2026-05-25T00:00:00Z"
       responses:
         "200":
           description: Ban created
@@ -6083,6 +6521,8 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                bans: []
         "401":
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -6108,6 +6548,10 @@ paths:
                 expires_at:
                   type: string
               required: [username]
+            example:
+              username: alice
+              reason: "policy violation"
+              expires_at: "2026-05-25T00:00:00Z"
       responses:
         "200":
           description: Ban created
@@ -6162,6 +6606,12 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                sessions_revoked: 12
+                tokens_revoked: 4
+                providers_notified: [authelia, jellyfin, jellyseerr]
+                triggered_at: "2026-04-25T14:30:22Z"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6187,6 +6637,8 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                alerts: []
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -6208,6 +6660,8 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                clusters: []
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -6229,6 +6683,8 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                alerts: []
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -6268,6 +6724,32 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+              example:
+                entries:
+                  - action: login_success
+                    actor: admin
+                    target: admin
+                    result: ok
+                    timestamp: "2026-04-25T01:18:37+00:00"
+                    ip: ""
+                    user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+                    detail:
+                      provider: controller
+                      reason: cookie_mint
+                    hash: "83bbcde1d6f6c057fea57696eb88a3f6ffaeebc7ced38534f780a15958b759d2"
+                    prev_hash: "7dcebbae9c7ca2cae957f6e57971b2cd1688efc90c6261f3feccdcb3be705f3f"
+                  - action: brute_force_alert
+                    actor: auth-watchdog
+                    target: admin
+                    result: alert
+                    timestamp: "2026-04-25T05:25:22+00:00"
+                    ip: ""
+                    user_agent: ""
+                    detail:
+                      failed_count: 5
+                      window_seconds: 300
+                    hash: "aeec711e997cd19d5b4fab78fb0a39c7deaa85b367eb58fcc3ba01825f4a010d"
+                    prev_hash: "83bbcde1d6f6c057fea57696eb88a3f6ffaeebc7ced38534f780a15958b759d2"
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -6289,6 +6771,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                height: 14
+                hash: "0ef736800f3d23ff9afef8ddbe052b98c97037f14e7b771d3935415d36bfaca4"
+                ts: "2026-04-25T08:59:41+00:00"
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -6312,6 +6799,9 @@ paths:
                     type: boolean
                   detail:
                     type: string
+              example:
+                ok: true
+                detail: "hash chain intact"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "500":
@@ -6358,6 +6848,17 @@ paths:
                       type: string
                   bazarr_present:
                     type: boolean
+              example:
+                last_enforce:
+                  detail: {}
+                  ts: ""
+                last_reconcile:
+                  detail: {}
+                  ts: ""
+                missing_api_keys: []
+                policy_version: 1
+                servarr_adapters: [lidarr, radarr, readarr, sonarr]
+                bazarr_present: true
         "401":
           $ref: '#/components/responses/Unauthorized'
         "503":
@@ -6386,6 +6887,18 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              examples:
+                idle:
+                  summary: No pass currently running
+                  value:
+                    in_progress: false
+                running:
+                  summary: Reconcile pass in flight
+                  value:
+                    in_progress: true
+                    op: reconcile
+                    phase: running
+                    started_at: "2026-04-25T14:30:22Z"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "503":
@@ -6423,6 +6936,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                started_at: "2026-04-25T14:30:22Z"
+                completed_at: "2026-04-25T14:30:48Z"
+                adapters:
+                  radarr:
+                    duplicates_resolved: 3
+                    bytes_freed: 5_368_709_120
+                    needs_review: 0
+                  sonarr:
+                    duplicates_resolved: 7
+                    bytes_freed: 12_884_901_888
+                    needs_review: 1
+                dry_run: false
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6476,6 +7003,23 @@ paths:
                   type: boolean
                 hi:
                   type: boolean
+            examples:
+              servarr_movie:
+                summary: Servarr (Radarr) movie winner pick
+                value:
+                  app: radarr
+                  release_id: "tmdb:614249"
+                  winner_file_id: "12345"
+                  release_kind: movie
+              bazarr_subtitle:
+                summary: Bazarr subtitle winner pick
+                value:
+                  app: bazarr
+                  release_id: "imdb:tt0111161"
+                  winner_sub_path: "/media/movies/Shawshank Redemption (1994)/Shawshank.en.srt"
+                  language: en
+                  forced: false
+                  hi: false
       responses:
         "200":
           description: Resolution summary
@@ -6492,6 +7036,11 @@ paths:
                     type: integer
                   bytes_freed:
                     type: integer
+              example:
+                app: radarr
+                release_id: "tmdb:614249"
+                deleted_count: 2
+                bytes_freed: 4_294_967_296
         "400":
           description: Missing required fields or unknown app
         "401":
@@ -6526,6 +7075,17 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                policy_version: 1
+                started_at: "2026-04-25T14:30:22Z"
+                completed_at: "2026-04-25T14:30:25Z"
+                adapters:
+                  radarr: {applied: true, changes: 4}
+                  sonarr: {applied: true, changes: 2}
+                  lidarr: {applied: false, error: "API key not set"}
+                  readarr: {applied: true, changes: 0}
+                  bazarr: {applied: true, changes: 3}
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6553,6 +7113,15 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                present: false
+                path: "/srv-config/certs/media-stack.crt"
+                subject: ""
+                issuer: ""
+                not_before: ""
+                not_after: ""
+                fingerprint_sha256: ""
+                sans: []
         "500":
           description: Internal error
     post:
@@ -6574,6 +7143,9 @@ paths:
                 key_pem:
                   type: string
               required: [cert_pem, key_pem]
+            example:
+              cert_pem: "-----BEGIN CERTIFICATE-----\nMIIDazCCAlOgAwIBAgI...\n-----END CERTIFICATE-----\n"
+              key_pem: "***"
       responses:
         "200":
           description: Installed
@@ -6827,6 +7399,12 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                ticket_id: "tkt-7e8a1884d5ff45f8"
+                username: alice
+                password: "***"
+                consumed_at: "2026-04-25T14:30:22Z"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6853,6 +7431,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                current: "1.0.206"
+                latest: "1.0.206"
+                upgradable: false
+                allow_inplace: true
+                last_checked_epoch: 1777137476
+                release_url: ""
 
   /api/stack/upgrade:
     post:
@@ -6871,6 +7456,8 @@ paths:
               properties:
                 target:
                   type: string
+            example:
+              target: "1.0.207"
       responses:
         "200":
           description: Upgrade accepted or rejected with instructions
@@ -6879,6 +7466,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                task_id: "stack-upgrade-2026-04-25-14-30-22"
+                target: "1.0.207"
+                started_at: "2026-04-25T14:30:22Z"
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -6901,6 +7493,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                task_id: "stack-upgrade-2026-04-25-14-30-22"
+                phase: pulling_images
+                progress: 0.45
+                started_at: "2026-04-25T14:30:22Z"
+                completed_at: ""
+                error: ""
         "404":
           $ref: '#/components/responses/NotFound'
 
@@ -6921,6 +7520,9 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                enabled: true
+                recent_events: []
 
   /api/auto-heal/enabled:
     post:
@@ -6940,6 +7542,8 @@ paths:
                 enabled:
                   type: boolean
               required: [enabled]
+            example:
+              enabled: true
       responses:
         "200":
           description: Toggled
@@ -6990,6 +7594,18 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                checked: 1
+                ok: 1
+                total: 7
+                password_propagation:
+                  jellyfin: ok
+                  sonarr: n/a
+                  radarr: n/a
+                  lidarr: n/a
+                  readarr: n/a
+                  prowlarr: n/a
+                  qbittorrent: n/a
   /api/ops/health:
     get:
       operationId: getOpsHealth
@@ -7049,6 +7665,17 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: 6
+                total: 7
+                credentials:
+                  jellyfin: ok
+                  sonarr: ok
+                  radarr: ok
+                  lidarr: ok
+                  readarr: ok
+                  prowlarr: ok
+                  qbittorrent: no_key
     post:
       operationId: revalidateCredentials
       tags: [Health]
@@ -7067,6 +7694,8 @@ paths:
                   type: array
                   items:
                     type: string
+            example:
+              services: [jellyfin, sonarr, radarr]
       responses:
         "200":
           description: Revalidation result
@@ -7075,6 +7704,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: 3
+                total: 3
+                credentials:
+                  jellyfin: ok
+                  sonarr: ok
+                  radarr: ok
 
   /api/failed-services:
     get:
@@ -7102,6 +7738,9 @@ paths:
                           additionalProperties: true
                   count:
                     type: integer
+              example:
+                count: 0
+                failed_services: {}
 
   /api/health/config-integrity:
     get:
@@ -7116,6 +7755,37 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                checked_at: 1777137716.364966
+                services:
+                  sonarr:
+                    service_id: sonarr
+                    status: ok
+                    file: "/srv-config/sonarr/config.xml"
+                    format: xml
+                    reason: ""
+                    checked_at: 1777137716.3645
+                  jellyfin:
+                    service_id: jellyfin
+                    status: ok
+                    file: "/srv-config/jellyfin/data/jellyfin.db"
+                    format: sqlite
+                    reason: ""
+                    checked_at: 1777137716.3571
+                  tautulli:
+                    service_id: tautulli
+                    status: missing
+                    file: "/srv-config/tautulli/config.ini"
+                    format: ini
+                    reason: "file not present yet (pre-bootstrap?)"
+                    checked_at: 1777137716.3648
+                  authelia:
+                    service_id: authelia
+                    status: unknown
+                    file: ""
+                    format: ""
+                    reason: "no config file declared in service registry"
+                    checked_at: 1777137716.3279
 
   /api/health/crashloops:
     get:
@@ -7130,6 +7800,18 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                checked_at: 1777137717.7070146
+                services:
+                  sonarr:
+                    service_id: sonarr
+                    cause: healthy
+                    description: "restart count below threshold"
+                    healable: false
+                    last_terminated_reason: ""
+                    restart_count: 0
+                    sample_log_line: ""
+                    checked_at: 1777137717.7069736
 
   /api/health/stories:
     get:
@@ -7144,6 +7826,25 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                checked_at: 1777137719.009567
+                stories:
+                  - id: api_keys_missing
+                    severity: warn
+                    headline: "API key discovery is incomplete — 1 service(s) have no credential"
+                    cause: "tautulli have no API key in env or on disk"
+                    description: "Endpoints that depend on these services will return empty payloads until the keys are populated."
+                    next_action: "Re-run discover-api-keys from the Jobs panel."
+                    affected_services: [tautulli]
+                    auto_heal_status: "n/a"
+                  - id: downloads_ok
+                    severity: ok
+                    headline: "Downloads are working"
+                    cause: ""
+                    description: "Indexers, the *arrs, and download clients are all responding."
+                    next_action: ""
+                    affected_services: [prowlarr, sonarr, radarr, lidarr, readarr, qbittorrent]
+                    auto_heal_status: "n/a"
 
   # =========================================================================
   # Networking / gateway diagnostics
@@ -7162,6 +7863,35 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                controller:
+                  - service: controller
+                    url: "http://10.1.55.177:9100/"
+                    scheme: http
+                    kind: direct-ip
+                    needs_dns: false
+                  - service: controller
+                    url: "http://127.0.0.1:9100/"
+                    scheme: http
+                    kind: direct-ip
+                    needs_dns: false
+                gateway:
+                  - service: gateway
+                    url: "https://apps.media-stack.local/"
+                    scheme: https
+                    kind: gateway
+                    needs_dns: true
+                jellyfin:
+                  - service: jellyfin
+                    url: "https://jellyfin.media-stack.local/"
+                    scheme: https
+                    kind: gateway
+                    needs_dns: true
+                  - service: jellyfin
+                    url: "https://apps.media-stack.local/app/jellyfin/"
+                    scheme: https
+                    kind: gateway-apps
+                    needs_dns: true
 
   /api/dns-check:
     get:
@@ -7182,6 +7912,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                host: "jellyfin.media-stack.local"
+                resolves: true
+                resolved_ip: "10.1.55.177"
+                cluster_ip: "10.1.55.177"
+                cluster_ips: ["10.1.55.177"]
+                matches_cluster: true
         "500":
           description: Probe failed
 
@@ -7202,6 +7939,11 @@ paths:
                     type: array
                     items:
                       type: string
+              example:
+                hostnames:
+                  - apps.media-stack.local
+                  - auth.media-stack.local
+                  - jellyfin.media-stack.local
         "500":
           description: Read failed
 
@@ -7224,6 +7966,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                url: "https://jellyfin.media-stack.local/"
+                ok: true
+                status: 200
+                elapsed_ms: 32
+                location: ""
+                error: ""
         "500":
           description: Probe failed
 
@@ -7240,6 +7989,21 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                routing:
+                  app_path_prefix: "/app"
+                  gateway_host: "m.iomio.io"
+                  gateway_port: 443
+                  scheme: https
+                services:
+                  authelia:
+                    direct: {ok: true, code: 200, ms: 1, url: "http://127.0.0.1:9091/"}
+                    gateway: {ok: true, code: 200, ms: 2, url: "https://m.iomio.io/app/authelia/"}
+                    localhost: {ok: true, code: 200, ms: 3, url: "http://localhost:9091/"}
+                  sonarr:
+                    direct: {ok: true, code: 200, ms: 4, url: "http://127.0.0.1:8989/"}
+                    gateway: {ok: true, code: 200, ms: 5, url: "https://m.iomio.io/app/sonarr/"}
+                    localhost: {ok: true, code: 200, ms: 6, url: "http://localhost:8989/"}
         "500":
           description: Probe failed
 
@@ -7260,6 +8024,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                url: "http://media-stack-controller:9100/webhooks/arr"
+                webhooks:
+                  sonarr: "already registered"
+                  radarr: "already registered"
 
   /api/custom-formats/import:
     post:
@@ -7276,6 +8045,10 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              service: sonarr
+              source_url: "https://raw.githubusercontent.com/TRaSH-Guides/Guides/master/docs/json/sonarr/cf/sonarr-v4-cf.json"
+              preset_id: "web-1080p"
       responses:
         "200":
           description: Import result
@@ -7303,6 +8076,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                service: sonarr
+                custom_formats:
+                  - id: 1
+                    name: "x265 (HD)"
+                    includeCustomFormatWhenRenaming: false
+                    specifications:
+                      - name: "x265 codec"
+                        implementation: "ReleaseTitleSpecification"
+                        negate: false
+                        required: true
+                  - id: 2
+                    name: "Repack/Proper"
+                    includeCustomFormatWhenRenaming: false
 
   /api/discovery/popular-tv:
     get:
@@ -7319,6 +8106,15 @@ paths:
                 items:
                   type: object
                   additionalProperties: true
+              example:
+                - title: "Breaking Bad"
+                  tvdbId: 81189
+                - title: "Game of Thrones"
+                  tvdbId: 121361
+                - title: "The Wire"
+                  tvdbId: 79126
+                - title: "Sherlock"
+                  tvdbId: 176941
 
   /api/download-client-settings:
     get:
@@ -7333,6 +8129,19 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                torrent:
+                  max_active_downloads: 3
+                  max_active_torrents: 5
+                  max_active_uploads: 3
+                  dl_limit_mbps: 0
+                  up_limit_mbps: 0
+                  queueing_enabled: true
+                jellyfin_scan:
+                  state: Idle
+                  last_status: Completed
+                  interval_hours: 12
+                  task_id: "7738148ffcd07979c7ceb148e06b3aed"
     post:
       operationId: updateDownloadClientSettings
       tags: [Content]
@@ -7347,6 +8156,11 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              torrent:
+                max_active_downloads: 5
+                max_active_torrents: 8
+                queueing_enabled: true
       responses:
         "200":
           description: Updated
@@ -7368,6 +8182,22 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                lists:
+                  radarr:
+                    - id: 1
+                      name: "TMDb Trending Movies"
+                      listType: tmdb
+                      enabled: false
+                    - id: 2
+                      name: "TMDb Popular Movies"
+                      listType: tmdb
+                      enabled: false
+                  sonarr:
+                    - id: 1
+                      name: "TMDb Popular TV"
+                      listType: tmdb
+                      enabled: true
 
   /api/import-lists/{service}/{list_id}/delete:
     post:
@@ -7424,6 +8254,8 @@ paths:
               properties:
                 enabled:
                   type: boolean
+            example:
+              enabled: true
       responses:
         "200":
           description: Toggled
@@ -7477,6 +8309,8 @@ paths:
               properties:
                 enable:
                   type: boolean
+            example:
+              enable: true
       responses:
         "200":
           description: Toggled
@@ -7498,6 +8332,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                presets:
+                  - id: web-1080p
+                    name: "WEB 1080p"
+                    app: sonarr
+                    description: "Streaming services (Netflix, Amazon, etc.) in 1080p. Best for most users."
+                    profile_url: "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/quality-profiles/sonarr-v4-quality-profile-web-1080p.yml"
+                    cf_url: "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/custom-formats/sonarr-v4-custom-formats-web-1080p.yml"
+                  - id: web-2160p
+                    name: "WEB 2160p (4K)"
+                    app: sonarr
+                    description: "Streaming services in 4K with HDR. Requires 4K-capable display."
+                    profile_url: "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/quality-profiles/sonarr-v4-quality-profile-web-2160p.yml"
+                    cf_url: "https://raw.githubusercontent.com/recyclarr/config-templates/main/sonarr/includes/custom-formats/sonarr-v4-custom-formats-web-2160p.yml"
 
   /api/quality-profiles/toggle:
     post:
@@ -7514,6 +8362,10 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              service: sonarr
+              profile_id: 5
+              enabled: true
       responses:
         "200":
           description: Toggled
@@ -7541,6 +8393,18 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                service: sonarr
+                profiles:
+                  - id: 1
+                    name: HD-1080p
+                    cutoff: 9
+                    upgradeAllowed: true
+                    items:
+                      - quality: {id: 9, name: HDTV-1080p}
+                        allowed: true
+                      - quality: {id: 3, name: WEB-DL-1080p}
+                        allowed: true
 
   # =========================================================================
   # Config extensions
@@ -7559,6 +8423,22 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                clean: false
+                total: 3
+                drifts:
+                  - area: routing
+                    key: base_domain
+                    expected: local
+                    actual: io
+                  - area: routing
+                    key: gateway_host
+                    expected: k8.media-stack.local
+                    actual: m.iomio.io
+                  - area: routing
+                    key: gateway_port
+                    expected: "80"
+                    actual: "443"
 
   /api/config/libraries:
     get:
@@ -7573,6 +8453,22 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                media_server: jellyfin
+                source: defaults
+                libraries:
+                  - name: Movies
+                    collection_type: movies
+                    paths: ["/media/movies"]
+                  - name: TV Shows
+                    collection_type: tvshows
+                    paths: ["/media/tv"]
+                  - name: Music
+                    collection_type: music
+                    paths: ["/media/music"]
+                  - name: Books
+                    collection_type: books
+                    paths: ["/media/books"]
 
   /api/custom-service:
     post:
@@ -7589,6 +8485,13 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              service_id: "myservice"
+              name: "My Service"
+              category: management
+              port: 8080
+              healthcheck_path: "/health"
+              icon_url: "/api/static/myservice-icon.svg"
       responses:
         "200":
           description: Registered
@@ -7610,6 +8513,9 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                count: 0
+                lists: []
     post:
       operationId: updateDiscoveryLists
       tags: [Config]
@@ -7624,6 +8530,12 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              lists:
+                - id: tmdb-popular
+                  enabled: true
+                - id: trakt-trending
+                  enabled: false
       responses:
         "200":
           description: Updated
@@ -7751,6 +8663,14 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              enabled: true
+              show_backdrop: true
+              custom_prefs:
+                enableThemeVideos: true
+                homesection0: smalllibrarytiles
+                homesection1: resume
+              clients: [emby, jellyfin-web]
       responses:
         "200":
           description: Updated
@@ -7772,6 +8692,19 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                total_records: 20
+                by_service:
+                  sonarr: 10
+                  radarr: 10
+                top_indexers:
+                  - name: "YTS (Prowlarr)"
+                    count: 10
+                daily_trend:
+                  - date: "2026-04-25"
+                    count: 10
+                  - date: "2026-04-24"
+                    count: 10
 
   /api/download-categories:
     get:
@@ -7786,6 +8719,10 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                source: not_configured
+                note: "Add categories in Config > Downloads"
+                categories: {}
     post:
       operationId: updateDownloadCategories
       tags: [Config]
@@ -7800,6 +8737,12 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              categories:
+                tv-sonarr:
+                  save_path: "/downloads/tv"
+                movies-radarr:
+                  save_path: "/downloads/movies"
       responses:
         "200":
           description: Updated
@@ -7821,6 +8764,23 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                providers: 5
+                countries: 34
+                healthy: 81
+                unhealthy: 25
+                details:
+                  us:
+                    iptv-epg: true
+                    epg-pw: true
+                    epgshare01: false
+                    epgtalk: false
+                  gb:
+                    iptv-epg: true
+                    epg-pw: true
+                    epgshare01: false
+                    epgtalk: false
+                    freeview-epg: true
 
   /api/epg-providers:
     get:
@@ -7835,6 +8795,16 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                health:
+                  "epg-pw:au":
+                    ok: true
+                    ts: 1777137742.6841
+                    url: "https://epg.pw/xmltv/epg_AU.xml.gz"
+                  "epg-pw:ar":
+                    ok: false
+                    ts: 1777137729.8048
+                    url: "https://epg.pw/xmltv/epg_AR.xml.gz"
 
   /api/iptv-countries:
     get:
@@ -7849,6 +8819,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                countries:
+                  - code: us
+                    name: "United States"
+                    guide_url: "https://iptv-epg.org/files/epg-us.xml"
+                    tuner_url: ""
+                  - code: gb
+                    name: "United Kingdom"
+                    guide_url: "https://iptv-epg.org/files/epg-gb.xml"
+                    tuner_url: ""
+                  - code: ca
+                    name: "Canada"
+                    guide_url: "https://iptv-epg.org/files/epg-ca.xml"
+                    tuner_url: ""
 
   /api/livetv-sources:
     get:
@@ -7923,6 +8907,10 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              tuner_url: "https://iptv-org.github.io/iptv/countries/us.m3u"
+              guide_url: "https://iptv-epg.org/files/epg-us.xml"
+              load_all_tuners: false
       responses:
         "200":
           description: Updated
@@ -7946,6 +8934,8 @@ paths:
                 properties:
                   level:
                     type: string
+              example:
+                level: INFO
     post:
       operationId: setLogLevel
       tags: [Config]
@@ -7964,6 +8954,8 @@ paths:
                 level:
                   type: string
                   enum: [DEBUG, INFO, WARN, ERROR]
+            example:
+              level: DEBUG
       responses:
         "200":
           description: Level updated
@@ -7985,6 +8977,23 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                language: en
+                country: US
+                source: profile
+                presets:
+                  - language: en
+                    country: US
+                    label: "English (US)"
+                  - language: en
+                    country: GB
+                    label: "English (UK)"
+                  - language: de
+                    country: DE
+                    label: "Deutsch"
+                  - language: fr
+                    country: FR
+                    label: "Français"
     post:
       operationId: updateMetadataSettings
       tags: [Config]
@@ -7999,6 +9008,9 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              language: en
+              country: US
       responses:
         "200":
           description: Updated
@@ -8020,6 +9032,36 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                is_first_run: false
+                completed: 4
+                total: 6
+                progress_pct: 67
+                steps:
+                  - id: services_running
+                    label: "Services running"
+                    status: warn
+                    detail: "17/28 healthy"
+                  - id: api_keys
+                    label: "API keys discovered"
+                    status: warn
+                    detail: "9/10 keys"
+                  - id: libraries
+                    label: "Media libraries configured"
+                    status: ok
+                    detail: "4 libraries"
+                  - id: routing
+                    label: "Network routing configured"
+                    status: ok
+                    detail: "m.iomio.io"
+                  - id: download_clients
+                    label: "Download clients configured"
+                    status: ok
+                    detail: "qbittorrent, sabnzbd"
+                  - id: bootstrap
+                    label: "Initial bootstrap completed"
+                    status: ok
+                    detail: "Run 'Configure All' to bootstrap the stack"
 
   /api/storage-breakdown:
     get:
@@ -8034,6 +9076,27 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                media_root: "/srv-stack/media"
+                total_bytes: 460308857283
+                total_display: "428.7 GB"
+                breakdown:
+                  - name: movies
+                    path: "/srv-stack/media/movies"
+                    bytes: 338533469746
+                    display: "315.3 GB"
+                  - name: tv
+                    path: "/srv-stack/media/tv"
+                    bytes: 113156727936
+                    display: "105.4 GB"
+                  - name: music
+                    path: "/srv-stack/media/music"
+                    bytes: 7688177865
+                    display: "7.2 GB"
+                  - name: books
+                    path: "/srv-stack/media/books"
+                    bytes: 930481736
+                    display: "887 MB"
 
   /api/telemetry:
     get:
@@ -8048,6 +9111,36 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ts: 1777137762.4137
+                cluster_id: "459b40b2-1542-44b1-9c77-cb24895cb962"
+                cluster_name: "media-stack-controller-68c9d58854-tqjr8"
+                controller:
+                  version: "v1.0.206"
+                  python: "3.12.13"
+                  platform: "media-stack"
+                  hostname: "media-stack-controller-68c9d58854-tqjr8"
+                  uptime_hours: 386.2
+                services:
+                  total: 28
+                  healthy: 26
+                  unhealthy: 2
+                media:
+                  libraries: 4
+                  indexers: 7
+                  active_downloads: 0
+                  livetv_tuners: 1
+                  storage_gb: 428
+                jobs:
+                  runs_24h: 20
+                  ok: 44
+                  errors: 0
+                  avg_duration_s: 75.4
+                network:
+                  containers: 0
+                  rx_gb: 0.19
+                  tx_gb: 0.03
+                  per_container: {}
 
   /api/validate-migration:
     post:
@@ -8067,6 +9160,8 @@ paths:
                 target_path:
                   type: string
               required: [target_path]
+            example:
+              target_path: "/srv-stack/media-new"
       responses:
         "200":
           description: Validation result
@@ -8075,6 +9170,15 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                target_path: "/srv-stack/media-new"
+                target_exists: true
+                target_writable: true
+                target_free_bytes: 2_199_023_255_552
+                source_used_bytes: 460_308_857_283
+                fits: true
+                warnings: []
 
   # =========================================================================
   # Jobs + schedules
@@ -8306,6 +9410,27 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                count: 3
+                schedules:
+                  - id: 1776991803778
+                    action: run-media-hygiene
+                    label: "Auto-cleanup stalled / orphaned downloads (hourly)"
+                    interval_seconds: 3600
+                    created_at: 1776991803.7784
+                    last_run: 1777136520.8929
+                  - id: 1776991803893
+                    action: scan-completed-downloads
+                    label: "Scan completed downloads into *arr libraries (15m)"
+                    interval_seconds: 900
+                    created_at: 1776991803.8931
+                    last_run: 1777136940.9145
+                  - id: 1777106899756
+                    action: "media-integrity:scan"
+                    label: "Media-integrity status scan (every 15m)"
+                    interval_seconds: 900
+                    created_at: 1777106899.7565
+                    last_run: 1777137060.9163
     post:
       operationId: addSchedule
       tags: [Jobs]
@@ -8326,6 +9451,10 @@ paths:
                   type: integer
                 label:
                   type: string
+            example:
+              action: run-media-hygiene
+              interval_seconds: 3600
+              label: "Auto-cleanup stalled / orphaned downloads (hourly)"
       responses:
         "200":
           description: Added
@@ -8391,6 +9520,24 @@ paths:
                       additionalProperties: true
                   count:
                     type: integer
+              example:
+                count: 3
+                logs:
+                  - seq: 1024
+                    ts: "2026-04-25T14:30:22Z"
+                    level: INFO
+                    action: bootstrap
+                    msg: "Bootstrap started (priority=10)"
+                  - seq: 1025
+                    ts: "2026-04-25T14:30:23Z"
+                    level: INFO
+                    action: bootstrap
+                    msg: "Preflight: checking 28 services"
+                  - seq: 1026
+                    ts: "2026-04-25T14:30:24Z"
+                    level: WARN
+                    action: bootstrap
+                    msg: "tautulli has no API key; deferring"
 
   /api/media-server/reset:
     post:
@@ -8412,6 +9559,9 @@ paths:
                 password:
                   type: string
               required: [password]
+            example:
+              username: admin
+              password: "***"
       responses:
         "200":
           description: Reset result
@@ -8420,6 +9570,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                service: jellyfin
+                reset_via: db
+                username: admin
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -8446,6 +9601,8 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              wipe_config: false
       responses:
         "200":
           description: Reset result
@@ -8454,6 +9611,12 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                service_id: sonarr
+                restarted: true
+                api_key_rediscovered: true
+                preflight_passed: true
         "401":
           $ref: '#/components/responses/Unauthorized'
         "404":
@@ -8488,6 +9651,10 @@ paths:
                   type: object
                   additionalProperties: true
               required: [threshold]
+            example:
+              threshold:
+                pct: 90
+                bytes_free: 10737418240
       responses:
         "200":
           description: Updated threshold
@@ -8496,6 +9663,13 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                id: "storage:per_mount_threshold"
+                threshold:
+                  pct: 90
+                  bytes_free: 10737418240
+                source: override
         "400":
           $ref: '#/components/responses/BadRequest'
         "404":
@@ -8534,6 +9708,14 @@ paths:
                     additionalProperties: true
                   description:
                     type: string
+              example:
+                would_trigger: false
+                severity: null
+                current_value:
+                  pct: 50.9
+                threshold:
+                  pct: 90
+                description: "Per-mount disk usage above threshold"
 
   /api/guardrails/{id}/disable:
     post:
@@ -8559,6 +9741,8 @@ paths:
                 disabled:
                   type: boolean
               required: [disabled]
+            example:
+              disabled: true
       responses:
         "200":
           description: Disable state set
@@ -8567,6 +9751,10 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              example:
+                ok: true
+                id: "storage:per_mount_threshold"
+                disabled: true
 
   # =========================================================================
   # Webhooks — *arr ingest
@@ -8584,6 +9772,18 @@ paths:
             schema:
               type: object
               additionalProperties: true
+            example:
+              eventType: Download
+              instanceName: Sonarr
+              series:
+                title: "The Last of Us"
+                tvdbId: 392256
+              episodes:
+                - episodeNumber: 1
+                  seasonNumber: 2
+                  title: "Future Days"
+              episodeFile:
+                path: "/media/tv/The Last of Us/Season 02/S02E01.mkv"
       responses:
         "200":
           description: Scan triggered (if applicable)

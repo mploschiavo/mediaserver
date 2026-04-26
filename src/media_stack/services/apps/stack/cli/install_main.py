@@ -144,7 +144,7 @@ class InstallRunner:
         self.cfg.ingress_domain = self.cfg.ingress_domain.lstrip(".").strip()
         if not self.cfg.ingress_domain:
             raise InstallError("Ingress domain cannot be empty.")
-        profile_dir = self.cfg.root_dir / "k8s" / "profiles" / self.cfg.profile
+        profile_dir = self.cfg.root_dir / "deploy" / "k8s" / "profiles" / self.cfg.profile
         if not profile_dir.is_dir():
             raise InstallError(f"Missing profile directory: {profile_dir}")
 

@@ -1,21 +1,6 @@
-"""Translate Role → provider-specific payload. Stateless, pure."""
+"""Phase 16-B migration shim — moved to media_stack.domain.auth.users.role_policy_mapper."""
 
-from __future__ import annotations
+from media_stack.domain.auth.users.role_policy_mapper import *  # noqa: F401, F403
+from media_stack.domain.auth.users import role_policy_mapper as _impl
 
-from typing import Any
-
-from media_stack.core.auth.users.models import Role
-
-
-class RolePolicyMapper:
-    """Reads role.sso_groups + role.provider_payloads[provider_id].
-
-    The mapper knows nothing about specific backends — it returns the raw
-    payload the role catalog configured, keyed by provider id.
-    """
-
-    def sso_groups(self, role: Role) -> list[str]:
-        return list(role.sso_groups)
-
-    def payload_for(self, role: Role, provider_id: str) -> dict[str, Any]:
-        return dict(role.provider_payloads.get(provider_id, {}))
+globals().update({k: v for k, v in vars(_impl).items() if not k.startswith("__")})

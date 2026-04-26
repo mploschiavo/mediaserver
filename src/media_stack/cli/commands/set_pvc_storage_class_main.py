@@ -121,7 +121,7 @@ def build_arg_parser(default_file: Path) -> argparse.ArgumentParser:
 
 def parse_config(argv: list[str] | None = None) -> SetStorageClassConfig:
     root_dir = Path(__file__).resolve().parents[2]
-    parser = build_arg_parser(root_dir / "k8s" / "storage-pvc.yaml")
+    parser = build_arg_parser(root_dir / "deploy" / "k8s" / "storage-pvc.yaml")
     args = parser.parse_args(argv)
 
     target = Path(args.target_file).resolve()

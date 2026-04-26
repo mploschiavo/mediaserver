@@ -99,7 +99,7 @@ def parse_config(argv: list[str] | None = None) -> BuildUIImageConfig:
     parser.add_argument(
         "--dockerfile",
         default=os.environ.get(
-            "DOCKERFILE", str(root_dir / "docker" / "ui.Dockerfile")
+            "DOCKERFILE", str(root_dir / "deploy" / "compose" / "ui.Dockerfile")
         ),
     )
     args = parser.parse_args(argv)

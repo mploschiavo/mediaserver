@@ -3,18 +3,18 @@
 #
 # Usage:
 #   ./deploy-k8s.sh                                              # default profile
-#   ./deploy-k8s.sh examples/bootstrap-profiles/media-k8s-standard.yaml
+#   ./deploy-k8s.sh deploy/examples/bootstrap-profiles/media-k8s-standard.yaml
 #   ./deploy-k8s.sh my-profile.yaml --delete  # teardown + redeploy
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROFILE_FILE="${1:-examples/bootstrap-profiles/media-k8s-standard.yaml}"
+PROFILE_FILE="${1:-deploy/examples/bootstrap-profiles/media-k8s-standard.yaml}"
 
 if [[ "$PROFILE_FILE" == *.yaml ]] || [[ "$PROFILE_FILE" == *.yml ]]; then
     shift || true
 else
-    PROFILE_FILE="examples/bootstrap-profiles/media-k8s-standard.yaml"
+    PROFILE_FILE="deploy/examples/bootstrap-profiles/media-k8s-standard.yaml"
 fi
 
 PROFILE_PATH="$SCRIPT_DIR/$PROFILE_FILE"
@@ -39,7 +39,7 @@ if [[ "${1:-}" == "--delete" ]]; then
 fi
 
 # Resolve kustomize profile directory.
-PROFILE_DIR="$SCRIPT_DIR/k8s/profiles/${INSTALL_PROFILE:-standard}"
+PROFILE_DIR="$SCRIPT_DIR/deploy/k8s/profiles/${INSTALL_PROFILE:-standard}"
 [[ -d "$PROFILE_DIR" ]] || { echo "ERROR: K8s profile dir not found: $PROFILE_DIR" >&2; exit 1; }
 
 # Create namespace + apply all manifests (with namespace override).

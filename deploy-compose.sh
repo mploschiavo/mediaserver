@@ -15,7 +15,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/docker/docker-compose.yml"
+COMPOSE_FILE="$SCRIPT_DIR/deploy/compose/docker-compose.yml"
 SECRETS_FILE="$SCRIPT_DIR/secrets.generated.env"
 BOOTSTRAP_PORT="${BOOTSTRAP_API_PORT:-9100}"
 

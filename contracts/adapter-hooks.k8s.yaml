@@ -106,7 +106,7 @@ bootstrap_all:
   enable_components:
   - unpackerr
   component_manifests:
-    unpackerr: k8s/base/apps/unpackerr.yaml
+    unpackerr: deploy/k8s/base/apps/unpackerr.yaml
   component_deployments:
     unpackerr: unpackerr
 bootstrap_job:
@@ -295,19 +295,19 @@ rebuild:
   - JELLYFIN_USER_ID
   profile_manifest_paths:
     full:
-    - k8s/base/apps/unpackerr.yaml
+    - deploy/k8s/base/apps/unpackerr.yaml
     power-user:
-    - k8s/base/apps/unpackerr.yaml
+    - deploy/k8s/base/apps/unpackerr.yaml
   component_enable_manifest_paths:
-  - k8s/base/apps/unpackerr.yaml
+  - deploy/k8s/base/apps/unpackerr.yaml
   base_manifest_paths:
-  - k8s/base/namespace.yaml
-  - k8s/base/hardening.yaml
-  - k8s/base/secrets.example.yaml
-  - k8s/base/storage/storage-pvc.yaml
-  - k8s/base/apps/core.yaml
-  - k8s/base/edge/ingress-traefik.yaml
-  - k8s/base/scale-policy.yaml
+  - deploy/k8s/base/namespace.yaml
+  - deploy/k8s/base/hardening.yaml
+  - deploy/k8s/base/secrets.example.yaml
+  - deploy/k8s/base/storage/storage-pvc.yaml
+  - deploy/k8s/base/apps/core.yaml
+  - deploy/k8s/base/edge/ingress-traefik.yaml
+  - deploy/k8s/base/scale-policy.yaml
   profile_scale_to_zero_apps:
     public-demo:
     - qbittorrent
@@ -370,8 +370,8 @@ microk8s_reconcile:
   - sabnzbd
   - flaresolverr
   optional_manifest_paths:
-  - k8s/base/apps/optional.yaml
+  - deploy/k8s/base/apps/optional.yaml
   conditional_manifests:
   - deployment: unpackerr
-    manifest_path: k8s/base/apps/unpackerr.yaml
+    manifest_path: deploy/k8s/base/apps/unpackerr.yaml
     message: Applying unpackerr manifest (replicas default to 0 in repo).

@@ -1,0 +1,52 @@
+# lychee link-checker configuration. ADR-0001 Phase 15.
+# Used by `bin/ops/lychee.sh` and the `docs-link-check` CI job.
+#
+# Tuning principles:
+#   * --offline mode (CI default) — only relative paths + intra-doc
+#     anchors are checked. External URLs are accepted as-is.
+#   * Network mode (manual / nightly) — resolves http(s) links,
+#     respects the exclude list below for known-flaky / private hosts.
+
+# Generic timeouts.
+max_concurrency = 16
+timeout = 20
+retry_wait_time = 2
+max_retries = 1
+
+# Treat 200, 204, 301, 302, 308 as success (default lychee), plus 403
+# from sites that gate HEAD probes (GitHub repos, some CDNs).
+accept = [200, 204, 301, 302, 308, 403, 429]
+
+# Don't follow plain-text URLs in fenced code blocks — those are
+# usually example commands (`curl http://localhost:8080`) not real
+# resources we ship.
+include_fragments = true
+include_verbatim = false
+
+# Hosts to skip in network mode. Anchored regex.
+exclude = [
+  # localhost / private-IP examples in code blocks already filtered
+  # above, but be defensive — these often appear as bare URLs in prose.
+  "^https?://localhost(:\\d+)?",
+  "^https?://127\\.0\\.0\\.1(:\\d+)?",
+  "^https?://0\\.0\\.0\\.0(:\\d+)?",
+  "^https?://10\\.\\d+\\.\\d+\\.\\d+",
+  "^https?://192\\.168\\.\\d+\\.\\d+",
+  "^https?://172\\.(1[6-9]|2\\d|3[01])\\.\\d+\\.\\d+",
+  # In-cluster service DNS used in examples (jellyfin.media-stack.svc, etc.).
+  "\\.svc(\\.cluster\\.local)?(:\\d+)?",
+  # Example domain placeholders.
+  "^https?://example\\.com",
+  "^https?://your-domain\\.tld",
+  "^https?://media\\.example",
+  # Editor placeholder used in mkdocs `edit_uri` resolution.
+  "^https?://github\\.com/mploschiavo/mediaserver/edit",
+]
+
+# Skip-missing inputs (don't fail just because a glob expanded to zero
+# files in a fresh checkout).
+skip_missing = true
+no_progress = true
+
+# Don't follow mailto:, tel: etc. through to a network probe.
+exclude_mail = true
