@@ -77,8 +77,24 @@ for i in $(seq 1 60); do
     sleep 10
 done
 
+UI_PORT_DEFAULT="${UI_PORT:-9101}"
+
 echo ""
+echo "================================================================"
 echo "Deploy complete."
-echo "  Dashboard: http://127.0.0.1:${BOOTSTRAP_PORT}/"
-echo "  Homepage:  http://127.0.0.1:80/app/homepage (via Envoy)"
-echo "  Trigger:   curl -X POST http://127.0.0.1:${BOOTSTRAP_PORT}/actions/bootstrap"
+echo "================================================================"
+echo ""
+echo "  Dashboard:  http://127.0.0.1:${UI_PORT_DEFAULT}/"
+echo "  Homepage:   http://127.0.0.1:80/app/homepage (via Envoy)"
+echo ""
+echo "  Sign-in credentials (from ${SECRETS_FILE}):"
+echo "    Username: ${STACK_ADMIN_USERNAME}"
+echo "    Password: ${STACK_ADMIN_PASSWORD}"
+echo ""
+echo "  IMPORTANT: rotate this password from the dashboard at /me on"
+echo "  first login — the env-fallback is only active until you do."
+echo ""
+echo "  Controller API (REST only):"
+echo "    http://127.0.0.1:${BOOTSTRAP_PORT}/api/me"
+echo "    Trigger: curl -X POST http://127.0.0.1:${BOOTSTRAP_PORT}/actions/bootstrap"
+echo "================================================================"
