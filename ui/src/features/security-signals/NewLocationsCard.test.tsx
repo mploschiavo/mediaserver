@@ -33,7 +33,7 @@ describe("NewLocationsCard", () => {
   it("renders the empty state when alerts=[]", () => {
     newLocationsState.data = { alerts: [] };
     renderWithProviders(<NewLocationsCard />);
-    expect(screen.getByText("No new-location alerts")).toBeInTheDocument();
+    expect(screen.getByText(/no new-location alerts/i)).toBeInTheDocument();
   });
 
   it("renders an error banner when the query fails", () => {

@@ -30,7 +30,7 @@ describe("CrashloopsCard", () => {
   it("renders the empty state when no services are crashlooping", () => {
     crashState.data = { services: {} };
     renderWithProviders(<CrashloopsCard />);
-    expect(screen.getByText("No services crashlooping")).toBeInTheDocument();
+    expect(screen.getByText(/no services crashlooping/i)).toBeInTheDocument();
   });
 
   it("excludes healthy services from the table", () => {
@@ -49,7 +49,7 @@ describe("CrashloopsCard", () => {
       },
     };
     renderWithProviders(<CrashloopsCard />);
-    expect(screen.getByText("No services crashlooping")).toBeInTheDocument();
+    expect(screen.getByText(/no services crashlooping/i)).toBeInTheDocument();
   });
 
   it("renders the error message when the query fails", () => {

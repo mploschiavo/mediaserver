@@ -36,7 +36,7 @@ describe("ConcurrentSpikesCard", () => {
     concurrentState.data = { alerts: [] };
     renderWithProviders(<ConcurrentSpikesCard />);
     expect(
-      screen.getByText("No concurrent-session spikes"),
+      screen.getByText(/no concurrent-session spikes/i),
     ).toBeInTheDocument();
   });
 

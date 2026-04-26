@@ -143,8 +143,12 @@ export function CrashloopsCard() {
           <div className="px-6 pb-6">
             <EmptyState
               icon={CheckCircle2}
-              title="No services crashlooping"
-              description="All containers report a stable restart count."
+              title="✓ All clear — no services crashlooping"
+              description={
+                "Probed every registry-tracked service; every container's "
+                + "restart count is below the threshold. CronJob pods + non-"
+                + "registry workloads are tracked separately in Jobs / kubectl."
+              }
             />
           </div>
         ) : (

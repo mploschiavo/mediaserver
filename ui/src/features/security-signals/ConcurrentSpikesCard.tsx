@@ -199,8 +199,8 @@ export function ConcurrentSpikesCard() {
             <div className="p-6">
               <EmptyState
                 icon={ShieldCheck}
-                title="No concurrent-session spikes"
-                description="No users are over the concurrent-session threshold right now."
+                title="✓ All clear — no concurrent-session spikes"
+                description="No user is currently over the configured concurrent-session threshold."
               />
             </div>
           ) : (

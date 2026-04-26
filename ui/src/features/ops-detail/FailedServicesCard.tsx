@@ -161,8 +161,13 @@ export function FailedServicesCard() {
         ) : rows.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
-            title="No failed services"
-            description="Every monitored service is below the failure threshold."
+            title="✓ All clear — no failed services"
+            description={
+              "Every registry-tracked service is below its failure "
+              + "threshold. CronJob pods (e.g. jellyfin-prewarm) and "
+              + "non-registry workloads are tracked separately under "
+              + "Jobs / Logs."
+            }
           />
         ) : (
           <ul
