@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT: Path = Path(__file__).resolve().parents[2]
+ROOT: Path = Path(__file__).resolve().parents[3]
 DOCKERFILE_PATH: Path = ROOT / "docker" / "ui.Dockerfile"
 
 

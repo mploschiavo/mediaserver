@@ -37,7 +37,7 @@ import unittest
 import unittest.mock as _mock
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src"))
 
 

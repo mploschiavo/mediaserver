@@ -1,11 +1,12 @@
-"""Default Servarr adapter used when no tech-specific adapter is mapped."""
+"""Shim — moved to ``media_stack.domain.servarr.technologies.generic`` in
+ADR-0002 Phase 16-D. Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+(``mock.patch.object(MODULE, "_helper", ...)``) work transparently.
+"""
 
-from .base import ServarrAdapterBase
+import sys
 
+from media_stack.domain.servarr.technologies import generic as _impl
 
-class GenericServarrAdapter(ServarrAdapterBase):
-    """Generic implementation that relies entirely on shared base behavior."""
-
-    pass
+sys.modules[__name__] = _impl

@@ -1,8 +1,17 @@
+"""Servarr adapter package.
+
+Houses both the long-standing helpers (``choose_profile``,
+``choose_root_folder``, ``find_existing_servarr``,
+``normalize_remote_path_mappings``) and the per-tech adapter wiring
+introduced in ADR-0002 Phase 16-D (``servarr_adapters``,
+``service_admin_provider``).
+"""
+
 from __future__ import annotations
 
 import re
 
-from .common import normalize_base_path, to_int
+from media_stack.adapters.common import normalize_base_path, to_int
 
 
 class ServarrAdapters:

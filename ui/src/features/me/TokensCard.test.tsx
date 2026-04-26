@@ -96,8 +96,35 @@ describe("TokensCard", () => {
   it("renders a row per token", () => {
     tokensState.data = populatedTokens;
     renderWithProviders(<TokensCard />);
-    expect(screen.getByTestId("token-row-t1")).toHaveTextContent("CI deploy");
-    expect(screen.getByTestId("token-row-t1")).toHaveTextContent("read");
+    // After the DataTable migration the row testid is namespaced by
+    // the table's `testId` prop ("tokens-table") + the row id.
+    const row = screen.getByTestId("tokens-table-row-t1");
+    expect(row).toHaveTextContent("CI deploy");
+    expect(row).toHaveTextContent("read");
+  });
+
+  it("filters tokens via the DataTable name filter", async () => {
+    tokensState.data = {
+      tokens: [
+        ...populatedTokens.tokens,
+        {
+          id: "t2",
+          name: "release-bot",
+          scopes: ["read"],
+          created_at: new Date().toISOString(),
+          expires_at: "2099-01-01",
+        },
+      ],
+    };
+    renderWithProviders(<TokensCard />);
+    expect(screen.getByTestId("tokens-table-row-t1")).toBeInTheDocument();
+    expect(screen.getByTestId("tokens-table-row-t2")).toBeInTheDocument();
+    await userEvent.type(
+      screen.getByTestId("tokens-table-filter-name"),
+      "release",
+    );
+    expect(screen.queryByTestId("tokens-table-row-t1")).toBeNull();
+    expect(screen.getByTestId("tokens-table-row-t2")).toBeInTheDocument();
   });
 
   it("revokes a token when Revoke is clicked", async () => {

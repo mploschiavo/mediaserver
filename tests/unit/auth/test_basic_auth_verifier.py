@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 from argon2 import PasswordHasher
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.auth.basic_auth_verifier import BasicAuthVerifier  # noqa: E402

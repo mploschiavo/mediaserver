@@ -1,11 +1,12 @@
-"""Readarr technology adapter."""
+"""Shim — moved to ``media_stack.domain.servarr.technologies.readarr`` in
+ADR-0002 Phase 16-D. Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+(``mock.patch.object(MODULE, "_helper", ...)``) work transparently.
+"""
 
-from .base import ServarrAdapterBase
+import sys
 
+from media_stack.domain.servarr.technologies import readarr as _impl
 
-class ReadarrAdapter(ServarrAdapterBase):
-    """Readarr lifecycle adapter."""
-
-    pass
+sys.modules[__name__] = _impl

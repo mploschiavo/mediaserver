@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, call
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.services.apps.prowlarr.application_ops import (  # noqa: E402

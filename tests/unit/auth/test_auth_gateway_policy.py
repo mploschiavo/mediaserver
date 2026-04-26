@@ -40,7 +40,7 @@ from media_stack.core.auth.authelia_config_generator import (
 )
 
 
-CONTRACT_PATH = Path(__file__).resolve().parents[2] / "contracts" / "auth.yaml"
+CONTRACT_PATH = Path(__file__).resolve().parents[3] / "contracts" / "auth.yaml"
 
 
 class TestAuthContractLoading(unittest.TestCase):

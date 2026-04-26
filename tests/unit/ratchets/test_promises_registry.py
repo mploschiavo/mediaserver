@@ -30,7 +30,7 @@ import importlib
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 # Infrastructure-layer ``ensured_by`` values — valid ONLY on promises
 # tagged ``platforms: [k8s]``. These describe the layer that makes the

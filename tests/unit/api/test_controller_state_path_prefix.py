@@ -47,7 +47,7 @@ import re
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "media_stack"
 
 # ``<anything> / "controller"`` — the non-dotted path component in a

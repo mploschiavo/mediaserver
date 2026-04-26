@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.auth.users.password_policy import PasswordPolicy  # noqa: E402

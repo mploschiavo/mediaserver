@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.services.media_hygiene_ops.duplicate_prune import run_qbit_duplicate_prune

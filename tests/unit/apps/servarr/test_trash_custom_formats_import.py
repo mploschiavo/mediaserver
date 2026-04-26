@@ -17,7 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.services.apps.servarr.quality_preset_service as qp_mod  # noqa: E402

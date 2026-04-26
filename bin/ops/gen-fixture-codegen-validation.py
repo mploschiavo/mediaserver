@@ -43,7 +43,7 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SPEC_PATH = ROOT / "contracts" / "api" / "openapi.yaml"
 FIXTURES_DIR = ROOT / "tests" / "fixtures" / "api_responses"
 OUT_PATH = ROOT / "ui" / "src" / "api" / "fixture-codegen-validation.ts"

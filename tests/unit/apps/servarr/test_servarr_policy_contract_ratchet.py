@@ -46,7 +46,7 @@ from media_stack.services.media_integrity.policy import ServarrPolicy
 
 
 CONTRACT_PATH = (
-    Path(__file__).resolve().parents[2] / "contracts" / "servarr-policy.yaml"
+    Path(__file__).resolve().parents[4] / "contracts" / "servarr-policy.yaml"
 )
 
 

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.config as config_mod  # noqa: E402
@@ -168,7 +168,7 @@ class TestAddCustomService(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as td:
                 # Copy existing service YAMLs so reload doesn't lose them
-                svc_dir = Path(__file__).resolve().parents[2] / "contracts" / "services"
+                svc_dir = Path(__file__).resolve().parents[3] / "contracts" / "services"
                 if svc_dir.is_dir():
                     import shutil
                     for f in svc_dir.glob("*.yaml"):

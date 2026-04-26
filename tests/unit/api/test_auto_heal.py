@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.api.state import ControllerState  # noqa: E402

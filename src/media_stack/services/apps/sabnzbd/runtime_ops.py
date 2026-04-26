@@ -1,20 +1,13 @@
-#!/usr/bin/env python3
-"""SABnzbd runtime operations."""
+"""Shim — moved to ``media_stack.application.sabnzbd.runtime_ops`` in
+ADR-0002 Phase 16-D. Phase 16-F removes this shim.
 
-from __future__ import annotations
+Aliases ``sys.modules`` to the impl module so existing test patches
+(``mock.patch.object(MODULE, "_helper", ...)``) work transparently —
+the shim and impl resolve to the same module object.
+"""
 
-from media_stack.services.apps.servarr.runtime.sab_ops import (
-    ensure_sabnzbd_categories,
-    ensure_sabnzbd_defaults,
-    read_sabnzbd_api_key,
-    sabnzbd_get_config_section,
-    sabnzbd_request,
-)
+import sys
 
-__all__ = [
-    "read_sabnzbd_api_key",
-    "sabnzbd_request",
-    "sabnzbd_get_config_section",
-    "ensure_sabnzbd_defaults",
-    "ensure_sabnzbd_categories",
-]
+from media_stack.application.sabnzbd import runtime_ops as _impl
+
+sys.modules[__name__] = _impl

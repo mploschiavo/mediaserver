@@ -11,7 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/cn";
-import { formatRelative, statusLabel, statusVariant } from "./format";
+import {
+  formatCurrentValue,
+  formatRelative,
+  formatThreshold,
+  statusLabel,
+  statusVariant,
+} from "./format";
 import {
   type Guardrail,
   useDisableGuardrail,
@@ -55,6 +61,7 @@ export function GuardrailRow({ rule, focused }: GuardrailRowProps) {
 
   const status = rule.disabled ? "disabled" : (rule.last_status ?? "unknown");
   const lastFired = rule.last_triggered_at;
+  const lastEvaluated = rule.last_evaluated_at;
 
   return (
     <Card
@@ -79,12 +86,17 @@ export function GuardrailRow({ rule, focused }: GuardrailRowProps) {
           >
             {statusLabel(status)}
           </Badge>
-          <span
-            className="text-xs text-fg-muted"
-            data-testid={`guardrail-row-${rule.id}-last-fired`}
-          >
-            last fired {formatRelative(lastFired)}
-          </span>
+          <div className="flex flex-col items-end gap-0.5 text-xs text-fg-muted">
+            <span data-testid={`guardrail-row-${rule.id}-last-fired`}>
+              last fired {formatRelative(lastFired)}
+            </span>
+            <span
+              data-testid={`guardrail-row-${rule.id}-last-evaluated`}
+              className="text-[11px] opacity-70"
+            >
+              last evaluated {formatRelative(lastEvaluated)}
+            </span>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -139,14 +151,57 @@ export function GuardrailRow({ rule, focused }: GuardrailRowProps) {
             {rule.disabled ? "Enable" : "Disable"}
           </Button>
         </div>
+        {test.error ? (
+          <div
+            className="rounded-md border border-danger/40 bg-danger/10 p-2 text-xs text-danger"
+            role="alert"
+            data-testid={`guardrail-test-error-${rule.id}`}
+          >
+            Test failed: {test.error.message}
+          </div>
+        ) : null}
         {test.data ? (
           <div
-            className="rounded-md border border-border bg-bg-1 p-2 text-xs text-fg-muted"
+            className={cn(
+              "flex flex-col gap-1 rounded-md border p-2 text-xs",
+              test.data.would_trigger
+                ? "border-warning/40 bg-warning/10 text-fg"
+                : "border-border bg-bg-1 text-fg-muted",
+            )}
             data-testid={`guardrail-test-result-${rule.id}`}
           >
-            {test.data.would_trigger
-              ? `Would trigger: ${test.data.severity ?? "warning"}`
-              : "Would not trigger right now."}
+            <div className="font-medium">
+              {test.data.would_trigger
+                ? `Would trigger: ${test.data.severity ?? "warning"}`
+                : "Would not trigger right now."}
+            </div>
+            <div className="font-mono">
+              <span className="text-fg-muted">current: </span>
+              {formatCurrentValue(test.data.current_value)}
+            </div>
+            <div className="font-mono">
+              <span className="text-fg-muted">threshold: </span>
+              {formatThreshold(test.data.threshold)}
+            </div>
+            {test.data.description ? (
+              <div className="text-fg-muted">{test.data.description}</div>
+            ) : null}
+          </div>
+        ) : null}
+        {update.isSuccess && !dirty ? (
+          <div
+            className="rounded-md border border-success/40 bg-success/10 p-2 text-xs text-fg"
+            data-testid={`guardrail-save-result-${rule.id}`}
+          >
+            Saved.
+          </div>
+        ) : null}
+        {disable.isSuccess ? (
+          <div
+            className="rounded-md border border-border bg-bg-1 p-2 text-xs text-fg-muted"
+            data-testid={`guardrail-disable-result-${rule.id}`}
+          >
+            {rule.disabled ? "Disabled." : "Enabled."}
           </div>
         ) : null}
       </CardContent>

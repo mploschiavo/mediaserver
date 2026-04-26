@@ -1,7 +1,8 @@
 import { asArray } from "@/lib/coerce";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import { Copy, KeyRound, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import type { ColumnDef } from "@tanstack/react-table";
 import { ApiError } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DataTable } from "@/components/data-table";
 import {
   Dialog,
   DialogContent,
@@ -23,14 +25,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { formatRelative } from "@/features/media-integrity/format";
 import {
   useGenerateToken,
@@ -181,6 +175,110 @@ export function TokensCard() {
     [revoke],
   );
 
+  // Memoise columns so the DataTable's TanStack table instance doesn't
+  // tear down on every parent re-render. `revoke.isPending` and
+  // `handleRevoke` are the only deps that gate the actions cell — the
+  // rest are pure renderers.
+  const columns = useMemo<ColumnDef<MeToken>[]>(
+    () => [
+      {
+        id: "name",
+        accessorFn: (row) => row.name ?? "(unnamed)",
+        header: "Name",
+        meta: { label: "Name" },
+        cell: ({ row }) => (
+          <span className="font-medium text-fg">
+            {row.original.name ?? "(unnamed)"}
+          </span>
+        ),
+      },
+      {
+        id: "scopes",
+        accessorFn: (row) => (row.scopes ?? []).join(" "),
+        header: "Scopes",
+        meta: { label: "Scopes" },
+        cell: ({ row }) => {
+          const list = row.original.scopes ?? [];
+          if (list.length === 0) {
+            return <span className="text-xs text-fg-faint">—</span>;
+          }
+          return (
+            <div className="flex flex-wrap gap-1">
+              {list.map((s) => (
+                <Badge key={s} variant="default">
+                  {s}
+                </Badge>
+              ))}
+            </div>
+          );
+        },
+      },
+      {
+        id: "created_at",
+        accessorFn: (row) => row.created_at ?? "",
+        header: "Created",
+        meta: { label: "Created" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-fg-muted">
+            {formatRelative(row.original.created_at ?? "")}
+          </span>
+        ),
+      },
+      {
+        id: "last_used_at",
+        accessorFn: (row) => row.last_used_at ?? "",
+        header: "Last used",
+        meta: { label: "Last used" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-fg-muted">
+            {row.original.last_used_at
+              ? formatRelative(row.original.last_used_at)
+              : "never"}
+          </span>
+        ),
+      },
+      {
+        id: "expires_at",
+        accessorFn: (row) => row.expires_at ?? "",
+        header: "Expires",
+        meta: { label: "Expires" },
+        enableColumnFilter: false,
+        cell: ({ row }) => (
+          <span className="text-xs tabular-nums text-fg-muted">
+            {row.original.expires_at ?? "never"}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        meta: { label: "Actions" },
+        enableSorting: false,
+        enableColumnFilter: false,
+        cell: ({ row }) => {
+          const id = tokenId(row.original);
+          return (
+            <div className="flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handleRevoke(id)}
+                disabled={revoke.isPending || !id}
+                data-testid={`token-revoke-${id}`}
+              >
+                <Trash2 aria-hidden className="size-3.5" />
+                Revoke
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    [handleRevoke, revoke.isPending],
+  );
+
   return (
     <>
       <Card data-testid="tokens-card">
@@ -213,67 +311,16 @@ export function TokensCard() {
               No tokens issued.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Scopes</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Last used</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.map((t) => {
-                  const id = tokenId(t);
-                  return (
-                    <TableRow key={id} data-testid={`token-row-${id}`}>
-                      <TableCell className="font-medium text-fg">
-                        {t.name ?? "(unnamed)"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {(t.scopes ?? []).map((s) => (
-                            <Badge key={s} variant="default">
-                              {s}
-                            </Badge>
-                          ))}
-                          {(t.scopes ?? []).length === 0 ? (
-                            <span className="text-xs text-fg-faint">—</span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs tabular-nums text-fg-muted">
-                        {formatRelative(t.created_at ?? "")}
-                      </TableCell>
-                      <TableCell className="text-xs tabular-nums text-fg-muted">
-                        {t.last_used_at
-                          ? formatRelative(t.last_used_at)
-                          : "never"}
-                      </TableCell>
-                      <TableCell className="text-xs tabular-nums text-fg-muted">
-                        {t.expires_at ?? "never"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleRevoke(id)}
-                            disabled={revoke.isPending || !id}
-                            data-testid={`token-revoke-${id}`}
-                          >
-                            <Trash2 aria-hidden className="size-3.5" />
-                            Revoke
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <div className="px-6 pb-6">
+              <DataTable<MeToken>
+                testId="tokens-table"
+                columns={columns}
+                data={tokens}
+                getRowId={(row) => tokenId(row)}
+                caption={`${tokens.length} token${tokens.length === 1 ? "" : "s"}`}
+                emptyState="No tokens issued."
+              />
+            </div>
           )}
         </CardContent>
         <div className="flex items-center justify-end border-t border-border px-6 py-4">

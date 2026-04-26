@@ -32,7 +32,7 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "media_stack"
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -54,6 +54,7 @@ class UrllibPostHandlesRedirects(unittest.TestCase):
         # qBittorrent — no URL base prefix. POSTs to its WebUI
         # endpoints (/api/v2/auth/login, etc.) don't redirect.
         "src/media_stack/services/apps/qbittorrent/admin_ops.py",
+        "src/media_stack/infrastructure/qbittorrent/admin_ops.py",
 
         # Outbound to user-supplied URLs. Caller is responsible
         # for the destination's redirect behavior; we don't control
@@ -1189,7 +1190,7 @@ class AuthReconcileDoesNotClearUrlBase(unittest.TestCase):
         # is empty. Post-fix the condition gates on
         # ``if desired_url_base:`` only.
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "auth_service.py"
         ).read_text(encoding="utf-8")
         bad = 'if desired_url_base or "urlBase" in desired'
@@ -1206,9 +1207,13 @@ class AuthReconcileDoesNotClearUrlBase(unittest.TestCase):
         loop disappears, the original bug flips to the other side:
         Radarr's auto-login POST to Prowlarr would lose its body on
         307, no API key would come back, bootstrap fails."""
+        # Post ADR-0002 Phase 16-D: implementation lives in
+        # infrastructure/servarr/http_preflight.py; the legacy
+        # services/apps/servarr/http_preflight.py is a sys.modules
+        # alias shim so reading it returns shim text, not the impl.
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
-            / "src" / "media_stack" / "services" / "apps" / "servarr"
+            __import__("pathlib").Path(__file__).resolve().parents[3]
+            / "src" / "media_stack" / "infrastructure" / "servarr"
             / "http_preflight.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
@@ -1242,7 +1247,7 @@ class AutoDownloadContentReadsProfile(unittest.TestCase):
 
     def test_controller_runner_consults_profile_for_auto_download(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "jobs" / "controller_runner.py"
         ).read_text(encoding="utf-8")
         # The fallback chain must be present: env wins when set,
@@ -1301,7 +1306,7 @@ class PopularTvCustomImportWired(unittest.TestCase):
 
     def test_handler_exists_and_is_routed(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "api" / "handlers_get.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
@@ -1376,7 +1381,7 @@ class CompletedDownloadReachesJellyfin(unittest.TestCase):
 
     def test_discover_api_keys_reads_jellyfin_sqlite(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "api" / "services" / "health.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
@@ -1405,7 +1410,7 @@ class CompletedDownloadReachesJellyfin(unittest.TestCase):
 
     def test_scan_completed_downloads_handler_exists(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "core"
             / "job_adapters.py"
         ).read_text(encoding="utf-8")
@@ -1429,7 +1434,7 @@ class CompletedDownloadReachesJellyfin(unittest.TestCase):
 
     def test_scheduler_seeds_scan_completed_downloads(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "cli" / "commands"
             / "controller_serve.py"
         ).read_text(encoding="utf-8")
@@ -1449,7 +1454,7 @@ class CompletedDownloadReachesJellyfin(unittest.TestCase):
         the completed-but-unimported files reach /media/* before
         Jellyfin re-indexes."""
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "api" / "services" / "content.py"
         ).read_text(encoding="utf-8")
         # All four DownloadedXScan commands should be issued from
@@ -1512,7 +1517,7 @@ class FreshInstallOtbHygiene(unittest.TestCase):
 
     def test_mass_search_throttled_handler_exists(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "core"
             / "job_adapters.py"
         ).read_text(encoding="utf-8")
@@ -1529,7 +1534,7 @@ class FreshInstallOtbHygiene(unittest.TestCase):
 
     def test_bazarr_language_profile_handler_exists(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "core"
             / "job_adapters.py"
         ).read_text(encoding="utf-8")
@@ -1574,7 +1579,7 @@ class FreshInstallOtbHygiene(unittest.TestCase):
 
     def test_services_api_exposes_preserve_path_prefix(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "api" / "handlers_get.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
@@ -1611,7 +1616,7 @@ class MaintainerrRulesLinkToArr(unittest.TestCase):
 
     def test_translator_uses_library_type_aware_link(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "maintainerr"
             / "rule_translation_service.py"
         ).read_text(encoding="utf-8")
@@ -1695,7 +1700,7 @@ class MaintainerrRuleSyncUsesDeletePost(unittest.TestCase):
 
     def test_rule_sync_uses_delete_then_post(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "maintainerr"
             / "rule_sync_service.py"
         ).read_text(encoding="utf-8")
@@ -1780,7 +1785,7 @@ class ArrJellyfinNotifierWired(unittest.TestCase):
 
     def test_notifier_handler_exists(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "core"
             / "job_adapters.py"
         ).read_text(encoding="utf-8")
@@ -1838,7 +1843,7 @@ class JellyseerrOidcBootstrapped(unittest.TestCase):
 
     def test_handler_exists_and_writes_oidc(self) -> None:
         src = (
-            __import__("pathlib").Path(__file__).resolve().parents[2]
+            __import__("pathlib").Path(__file__).resolve().parents[3]
             / "src" / "media_stack" / "services" / "apps" / "core"
             / "job_adapters.py"
         ).read_text(encoding="utf-8")

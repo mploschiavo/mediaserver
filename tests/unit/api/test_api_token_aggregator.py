@@ -25,7 +25,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.auth.authz import Actor, AuthorizationError  # noqa: E402

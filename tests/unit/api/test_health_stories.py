@@ -24,7 +24,7 @@ import time
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.api.services.health_stories import compose  # noqa: E402

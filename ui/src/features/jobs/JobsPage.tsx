@@ -17,6 +17,7 @@ import {
   useJobs,
   type JobHistoryEntry,
   type JobMeta,
+  type JobTreeNode,
   type JobsResponse,
 } from "./hooks";
 import {
@@ -130,6 +131,28 @@ function earliestNextFire(
   return best;
 }
 
+/**
+ * Walk the tree once and return a name → JobTreeNode index. Used to
+ * synthesize a `JobMeta` for parent nodes (bootstrap, configure-*)
+ * that exist in the hierarchy but aren't in the flat `jobs[]`
+ * catalog (which only contains contract-discovered leaves). Without
+ * this lookup, selecting a parent node leaves the detail panel
+ * unmounted and the operator can't trigger the parent — even though
+ * `POST /api/actions/<parent>` is a valid call for the registered
+ * parents (bootstrap / configure-media-server / aliases).
+ */
+function buildTreeIndex(
+  tree: readonly JobTreeNode[],
+): ReadonlyMap<string, JobTreeNode> {
+  const out = new Map<string, JobTreeNode>();
+  const walk = (node: JobTreeNode) => {
+    out.set(node.name, node);
+    for (const child of asArray<JobTreeNode>(node.sub_jobs)) walk(child);
+  };
+  for (const root of tree) walk(root);
+  return out;
+}
+
 /** Per-service catalog count, sorted by descending count. */
 function buildServiceCounts(
   jobs: readonly JobMeta[],
@@ -174,7 +197,7 @@ export function JobsPage({
   // build hands us a non-array (legacy nightly builds occasionally
   // emitted `{}` for empty payloads).
   const jobs = asArray<JobMeta>(data?.jobs);
-  const tree = asArray(data?.tree);
+  const tree = asArray<JobTreeNode>(data?.tree);
   const history = asArray<JobHistoryEntry>(data?.history);
 
   const catalog = useMemo(() => {
@@ -188,11 +211,34 @@ export function JobsPage({
   const latest = history[0];
   const unmet = useMemo(() => buildUnmetSet(latest), [latest]);
 
+  // Index every node in the tree so we can resolve parents (bootstrap,
+  // configure-*) that aren't in the flat catalog. Memoised on tree
+  // identity — the 5s poll only mints a new array when the controller
+  // emits a new tree.
+  const treeIndex = useMemo(() => buildTreeIndex(tree), [tree]);
+
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [reveal, setReveal] = useState<{ name: string; nonce: number } | null>(
     null,
   );
-  const selected = selectedName ? (catalog.get(selectedName) ?? null) : null;
+  // Resolve the selected name to a JobMeta. Catalog wins when present;
+  // otherwise synthesize a minimal meta from the tree node so parent
+  // jobs (which carry no contract entry) still render the detail panel
+  // — including the Run / Cancel buttons. The controller accepts
+  // `POST /api/actions/<parent>` for registered parents (bootstrap,
+  // configure-media-server, aliases) and 404s otherwise; we surface
+  // that error inline rather than hiding the button.
+  const selected = useMemo<JobMeta | null>(() => {
+    if (!selectedName) return null;
+    const fromCatalog = catalog.get(selectedName);
+    if (fromCatalog) return fromCatalog;
+    const node = treeIndex.get(selectedName);
+    if (!node) return null;
+    return {
+      name: node.name,
+      requires: asArray<string>(node.requires),
+    };
+  }, [selectedName, catalog, treeIndex]);
 
   // Track the in-flight action name across the page. JobDetailPanel
   // owns the `useRunAction` hook (it's the only place where Run/Cancel

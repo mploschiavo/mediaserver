@@ -38,7 +38,7 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "media_stack"
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -292,6 +292,8 @@ class MeaningfulFilenamesAcrossRepo(unittest.TestCase):
         "/dist/",
         "/build/",
         "/api/static/",  # bundled swagger-ui assets
+        "/.claude/",  # Claude agent worktrees — frozen snapshots of
+                      # earlier branches, may carry historic naming.
     )
 
     # ``test_v1_0_NNN_...`` — the historic release-tagged name.

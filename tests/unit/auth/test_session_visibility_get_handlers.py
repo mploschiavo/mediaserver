@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.core.auth.authz import Actor, AuthorizationError  # noqa: E402
