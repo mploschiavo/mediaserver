@@ -17,7 +17,7 @@
 // because most of the values (p99 latency in particular) move on a
 // minute timescale anyway and a noisier poll just burns cluster CPU.
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   Activity,
@@ -202,6 +202,20 @@ export function EnvoyAdminSummaryCard() {
   const tsQuery = useEnvoyTimeseries(intervalMs);
   const data = query.data;
   const ts = tsQuery.data;
+
+  // Cross-card drill-down: TopologyGraphCard + any future card on
+  // the same page can dispatch ``media-stack:cluster-drill`` to ask
+  // *us* to open the drawer (the drawer is mounted here because we
+  // own the timeseries query that feeds it). Lightweight global bus
+  // beats threading a callback through three component layers.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ cluster?: string }>).detail;
+      if (detail?.cluster) setDrillCluster(detail.cluster);
+    };
+    window.addEventListener("media-stack:cluster-drill", handler);
+    return () => window.removeEventListener("media-stack:cluster-drill", handler);
+  }, []);
 
   const topRoutes = useMemo(() => {
     if (!data) return [];
