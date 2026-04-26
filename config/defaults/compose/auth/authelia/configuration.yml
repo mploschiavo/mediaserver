@@ -27,11 +27,15 @@ access_control:
 session:
   secret: change-this-session-secret-with-32-or-more-characters
   # Authelia defaults are 1h/5m which kicks operators out mid-task.
-  # Set explicitly: 12h absolute lifetime, 30m idle window, 7d
-  # remember-me opt-in.
+  # Tuned for home-lab usage: 12h absolute session, 30m idle, and a
+  # generous 30d remember-me opt-in (the Authelia portal exposes a
+  # "Remember me" checkbox at sign-in when remember_me > 0). Set
+  # remember_me to 0 to disable the checkbox entirely; bump the value
+  # if your threat model is light. The checkbox is opt-in per session
+  # — operators wanting "don't ask again" tick it at sign-in time.
   expiration: 12h
   inactivity: 30m
-  remember_me: 168h
+  remember_me: 720h
   cookies:
     - domain: local
       authelia_url: http://authelia.local

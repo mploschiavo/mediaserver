@@ -72,9 +72,27 @@ interface ServiceRow {
 }
 
 function rowsFromResponse(
-  raw: Record<string, unknown> | undefined,
+  raw: unknown,
 ): readonly ServiceRow[] {
-  const obj = asObjectMap(raw);
+  // The controller has shipped two shapes:
+  //   1. Object form: ``{services: {jellyfin: "two_factor", ...}}``
+  //   2. List form (current as of v1.0.254):
+  //      ``{services: [{service_id, policy, category, source}, ...]}``
+  // The empty-state in the UI ("No services registered") was firing
+  // when the backend returned the list shape because `asObjectMap`
+  // collapsed it to {}. Now we accept either.
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((entry) => entry && typeof entry === "object")
+      .map((entry) => {
+        const e = entry as { service_id?: unknown; policy?: unknown };
+        const id = typeof e.service_id === "string" ? e.service_id : "";
+        return { service: id, policy: coercePolicy(e.policy) };
+      })
+      .filter((r) => r.service)
+      .sort((a, b) => a.service.localeCompare(b.service));
+  }
+  const obj = asObjectMap(raw as Record<string, unknown> | undefined);
   return Object.entries(obj)
     .map(([service, value]) => ({ service, policy: coercePolicy(value) }))
     .sort((a, b) => a.service.localeCompare(b.service));
@@ -99,9 +117,7 @@ export function ServicePoliciesCard() {
   // React's structural-equality dependency check fires only when the
   // policy values actually change.
   useEffect(() => {
-    const rows = rowsFromResponse(
-      policies.data?.services as Record<string, unknown> | undefined,
-    );
+    const rows = rowsFromResponse(policies.data?.services);
     const key = rows.map((r) => `${r.service}:${r.policy}`).join("|");
     if (key !== seedKey) {
       const next: Record<string, ServicePolicy> = {};
@@ -116,9 +132,7 @@ export function ServicePoliciesCard() {
     .sort((a, b) => a.service.localeCompare(b.service));
 
   const dirty = (() => {
-    const baseline = rowsFromResponse(
-      policies.data?.services as Record<string, unknown> | undefined,
-    );
+    const baseline = rowsFromResponse(policies.data?.services);
     if (baseline.length !== rows.length) return true;
     for (const r of baseline) {
       if (draft[r.service] !== r.policy) return true;
