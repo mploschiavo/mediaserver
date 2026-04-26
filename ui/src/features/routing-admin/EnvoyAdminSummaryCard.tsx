@@ -34,6 +34,8 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -101,6 +103,12 @@ interface TimeseriesSample {
   total_hosts: number;
   active_cx: number;
   tls_errors: number;
+  rq_per_cluster?: Record<string, number>;
+  active_per_cluster?: Record<string, number>;
+  latency_per_cluster?: Record<
+    string,
+    { p50: number | null; p95: number | null; p99: number | null }
+  >;
 }
 
 interface TimeseriesDelta {
@@ -110,6 +118,7 @@ interface TimeseriesDelta {
   active_cx: number;
   healthy: number;
   total_hosts: number;
+  rq_per_cluster_per_s?: Record<string, number>;
 }
 
 interface EnvoyTimeseries {
@@ -337,6 +346,59 @@ export function EnvoyAdminSummaryCard() {
       })),
     [sparkDeltas],
   );
+
+  // Per-cluster traffic series — picks the top-5 clusters by mean
+  // request rate over the buffered window and emits a flattened
+  // [{ts, <cluster>: rate, <cluster>: rate, …}] shape that
+  // recharts' multi-Line chart can read directly. Anything outside
+  // the top-5 collapses into "other" so a 50-service deploy doesn't
+  // produce 50 illegible lines.
+  const perClusterTraffic = useMemo(() => {
+    if (sparkDeltas.length < 2) {
+      return { rows: [] as Record<string, number | string>[], topClusters: [] as string[] };
+    }
+    const sums = new Map<string, number>();
+    for (const d of sparkDeltas) {
+      for (const [cluster, rate] of Object.entries(
+        d.rq_per_cluster_per_s ?? {},
+      )) {
+        sums.set(cluster, (sums.get(cluster) ?? 0) + rate);
+      }
+    }
+    const top = [...sums.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([n]) => n);
+    const topSet = new Set(top);
+    const rows = sparkDeltas.map((d) => {
+      const row: Record<string, number | string> = { ts: d.ts };
+      let other = 0;
+      for (const [cluster, rate] of Object.entries(
+        d.rq_per_cluster_per_s ?? {},
+      )) {
+        if (topSet.has(cluster)) {
+          row[cluster] = rate;
+        } else {
+          other += rate;
+        }
+      }
+      if (other > 0) row.other = Number(other.toFixed(3));
+      return row;
+    });
+    return { rows, topClusters: top };
+  }, [sparkDeltas]);
+
+  // Per-cluster active connections — current snapshot, not a series.
+  // Sorted desc; capped at 8 rows for visual hygiene.
+  const activeCxBreakdown = useMemo(() => {
+    if (!data) return [];
+    const entries = Object.entries(data.active_connections);
+    return entries
+      .filter(([, n]) => n > 0)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([name, n]) => ({ name: prettyCluster(name), value: n }));
+  }, [data]);
 
   // Latency heatmap — every cluster with histogram data, sorted by
   // p99 desc so the worst tail-latency surfaces first. The "Slowest
@@ -597,6 +659,27 @@ export function EnvoyAdminSummaryCard() {
             </div>
           )}
         </div>
+
+        {/* Per-cluster traffic — top 5 + 'other'. Answers "which
+            cluster is hot right now" over time. Lines are tone-tinted
+            from a fixed palette so a single cluster keeps its colour
+            across re-renders. Falls through to an empty-state caption
+            when fewer than two buckets exist (same gate as the
+            request-rate chart above). */}
+        <PerClusterTrafficCard
+          rows={perClusterTraffic.rows}
+          topClusters={perClusterTraffic.topClusters}
+          loading={tsQuery.isLoading}
+        />
+
+        {/* Active connections by cluster — point-in-time snapshot
+            (not a series). Useful for "who's holding open WebSockets
+            / streaming sessions right now". Hidden when no cluster
+            has any active connections (the common case for a quiet
+            stack). */}
+        {activeCxBreakdown.length > 0 ? (
+          <ActiveConnectionsCard data={activeCxBreakdown} />
+        ) : null}
 
         {/* Pie charts — visual at-a-glance for the three questions
             operators ask first: "what response codes are we serving",
@@ -1040,6 +1123,192 @@ function HeatCell({ ms }: HeatCellProps) {
       data-tone={tone}
     >
       {ms}ms
+    </div>
+  );
+}
+
+// ---- Phase E ---------------------------------------------------------------
+
+const CLUSTER_PALETTE = [
+  "var(--color-info)",
+  "var(--color-success)",
+  "var(--color-warning)",
+  "var(--color-accent)",
+  "var(--color-danger)",
+  "var(--color-fg-muted)",
+];
+
+interface PerClusterTrafficCardProps {
+  rows: Record<string, number | string>[];
+  topClusters: string[];
+  loading: boolean;
+}
+
+/**
+ * Multi-line chart of per-cluster request rate over the rolling
+ * window. Top-5 clusters by mean rate get their own line; the rest
+ * collapse into an "other" series so a deploy with 50 services
+ * doesn't render 50 illegible lines. Empty-state caption when the
+ * buffer has <2 deltas — same UX gate as the aggregate rate chart
+ * above so the panel feels uniform during the first 60s after a
+ * pod restart.
+ */
+function PerClusterTrafficCard({
+  rows,
+  topClusters,
+  loading,
+}: PerClusterTrafficCardProps) {
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+      data-testid="envoy-summary-per-cluster-traffic"
+    >
+      <div>
+        <span className="text-sm font-medium text-fg">
+          Per-cluster traffic (live)
+        </span>
+        <p className="text-xs text-fg-muted">
+          Requests/sec for the top 5 upstream clusters. Anything below
+          the top 5 collapses into an "other" line.{" "}
+          {rows.length >= 2
+            ? `${rows.length} buckets buffered.`
+            : null}
+        </p>
+      </div>
+      {rows.length < 2 ? (
+        <div
+          className="flex h-44 w-full items-center justify-center rounded border border-dashed border-border/60 bg-bg-1/40 text-xs text-fg-muted"
+          data-testid="envoy-summary-per-cluster-empty"
+        >
+          {loading
+            ? "Loading…"
+            : "Per-cluster series appears once two polls have completed."}
+        </div>
+      ) : (
+        <div className="h-56 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart
+              data={[...rows]}
+              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid
+                strokeDasharray="2 4"
+                stroke="var(--color-border)"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="ts"
+                tickFormatter={(t) =>
+                  new Date(Number(t) * 1000).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                }
+                tick={{ fill: "var(--color-fg-muted)", fontSize: 10 }}
+                axisLine={{ stroke: "var(--color-border)" }}
+                tickLine={false}
+                minTickGap={24}
+              />
+              <YAxis
+                tick={{ fill: "var(--color-fg-muted)", fontSize: 10 }}
+                axisLine={{ stroke: "var(--color-border)" }}
+                tickLine={false}
+                width={32}
+              />
+              <ChartTooltip
+                contentStyle={{
+                  background: "var(--color-bg-2)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "var(--color-fg)",
+                }}
+                labelFormatter={(t) =>
+                  new Date(Number(t) * 1000).toLocaleTimeString()
+                }
+              />
+              <Legend
+                verticalAlign="bottom"
+                height={24}
+                iconSize={8}
+                wrapperStyle={{ fontSize: 11, color: "var(--color-fg-muted)" }}
+              />
+              {topClusters.map((cluster, i) => (
+                <Line
+                  key={cluster}
+                  type="monotone"
+                  dataKey={cluster}
+                  name={prettyCluster(cluster)}
+                  stroke={CLUSTER_PALETTE[i % CLUSTER_PALETTE.length]}
+                  strokeWidth={1.5}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              ))}
+              <Line
+                type="monotone"
+                dataKey="other"
+                name="other"
+                stroke="var(--color-fg-faint)"
+                strokeDasharray="3 3"
+                strokeWidth={1.2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ActiveConnectionsCardProps {
+  data: readonly { name: string; value: number }[];
+}
+
+/**
+ * Horizontal bar list of clusters with active connections. Used for
+ * the "who's holding open WebSockets / streaming sessions right
+ * now?" question. Sized as a max-bar-width fraction of the card.
+ */
+function ActiveConnectionsCard({ data }: ActiveConnectionsCardProps) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border border-border bg-bg-1/30 p-3"
+      data-testid="envoy-summary-active-cx-breakdown"
+    >
+      <div>
+        <span className="text-sm font-medium text-fg">
+          Active connections by cluster
+        </span>
+        <p className="text-xs text-fg-muted">
+          Currently-open upstream connections per cluster. Streaming
+          services + WebSocket consumers usually dominate.
+        </p>
+      </div>
+      <ul className="flex flex-col gap-1">
+        {data.map((d) => (
+          <li
+            key={d.name}
+            className="flex items-center gap-2 text-xs"
+            data-testid={`envoy-summary-active-row-${d.name}`}
+          >
+            <span className="w-32 truncate font-mono text-fg">{d.name}</span>
+            <div className="relative h-4 flex-1 overflow-hidden rounded bg-bg-2">
+              <div
+                className="absolute inset-y-0 left-0 rounded bg-info/60"
+                style={{ width: `${(d.value / max) * 100}%` }}
+                aria-hidden
+              />
+            </div>
+            <span className="w-10 text-right tabular-nums text-fg-muted">
+              {d.value}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

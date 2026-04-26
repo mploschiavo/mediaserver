@@ -68,7 +68,7 @@ export function ExposureCard() {
         </CardTitle>
         <CardDescription>
           Whether public traffic can reach this stack, and how the
-          controller binds it. Edit comes in v1.0.244 (PR-5).
+          controller binds it.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

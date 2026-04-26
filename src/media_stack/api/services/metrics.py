@@ -34,13 +34,34 @@ def _record_timeseries_sample(summary: dict[str, Any]) -> None:
     rolling buffer. Called at the tail of ``get_envoy_admin_summary``
     so any consumer of the panel doubles as a sampler. Duplicate
     same-second samples are skipped (multi-tab clients racing the
-    same poll second)."""
+    same poll second).
+
+    Phase E (v1.0.250): per-cluster ``request_totals`` and
+    ``active_connections`` snapshots are captured too so the UI can
+    plot "which cluster is hot right now" over time. These are
+    mappings (cluster_id → count); the buffer-size cap (240 samples)
+    keeps memory bounded even when a deploy has 50+ services.
+    """
     breakdown = summary.get("downstream_breakdown") or {}
     healthy = sum(int(c.get("healthy", 0)) for c in summary.get("clusters", []))
     total_hosts = sum(int(c.get("hosts", 0)) for c in summary.get("clusters", []))
-    active = sum(
-        int(v) for v in (summary.get("active_connections") or {}).values()
-    )
+    active_per_cluster = {
+        str(k): int(v)
+        for k, v in (summary.get("active_connections") or {}).items()
+    }
+    rq_per_cluster = {
+        str(k): int(v)
+        for k, v in (summary.get("request_totals") or {}).items()
+    }
+    active = sum(active_per_cluster.values())
+    latency = {
+        str(k): {
+            "p50": (v or {}).get("p50"),
+            "p95": (v or {}).get("p95"),
+            "p99": (v or {}).get("p99"),
+        }
+        for k, v in (summary.get("request_p_latency_ms") or {}).items()
+    }
     sample = {
         "ts": int(time.time()),
         "rq_total": int(breakdown.get("total", 0)),
@@ -51,6 +72,10 @@ def _record_timeseries_sample(summary: dict[str, Any]) -> None:
         "total_hosts": total_hosts,
         "active_cx": active,
         "tls_errors": int(summary.get("tls_handshake_errors", 0) or 0),
+        # Phase E additions:
+        "rq_per_cluster": rq_per_cluster,
+        "active_per_cluster": active_per_cluster,
+        "latency_per_cluster": latency,
     }
     with _timeseries_lock:
         if _timeseries_buf and _timeseries_buf[-1]["ts"] == sample["ts"]:
@@ -82,6 +107,18 @@ def get_envoy_timeseries(window_seconds: int = 1800) -> dict[str, Any]:
             ((cur["rq_4xx"] + cur["rq_5xx"])
              - (prev["rq_4xx"] + prev["rq_5xx"])) / dt,
         )
+        # Per-cluster delta — same monotonic-counter trick. Skip
+        # clusters present in cur but not prev (first-seen — no
+        # baseline).
+        rq_per_cluster_per_s: dict[str, float] = {}
+        prev_clusters = prev.get("rq_per_cluster") or {}
+        for cluster, rq_now in (cur.get("rq_per_cluster") or {}).items():
+            rq_then = prev_clusters.get(cluster)
+            if rq_then is None:
+                continue
+            rq_per_cluster_per_s[cluster] = round(
+                max(0.0, (rq_now - rq_then) / dt), 3,
+            )
         deltas.append({
             "ts": cur["ts"],
             "rq_per_s": round(rq_per_s, 3),
@@ -89,6 +126,7 @@ def get_envoy_timeseries(window_seconds: int = 1800) -> dict[str, Any]:
             "active_cx": cur["active_cx"],
             "healthy": cur["healthy"],
             "total_hosts": cur["total_hosts"],
+            "rq_per_cluster_per_s": rq_per_cluster_per_s,
         })
     return {
         "samples": samples,
