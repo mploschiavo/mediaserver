@@ -120,6 +120,9 @@ export function RunningJobsBanner() {
 
 function RunningRow({ job }: { job: RunningJob }) {
   const elapsed = formatElapsed(job.elapsed_seconds, job.started_at);
+  const startedAt = job.started_at
+    ? formatStartedAt(job.started_at)
+    : "unknown start";
   return (
     <li
       className="flex flex-col gap-0.5 px-2 py-1.5 text-xs"
@@ -133,10 +136,43 @@ function RunningRow({ job }: { job: RunningJob }) {
       </div>
       <div className="flex items-center justify-between text-fg-muted">
         <span>{kindLabel(job.kind)}</span>
-        {job.triggered_by ? <span>by {job.triggered_by}</span> : null}
-        {job.active_pods ? <span>{job.active_pods} pod(s)</span> : null}
+        <span className="text-fg-faint">since {startedAt}</span>
       </div>
+      {job.triggered_by || job.active_pods ? (
+        <div className="flex items-center gap-2 text-fg-faint">
+          {job.triggered_by ? <span>by {job.triggered_by}</span> : null}
+          {job.active_pods ? <span>{job.active_pods} pod(s)</span> : null}
+        </div>
+      ) : null}
     </li>
+  );
+}
+
+function formatStartedAt(epoch: number): string {
+  const start = new Date(epoch * 1000);
+  const now = new Date();
+  const time = start.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (start.toDateString() === now.toDateString()) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (start.toDateString() === yesterday.toDateString()) {
+    return `yesterday ${time}`;
+  }
+  if (start.getFullYear() === now.getFullYear()) {
+    return (
+      start.toLocaleDateString([], { month: "short", day: "numeric" }) +
+      ` ${time}`
+    );
+  }
+  return (
+    start.toLocaleDateString([], {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }) + ` ${time}`
   );
 }
 
