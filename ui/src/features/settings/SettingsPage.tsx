@@ -13,6 +13,7 @@ import { EnvViewerCard } from "./EnvViewerCard";
 import { EnvVarsEditorCard } from "./EnvVarsEditorCard";
 import { DisplayPrefsCard } from "./DisplayPrefsCard";
 import { LogLevelCard } from "./LogLevelCard";
+import { MetadataPreferencesCard } from "./MetadataPreferencesCard";
 import { SponsorCard } from "./SponsorCard";
 
 /**
@@ -67,6 +68,7 @@ export function SettingsPage() {
           <EnvVarsEditorCard />
         </TabsContent>
         <TabsContent value="display" className="flex flex-col gap-4">
+          <MetadataPreferencesCard />
           <DisplayPrefsCard />
         </TabsContent>
         <TabsContent value="log-level" className="flex flex-col gap-4">

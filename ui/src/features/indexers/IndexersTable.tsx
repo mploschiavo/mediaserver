@@ -208,6 +208,7 @@ export function IndexersTable() {
 
   return (
     <Card className="p-0" data-testid="indexers-table">
+      <AddIndexerHeader />
       <ResponsiveTable
         rows={rows}
         rowKey={(r) => String(r.id)}
@@ -228,5 +229,42 @@ export function IndexersTable() {
         )}
       />
     </Card>
+  );
+}
+
+/**
+ * Header strip with an "Add indexer" deep-link to Prowlarr's own
+ * picker. Why deep-link instead of a native form: Prowlarr ships
+ * 1000+ indexer definitions, each with a custom field schema (name,
+ * URL, API key, categories, custom auth, captcha rules, …). Mirroring
+ * that schema in our UI would duplicate Prowlarr's whole add-indexer
+ * UX. The link strategy: open Prowlarr, pick the indexer, save —
+ * the dashboard picks up the new entry on its next 30s poll.
+ *
+ * The link path matches the controller's path-strategy routing:
+ * ``/app/prowlarr/`` is the gateway prefix Prowlarr is served under.
+ * `target="_blank"` keeps the operator's place in the dashboard.
+ */
+function AddIndexerHeader() {
+  return (
+    <div
+      className="flex items-center justify-between border-b border-border bg-bg-1/40 px-4 py-2 text-xs"
+      data-testid="indexers-add-header"
+    >
+      <span className="text-fg-muted">
+        Pick from Prowlarr's catalog of 1000+ trackers + usenet
+        indexers. New entries appear here within ~30s of saving.
+      </span>
+      <a
+        href="/app/prowlarr/#/indexers/add"
+        target="_blank"
+        rel="noreferrer noopener"
+        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-1 px-2.5 py-1 text-xs text-fg hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid="indexers-add-button"
+      >
+        Add indexer in Prowlarr
+        <span aria-hidden>↗</span>
+      </a>
+    </div>
   );
 }
