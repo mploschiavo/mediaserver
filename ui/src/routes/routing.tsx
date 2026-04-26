@@ -16,6 +16,7 @@ import { RouteTableCard } from "@/features/routing-admin/RouteTableCard";
 import { RoutingStrategyCard } from "@/features/routing-admin/RoutingStrategyCard";
 import { SankeyFlowCard } from "@/features/routing-admin/SankeyFlowCard";
 import { TlsCertificateCard } from "@/features/routing-admin/TlsCertificateCard";
+import { TopologyGraphCard } from "@/features/routing-admin/TopologyGraphCard";
 import { useRouting } from "@/features/routing-admin/hooks";
 import { Route as RootRoute } from "@/routes/__root";
 
@@ -76,6 +77,7 @@ function RoutingPage() {
         </TabsContent>
 
         <TabsContent value="live" className="flex flex-col gap-6 pt-4">
+          <TopologyGraphCard />
           <SankeyFlowCard />
           <EnvoyAdminSummaryCard />
           <LiveAccessLogCard />

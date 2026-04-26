@@ -224,4 +224,22 @@ def tail_envoy_access_log(limit: int = 50) -> list[dict[str, Any]]:
         parsed = _parse_line(line)
         if parsed:
             rows.append(parsed)
-    return rows[-limit:]
+    rows = rows[-limit:]
+
+    # GeoIP enrichment — adds ``country`` (2-letter code) + ``flag``
+    # (emoji) to each row for public IPs. Private/LAN IPs return None
+    # so the UI can hide those columns for them. Uses the operator-
+    # supplied GeoLite2 mmdb when available; falls back to a coarse
+    # bundled CIDR table.
+    try:
+        from .geoip import lookup_country, country_flag
+        for r in rows:
+            ip = r.get("client_ip")
+            country = lookup_country(ip) if ip else None
+            r["country"] = country
+            r["flag"] = country_flag(country) if country else ""
+    except Exception:  # noqa: BLE001
+        # GeoIP is purely additive — never break the panel because
+        # of a lookup failure.
+        pass
+    return rows
