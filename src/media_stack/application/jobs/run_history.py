@@ -32,6 +32,11 @@ import time
 from pathlib import Path
 from typing import Iterable, Optional
 
+from media_stack.core.events import (
+    JobCompleted,
+    JobStarted,
+    get_default_bus,
+)
 from media_stack.core.logging_utils import log_swallowed
 from media_stack.domain.jobs.run_record import (
     RUN_HISTORY_HARD_CAP,
@@ -173,6 +178,24 @@ def record_run_start(
     )
     with _LOCK:
         _append_record(record)
+    # Fire-and-forget publish: a slow/raising subscriber must never
+    # block the run-recording path. ``EventBus._safe_invoke`` already
+    # swallows handler exceptions; we only guard against the bus
+    # itself being unreachable (shouldn't happen, but cheap to
+    # defend).
+    try:
+        get_default_bus().publish(
+            JobStarted(
+                run_id=record.run_id,
+                job_name=record.job_name,
+                parent_run_id=record.parent_run_id or "",
+                batch_id=record.batch_id or "",
+                triggered_by=record.triggered_by,
+                actor=record.actor or "",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - defensive
+        log_swallowed(exc)
     return record
 
 
@@ -233,7 +256,21 @@ def record_run_complete(
                     r.child_run_ids.append(run_id)
                     break
         _write_all_records(records)
-        return record
+    # Publish outside the lock — handler dispatch can be slow and
+    # must never serialise unrelated run-record writes.
+    try:
+        get_default_bus().publish(
+            JobCompleted(
+                run_id=record.run_id,
+                job_name=record.job_name,
+                status=record.status,
+                elapsed=record.elapsed or 0.0,
+                error=record.error or "",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - defensive
+        log_swallowed(exc)
+    return record
 
 
 # ---------------------------------------------------------------------------
