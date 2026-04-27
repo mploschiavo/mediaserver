@@ -144,13 +144,14 @@ class ControllerAllRunner:
         component_key: str = "",
         component_technology: str = "",
     ) -> str:
-        raw = str(template or "").strip()
-        if not raw:
-            return ""
-        out = raw.replace("{component_key}", component_key)
-        out = out.replace("{component|unbound}", component_technology or "unbound")
-        out = out.replace("{component}", component_technology)
-        return out
+        from media_stack.cli.workflows.controller_core_phases_service import (
+            format_phase_name as _format,
+        )
+        return _format(
+            template,
+            component_key=component_key,
+            component_technology=component_technology,
+        )
 
     def _manifest_overrides(self, text: str) -> str:
         out = re.sub(

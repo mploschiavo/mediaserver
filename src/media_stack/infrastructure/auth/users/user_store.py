@@ -88,15 +88,20 @@ class UserStore:
         with self._lock:
             return self._load().get(user_id)
 
-    def get_by_email(self, email: str) -> User | None:
-        """Return the ACTIVE user with this email. Prefer active over
-        soft-deleted when duplicates exist — same tie-breaker as
-        get_by_username so logins via email can't hit a dead row."""
-        target = email.strip().lower()
+    def _get_by_field(
+        self, value: str, field: str,
+    ) -> User | None:
+        """Return the ACTIVE user matching ``value`` on the given
+        attribute (``email`` / ``username``). When multiple rows
+        match (a recreated-after-delete scenario — original is soft-
+        deleted, new is active), prefer the active one. Without
+        that tie-breaker the login verifier reads the deleted row's
+        empty provider_refs and rejects every credential."""
+        target = value.strip().lower()
         with self._lock:
             candidates = [
                 u for u in self._load().values()
-                if u.email.strip().lower() == target
+                if str(getattr(u, field, "")).strip().lower() == target
             ]
         if not candidates:
             return None
@@ -105,25 +110,11 @@ class UserStore:
                 return u
         return candidates[0]
 
+    def get_by_email(self, email: str) -> User | None:
+        return self._get_by_field(email, "email")
+
     def get_by_username(self, username: str) -> User | None:
-        """Return the ACTIVE user with this username. If multiple
-        records share the same username (a recreated-after-delete
-        scenario — original row is soft-deleted, new row is active),
-        return the active one, not the first match. Without this
-        tie-breaker the login verifier reads the deleted row's
-        empty provider_refs and rejects every credential."""
-        target = username.strip().lower()
-        with self._lock:
-            candidates = [
-                u for u in self._load().values()
-                if u.username.strip().lower() == target
-            ]
-        if not candidates:
-            return None
-        for u in candidates:
-            if u.state.value == "active":
-                return u
-        return candidates[0]
+        return self._get_by_field(username, "username")
 
     def create(self, email: str, username: str, display_name: str, role_slug: str,
                state: UserState = UserState.ACTIVE, source: str = "") -> User:
