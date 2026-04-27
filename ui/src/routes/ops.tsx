@@ -75,7 +75,7 @@ function ActionTile({ spec }: ActionTileProps) {
   }
 
   const handle = () => {
-    mutate.mutate(undefined, {
+    void mutate.mutate(undefined, {
       onSuccess: () => toast.success(spec.successLabel ?? "Done"),
       onError: (err) => {
         const msg =

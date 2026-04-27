@@ -56,7 +56,7 @@ const SERVICES_NOT_LAUNCHABLE = new Set([
  * Hides services that don't surface a useful UI (Envoy, the
  * controller's own API, FlareSolverr proxy, Unpackerr daemon).
  */
-export function AppsPage() {
+export function AppsPage(): JSX.Element {
   const query = useServices();
   const grouped = useMemo(() => groupByCategory(query.data?.services ?? []), [
     query.data,

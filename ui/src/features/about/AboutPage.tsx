@@ -53,7 +53,7 @@ const LICENSE = "AGPL-3.0";
  * support threads. Nothing here is reactive to live state apart from
  * the upstream-release probe.
  */
-export function AboutPage() {
+export function AboutPage(): JSX.Element {
   const update = useAboutVersionInfo();
   const buildVersion = (
     import.meta.env.VITE_BUILD_VERSION ?? ""
