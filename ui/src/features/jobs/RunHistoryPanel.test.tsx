@@ -262,6 +262,33 @@ describe("RunHistoryPanel", () => {
     );
   });
 
+  it("renders the triggered-by source as a 'via X' badge", () => {
+    reset();
+    runsState.data = [
+      makeRun({ run_id: "01J5BY", triggered_by: "cron" }),
+      makeRun({ run_id: "01J5BM", triggered_by: "manual" }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(
+      screen.getByTestId("run-history-trigger-01J5BY"),
+    ).toHaveTextContent("via cron");
+    expect(
+      screen.getByTestId("run-history-trigger-01J5BM"),
+    ).toHaveTextContent("via manual");
+  });
+
+  it("renders a one-click Logs deep-link button on every row", () => {
+    reset();
+    runsState.data = [makeRun({ run_id: "01J5L", job_name: "scan" })];
+    renderWithProviders(<RunHistoryPanel />);
+    const link = screen.getByTestId("run-history-logs-01J5L");
+    expect(link).toBeInTheDocument();
+    // The Tanstack Link mock above renders to ``<a href={to}>``,
+    // so checking the href confirms the button routes to /logs
+    // — the search params live on data-search.
+    expect(link).toHaveAttribute("href", "/logs");
+  });
+
   it("does not tint a row when anomaly_score is absent or null", () => {
     reset();
     runsState.data = [

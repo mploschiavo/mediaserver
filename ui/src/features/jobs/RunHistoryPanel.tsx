@@ -6,9 +6,11 @@ import {
   CornerDownRight,
   CornerLeftUp,
   Loader2,
+  ScrollText,
   SkipForward,
   XCircle,
 } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -197,11 +199,12 @@ export function RunHistoryPanel({
                   data-tone={tone || undefined}
                   title={anomalyTooltip(r.anomaly_score)}
                 >
+                  <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setSelectedRunId(r.run_id)}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-md border bg-bg-1 px-2 py-1.5 text-left text-xs [@media(hover:hover)]:hover:bg-bg-2",
+                      "flex flex-1 items-center gap-2 rounded-md border bg-bg-1 px-2 py-1.5 text-left text-xs [@media(hover:hover)]:hover:bg-bg-2",
                       tone === "err" &&
                         "border-danger/40 bg-danger/5",
                       tone === "warn" &&
@@ -252,10 +255,30 @@ export function RunHistoryPanel({
                     <span className="font-mono tabular-nums text-fg-muted">
                       {formatElapsed(r.elapsed)}
                     </span>
-                    <span className="font-mono text-[10px] text-fg-faint">
-                      {r.triggered_by}
-                    </span>
+                    <Badge
+                      variant="outline"
+                      className="px-1.5 py-0 text-[10px] tracking-tight"
+                      data-testid={`run-history-trigger-${r.run_id}`}
+                    >
+                      via {r.triggered_by}
+                    </Badge>
                   </button>
+                  <Link
+                    to="/logs"
+                    search={{
+                      service: r.log_anchor?.source ?? "controller",
+                      action: r.log_anchor?.action ?? r.job_name,
+                      since: r.log_anchor?.since_iso ?? undefined,
+                      limit: 5000,
+                    }}
+                    className="inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-bg-1 text-fg-muted [@media(hover:hover)]:hover:bg-bg-2 [@media(hover:hover)]:hover:text-fg"
+                    title={`View logs for ${r.job_name} run`}
+                    aria-label={`View logs for ${r.job_name} run ${r.run_id}`}
+                    data-testid={`run-history-logs-${r.run_id}`}
+                  >
+                    <ScrollText aria-hidden className="size-3.5" />
+                  </Link>
+                  </div>
                 </li>
               );
             })}
