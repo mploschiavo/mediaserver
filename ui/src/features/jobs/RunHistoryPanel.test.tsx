@@ -17,6 +17,36 @@ vi.mock("./hooks", async () => {
       isLoading: runsState.isLoading,
       error: runsState.error,
     }),
+    useRun: () => ({
+      data: null,
+      isLoading: false,
+      error: null,
+    }),
+  };
+});
+
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+    "@tanstack/react-router",
+  );
+  return {
+    ...actual,
+    Link: ({
+      children,
+      to,
+      ...rest
+    }: {
+      children: React.ReactNode;
+      to?: string;
+      [key: string]: unknown;
+    }) => (
+      <a
+        href={typeof to === "string" ? to : "#"}
+        {...(rest as Record<string, unknown>)}
+      >
+        {children}
+      </a>
+    ),
   };
 });
 
@@ -185,6 +215,41 @@ describe("RunHistoryPanel", () => {
       "run-history-row-01J5RUNAAA0000000000000001",
     );
     expect(row).toHaveAttribute("data-status", "future-status");
+  });
+
+  it("opens the run drawer when a row is clicked", () => {
+    reset();
+    runsState.data = [makeRun({ run_id: "01J5RUNAAA0000000000000001" })];
+    renderWithProviders(<RunHistoryPanel />);
+    // Vaul only mounts the drawer content when open — closed state
+    // means no `run-drawer` node in the DOM.
+    expect(screen.queryByTestId("run-drawer")).toBeNull();
+    fireEvent.click(
+      screen.getByTestId(
+        "run-history-row-button-01J5RUNAAA0000000000000001",
+      ),
+    );
+    expect(screen.getByTestId("run-drawer")).toHaveAttribute(
+      "data-run-id",
+      "01J5RUNAAA0000000000000001",
+    );
+  });
+
+  it("flags rows with parent + child indicators on data-attributes", () => {
+    reset();
+    runsState.data = [
+      makeRun({
+        run_id: "01J5PARENTROW00000000000001",
+        parent_run_id: "01J5GRANDPARENT0000000000",
+        child_run_ids: ["a", "b", "c"],
+      }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    const row = screen.getByTestId(
+      "run-history-row-01J5PARENTROW00000000000001",
+    );
+    expect(row).toHaveAttribute("data-has-parent", "true");
+    expect(row).toHaveAttribute("data-child-count", "3");
   });
 
   it("renders cancelled and timeout badges with their distinct variants", () => {

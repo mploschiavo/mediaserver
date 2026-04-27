@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { useLatestRunForJob, useRun, type RunRecordShape } from "./hooks";
 import { epochToIso } from "./format";
+import { RunDrawer } from "./RunDrawer";
 import { formatAbsolute, formatElapsed, formatRelative } from "./format";
 import { RunGanttChart } from "./RunGanttChart";
 
@@ -220,6 +221,7 @@ function ChildRunsList({ run }: { run: RunRecordShape }) {
   const detail = useRun(run.child_run_ids.length > 0 ? run.run_id : null, {
     refetchInterval: run.status === "running" ? 2_000 : 30_000,
   });
+  const [drawerRunId, setDrawerRunId] = useState<string | null>(null);
   if (run.child_run_ids.length === 0) return null;
   if (detail.isLoading) {
     return (
@@ -240,24 +242,35 @@ function ChildRunsList({ run }: { run: RunRecordShape }) {
         {children.map((c) => (
           <li
             key={c.run_id}
-            className="flex items-center gap-2 rounded-md border border-border bg-bg-1 px-2 py-1.5 text-xs"
             data-testid={`last-run-child-${c.run_id}`}
             data-status={c.status}
           >
-            <RunStatusBadge status={c.status} compact />
-            <span className="flex-1 truncate font-medium text-fg">
-              {c.job_name}
-            </span>
-            <span className="font-mono tabular-nums text-fg-muted">
-              {formatElapsed(c.elapsed)}
-            </span>
-            <ChevronRight
-              aria-hidden
-              className="size-3 text-fg-faint"
-            />
+            <button
+              type="button"
+              onClick={() => setDrawerRunId(c.run_id)}
+              className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-1 px-2 py-1.5 text-left text-xs [@media(hover:hover)]:hover:bg-bg-2"
+              data-testid={`last-run-child-button-${c.run_id}`}
+            >
+              <RunStatusBadge status={c.status} compact />
+              <span className="flex-1 truncate font-medium text-fg">
+                {c.job_name}
+              </span>
+              <span className="font-mono tabular-nums text-fg-muted">
+                {formatElapsed(c.elapsed)}
+              </span>
+              <ChevronRight
+                aria-hidden
+                className="size-3 text-fg-faint"
+              />
+            </button>
           </li>
         ))}
       </ul>
+      <RunDrawer
+        runId={drawerRunId}
+        onClose={() => setDrawerRunId(null)}
+        onSelectRunId={(id) => setDrawerRunId(id)}
+      />
     </div>
   );
 }

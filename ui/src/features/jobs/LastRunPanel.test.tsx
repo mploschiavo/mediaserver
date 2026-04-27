@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/render";
 
 const latestState = vi.hoisted(() => ({
@@ -288,5 +288,36 @@ describe("LastRunPanel", () => {
     latestState.data = makeRun({ status: "timeout" });
     renderWithProviders(<LastRunPanel jobName="scan-completed-downloads" />);
     expect(screen.getByTestId("run-status-timeout")).toBeInTheDocument();
+  });
+
+  it("opens and closes the run drawer when a child row is clicked / closed", () => {
+    reset();
+    const childId = "01J5CHILDAAAAAAAAAAAAAAAAAA";
+    const child: RunRecordShape = makeRun({
+      run_id: childId,
+      job_name: "discover-api-keys",
+    });
+    const parent = makeRun({ child_run_ids: [child.run_id] });
+    latestState.data = parent;
+    detailState.data = {
+      ...parent,
+      children: [child],
+    } as RunRecordWithChildrenShape;
+    renderWithProviders(<LastRunPanel jobName="scan-completed-downloads" />);
+    expect(screen.queryByTestId("run-drawer")).toBeNull();
+    fireEvent.click(screen.getByTestId(`last-run-child-button-${childId}`));
+    expect(screen.getByTestId("run-drawer")).toHaveAttribute(
+      "data-run-id",
+      childId,
+    );
+    // Closing the drawer fires the onClose arrow which resets state
+    // back to null. Vaul keeps the content node around during exit
+    // animation in jsdom so we don't assert removal — the data-run-id
+    // attribute, however, reflects the live state immediately.
+    fireEvent.click(screen.getByTestId("run-drawer-close"));
+    expect(screen.getByTestId("run-drawer")).toHaveAttribute(
+      "data-run-id",
+      "",
+    );
   });
 });
