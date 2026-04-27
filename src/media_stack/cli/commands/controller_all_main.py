@@ -8,6 +8,7 @@ https://matthewloschiavo.com
 from __future__ import annotations
 
 import argparse
+from tempfile import TemporaryDirectory
 import os
 import re
 import shlex
@@ -169,7 +170,6 @@ class ControllerAllRunner:
         if not manifest_path.is_file():
             raise ConfigError(f"Component manifest not found for '{component}': {manifest_path}")
         patched_text = self._manifest_overrides(manifest_path.read_text(encoding="utf-8"))
-        from tempfile import TemporaryDirectory
 
         prefix_component = re.sub(r"[^a-z0-9-]+", "-", str(component or "").lower()).strip("-")
         prefix_component = prefix_component or "component"

@@ -17,7 +17,7 @@ import socket
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 
 from media_stack.api.actor_resolver import ActorResolver as _ActorResolver
 from media_stack.api.session_singletons import (
@@ -2467,7 +2467,6 @@ def _parse_query_string(raw: str) -> dict:
     — single-value pairs, last-write wins."""
     if not raw:
         return {}
-    from urllib.parse import parse_qsl
     return {k: v for k, v in parse_qsl(raw, keep_blank_values=True)}
 
 

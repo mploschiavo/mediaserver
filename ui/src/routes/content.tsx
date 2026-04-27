@@ -16,6 +16,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { LibrariesTable } from "@/features/library/LibrariesTable";
+import { LibraryAdditionsChart } from "@/features/library/LibraryAdditionsChart";
 import { LibraryDataSourceBanner } from "@/features/library/LibraryDataSourceBanner";
 import { LibraryStatsTiles } from "@/features/library/LibraryStatsTiles";
 import { RecentAdditionsCard } from "@/features/library/RecentAdditionsCard";
@@ -81,6 +82,7 @@ function ContentPage() {
           className="flex flex-col gap-4"
           data-testid="content-panel-library"
         >
+          <LibraryAdditionsChart />
           <LibrariesTable />
           <RecentAdditionsCard />
         </TabsContent>

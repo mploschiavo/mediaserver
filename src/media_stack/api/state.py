@@ -9,6 +9,7 @@ import enum
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 import logging
 
@@ -346,7 +347,6 @@ class ControllerState:
         Also restores webhook_urls and log level from persisted config.
         """
         import json
-        from pathlib import Path
         path = Path(self._RUNTIME_CONFIG_FILE)
         if path.is_file():
             try:
@@ -367,7 +367,6 @@ class ControllerState:
     def _persist_runtime_config(self) -> None:
         """Write runtime_config to disk (called on every update)."""
         import json
-        from pathlib import Path
         path = Path(self._RUNTIME_CONFIG_FILE)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)

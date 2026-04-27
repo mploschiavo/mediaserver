@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -87,8 +88,6 @@ class ControllerService:
         )
 
     def _wait_for_servarr_services(self, rt: ControllerRuntime) -> None:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         if not rt.arr_apps:
             return
         self.deps.log(f"[INFO] Waiting for {len(rt.arr_apps)} services in parallel...")

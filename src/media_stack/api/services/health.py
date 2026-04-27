@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -131,7 +132,6 @@ class HealthService:
           * ``no_key``        — no API key discovered AND service
                                 requires one; password path unavailable.
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
@@ -234,7 +234,6 @@ class HealthService:
 
         Admin-only. Read-only. No side effects.
         """
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         all_keys = self.discover_api_keys()
@@ -442,7 +441,6 @@ class HealthService:
         cached = cache.get("health", 10)
         if cached is not None:
             return cached
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         api_keys = self.discover_api_keys()
         running = self._get_running_containers()

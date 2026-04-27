@@ -22,6 +22,7 @@ import platform
 import socket
 import time
 import urllib.request
+from urllib.parse import urlparse
 import uuid
 from pathlib import Path
 from typing import Any
@@ -76,7 +77,6 @@ def _parse_host_port(endpoint: str) -> tuple[str, int]:
 
     Module-level so the UDP and TCP transports can share the parse
     without needing an instance."""
-    from urllib.parse import urlparse
     parsed = urlparse(endpoint)
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or 8200

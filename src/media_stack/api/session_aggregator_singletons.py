@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from media_stack.api.session_singletons import session_store
@@ -160,8 +161,6 @@ def _known_usernames_from_user_store() -> list[str]:
     the store can't be reached so the aggregator stays best-effort.
     """
     try:
-        from pathlib import Path
-
         from media_stack.core.auth.users.user_store import UserStore
         config_root = Path(
             os.environ.get("CONFIG_ROOT", "/srv-config"),
