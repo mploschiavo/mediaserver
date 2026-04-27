@@ -27,6 +27,7 @@ commands:
   controller_all_main.py: Run every controller subprocess in one shell (dev / debug).
   controller_main.py: Single-shot controller dispatcher used by deploy + tests.
   deploy_stack_main.py: Cross-platform deploy + bootstrap orchestrator (k8s OR compose via profile YAML).
+  dup_burndown_main.py: Measure + tighten the duplicate-code burn-down baseline (AST scan + PMD CPD comparison).
   deploy_verify_main.py: Post-deploy smoke checks (services up, routes responding).
   microk8s_reconcile_main.py: Reconcile microk8s state with the contracted profile.
   microk8s_smoke_test_main.py: End-to-end smoke test for a microk8s deploy.
