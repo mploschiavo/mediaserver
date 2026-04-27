@@ -9,6 +9,7 @@ import { Route as RootRoute } from "@/routes/__root";
 import {
   AdapterTable,
   EnforceButton,
+  IntegrityAdapterChart,
   NeedsReviewPanel,
   ProgressBar,
   ReconcileButton,
@@ -51,6 +52,7 @@ function MediaIntegrityPage() {
         loading={status.isLoading}
         error={status.error}
       />
+      <IntegrityAdapterChart />
       <AdapterTable status={status.data} loading={status.isLoading} />
       <NeedsReviewPanel status={status.data} />
     </motion.div>

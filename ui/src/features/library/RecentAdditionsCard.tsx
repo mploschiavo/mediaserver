@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Library } from "lucide-react";
 import {
   Card,
@@ -9,6 +10,39 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { flattenRecent, useRecentLibraryAdditions } from "./hooks";
+
+/**
+ * Poster thumb with onError fallback. Sonarr/Radarr return relative
+ * paths like ``/app/radarr/MediaCover/1/poster.jpg`` that resolve
+ * through the Envoy edge in the production deploy. When the dashboard
+ * is hit on the UI's direct port (9101) — bypassing Envoy — those
+ * paths route into the SPA's fallback HTML and the ``<img>`` fails
+ * to load. ``onError`` swaps in the icon placeholder so a Plex or
+ * dev-mode operator never sees a broken-image glyph.
+ */
+function PosterImg({ poster }: { poster: string | undefined }) {
+  const [broken, setBroken] = useState(false);
+  if (!poster || broken) {
+    return (
+      <div
+        aria-hidden
+        className="flex size-10 shrink-0 items-center justify-center rounded-sm bg-bg-2 text-fg-faint"
+      >
+        <Library className="size-4" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={poster}
+      alt=""
+      aria-hidden
+      loading="lazy"
+      onError={() => setBroken(true)}
+      className="size-10 shrink-0 rounded-sm bg-bg-2 object-cover"
+    />
+  );
+}
 
 function formatRelative(ts: string | undefined): string {
   if (!ts) return "";
@@ -66,22 +100,7 @@ export function RecentAdditionsCard({ limit = 6 }: { limit?: number }) {
                 key={item.id}
                 className="flex items-center gap-3 py-2 text-sm"
               >
-                {item.poster ? (
-                  <img
-                    src={item.poster}
-                    alt=""
-                    aria-hidden
-                    loading="lazy"
-                    className="size-10 shrink-0 rounded-sm bg-bg-2 object-cover"
-                  />
-                ) : (
-                  <div
-                    aria-hidden
-                    className="flex size-10 shrink-0 items-center justify-center rounded-sm bg-bg-2 text-fg-faint"
-                  >
-                    <Library className="size-4" />
-                  </div>
-                )}
+                <PosterImg poster={item.poster} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-medium text-fg">
                     {item.title}

@@ -50,7 +50,6 @@ DATA_HEAVY_ROUTES = frozenset({
     "audit-log.tsx",      # events/hour + actor split (designed)
     "content.tsx",        # library additions / quality / size growth
     "guardrails.tsx",     # firing trends, severity histogram
-    "index.tsx",          # KPI tiles + status sparklines
     "jobs.tsx",           # batches over time, runtime distribution
     "livetv.tsx",         # provider health + freshness
     "media-integrity.tsx",  # report buffer + reconcile-rate
@@ -58,6 +57,9 @@ DATA_HEAVY_ROUTES = frozenset({
     "routing.tsx",        # envoy stats + topology (designed)
     "security.tsx",       # failed-login spike + concurrent sessions
     "sessions.tsx",       # concurrent-over-time + geo distribution
+    # ``index.tsx`` is a Tanstack-Router redirect surface (onboarding +
+    # migration check then 302 to /ops). No metric data of its own —
+    # the metrics live on /ops, which IS in this list.
 })
 RECHARTS_RE = re.compile(r'from\s+["\']recharts["\']')
 
@@ -70,12 +72,14 @@ def _read(path: Path) -> str:
 
 
 def _imported_local_files(
-    text: str, anchor: Path, max_hops: int = 4,
+    text: str, anchor: Path, max_hops: int = 2,
 ) -> set[Path]:
     """BFS through ``import … from "@/<…>"`` AND relative
     ``./Foo`` / ``../bar/Foo`` imports, up to ``max_hops`` deep, so we
     can find recharts mounts that live inside a feature card mounted
-    by the route's page component (route → page → card → chart)."""
+    by the route's page component (route → page → card). Limited to
+    2 hops so shared components (Sidebar, App shell) that transitively
+    reference every feature don't false-positive every route."""
     seen: set[Path] = set()
     frontier = _direct_imports(text, anchor)
     seen.update(frontier)
@@ -110,20 +114,25 @@ def _direct_imports(text: str, anchor: Path) -> set[Path]:
 
 def _resolve_candidates(base: Path) -> set[Path]:
     """Resolve a bare module path to candidate file(s). TS / TSX /
-    index forms are tried in order."""
+    index forms are tried in order. For directory-style imports
+    (``@/features/foo`` with no trailing filename), follow the
+    barrel ``index.ts`` / ``index.tsx`` ONLY — never expand into
+    every sibling .tsx, otherwise a route that pulls one component
+    from a barrel pulls in every chart in the same package."""
     out: set[Path] = set()
     for ext in (".tsx", ".ts"):
-        cand = base.with_suffix(ext) if base.suffix == "" else base
         cand_with_ext = (
-            base.parent / (base.name + ext) if base.suffix == "" else cand
+            base.parent / (base.name + ext) if base.suffix == "" else base
         )
         if cand_with_ext.is_file():
             out.add(cand_with_ext)
             return out
     if base.is_dir():
-        for child in base.glob("*.tsx"):
-            if child.is_file() and not child.name.endswith(".test.tsx"):
-                out.add(child)
+        for ext in (".tsx", ".ts"):
+            barrel = base / f"index{ext}"
+            if barrel.is_file():
+                out.add(barrel)
+                return out
     return out
 
 

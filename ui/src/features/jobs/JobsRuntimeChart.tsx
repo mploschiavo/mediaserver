@@ -97,10 +97,10 @@ export function JobsRuntimeChart() {
                     border: "1px solid var(--border)",
                     fontSize: 12,
                   }}
-                  formatter={(value: number) => [
-                    `${value.toFixed(2)}s`,
-                    "elapsed",
-                  ]}
+                  formatter={(value) => {
+                    const n = typeof value === "number" ? value : Number(value ?? 0);
+                    return [`${n.toFixed(2)}s`, "elapsed"];
+                  }}
                 />
                 <Bar dataKey="elapsed" radius={[2, 2, 0, 0]}>
                   {data.map((row, i) => (

@@ -22,6 +22,7 @@ import {
 import { UpgradeBanner } from "@/features/stack-lifecycle/UpgradeBanner";
 import { TriggeredBanner } from "@/features/guardrails";
 import { RunningJobsBanner } from "@/features/jobs/RunningJobsBanner";
+import { BootstrapProgressBanner } from "@/features/onboarding/BootstrapProgressBanner";
 import {
   startAlertEngine,
   type HealthLike,
@@ -167,6 +168,11 @@ export function AppShell({ children }: AppShellProps) {
             reports `available: true`; on probe error it also stays
             silent so a flaky endpoint can't break the shell. */}
         <UpgradeBanner />
+        {/* First-run progress banner — renders only while
+            ``initial_bootstrap_done`` is still false on the
+            controller. Self-trims as soon as the bootstrap window
+            closes; on a returning visit it never renders at all. */}
+        <BootstrapProgressBanner />
         {/* Cross-domain guardrail banner — renders only when at least
             one rule is firing at warning+ severity. Click navigates
             to /guardrails?focus=<id> for the worst offender. */}

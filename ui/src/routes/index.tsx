@@ -5,6 +5,7 @@ import {
   migrationCheckHasContent,
 } from "@/features/stack-lifecycle/MigrationCheckCard";
 import { useValidateMigration } from "@/features/stack-lifecycle/hooks";
+import { BootstrapProgressBanner } from "@/features/onboarding/BootstrapProgressBanner";
 import {
   OnboardingChecklist,
   onboardingHasContent,
@@ -60,6 +61,7 @@ function HomePage() {
         title="Welcome"
         description="Stack overview, onboarding progress, and pre-upgrade safety checks."
       />
+      <BootstrapProgressBanner />
       {showOnboarding ? <OnboardingChecklist /> : null}
       {showMigration ? <MigrationCheckCard /> : null}
     </motion.div>

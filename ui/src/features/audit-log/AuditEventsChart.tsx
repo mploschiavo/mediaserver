@@ -38,7 +38,7 @@ import { useAuditLog } from "./hooks";
  * feedback.
  */
 export function AuditEventsChart() {
-  const query = useAuditLog(500);
+  const query = useAuditLog({ limit: 500 });
   const { hourly, actors } = useMemo(
     () => bucketAuditEntries(query.data?.entries),
     [query.data],

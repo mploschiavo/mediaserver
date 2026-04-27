@@ -2,6 +2,7 @@ import { LivetvSourcesCard } from "./LivetvSourcesCard";
 import { IptvCountriesCard } from "./IptvCountriesCard";
 import { EpgProvidersCard } from "./EpgProvidersCard";
 import { EpgHealthCard } from "./EpgHealthCard";
+import { LivetvHealthChart } from "./LivetvHealthChart";
 
 /**
  * Composes the four Live TV / IPTV / EPG operator cards. The route
@@ -17,6 +18,7 @@ import { EpgHealthCard } from "./EpgHealthCard";
 export function LivetvPage() {
   return (
     <div className="flex flex-col gap-6" data-testid="livetv-page">
+      <LivetvHealthChart />
       <LivetvSourcesCard />
       <IptvCountriesCard />
       <EpgProvidersCard />

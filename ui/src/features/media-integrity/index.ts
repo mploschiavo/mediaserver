@@ -3,6 +3,7 @@
 // to the feature unless explicitly re-exported.
 
 export { AdapterTable } from "./AdapterTable";
+export { IntegrityAdapterChart } from "./IntegrityAdapterChart";
 export { EnforceButton } from "./EnforceButton";
 export { NeedsReviewPanel } from "./NeedsReviewPanel";
 export { ProgressBar } from "./ProgressBar";
