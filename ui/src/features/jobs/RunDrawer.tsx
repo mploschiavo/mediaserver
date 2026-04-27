@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type JSX } from "react";
 import { Drawer as VaulDrawer } from "vaul";
 import { Link } from "@tanstack/react-router";
 import { ScrollText, X } from "lucide-react";

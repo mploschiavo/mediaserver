@@ -9813,10 +9813,18 @@ paths:
                   type: integer
                 label:
                   type: string
+                enabled:
+                  type: boolean
+                  default: true
+                  description: |
+                    Schedules created with `enabled=false` exist in
+                    the catalog but the dispatcher never fires them
+                    until `/api/schedules/{id}/resume` flips them on.
             example:
               action: run-media-hygiene
               interval_seconds: 3600
               label: "Auto-cleanup stalled / orphaned downloads (hourly)"
+              enabled: true
       responses:
         "200":
           description: Added
@@ -9842,6 +9850,99 @@ paths:
       responses:
         "200":
           description: Deleted
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/schedules/{schedule_id}/update:
+    post:
+      operationId: updateSchedule
+      tags: [Jobs]
+      summary: Patch a schedule's editable fields
+      description: |
+        Patches one or more fields on an existing schedule. Only
+        keys present in the body are modified; absent keys preserve
+        their prior value. `id` / `created_at` / `last_run` are
+        immutable.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                interval_seconds:
+                  type: integer
+                label:
+                  type: string
+                enabled:
+                  type: boolean
+            example:
+              label: "Auto-cleanup (paused for ETL window)"
+              enabled: false
+      responses:
+        "200":
+          description: Updated
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/schedules/{schedule_id}/pause:
+    post:
+      operationId: pauseSchedule
+      tags: [Jobs]
+      summary: Pause a schedule
+      description: |
+        Convenience wrapper around `/update` — sets `enabled=false`
+        on the named schedule. The entry stays in the catalog but
+        the dispatcher skips it until `/resume` flips it back on.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Paused
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/schedules/{schedule_id}/resume:
+    post:
+      operationId: resumeSchedule
+      tags: [Jobs]
+      summary: Resume a paused schedule
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resumed
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":

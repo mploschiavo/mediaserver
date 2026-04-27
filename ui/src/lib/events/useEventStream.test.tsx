@@ -7,8 +7,21 @@ import {
   type EventTopic,
 } from "./useEventStream";
 
+// Module-scoped reference to the most recently constructed stub.
+// A static field on the class would also work, but the strict-TS
+// build narrows ``lastSse()`` to its assigned literal
+// after a ``= null`` reset and never re-broadens — even though the
+// constructor reassigns it later. Using a module-level ``let`` with
+// an explicit annotation sidesteps the control-flow narrowing.
+let lastStub: StubEventSource | null = null;
+function lastSse(): StubEventSource | null {
+  return lastStub;
+}
+function resetStub(): void {
+  lastStub = null;
+}
+
 class StubEventSource {
-  static last: StubEventSource | null = null;
   url: string;
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: ((ev: Event) => void) | null = null;
@@ -16,7 +29,7 @@ class StubEventSource {
   listeners: Map<string, EventListener> = new Map();
   constructor(url: string) {
     this.url = url;
-    StubEventSource.last = this;
+    lastStub = this;
   }
   addEventListener(name: string, fn: EventListener): void {
     this.listeners.set(name, fn);
@@ -98,7 +111,7 @@ describe("parseEventsSseFrame", () => {
 
 describe("useEventStream", () => {
   it("opens a connection when enabled with topics", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const { result } = renderHook(() =>
       useEventStream({
         enabled: true,
@@ -107,11 +120,11 @@ describe("useEventStream", () => {
       }),
     );
     await waitFor(() => expect(result.current.isOpen).toBe(true));
-    expect(StubEventSource.last?.url).toContain("api/events?topics=jobs");
+    expect(lastSse()?.url).toContain("api/events?topics=jobs");
   });
 
   it("stays closed when enabled is false", () => {
-    StubEventSource.last = null;
+    resetStub();
     const { result } = renderHook(() =>
       useEventStream({
         enabled: false,
@@ -120,11 +133,11 @@ describe("useEventStream", () => {
       }),
     );
     expect(result.current.isOpen).toBe(false);
-    expect(StubEventSource.last).toBeNull();
+    expect(lastSse()).toBeNull();
   });
 
   it("stays closed when topics is empty", () => {
-    StubEventSource.last = null;
+    resetStub();
     const { result } = renderHook(() =>
       useEventStream({
         enabled: true,
@@ -133,11 +146,11 @@ describe("useEventStream", () => {
       }),
     );
     expect(result.current.isOpen).toBe(false);
-    expect(StubEventSource.last).toBeNull();
+    expect(lastSse()).toBeNull();
   });
 
   it("invokes onEvent for an addEventListener-delivered frame", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const onEvent = vi.fn();
     renderHook(() =>
       useEventStream({
@@ -147,9 +160,9 @@ describe("useEventStream", () => {
         eventSourceCtor: StubEventSource as unknown as typeof EventSource,
       }),
     );
-    await waitFor(() => expect(StubEventSource.last).not.toBeNull());
+    await waitFor(() => expect(lastSse()).not.toBeNull());
     act(() => {
-      StubEventSource.last?.dispatch(
+      lastSse()?.dispatch(
         "job.completed",
         JSON.stringify({
           event_type: "job.completed",
@@ -169,7 +182,7 @@ describe("useEventStream", () => {
   });
 
   it("invokes onEvent for a default 'message' frame", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const onEvent = vi.fn();
     renderHook(() =>
       useEventStream({
@@ -179,9 +192,9 @@ describe("useEventStream", () => {
         eventSourceCtor: StubEventSource as unknown as typeof EventSource,
       }),
     );
-    await waitFor(() => expect(StubEventSource.last).not.toBeNull());
+    await waitFor(() => expect(lastSse()).not.toBeNull());
     act(() => {
-      StubEventSource.last?.dispatch(
+      lastSse()?.dispatch(
         "message",
         JSON.stringify({ event_type: "job.started", ts: "x" }),
       );
@@ -193,7 +206,7 @@ describe("useEventStream", () => {
   });
 
   it("silently drops malformed frames", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const onEvent = vi.fn();
     renderHook(() =>
       useEventStream({
@@ -203,15 +216,15 @@ describe("useEventStream", () => {
         eventSourceCtor: StubEventSource as unknown as typeof EventSource,
       }),
     );
-    await waitFor(() => expect(StubEventSource.last).not.toBeNull());
+    await waitFor(() => expect(lastSse()).not.toBeNull());
     act(() => {
-      StubEventSource.last?.dispatch("job.started", "{not-json");
+      lastSse()?.dispatch("job.started", "{not-json");
     });
     expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("closes and surfaces an error when EventSource raises onerror", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const { result } = renderHook(() =>
       useEventStream({
         enabled: true,
@@ -221,15 +234,15 @@ describe("useEventStream", () => {
     );
     await waitFor(() => expect(result.current.isOpen).toBe(true));
     act(() => {
-      StubEventSource.last?.raiseError();
+      lastSse()?.raiseError();
     });
     await waitFor(() => expect(result.current.isOpen).toBe(false));
     expect(result.current.error?.message).toMatch(/SSE/i);
-    expect(StubEventSource.last?.closed).toBe(true);
+    expect(lastSse()?.closed).toBe(true);
   });
 
   it("surfaces an error when EventSource is unavailable", () => {
-    StubEventSource.last = null;
+    resetStub();
     const { result } = renderHook(() =>
       useEventStream({
         enabled: true,

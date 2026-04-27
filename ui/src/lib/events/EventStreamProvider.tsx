@@ -11,7 +11,13 @@
 // bridge owns the inversion of "push event arrived → which cache
 // keys to refresh." Adding more event types is a single switch arm.
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  type JSX,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useEventStream,

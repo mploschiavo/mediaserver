@@ -239,6 +239,118 @@ export function useJobsRunning(): UseQueryResult<JobsRunningResponse> {
   });
 }
 
+// ---- Schedules (Phase 4) -----------------------------------------------
+
+export interface ScheduleShape {
+  id: number;
+  action: string;
+  interval_seconds: number;
+  label: string;
+  created_at: number;
+  last_run: number;
+  enabled: boolean;
+}
+
+export interface SchedulesResponse {
+  schedules: readonly ScheduleShape[];
+  count: number;
+}
+
+const SCHEDULES_QUERY_KEY = ["schedules"] as const;
+
+export function useSchedules(): UseQueryResult<SchedulesResponse> {
+  return useQuery<SchedulesResponse>({
+    queryKey: SCHEDULES_QUERY_KEY,
+    queryFn: () => fetcher<SchedulesResponse>("api/schedules"),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+}
+
+export interface ScheduleCreateInput {
+  action: string;
+  interval_seconds: number;
+  label?: string;
+  enabled?: boolean;
+}
+
+export function useAddSchedule(): UseMutationResult<
+  unknown,
+  Error,
+  ScheduleCreateInput
+> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, ScheduleCreateInput>({
+    mutationFn: (input) =>
+      fetcher<unknown>("api/schedules", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SCHEDULES_QUERY_KEY });
+    },
+  });
+}
+
+export interface ScheduleUpdateInput {
+  schedule_id: number;
+  action?: string;
+  interval_seconds?: number;
+  label?: string;
+  enabled?: boolean;
+}
+
+export function useUpdateSchedule(): UseMutationResult<
+  unknown,
+  Error,
+  ScheduleUpdateInput
+> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, ScheduleUpdateInput>({
+    mutationFn: ({ schedule_id, ...body }) =>
+      fetcher<unknown>(`api/schedules/${schedule_id}/update`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SCHEDULES_QUERY_KEY });
+    },
+  });
+}
+
+export function usePauseSchedule(): UseMutationResult<unknown, Error, number> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      fetcher<unknown>(`api/schedules/${id}/pause`, { method: "POST" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SCHEDULES_QUERY_KEY });
+    },
+  });
+}
+
+export function useResumeSchedule(): UseMutationResult<unknown, Error, number> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      fetcher<unknown>(`api/schedules/${id}/resume`, { method: "POST" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SCHEDULES_QUERY_KEY });
+    },
+  });
+}
+
+export function useDeleteSchedule(): UseMutationResult<unknown, Error, number> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      fetcher<unknown>(`api/schedules/${id}/delete`, { method: "POST" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SCHEDULES_QUERY_KEY });
+    },
+  });
+}
+
 export function useCancelAction(): UseMutationResult<unknown, Error, void> {
   const qc = useQueryClient();
   return useMutation<unknown, Error, void>({

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, waitFor } from "@testing-library/react";
@@ -8,8 +9,17 @@ import {
 } from "./EventStreamProvider";
 import type { EventStreamPayload } from "./useEventStream";
 
+// See useEventStream.test.tsx for the rationale — strict-TS narrows
+// a static field after a ``= null`` reset and never re-broadens.
+let lastStub: StubEventSource | null = null;
+function lastSse(): StubEventSource | null {
+  return lastStub;
+}
+function resetStub(): void {
+  lastStub = null;
+}
+
 class StubEventSource {
-  static last: StubEventSource | null = null;
   url: string;
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: ((ev: Event) => void) | null = null;
@@ -17,7 +27,7 @@ class StubEventSource {
   listeners: Map<string, EventListener> = new Map();
   constructor(url: string) {
     this.url = url;
-    StubEventSource.last = this;
+    lastStub = this;
   }
   addEventListener(name: string, fn: EventListener): void {
     this.listeners.set(name, fn);
@@ -133,7 +143,7 @@ describe("handleEvent", () => {
 
 describe("EventStreamProvider", () => {
   it("provides a closed status by default and an open status once the EventSource opens", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -153,11 +163,11 @@ describe("EventStreamProvider", () => {
       </QueryClientProvider>,
     );
     await waitFor(() => expect(captured.isOpen).toBe(true));
-    expect(StubEventSource.last?.url).toContain("api/events?topics=jobs");
+    expect(lastSse()?.url).toContain("api/events?topics=jobs");
   });
 
   it("invalidates ['runs'] on a job.completed frame from the live stream", async () => {
-    StubEventSource.last = null;
+    resetStub();
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -172,9 +182,9 @@ describe("EventStreamProvider", () => {
         </EventStreamProvider>
       </QueryClientProvider>,
     );
-    await waitFor(() => expect(StubEventSource.last).not.toBeNull());
+    await waitFor(() => expect(lastSse()).not.toBeNull());
     act(() => {
-      StubEventSource.last?.dispatch(
+      lastSse()?.dispatch(
         "job.completed",
         JSON.stringify({
           event_type: "job.completed",
@@ -192,7 +202,7 @@ describe("EventStreamProvider", () => {
   });
 
   it("does not open the stream when enabled is false", () => {
-    StubEventSource.last = null;
+    resetStub();
     const qc = new QueryClient();
     render(
       <QueryClientProvider client={qc}>
@@ -205,6 +215,6 @@ describe("EventStreamProvider", () => {
         </EventStreamProvider>
       </QueryClientProvider>,
     );
-    expect(StubEventSource.last).toBeNull();
+    expect(lastSse()).toBeNull();
   });
 });
