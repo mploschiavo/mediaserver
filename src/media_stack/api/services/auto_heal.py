@@ -405,16 +405,26 @@ class AutoHealService:
         t0 = time.time()
         snapshots = self.snapshot_healthy()
         heals = self.heal_corrupt()
-        # Guardrail evaluation rides the auto-heal cycle so we don't
-        # spawn a second daemon thread (and so a stop-the-world heal
-        # can pause guardrails too). Lazy-imported to avoid pulling
-        # the registry into every test that constructs an
-        # ``AutoHealService`` with a noop snapshot store.
+        # Guardrail evaluation rides the auto-heal cycle so we
+        # don't spawn a second daemon thread (and so a stop-the-
+        # world heal can pause guardrails too).
+        #
+        # As of v1.0.284 we invoke the guardrails cycle through
+        # the unified Job framework (``run_job("guardrails:
+        # evaluate", source="auto-heal")``) rather than calling
+        # ``tick()`` directly. That puts every guardrail
+        # evaluation on the same RunRecord path as every other
+        # job — they appear in /api/runs, in the Recent Runs
+        # DataTable, and in the RunDrawer with full elapsed +
+        # anomaly stats. Throttling stays inside ``tick`` itself.
+        # Lazy-imported to avoid pulling the registry into every
+        # test that constructs an ``AutoHealService`` with a
+        # noop snapshot store.
         try:
-            from media_stack.services import guardrails as _guardrails_pkg
-            _guardrails_pkg.tick()
+            from media_stack.application.jobs.framework import run_job
+            run_job("guardrails:evaluate", source="auto-heal", actor="auto-heal")
         except Exception as exc:  # noqa: BLE001
-            _log.debug("[DEBUG] auto-heal: guardrail tick failed: %s", exc)
+            _log.debug("[DEBUG] auto-heal: guardrail run_job failed: %s", exc)
         elapsed = round(time.time() - t0, 2)
         # Surface the cycle in /api/jobs.history with an
         # ``auto-heal`` source tag whenever it actually took action

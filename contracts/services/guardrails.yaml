@@ -1,0 +1,69 @@
+# =============================================================================
+# Guardrails — operational invariants registered as a native Job
+# in the framework (v1.0.284+).
+# =============================================================================
+#
+# Before v1.0.284 the guardrails subsystem ran on the auto-heal
+# daemon's 60-second cycle, calling ``guardrails.tick()`` directly
+# from ``api/services/auto_heal.py``. That bypassed the unified
+# Job framework: the cycle wrote to the legacy ``/api/jobs.history``
+# aggregator via ``_record_history()`` (only when triggers fired)
+# and never appeared in ``GET /api/runs`` alongside the rest of
+# the jobs. Operators saw guardrail firings in the legacy "Recent
+# batches" panel but not in the new "Recent runs".
+#
+# v1.0.284 registers a single job here so:
+#
+#   * Every guardrail evaluation cycle (whether it fires or not)
+#     records start/complete via ``record_run_start/complete`` —
+#     same path as bootstrap, scan-completed-downloads, and every
+#     media-integrity job.
+#   * The auto-heal cycle now invokes ``run_job("guardrails:
+#     evaluate", source="auto-heal")`` instead of the direct
+#     ``tick()`` call — there's one path, no conditional fork on
+#     "is this a guardrail tick or a regular job?".
+#   * "Recent runs" gains full coverage; the legacy
+#     ``/api/jobs.history[]`` aggregation can retire (Phase C of
+#     the Jobs polish track).
+#
+# Throttling is preserved inside ``tick()`` itself
+# (``MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS`` env var, default
+# 300s). Cycles that hit the throttle return early with
+# ``{"skipped": "throttled"}`` and the framework records them as
+# ``skipped`` — which is informational, not noise: the operator
+# now has positive evidence the loop is alive every minute, vs
+# the previous "trigger-or-silence" mode where a quiet hour was
+# indistinguishable from a stuck loop.
+#
+# This is NOT a "service" in the dashboard sense — the id
+# ``guardrails`` is reserved for job hosting. The service block
+# exists only because the discovery loader requires it.
+# =============================================================================
+
+service:
+  id: guardrails
+  name: Guardrails
+  desc: Operational invariants (registered as a native Job)
+  category: infrastructure
+  host: ""
+  port: 0
+  web_ui: false
+  scalable: false
+
+plugin:
+  technology: guardrails
+
+  jobs:
+
+    "guardrails:evaluate":
+      handler: "media_stack.application.guardrails.job_handlers:guardrails_evaluate"
+      label: "Evaluate guardrail rules"
+      # ``post`` phase keeps the cycle out of the bootstrap critical
+      # path. Cadence is owned by the auto-heal daemon (which calls
+      # ``run_job`` every 60s) and ``tick()``'s internal throttle
+      # (default 5 min). Returning ``{"skipped": "throttled"}`` when
+      # the throttle is in effect keeps the handler idempotent and
+      # makes "loop is alive" observable in /api/runs.
+      phase: post
+      priority: 90
+      requires: []
