@@ -3,6 +3,8 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  CornerDownRight,
+  CornerLeftUp,
   Loader2,
   SkipForward,
   XCircle,
@@ -13,6 +15,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { useRuns, type RunRecordShape } from "./hooks";
 import { epochToIso, formatAbsolute, formatElapsed, formatRelative } from "./format";
+import { RunDrawer } from "./RunDrawer";
+
+const RUN_ID_PREFIX_LEN = 8;
 
 /**
  * Phase-2 cross-job run history. Reads `GET /api/runs` and surfaces the
@@ -80,9 +85,10 @@ function applyFilters(
 
 export function RunHistoryPanel({
   defaultLimit = 100,
-}: RunHistoryPanelProps = {}) {
+}: RunHistoryPanelProps = {}): JSX.Element {
   const [jobFilter, setJobFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const runsQuery = useRuns({ limit: defaultLimit });
 
   const filtered = useMemo(
@@ -154,44 +160,80 @@ export function RunHistoryPanel({
                 STATUS_CONFIG.unknown ??
                 STATUS_DEFAULT;
               const Icon = cfg.icon;
+              const childCount = r.child_run_ids.length;
+              const hasParent = Boolean(r.parent_run_id);
               return (
                 <li
                   key={r.run_id}
-                  className="flex items-center gap-2 rounded-md border border-border bg-bg-1 px-2 py-1.5 text-xs"
                   data-testid={`run-history-row-${r.run_id}`}
                   data-status={r.status}
                   data-job={r.job_name}
+                  data-has-parent={hasParent ? "true" : "false"}
+                  data-child-count={childCount}
                 >
-                  <Badge
-                    variant={cfg.variant}
-                    className={cn(
-                      "inline-flex items-center gap-1 px-1.5 py-0 text-[10px]",
-                    )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRunId(r.run_id)}
+                    className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-1 px-2 py-1.5 text-left text-xs [@media(hover:hover)]:hover:bg-bg-2"
+                    data-testid={`run-history-row-button-${r.run_id}`}
                   >
-                    <Icon aria-hidden className="size-2.5" />
-                    {r.status}
-                  </Badge>
-                  <span className="flex-1 truncate font-medium text-fg">
-                    {r.job_name}
-                  </span>
-                  <span
-                    className="font-mono text-fg-muted"
-                    title={formatAbsolute(r.started_at)}
-                  >
-                    {formatRelative(epochToIso(r.started_at))}
-                  </span>
-                  <span className="font-mono tabular-nums text-fg-muted">
-                    {formatElapsed(r.elapsed)}
-                  </span>
-                  <span className="font-mono text-[10px] text-fg-faint">
-                    {r.triggered_by}
-                  </span>
+                    <Badge
+                      variant={cfg.variant}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-1.5 py-0 text-[10px]",
+                      )}
+                    >
+                      <Icon aria-hidden className="size-2.5" />
+                      {r.status}
+                    </Badge>
+                    <span className="flex-1 truncate font-medium text-fg">
+                      {r.job_name}
+                    </span>
+                    <span
+                      className="hidden font-mono text-[10px] text-fg-faint sm:inline"
+                      title={r.run_id}
+                    >
+                      {r.run_id.slice(0, RUN_ID_PREFIX_LEN)}
+                    </span>
+                    {hasParent ? (
+                      <CornerLeftUp
+                        aria-label="has parent run"
+                        className="size-3 text-fg-faint"
+                      />
+                    ) : null}
+                    {childCount > 0 ? (
+                      <span
+                        className="inline-flex items-center gap-0.5 font-mono text-[10px] text-fg-faint"
+                        title={`${childCount} child run${childCount === 1 ? "" : "s"}`}
+                      >
+                        <CornerDownRight aria-hidden className="size-3" />
+                        {childCount}
+                      </span>
+                    ) : null}
+                    <span
+                      className="font-mono text-fg-muted"
+                      title={formatAbsolute(r.started_at)}
+                    >
+                      {formatRelative(epochToIso(r.started_at))}
+                    </span>
+                    <span className="font-mono tabular-nums text-fg-muted">
+                      {formatElapsed(r.elapsed)}
+                    </span>
+                    <span className="font-mono text-[10px] text-fg-faint">
+                      {r.triggered_by}
+                    </span>
+                  </button>
                 </li>
               );
             })}
           </ul>
         )}
       </CardContent>
+      <RunDrawer
+        runId={selectedRunId}
+        onClose={() => setSelectedRunId(null)}
+        onSelectRunId={(id) => setSelectedRunId(id)}
+      />
     </Card>
   );
 }
