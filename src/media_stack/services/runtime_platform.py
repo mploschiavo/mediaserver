@@ -2,6 +2,7 @@
 """Generic runtime platform adapters shared by bootstrap entrypoints."""
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 import json
 import os
@@ -63,7 +64,7 @@ class RuntimePlatformService:
     def log(self, msg):
         if _extract_level(str(msg)) < _current_log_level:
             return
-        ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        ts = time.strftime(ISO_8601_TZ_OFFSET)
         print(f"[{ts}] {msg}", flush=True)
 
     def normalize_url(self, url):

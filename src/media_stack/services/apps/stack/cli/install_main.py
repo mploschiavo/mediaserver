@@ -6,6 +6,7 @@ https://matthewloschiavo.com
 """
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 import argparse
 import json
@@ -33,7 +34,7 @@ class SkipPhase(RuntimeError):
 
 
 def ts() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    return time.strftime(ISO_8601_TZ_OFFSET)
 
 
 def info(message: str) -> None:

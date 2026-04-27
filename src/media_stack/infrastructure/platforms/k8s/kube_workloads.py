@@ -5,6 +5,7 @@ KubernetesClient by kube_client.py.
 """
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 import json
 import time
@@ -61,7 +62,7 @@ class WorkloadsMixin:
                         "metadata": {
                             "annotations": {
                                 "kubectl.kubernetes.io/restartedAt": time.strftime(
-                                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                                    ISO_8601_UTC_Z, time.gmtime()
                                 )
                             }
                         }

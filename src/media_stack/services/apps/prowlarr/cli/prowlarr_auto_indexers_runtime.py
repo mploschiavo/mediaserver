@@ -2,6 +2,7 @@
 """Run Prowlarr auto-indexer discovery job with Kubernetes orchestration."""
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 import json
 import logging
@@ -24,7 +25,7 @@ logger = logging.getLogger("prowlarr_auto_indexers")
 
 
 def ts() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    return time.strftime(ISO_8601_TZ_OFFSET)
 
 
 def info(message: str) -> None:
