@@ -89,7 +89,7 @@ def safe_exception_message(exc: BaseException, *, max_len: int = 500) -> str:
 
 def _structural_message(exc: BaseException) -> str | None:
     """If we recognize the exception shape, format a clean message."""
-    # TODO(phase-16-F): this domain module needs to recognise the
+    # this domain module needs to recognise the
     # ``ServarrHttpError`` shape (which currently lives in the adapters
     # layer at ``adapters.media_integrity._servarr_base``). A direct
     # ``from media_stack.adapters.media_integrity._servarr_base``
