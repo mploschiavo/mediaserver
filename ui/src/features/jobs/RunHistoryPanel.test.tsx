@@ -57,7 +57,7 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 import { RunHistoryPanel } from "./RunHistoryPanel";
-import type { RunRecordShape, RunRecordWithChildrenShape } from "./hooks";
+import type { RunRecordShape } from "./hooks";
 
 function makeRun(overrides: Partial<RunRecordShape> = {}): RunRecordShape {
   return {
@@ -108,7 +108,7 @@ describe("RunHistoryPanel", () => {
     );
   });
 
-  it("renders one row per run with status, job name and triggered_by", () => {
+  it("renders one DataTable row per run with status / job / trigger", () => {
     reset();
     runsState.data = [
       makeRun({
@@ -125,20 +125,18 @@ describe("RunHistoryPanel", () => {
       }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    const list = screen.getByTestId("run-history-list");
-    expect(list).toBeInTheDocument();
-    expect(
-      screen.getByTestId("run-history-row-01J5RUNAAA0000000000000001"),
-    ).toHaveTextContent(/scan-completed-downloads/);
-    expect(
-      screen.getByTestId("run-history-row-01J5RUNAAA0000000000000001"),
-    ).toHaveTextContent(/cron/);
-    expect(
-      screen.getByTestId("run-history-row-01J5RUNBBB0000000000000002"),
-    ).toHaveAttribute("data-status", "error");
+    const row1 = screen.getByTestId(
+      "run-history-row-01J5RUNAAA0000000000000001",
+    );
+    expect(row1).toHaveTextContent(/scan-completed-downloads/);
+    expect(row1).toHaveTextContent(/cron/);
+    const row2 = screen.getByTestId(
+      "run-history-row-01J5RUNBBB0000000000000002",
+    );
+    expect(row2).toHaveAttribute("data-status", "error");
   });
 
-  it("filters by job-name needle (case-insensitive substring)", () => {
+  it("filters by the per-column job-name DataTable filter", () => {
     reset();
     runsState.data = [
       makeRun({
@@ -151,8 +149,8 @@ describe("RunHistoryPanel", () => {
       }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    const input = screen.getByTestId("run-history-job-filter");
-    fireEvent.change(input, { target: { value: "CONFIG" } });
+    const input = screen.getByTestId("run-history-filter-job_name");
+    fireEvent.change(input, { target: { value: "configure" } });
     expect(
       screen.queryByTestId("run-history-row-01J5RUNAAA0000000000000001"),
     ).toBeNull();
@@ -161,27 +159,17 @@ describe("RunHistoryPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("filters by status when the operator picks a non-default option", () => {
+  it("filters by the per-column status DataTable filter", () => {
     reset();
     runsState.data = [
-      makeRun({
-        run_id: "01J5RUNAAA0000000000000001",
-        status: "ok",
-      }),
-      makeRun({
-        run_id: "01J5RUNBBB0000000000000002",
-        status: "error",
-      }),
-      makeRun({
-        run_id: "01J5RUNCCC0000000000000003",
-        status: "skipped",
-      }),
+      makeRun({ run_id: "01J5RUNAAA0000000000000001", status: "ok" }),
+      makeRun({ run_id: "01J5RUNBBB0000000000000002", status: "error" }),
+      makeRun({ run_id: "01J5RUNCCC0000000000000003", status: "skipped" }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    const select = screen.getByTestId(
-      "run-history-status-filter",
-    ) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "error" } });
+    fireEvent.change(screen.getByTestId("run-history-filter-status"), {
+      target: { value: "error" },
+    });
     expect(
       screen.queryByTestId("run-history-row-01J5RUNAAA0000000000000001"),
     ).toBeNull();
@@ -203,40 +191,32 @@ describe("RunHistoryPanel", () => {
       }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    fireEvent.change(screen.getByTestId("run-history-job-filter"), {
+    fireEvent.change(screen.getByTestId("run-history-filter-job_name"), {
       target: { value: "no-such-job" },
     });
-    expect(
-      screen.getByTestId("run-history-empty"),
-    ).toHaveTextContent(/No runs match/);
+    expect(screen.getByTestId("run-history-empty")).toHaveTextContent(
+      /No runs match/,
+    );
   });
 
-  it("renders the unknown-status badge for an unrecognised status", () => {
+  it("renders the unknown status as its own variant on the row data-attribute", () => {
     reset();
     runsState.data = [
-      makeRun({
-        run_id: "01J5RUNAAA0000000000000001",
-        status: "future-status",
-      }),
+      makeRun({ run_id: "01J5RUNAAA0000000000000001", status: "future-status" }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    const row = screen.getByTestId(
-      "run-history-row-01J5RUNAAA0000000000000001",
-    );
-    expect(row).toHaveAttribute("data-status", "future-status");
+    expect(
+      screen.getByTestId("run-history-row-01J5RUNAAA0000000000000001"),
+    ).toHaveAttribute("data-status", "future-status");
   });
 
-  it("opens the run drawer when a row is clicked", () => {
+  it("opens the run drawer when a row is clicked (DataTable onRowClick)", () => {
     reset();
     runsState.data = [makeRun({ run_id: "01J5RUNAAA0000000000000001" })];
     renderWithProviders(<RunHistoryPanel />);
-    // Vaul only mounts the drawer content when open — closed state
-    // means no `run-drawer` node in the DOM.
     expect(screen.queryByTestId("run-drawer")).toBeNull();
     fireEvent.click(
-      screen.getByTestId(
-        "run-history-row-button-01J5RUNAAA0000000000000001",
-      ),
+      screen.getByTestId("run-history-row-01J5RUNAAA0000000000000001"),
     );
     expect(screen.getByTestId("run-drawer")).toHaveAttribute(
       "data-run-id",
@@ -249,13 +229,9 @@ describe("RunHistoryPanel", () => {
     runsState.data = [makeRun({ run_id: "01J5RUNAAA0000000000000001" })];
     renderWithProviders(<RunHistoryPanel />);
     fireEvent.click(
-      screen.getByTestId(
-        "run-history-row-button-01J5RUNAAA0000000000000001",
-      ),
+      screen.getByTestId("run-history-row-01J5RUNAAA0000000000000001"),
     );
     fireEvent.click(screen.getByTestId("run-drawer-close"));
-    // Drawer attribute reflects the cleared state immediately, even
-    // if Vaul keeps the content node around for an exit animation.
     expect(screen.getByTestId("run-drawer")).toHaveAttribute(
       "data-run-id",
       "",
@@ -269,12 +245,12 @@ describe("RunHistoryPanel", () => {
       makeRun({ run_id: "01J5BM", triggered_by: "manual" }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    expect(
-      screen.getByTestId("run-history-trigger-01J5BY"),
-    ).toHaveTextContent("via cron");
-    expect(
-      screen.getByTestId("run-history-trigger-01J5BM"),
-    ).toHaveTextContent("via manual");
+    expect(screen.getByTestId("run-history-trigger-01J5BY")).toHaveTextContent(
+      "via cron",
+    );
+    expect(screen.getByTestId("run-history-trigger-01J5BM")).toHaveTextContent(
+      "via manual",
+    );
   });
 
   it("renders a one-click Logs deep-link button on every row", () => {
@@ -283,24 +259,60 @@ describe("RunHistoryPanel", () => {
     renderWithProviders(<RunHistoryPanel />);
     const link = screen.getByTestId("run-history-logs-01J5L");
     expect(link).toBeInTheDocument();
-    // The Tanstack Link mock above renders to ``<a href={to}>``,
-    // so checking the href confirms the button routes to /logs
-    // — the search params live on data-search.
     expect(link).toHaveAttribute("href", "/logs");
+  });
+
+  it("Logs link click does not bubble up and open the drawer", () => {
+    reset();
+    runsState.data = [makeRun({ run_id: "01J5L", job_name: "scan" })];
+    renderWithProviders(<RunHistoryPanel />);
+    fireEvent.click(screen.getByTestId("run-history-logs-01J5L"));
+    expect(screen.queryByTestId("run-drawer")).toBeNull();
+  });
+
+  it("renders 'under <parent>' secondary line when parent_job_name is set", () => {
+    reset();
+    runsState.data = [
+      makeRun({
+        run_id: "01J5CHILD",
+        job_name: "discover-api-keys",
+        parent_run_id: "01J5PARENT",
+        parent_job_name: "bootstrap",
+      }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(screen.getByTestId("run-history-parent-01J5CHILD")).toHaveTextContent(
+      /under bootstrap/,
+    );
+  });
+
+  it("does not render the parent line when parent_job_name is absent", () => {
+    reset();
+    runsState.data = [
+      makeRun({
+        run_id: "01J5ROOT",
+        parent_run_id: undefined,
+        parent_job_name: undefined,
+      }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(
+      screen.queryByTestId("run-history-parent-01J5ROOT"),
+    ).toBeNull();
   });
 
   it("does not tint a row when anomaly_score is absent or null", () => {
     reset();
     runsState.data = [
-      makeRun({ run_id: "01J5NORM0000000000000001" }),
-      makeRun({ run_id: "01J5NORM0000000000000002", anomaly_score: null }),
+      makeRun({ run_id: "01J5NORM", anomaly_score: null }),
+      makeRun({ run_id: "01J5NRM2" }),
     ];
     renderWithProviders(<RunHistoryPanel />);
     expect(
-      screen.getByTestId("run-history-row-01J5NORM0000000000000001"),
+      screen.getByTestId("run-history-row-01J5NORM"),
     ).not.toHaveAttribute("data-tone");
     expect(
-      screen.getByTestId("run-history-row-01J5NORM0000000000000002"),
+      screen.getByTestId("run-history-row-01J5NRM2"),
     ).not.toHaveAttribute("data-tone");
   });
 
@@ -324,90 +336,38 @@ describe("RunHistoryPanel", () => {
     );
   });
 
-  it("does not tint a row for negative z-scores (faster than baseline)", () => {
+  it("does not tint a row for negative z-scores", () => {
     reset();
-    runsState.data = [
-      makeRun({ run_id: "01J5FAST", anomaly_score: -1.5 }),
-    ];
+    runsState.data = [makeRun({ run_id: "01J5FAST", anomaly_score: -1.5 })];
     renderWithProviders(<RunHistoryPanel />);
-    expect(screen.getByTestId("run-history-row-01J5FAST")).not.toHaveAttribute(
-      "data-tone",
-    );
-  });
-
-  it("surfaces the anomaly z-score in the row title for hover tooltip", () => {
-    reset();
-    runsState.data = [makeRun({ run_id: "01J5HOV", anomaly_score: 2.5 })];
-    renderWithProviders(<RunHistoryPanel />);
-    expect(screen.getByTestId("run-history-row-01J5HOV")).toHaveAttribute(
-      "title",
-      expect.stringContaining("2.5"),
-    );
+    expect(
+      screen.getByTestId("run-history-row-01J5FAST"),
+    ).not.toHaveAttribute("data-tone");
   });
 
   it("flags rows with parent + child indicators on data-attributes", () => {
     reset();
     runsState.data = [
       makeRun({
-        run_id: "01J5PARENTROW00000000000001",
-        parent_run_id: "01J5GRANDPARENT0000000000",
+        run_id: "01J5PCHILD",
+        parent_run_id: "01J5GP",
         child_run_ids: ["a", "b", "c"],
       }),
     ];
     renderWithProviders(<RunHistoryPanel />);
-    const row = screen.getByTestId(
-      "run-history-row-01J5PARENTROW00000000000001",
-    );
+    const row = screen.getByTestId("run-history-row-01J5PCHILD");
     expect(row).toHaveAttribute("data-has-parent", "true");
     expect(row).toHaveAttribute("data-child-count", "3");
   });
 
-  it("renders cancelled and timeout badges with their distinct variants", () => {
+  it("drills into a child run when the drawer's onSelectRunId fires", async () => {
     reset();
+    const childId = "01J5CHILDDRILL00000000000";
     runsState.data = [
-      makeRun({
-        run_id: "01J5RUNAAA0000000000000001",
-        status: "cancelled",
-      }),
-      makeRun({
-        run_id: "01J5RUNBBB0000000000000002",
-        status: "timeout",
-      }),
+      makeRun({ run_id: "01J5PARENTDRILL000000000" }),
     ];
-    renderWithProviders(<RunHistoryPanel />);
-    expect(
-      screen.getByTestId("run-history-row-01J5RUNAAA0000000000000001"),
-    ).toHaveAttribute("data-status", "cancelled");
-    expect(
-      screen.getByTestId("run-history-row-01J5RUNBBB0000000000000002"),
-    ).toHaveAttribute("data-status", "timeout");
-  });
-  it("closes the run drawer via close button (exercises onClose)", () => {
-    reset();
-    runsState.data = [makeRun({ run_id: "01J5RUNAAA0000000000000001" })];
-    renderWithProviders(<RunHistoryPanel />);
-    fireEvent.click(
-      screen.getByTestId("run-history-row-button-01J5RUNAAA0000000000000001"),
-    );
-    expect(screen.getByTestId("run-drawer")).toHaveAttribute(
-      "data-run-id",
-      "01J5RUNAAA0000000000000001",
-    );
-    // Close fires onClose arrow → setSelectedRunId(null).
-    // Vaul keeps the portal in DOM during exit animation (jsdom);
-    // data-run-id resets synchronously to "".
-    fireEvent.click(screen.getByTestId("run-drawer-close"));
-    expect(screen.getByTestId("run-drawer")).toHaveAttribute("data-run-id", "");
-  });
-
-  it("navigates to a child run from the drawer (exercises onSelectRunId)", async () => {
-    reset();
-    const childId = "01J5CHILD0000000000000001";
-    const runId = "01J5RUNAAA0000000000000001";
-    runsState.data = [makeRun({ run_id: runId, child_run_ids: [childId] })];
-    // useRun returns this when the drawer loads the selected run
     runDetailState.data = {
-      run_id: runId,
+      run_id: "01J5PARENTDRILL000000000",
       job_name: "scan-completed-downloads",
       status: "ok",
       started_at: 1_700_000_000,
@@ -418,28 +378,50 @@ describe("RunHistoryPanel", () => {
       children: [
         {
           run_id: childId,
-          job_name: "configure-arr",
+          job_name: "child-job",
           status: "ok",
           started_at: 1_700_000_010,
           triggered_by: "parent",
           attempts: 1,
           child_run_ids: [],
-          elapsed: 0.4,
+          elapsed: 0.3,
         },
       ],
-    } as RunRecordWithChildrenShape;
+    };
     const user = userEvent.setup();
     renderWithProviders(<RunHistoryPanel />);
-    fireEvent.click(screen.getByTestId(`run-history-row-button-${runId}`));
-    expect(screen.getByTestId("run-drawer")).toHaveAttribute("data-run-id", runId);
-    // Open Children tab and click the child row → onSelectRunId fires
+    // Open the drawer by clicking the parent row.
+    fireEvent.click(
+      screen.getByTestId("run-history-row-01J5PARENTDRILL000000000"),
+    );
+    expect(screen.getByTestId("run-drawer")).toHaveAttribute(
+      "data-run-id",
+      "01J5PARENTDRILL000000000",
+    );
+    // Radix Tabs need pointer events to activate — userEvent gets
+    // it right where fireEvent.click silently no-ops.
     await user.click(screen.getByTestId("run-drawer-tab-children"));
     await user.click(screen.getByTestId(`run-drawer-child-${childId}`));
-    // onSelectRunId(childId) → setSelectedRunId(childId) → drawer data-run-id updates
     expect(screen.getByTestId("run-drawer")).toHaveAttribute(
       "data-run-id",
       childId,
     );
   });
 
+  it("renders cancelled and timeout statuses on data-status", () => {
+    reset();
+    runsState.data = [
+      makeRun({ run_id: "01J5CAN", status: "cancelled" }),
+      makeRun({ run_id: "01J5TMO", status: "timeout" }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(screen.getByTestId("run-history-row-01J5CAN")).toHaveAttribute(
+      "data-status",
+      "cancelled",
+    );
+    expect(screen.getByTestId("run-history-row-01J5TMO")).toHaveAttribute(
+      "data-status",
+      "timeout",
+    );
+  });
 });

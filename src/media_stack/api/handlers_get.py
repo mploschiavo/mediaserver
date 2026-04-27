@@ -132,6 +132,31 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
+# Run-record serialization helpers
+# ---------------------------------------------------------------------------
+
+
+def _run_record_with_parent_name(
+    record: object, parent_names: dict[str, str],
+) -> dict:
+    """Serialise a ``RunRecord`` with the parent's ``job_name``
+    inlined so the UI can render "child-job (under parent-name)"
+    without a second per-row fetch.
+
+    ``parent_names`` is a ``run_id → job_name`` map the caller
+    builds once per request. We lazily attach ``parent_job_name``
+    only when the parent_run_id resolves; an orphaned child
+    (parent rotated out of the persistence window) gets no
+    extra field rather than a confusing empty string.
+    """
+    out = record.to_dict() if hasattr(record, "to_dict") else dict(record)  # type: ignore[union-attr]
+    parent_id = out.get("parent_run_id") or ""
+    if parent_id and parent_id in parent_names:
+        out["parent_job_name"] = parent_names[parent_id]
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Main dispatcher
 # ---------------------------------------------------------------------------
 
@@ -825,7 +850,9 @@ class GetRequestHandler:
             # runs" view that pulled from the batch-level
             # job-history.json. Filters via querystring.
             from urllib.parse import parse_qs, unquote
-            from media_stack.application.jobs.run_history import get_runs
+            from media_stack.application.jobs.run_history import (
+                get_runs, iter_records,
+            )
             qs = handler.path.split("?", 1)[1] if "?" in handler.path else ""
             params = parse_qs(qs, keep_blank_values=True)
             job = unquote(params.get("job", [""])[0]) or None
@@ -849,12 +876,24 @@ class GetRequestHandler:
                 batch_id=batch,
                 limit=max(1, min(50000, limit)),
             )
+            # Build a parent-id → job-name lookup so the UI can
+            # render "child-job (under parent-name)" without a
+            # second fetch per row. Scans the full record buffer
+            # rather than just the filtered slice so a child whose
+            # parent is older than the limit still resolves.
+            parent_names = {r.run_id: r.job_name for r in iter_records()}
             handler._json_response(
-                HTTPStatus.OK, {"runs": [r.to_dict() for r in records]},
+                HTTPStatus.OK,
+                {
+                    "runs": [
+                        _run_record_with_parent_name(r, parent_names)
+                        for r in records
+                    ],
+                },
             )
         elif path.startswith("/api/runs/latest/"):
             from media_stack.application.jobs.run_history import (
-                get_latest_run,
+                get_latest_run, iter_records,
             )
             job_name = path[len("/api/runs/latest/"):]
             record = get_latest_run(job_name)
@@ -863,10 +902,14 @@ class GetRequestHandler:
                     HTTPStatus.NOT_FOUND, {"error": f"no runs for {job_name!r}"},
                 )
             else:
-                handler._json_response(HTTPStatus.OK, record.to_dict())
+                parent_names = {r.run_id: r.job_name for r in iter_records()}
+                handler._json_response(
+                    HTTPStatus.OK,
+                    _run_record_with_parent_name(record, parent_names),
+                )
         elif path.startswith("/api/runs/"):
             from media_stack.application.jobs.run_history import (
-                get_run, get_children,
+                get_run, get_children, iter_records,
             )
             run_id = path[len("/api/runs/"):]
             # Strip any query string the caller appended.
@@ -877,10 +920,17 @@ class GetRequestHandler:
                     HTTPStatus.NOT_FOUND, {"error": f"run {run_id!r} not found"},
                 )
             else:
-                children = [c.to_dict() for c in get_children(run_id)]
+                parent_names = {r.run_id: r.job_name for r in iter_records()}
+                children = [
+                    _run_record_with_parent_name(c, parent_names)
+                    for c in get_children(run_id)
+                ]
                 handler._json_response(
                     HTTPStatus.OK,
-                    {**record.to_dict(), "children": children},
+                    {
+                        **_run_record_with_parent_name(record, parent_names),
+                        "children": children,
+                    },
                 )
         elif path == "/api/manifests":
             handler._json_response(HTTPStatus.OK, config_svc.get_manifests())

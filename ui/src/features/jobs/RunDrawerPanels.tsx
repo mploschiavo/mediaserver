@@ -66,12 +66,22 @@ export function SummaryPanel({ run }: { run: RunRecordShape }): JSX.Element {
       </Row>
       {run.parent_run_id ? (
         <Row label="Parent">
-          <span
-            className="font-mono text-xs"
-            data-testid="run-drawer-parent-id"
-          >
-            {run.parent_run_id}
-          </span>
+          <div className="flex flex-col gap-0.5">
+            {run.parent_job_name ? (
+              <span
+                className="font-medium text-fg"
+                data-testid="run-drawer-parent-job-name"
+              >
+                {run.parent_job_name}
+              </span>
+            ) : null}
+            <span
+              className="font-mono text-[10px] text-fg-muted"
+              data-testid="run-drawer-parent-id"
+            >
+              {run.parent_run_id}
+            </span>
+          </div>
         </Row>
       ) : null}
       {run.batch_id ? (
