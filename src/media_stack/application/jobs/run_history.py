@@ -32,6 +32,7 @@ import time
 from pathlib import Path
 from typing import Iterable, Optional
 
+from media_stack.application.jobs import runtime_stats
 from media_stack.core.events import (
     JobCompleted,
     JobStarted,
@@ -236,6 +237,19 @@ def record_run_complete(
         record.error = error
         record.stdout_tail = stdout_tail
         record.attempts = attempts
+        # Update the rolling Welford stats for this job_name and
+        # stamp the resulting z-score on the record. Anomaly score
+        # reflects how this run compares to the prior baseline (the
+        # stats add happens inside ``add_run``, but z is computed
+        # *before* the fold so the very-recent value isn't diluted
+        # by the mean it just shifted).
+        try:
+            score = runtime_stats.add_run(
+                record.job_name, record.elapsed or 0.0,
+            )
+            record.anomaly_score = score
+        except Exception as exc:  # noqa: BLE001 - defensive
+            log_swallowed(exc)
         # Build the log anchor if the caller passed source + since.
         if log_anchor_source and log_anchor_since_iso:
             from media_stack.domain.jobs.run_record import LogAnchor
