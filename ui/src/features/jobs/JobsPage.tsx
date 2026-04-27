@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { asArray } from "@/lib/coerce";
 import { CurrentlyRunningCard } from "./CurrentlyRunningCard";
+import { QueueCard } from "./QueueCard";
 import { SchedulesCard } from "./SchedulesCard";
 import { JobsTreeView } from "./JobsTreeView";
 import { JobDetailPanel } from "./JobDetailPanel";
@@ -275,6 +276,7 @@ export function JobsPage({
   return (
     <div className="flex flex-col gap-6">
       <CurrentlyRunningCard />
+      <QueueCard />
       <JobsRuntimeChart />
       {inFlightName ? (
         <motion.div

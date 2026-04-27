@@ -1869,6 +1869,59 @@ class PostRequestHandler:
                 handler._json_response(HTTPStatus.OK, content_svc_list.delete_import_list(svc_id, list_id))
                 return
 
+        # POST /api/jobs/queue          — enqueue
+        # POST /api/jobs/queue/{id}/remove   — drop
+        # POST /api/jobs/queue/{id}/reorder  — move up/down
+        # POST /api/jobs/queue/clear         — wipe (admin)
+        if handler.path == "/api/jobs/queue":
+            from .services import job_queue
+            body = handler._read_json_body()
+            handler._json_response(
+                HTTPStatus.OK,
+                job_queue.enqueue(
+                    str(body.get("job_name", "")),
+                    source=str(body.get("source", "manual")),
+                    scheduled_at=float(body.get("scheduled_at", 0) or 0),
+                    label=str(body.get("label", "")),
+                ),
+            )
+            return
+        if handler.path == "/api/jobs/queue/clear":
+            from .services import job_queue
+            handler._json_response(HTTPStatus.OK, job_queue.clear_queue())
+            return
+        if handler.path.startswith("/api/jobs/queue/"):
+            parts = handler.path.split("/")
+            # /api/jobs/queue/{id}/{action}
+            if len(parts) == 6 and parts[5] in {"remove", "reorder"}:
+                from .services import job_queue
+                try:
+                    entry_id = int(parts[4])
+                except ValueError:
+                    handler._json_response(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": "Invalid queue entry ID"},
+                    )
+                    return
+                if parts[5] == "remove":
+                    handler._json_response(
+                        HTTPStatus.OK,
+                        job_queue.remove_entry(entry_id),
+                    )
+                    return
+                # reorder
+                body = handler._read_json_body()
+                kwargs: dict[str, object] = {}
+                if "direction" in body:
+                    kwargs["direction"] = str(body["direction"])
+                if "position" in body:
+                    kwargs["position"] = int(body["position"])
+                handler._json_response(
+                    HTTPStatus.OK,
+                    job_queue.reorder_entry(entry_id, **kwargs),
+                )
+                return
+
         # POST /api/schedules
         if handler.path == "/api/schedules":
             body = handler._read_json_body()

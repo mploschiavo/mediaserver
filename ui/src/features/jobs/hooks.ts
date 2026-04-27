@@ -239,6 +239,97 @@ export function useJobsRunning(): UseQueryResult<JobsRunningResponse> {
   });
 }
 
+// ---- Job queue (Phase 5) -----------------------------------------------
+
+export interface QueueEntryShape {
+  id: number;
+  job_name: string;
+  source: string;
+  scheduled_at: number;
+  enqueued_at: number;
+  label: string;
+}
+
+export interface JobQueueResponse {
+  queue: readonly QueueEntryShape[];
+  count: number;
+}
+
+const QUEUE_QUERY_KEY = ["jobs", "queue"] as const;
+
+export function useJobQueue(): UseQueryResult<JobQueueResponse> {
+  return useQuery<JobQueueResponse>({
+    queryKey: QUEUE_QUERY_KEY,
+    queryFn: () => fetcher<JobQueueResponse>("api/jobs/queue"),
+    refetchInterval: 10_000,
+    staleTime: 2_000,
+    retry: false,
+  });
+}
+
+export interface QueueEnqueueInput {
+  job_name: string;
+  source?: string;
+  label?: string;
+}
+
+export function useEnqueueJob(): UseMutationResult<
+  unknown,
+  Error,
+  QueueEnqueueInput
+> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, QueueEnqueueInput>({
+    mutationFn: (input) =>
+      fetcher<unknown>("api/jobs/queue", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: QUEUE_QUERY_KEY });
+    },
+  });
+}
+
+export function useRemoveQueueEntry(): UseMutationResult<
+  unknown,
+  Error,
+  number
+> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, number>({
+    mutationFn: (id) =>
+      fetcher<unknown>(`api/jobs/queue/${id}/remove`, { method: "POST" }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: QUEUE_QUERY_KEY });
+    },
+  });
+}
+
+export interface QueueReorderInput {
+  entry_id: number;
+  direction?: "up" | "down";
+  position?: number;
+}
+
+export function useReorderQueueEntry(): UseMutationResult<
+  unknown,
+  Error,
+  QueueReorderInput
+> {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, QueueReorderInput>({
+    mutationFn: ({ entry_id, ...body }) =>
+      fetcher<unknown>(`api/jobs/queue/${entry_id}/reorder`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: QUEUE_QUERY_KEY });
+    },
+  });
+}
+
 // ---- Schedules (Phase 4) -----------------------------------------------
 
 export interface ScheduleShape {
