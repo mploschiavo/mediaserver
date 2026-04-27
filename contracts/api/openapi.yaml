@@ -9759,6 +9759,147 @@ paths:
                 count: 2
                 history: []
 
+  /api/jobs/queue:
+    get:
+      operationId: getJobsQueue
+      tags: [Jobs]
+      summary: Operator-managed pending job queue
+      description: |
+        Returns the persistent queue of operator-requested work
+        (distinct from `/api/jobs/running` for in-flight work and
+        `/api/schedules` for cadence-based recurring jobs).
+        Each entry survives controller restarts.
+      responses:
+        "200":
+          description: Queue snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                count: 2
+                queue:
+                  - id: 1777140000001
+                    job_name: refresh-iptv-channels
+                    source: manual
+                    scheduled_at: 0
+                    enqueued_at: 1777139999.5
+                    label: refresh-iptv-channels
+                  - id: 1777140000002
+                    job_name: envoy-config-rebuild
+                    source: config-save
+                    scheduled_at: 0
+                    enqueued_at: 1777140000.1
+                    label: envoy-config-rebuild
+    post:
+      operationId: enqueueJob
+      tags: [Jobs]
+      summary: Append a new entry to the queue
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [job_name]
+              properties:
+                job_name:
+                  type: string
+                source:
+                  type: string
+                  default: manual
+                scheduled_at:
+                  type: number
+                  description: |
+                    Epoch seconds. `0` (default) means run ASAP.
+                    Currently informational only — the dispatcher
+                    integration is deferred.
+                label:
+                  type: string
+            example:
+              job_name: refresh-iptv-channels
+              source: manual
+              label: refresh IPTV channels
+      responses:
+        "200":
+          description: Enqueued
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /api/jobs/queue/clear:
+    post:
+      operationId: clearJobsQueue
+      tags: [Jobs]
+      summary: Wipe every queued entry (admin escape hatch)
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cleared
+
+  /api/jobs/queue/{entry_id}/remove:
+    post:
+      operationId: removeQueueEntry
+      tags: [Jobs]
+      summary: Drop a queued entry by id
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: entry_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Removed
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /api/jobs/queue/{entry_id}/reorder:
+    post:
+      operationId: reorderQueueEntry
+      tags: [Jobs]
+      summary: Move a queued entry up/down or to an absolute index
+      description: |
+        Either supply `direction` ("up" or "down" — clamped at the
+        ends, no-op rather than error) or `position` (0-based
+        absolute index, clamped to `[0, count-1]`).
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: entry_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                direction:
+                  type: string
+                  enum: [up, down]
+                position:
+                  type: integer
+            example:
+              direction: up
+      responses:
+        "200":
+          description: Reordered
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
   /api/schedules:
     get:
       operationId: listSchedules

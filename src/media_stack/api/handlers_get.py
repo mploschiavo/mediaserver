@@ -940,6 +940,14 @@ class GetRequestHandler:
                 handler._json_response(HTTPStatus.OK, push_telemetry())
             else:
                 handler._json_response(HTTPStatus.OK, collect_metrics())
+        elif path == "/api/jobs/queue":
+            # Operator-managed pending-work queue. Distinct from
+            # /api/jobs/running (in-flight) and /api/schedules
+            # (recurring); shipped in v1.0.280 as read-only operator
+            # surface — JobRunner integration is deferred until the
+            # runner gets a persistent dispatch loop.
+            from media_stack.api.services import job_queue
+            handler._json_response(HTTPStatus.OK, job_queue.get_queue())
         elif path == "/api/jobs/running":
             # Aggregator: every job, action, scan, or operation the
             # controller currently has in-flight. Surfaced in the
