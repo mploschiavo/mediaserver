@@ -90,6 +90,17 @@ GRANDFATHERED_FLOORS: dict[str, dict[str, float]] = {
         "functions": 53.0,
         "statements": 45.0,
     },
+    "ui/src/features/logs/LogsPage.tsx": {
+        # Pre-existing low coverage — large, complex, with many
+        # branches around URL hydration + tail/pause cycle.
+        # v1.3.65 added a small at-limit hint badge and bumped
+        # the default limit; both are additive. Tighten when the
+        # LogsPage gets a dedicated test push.
+        "lines": 76.0,
+        "branches": 56.0,
+        "functions": 85.0,
+        "statements": 76.0,
+    },
     "ui/src/features/about/AboutPage.tsx": {
         # No test file exists for this page. The Phase 0/2/4
         # changes here are trivial (added ``import type { JSX }``

@@ -25,11 +25,15 @@ const VALID_SOURCES = new Set<LogSource>(ALL_SOURCES.map((s) => s.value));
 
 // Operator-pickable limits. The backend hard cap is 50000 (see
 // LOG_LINES_HARD_CAP in src/media_stack/api/services/ops.py); the
-// dashboard exposes everything from 100 (the default) up to 50k.
-// Each step is roughly 5x so the picker stays short.
+// dashboard exposes everything from 100 up to 50k. Each step is
+// roughly 5x so the picker stays short. Default raised to 5000 in
+// v1.3.65 — 100 was unusable for actual debugging (operators
+// flagged it; the previous default predates the controller's
+// 50k cap and never got bumped).
 export const LIMIT_OPTIONS: ReadonlyArray<number> = [
   100, 500, 1000, 5000, 10000, 50000,
 ];
+const DEFAULT_LIMIT = 5000;
 
 // Time-range presets. ``""`` = no filter (rely on ``lines`` cap
 // alone). Anything else is passed through to the backend as
@@ -79,7 +83,9 @@ function readUrlState(): {
   action: string;
 } {
   if (typeof window === "undefined") {
-    return { service: null, filter: "", limit: 100, since: "", action: "" };
+    return {
+      service: null, filter: "", limit: DEFAULT_LIMIT, since: "", action: "",
+    };
   }
   const params = new URLSearchParams(window.location.search);
   const svc = params.get("service");
@@ -88,7 +94,7 @@ function readUrlState(): {
   const limit =
     Number.isFinite(rawLimit) && LIMIT_OPTIONS.includes(rawLimit)
       ? rawLimit
-      : 100;
+      : DEFAULT_LIMIT;
   const since = params.get("since") ?? "";
   const action = params.get("action") ?? "";
   return {
@@ -164,7 +170,7 @@ export function LogsPage() {
           ...prev,
           service: sources[0],
           filter: search || undefined,
-          limit: limit !== 100 ? limit : undefined,
+          limit: limit !== DEFAULT_LIMIT ? limit : undefined,
           since: since || undefined,
           action: actionFilter || undefined,
         }),
@@ -291,6 +297,15 @@ export function LogsPage() {
           <span data-testid="logs-stat-total">
             <span className="tabular-nums text-fg">{allLines.length}</span> total
           </span>
+          {allLines.length >= limit && limit < LIMIT_OPTIONS[LIMIT_OPTIONS.length - 1]! ? (
+            <Badge
+              variant="warning"
+              data-testid="logs-cap-hint"
+              title={`Showing the most recent ${limit} lines per source. Raise the limit (toolbar above) to load more.`}
+            >
+              at limit · raise to see more
+            </Badge>
+          ) : null}
           {tailing ? (
             <Badge variant="success" data-testid="logs-tailing-badge">
               Tailing
