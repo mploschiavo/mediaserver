@@ -80,7 +80,7 @@ def _get_service() -> Any | None:
     subsystem isn't configured (e.g. missing API keys on a partial
     deployment).
     """
-    # TODO(phase-16-F): application/ should not reach into api/. The
+    # application/ should not reach into api/. The
     # ``MediaIntegrityService`` singleton is currently parked on
     # ``api.services.media_integrity_handlers._instance`` and looked up
     # via a lazy import here — application → api is an inversion of the

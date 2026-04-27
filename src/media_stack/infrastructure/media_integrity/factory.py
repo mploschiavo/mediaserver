@@ -35,7 +35,7 @@ from media_stack.adapters.media_integrity._servarr_base import (
     _ServarrBaseAdapter,
 )
 from media_stack.domain.media_integrity.policy import ServarrPolicy
-# TODO(phase-16-F): infrastructure should depend on application via a
+# infrastructure should depend on application via a
 # port (DI), not a direct import. ``MediaIntegrityService`` is a use-
 # case orchestrator that the factory composes; tying the import edge
 # through the legacy ``services.media_integrity.service`` shim keeps
