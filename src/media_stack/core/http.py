@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import error, request
+from urllib.parse import urlparse
 
 from .decorators import retry, timed
 
@@ -129,7 +130,6 @@ class HttpClient:
                 if location:
                     # Resolve relative Location against the original URL.
                     if location.startswith("/"):
-                        from urllib.parse import urlparse
                         parsed = urlparse(req.full_url)
                         location = f"{parsed.scheme}://{parsed.netloc}{location}"
                     redirect_req = request.Request(

@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from media_stack.core.url_utils import normalize_url_base
+
 HttpRequestFn = Callable[..., tuple[int, Any, str]]
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -24,14 +26,7 @@ class AuthService:
 
     @staticmethod
     def _normalize_url_base(value: object) -> str:
-        token = str(value or "").strip()
-        if not token:
-            return ""
-        if not token.startswith("/"):
-            token = f"/{token}"
-        if token != "/":
-            token = token.rstrip("/")
-        return token
+        return normalize_url_base(value)
 
     def _lookup_url_base_from_map(
         self,

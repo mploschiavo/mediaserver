@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from media_stack.core.url_utils import normalize_url_base
 from media_stack.application.prowlarr.pipeline_service import (
     ProwlarrIndexerPipelineService,
 )
@@ -33,14 +34,7 @@ class ProwlarrRuntimeOps:
 
     @staticmethod
     def _normalize_url_base(value: object) -> str:
-        token = str(value or "").strip()
-        if not token:
-            return ""
-        if not token.startswith("/"):
-            token = f"/{token}"
-        if token != "/":
-            token = token.rstrip("/")
-        return token
+        return normalize_url_base(value)
 
     @staticmethod
     def _join_url_base(base_url: str, url_base: str) -> str:

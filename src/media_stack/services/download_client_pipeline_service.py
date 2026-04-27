@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -83,8 +84,6 @@ class DownloadClientPipelineService:
         return adapter.status_check()
 
     def run_prepare(self, inputs: DownloadClientPipelineInputs) -> DownloadClientPipelineResult:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         adapter_factory = DownloadClientAdapterFactory(
             deps=self._dependencies(),
             adapter_class_specs=(inputs.adapter_hooks_cfg or {}).get(

@@ -27,6 +27,7 @@ import sys
 import urllib.request
 import urllib.error
 from pathlib import Path
+from urllib.parse import urlparse
 
 # File now lives at src/media_stack/cli/commands/<this>.py — five
 # levels under the repo root (was bin/<this>.py — one level when the
@@ -237,7 +238,6 @@ def _http_open(url: str, headers: dict, timeout: int = 15):
     import http.client
     import socket
     import ssl
-    from urllib.parse import urlparse
     p = urlparse(url)
     is_https = p.scheme == "https"
     host = p.hostname or ""
