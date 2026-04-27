@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { asArray } from "@/lib/coerce";
 import { CurrentlyRunningCard } from "./CurrentlyRunningCard";
+import { SchedulesCard } from "./SchedulesCard";
 import { JobsTreeView } from "./JobsTreeView";
 import { JobDetailPanel } from "./JobDetailPanel";
 import { JobHistoryPanel } from "./JobHistoryPanel";
@@ -518,6 +519,7 @@ export function JobsPage({
       </div>
 
       <RunHistoryPanel />
+      <SchedulesCard />
     </div>
   );
 }

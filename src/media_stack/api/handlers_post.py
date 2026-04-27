@@ -1876,20 +1876,65 @@ class PostRequestHandler:
             handler._json_response(HTTPStatus.OK, sched_svc.add_schedule(
                 body.get("action", ""), int(body.get("interval_seconds", 0)),
                 body.get("label", ""),
+                bool(body.get("enabled", True)),
             ))
             return
 
-        # POST /api/schedules/{id}/delete
-        if handler.path.startswith("/api/schedules/") and handler.path.endswith("/delete"):
+        # POST /api/schedules/{id}/delete | /update | /pause | /resume
+        if handler.path.startswith("/api/schedules/"):
             parts = handler.path.split("/")
-            try:
-                sched_id = int(parts[3])
-            except (IndexError, ValueError):
-                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid schedule ID"})
+            if len(parts) == 5 and parts[4] in {"delete", "update", "pause", "resume"}:
+                try:
+                    sched_id = int(parts[3])
+                except ValueError:
+                    handler._json_response(
+                        HTTPStatus.BAD_REQUEST,
+                        {"error": "Invalid schedule ID"},
+                    )
+                    return
+                from .services import scheduler as sched_svc_op
+                action = parts[4]
+                if action == "delete":
+                    handler._json_response(
+                        HTTPStatus.OK,
+                        sched_svc_op.remove_schedule(sched_id),
+                    )
+                    return
+                if action == "pause":
+                    handler._json_response(
+                        HTTPStatus.OK,
+                        sched_svc_op.set_schedule_enabled(
+                            sched_id, enabled=False,
+                        ),
+                    )
+                    return
+                if action == "resume":
+                    handler._json_response(
+                        HTTPStatus.OK,
+                        sched_svc_op.set_schedule_enabled(
+                            sched_id, enabled=True,
+                        ),
+                    )
+                    return
+                # update
+                body = handler._read_json_body()
+                # ``None`` means "leave alone" — only forward keys
+                # the body actually supplied so a partial update
+                # doesn't accidentally clear an unmentioned field.
+                kwargs: dict[str, object] = {}
+                if "action" in body:
+                    kwargs["action"] = str(body["action"])
+                if "interval_seconds" in body:
+                    kwargs["interval_seconds"] = int(body["interval_seconds"])
+                if "label" in body:
+                    kwargs["label"] = str(body["label"])
+                if "enabled" in body:
+                    kwargs["enabled"] = bool(body["enabled"])
+                handler._json_response(
+                    HTTPStatus.OK,
+                    sched_svc_op.update_schedule(sched_id, **kwargs),
+                )
                 return
-            from .services import scheduler as sched_svc_del
-            handler._json_response(HTTPStatus.OK, sched_svc_del.remove_schedule(sched_id))
-            return
 
         # POST /api/validate-migration
         if handler.path == "/api/validate-migration":

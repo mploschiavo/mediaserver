@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { cn } from "@/lib/cn";
 import { useEventStreamStatus } from "@/lib/events/EventStreamProvider";
 

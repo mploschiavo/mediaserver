@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type JSX } from "react";
 import { ExternalLink, Grid3x3, AppWindow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
