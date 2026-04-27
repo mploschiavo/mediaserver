@@ -1013,12 +1013,27 @@ class GetRequestHandler:
                                 })
                     except Exception as exc:  # noqa: BLE001
                         log_swallowed(exc)
+                # 3. Run-record tree (jobs framework: in-flight runs
+                #    grouped parent→children). Powers the
+                #    CurrentlyRunningCard on the Jobs page; the flat
+                #    ``running`` list above stays for the global
+                #    banner and other consumers that don't need the
+                #    parent/child structure.
+                tree: list[dict] = []
+                try:
+                    from media_stack.application.jobs.run_history import (
+                        get_running_tree,
+                    )
+                    tree = get_running_tree()
+                except Exception as exc:  # noqa: BLE001
+                    log_swallowed(exc)
                 handler._json_response(HTTPStatus.OK, {
                     "running": running,
                     "count": len(running),
+                    "tree": tree,
                 })
             except Exception as exc:  # noqa: BLE001
-                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200], "running": []})
+                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200], "running": [], "tree": []})
         elif path == "/api/jobs":
             from media_stack.services.jobs.framework import discover_jobs_from_contracts, build_job_framework, get_job_history
             jobs = discover_jobs_from_contracts()

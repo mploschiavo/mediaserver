@@ -10,6 +10,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { asArray } from "@/lib/coerce";
+import { CurrentlyRunningCard } from "./CurrentlyRunningCard";
 import { JobsTreeView } from "./JobsTreeView";
 import { JobDetailPanel } from "./JobDetailPanel";
 import { JobHistoryPanel } from "./JobHistoryPanel";
@@ -272,6 +273,7 @@ export function JobsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <CurrentlyRunningCard />
       <JobsRuntimeChart />
       {inFlightName ? (
         <motion.div

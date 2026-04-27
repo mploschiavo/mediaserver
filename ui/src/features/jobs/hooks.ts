@@ -196,6 +196,49 @@ export function useRunAction(
  * controller emits (typically a 200 with `{cancelled: true}` or a 409
  * if there was nothing to cancel — we just surface the body).
  */
+/**
+ * Tree node returned under the ``tree`` field of
+ * ``GET /api/jobs/running``. Children are nested in ``started_at``
+ * ascending order; orphan children (parent already settled) surface
+ * as top-level nodes.
+ */
+export interface RunningTreeNodeShape {
+  run_id: string;
+  job_name: string;
+  status: string;
+  started_at: number;
+  elapsed_seconds: number;
+  triggered_by: string;
+  actor: string;
+  parent_run_id: string;
+  batch_id: string;
+  children: readonly RunningTreeNodeShape[];
+}
+
+export interface JobsRunningResponse {
+  running: readonly unknown[];
+  count: number;
+  tree: readonly RunningTreeNodeShape[];
+}
+
+/**
+ * Polls ``GET /api/jobs/running`` for the in-flight job tree the
+ * Jobs page's ``CurrentlyRunningCard`` renders. Cadence is 5s so a
+ * spawned sub-job appears promptly even when the SSE invalidation
+ * is unavailable; SSE flips this query into instant-refresh mode
+ * via the EventStreamProvider's ``handleEvent`` (job.* events
+ * invalidate ``["jobs"]``).
+ */
+export function useJobsRunning(): UseQueryResult<JobsRunningResponse> {
+  return useQuery<JobsRunningResponse>({
+    queryKey: ["jobs", "running"],
+    queryFn: () => fetcher<JobsRunningResponse>("api/jobs/running"),
+    refetchInterval: 5_000,
+    staleTime: 1_000,
+    retry: false,
+  });
+}
+
 export function useCancelAction(): UseMutationResult<unknown, Error, void> {
   const qc = useQueryClient();
   return useMutation<unknown, Error, void>({

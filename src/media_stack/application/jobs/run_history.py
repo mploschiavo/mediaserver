@@ -343,3 +343,63 @@ def iter_records() -> Iterable[RunRecord]:
     records in oldest → newest order."""
     with _LOCK:
         return list(_read_all_records())
+
+
+def get_running_tree() -> list[dict]:
+    """Tree of in-flight runs grouped parent → children.
+
+    Used by ``GET /api/jobs/running`` to power the "Currently
+    running" card on the Jobs page (design doc §3 lines 168-174 —
+    bootstrap with sub-step glyphs and per-step elapsed). The tree
+    only contains records whose ``status`` is ``running`` so the
+    card auto-empties as terminal updates land via SSE.
+
+    Each node is a dict (not a RunRecord) so the API serializer
+    doesn't have to know about LogAnchor + dataclass nesting; the
+    UI receives a flat structure ready to render. Children are
+    inlined under each parent in ``started_at`` order; orphan
+    children (parent already settled) are surfaced as top-level
+    nodes so the operator still sees the work in flight.
+    """
+    with _LOCK:
+        records = list(_read_all_records())
+    running = [r for r in records if r.status == RunStatus.RUNNING]
+    by_id = {r.run_id: r for r in running}
+
+    def _node(record: RunRecord) -> dict:
+        # Children are the running records whose parent_run_id
+        # points at this one. We pre-filter against ``running``
+        # rather than the full record set so settled children stop
+        # cluttering the tree the moment their JobCompleted lands.
+        child_records = sorted(
+            (c for c in running if c.parent_run_id == record.run_id),
+            key=lambda c: c.started_at,
+        )
+        return {
+            "run_id": record.run_id,
+            "job_name": record.job_name,
+            "status": record.status,
+            "started_at": record.started_at,
+            "elapsed_seconds": (
+                round(time.time() - record.started_at, 2)
+            ),
+            "triggered_by": record.triggered_by,
+            "actor": record.actor or "",
+            "parent_run_id": record.parent_run_id or "",
+            "batch_id": record.batch_id or "",
+            "children": [_node(c) for c in child_records],
+        }
+
+    # Top-level nodes: records whose parent isn't itself running
+    # (either no parent, or parent already settled). Sort by
+    # started_at ascending so the bootstrap row appears above its
+    # spawned children visually.
+    tops = sorted(
+        (
+            r
+            for r in running
+            if not r.parent_run_id or r.parent_run_id not in by_id
+        ),
+        key=lambda r: r.started_at,
+    )
+    return [_node(r) for r in tops]
