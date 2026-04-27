@@ -13,6 +13,7 @@ import { asArray } from "@/lib/coerce";
 import { JobsTreeView } from "./JobsTreeView";
 import { JobDetailPanel } from "./JobDetailPanel";
 import { JobHistoryPanel } from "./JobHistoryPanel";
+import { JobsRuntimeChart } from "./JobsRuntimeChart";
 import {
   useJobs,
   type JobHistoryEntry,
@@ -270,6 +271,7 @@ export function JobsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      <JobsRuntimeChart />
       {inFlightName ? (
         <motion.div
           className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-sm text-accent"
