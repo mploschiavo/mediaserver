@@ -71,13 +71,30 @@ class ControllerCorePhasesService:
         component_key: str = "",
         component_technology: str = "",
     ) -> str:
-        raw = str(template or "").strip()
-        if not raw:
-            return ""
-        out = raw.replace("{component_key}", component_key)
-        out = out.replace("{component|unbound}", component_technology or "unbound")
-        out = out.replace("{component}", component_technology)
-        return out
+        return format_phase_name(
+            template,
+            component_key=component_key,
+            component_technology=component_technology,
+        )
+
+
+def format_phase_name(
+    template: str,
+    *,
+    component_key: str = "",
+    component_technology: str = "",
+) -> str:
+    """Replace ``{component_key}``, ``{component}``, and
+    ``{component|unbound}`` tokens in a phase-name template. Shared
+    helper so the two callers (ControllerCorePhasesService and
+    ControllerAllRunner) can't drift on the substitution rules."""
+    raw = str(template or "").strip()
+    if not raw:
+        return ""
+    out = raw.replace("{component_key}", component_key)
+    out = out.replace("{component|unbound}", component_technology or "unbound")
+    out = out.replace("{component}", component_technology)
+    return out
 
     def run(
         self,

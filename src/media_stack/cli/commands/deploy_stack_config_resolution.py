@@ -68,25 +68,24 @@ class ConfigResolutionMixin:
         except ValueError as exc:
             raise DeployError(str(exc)) from exc
 
-    def _bootstrap_job_hooks(self) -> dict[str, object]:
+    def _adapter_hook_subkey(self, child_key: str) -> dict[str, object]:
+        """Return ``adapter_hooks.<child_key>`` from the resolved
+        bootstrap config, or ``{}`` when either parent or child is
+        missing / the wrong type."""
         cfg = self._resolved_bootstrap_config()
         adapter_hooks = cfg.get("adapter_hooks")
         if not isinstance(adapter_hooks, dict):
             return {}
-        bootstrap_job = adapter_hooks.get("bootstrap_job")
-        if not isinstance(bootstrap_job, dict):
+        section = adapter_hooks.get(child_key)
+        if not isinstance(section, dict):
             return {}
-        return bootstrap_job
+        return section
+
+    def _bootstrap_job_hooks(self) -> dict[str, object]:
+        return self._adapter_hook_subkey("bootstrap_job")
 
     def _edge_hooks(self) -> dict[str, object]:
-        cfg = self._resolved_bootstrap_config()
-        adapter_hooks = cfg.get("adapter_hooks")
-        if not isinstance(adapter_hooks, dict):
-            return {}
-        edge = adapter_hooks.get("edge")
-        if not isinstance(edge, dict):
-            return {}
-        return edge
+        return self._adapter_hook_subkey("edge")
 
     # -- edge routing resolution -------------------------------------------
 

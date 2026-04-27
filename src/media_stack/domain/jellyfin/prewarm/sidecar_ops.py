@@ -139,55 +139,58 @@ class JellyfinSidecarOps:
                     return archive.read(name)
         return None
 
-    def iter_sidecar_books_root_candidates(self, sidecar_cfg: dict[str, Any]) -> list[Path]:
+    def _iter_sidecar_root_candidates(
+        self,
+        sidecar_cfg: dict[str, Any],
+        *,
+        plural_key: str,
+        singular_key: str,
+        default_path: str,
+        fallback_path: str,
+    ) -> list[Path]:
+        """Resolve a deduped, ordered candidate list for a sidecar
+        media root. Pulled out of the books / music helpers because
+        the only difference between them was the four format-specific
+        keys + paths."""
         raw_candidates: list[str] = []
-        configured_list = sidecar_cfg.get("books_root_paths")
+        configured_list = sidecar_cfg.get(plural_key)
         if isinstance(configured_list, list):
             raw_candidates.extend(str(item or "").strip() for item in configured_list)
         elif configured_list is not None:
             raw_candidates.append(str(configured_list).strip())
 
         raw_candidates.append(
-            str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip()
+            str(sidecar_cfg.get(singular_key) or default_path).strip()
         )
-        raw_candidates.extend(["/media/books"])
+        raw_candidates.append(fallback_path)
 
         deduped: list[Path] = []
         seen: set[str] = set()
         for raw in raw_candidates:
             text = str(raw or "").strip()
-            if not text:
-                continue
-            if text in seen:
+            if not text or text in seen:
                 continue
             seen.add(text)
             deduped.append(Path(text))
         return deduped
+
+    def iter_sidecar_books_root_candidates(self, sidecar_cfg: dict[str, Any]) -> list[Path]:
+        return self._iter_sidecar_root_candidates(
+            sidecar_cfg,
+            plural_key="books_root_paths",
+            singular_key="books_root_path",
+            default_path="/srv-stack/media/books",
+            fallback_path="/media/books",
+        )
 
     def iter_sidecar_music_root_candidates(self, sidecar_cfg: dict[str, Any]) -> list[Path]:
-        raw_candidates: list[str] = []
-        configured_list = sidecar_cfg.get("music_root_paths")
-        if isinstance(configured_list, list):
-            raw_candidates.extend(str(item or "").strip() for item in configured_list)
-        elif configured_list is not None:
-            raw_candidates.append(str(configured_list).strip())
-
-        raw_candidates.append(
-            str(sidecar_cfg.get("music_root_path") or "/srv-stack/media/music").strip()
+        return self._iter_sidecar_root_candidates(
+            sidecar_cfg,
+            plural_key="music_root_paths",
+            singular_key="music_root_path",
+            default_path="/srv-stack/media/music",
+            fallback_path="/media/music",
         )
-        raw_candidates.extend(["/media/music"])
-
-        deduped: list[Path] = []
-        seen: set[str] = set()
-        for raw in raw_candidates:
-            text = str(raw or "").strip()
-            if not text:
-                continue
-            if text in seen:
-                continue
-            seen.add(text)
-            deduped.append(Path(text))
-        return deduped
 
     def path_has_epub(self, path: Path) -> bool:
         try:
