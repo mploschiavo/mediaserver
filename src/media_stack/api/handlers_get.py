@@ -1424,37 +1424,53 @@ class GetRequestHandler:
 
     @staticmethod
     def _handle_services(handler: ControllerAPIHandler) -> None:
-        from media_stack.api.services.registry import SERVICES
-        # ``published_port`` surfaces the host-side port when it
-        # differs from the container's internal ``port``.  The
-        # dashboard uses it to build browser-direct links.  For
-        # services with symmetric ports (sonarr 8989, etc.) the
-        # dashboard falls back to ``port``; SABnzbd is the current
-        # asymmetric case (internal 8080, published 8085 because
-        # qBittorrent owns 8080 externally).
-        svc_list = [
-            {"id": s.id, "name": s.name, "desc": s.desc, "category": s.category,
-             "host": s.host, "port": s.port,
-             "published_port": (s.published_port or s.port),
-             # Tells the dashboard whether the service serves at root
-             # (``http://host:port/``) or behind a path prefix
-             # (``http://host:port/app/<id>/``). Maintainerr is the
-             # canonical case where the bare port returns 404 — its
-             # express server only mounts /app/maintainerr/. Without
-             # this hint, the dashboard's "open" link 404s for the
-             # user. (v1.0.145.)
-             "preserve_path_prefix": bool(s.preserve_path_prefix)}
-            for s in SERVICES
-        ]
-        ctrl_port = int(os.environ.get("BOOTSTRAP_API_PORT", os.environ.get("CONTROLLER_PORT", "9100")))
-        svc_list.append({
-            "id": "controller", "name": "Media Stack Controller",
-            "desc": "Orchestration API and dashboard",
-            "category": "infrastructure", "host": "media-stack-controller",
-            "port": ctrl_port, "published_port": ctrl_port,
-            "health_path": "/healthz",
-        })
-        handler._json_response(200, svc_list)
+        from media_stack.api.services.registry import (
+            SERVICES,
+            build_apps_listing,
+            get_enabled_services,
+            is_service_enabled,
+        )
+        # The Apps page renders one card per launchable, profile-active
+        # service. Two filter dimensions:
+        #
+        #   * ``web_ui: false`` — hidden registry entries that exist
+        #     ONLY to anchor jobs in the bootstrap DAG (``core``,
+        #     ``media_integrity``). They have no host/port and the
+        #     dashboard must not render them.
+        #
+        #   * Profile gate — the active deploy's ``COMPOSE_PROFILES``
+        #     set decides whether plex / authentik / traefik / etc.
+        #     should be considered "deployed". Without this filter
+        #     the launcher used to show every YAML-declared service
+        #     (28+) regardless of whether the operator actually
+        #     deployed it, leading to a row of broken tiles and a
+        #     "why is plex listed when I never enabled it?" support
+        #     loop.
+        #
+        # Operators can opt out per-request with ``?include=all`` —
+        # useful for tooling and the registry inspector — but the UI
+        # treats the unfiltered list as the default.
+        params: dict[str, str] = {}
+        if "?" in handler.path:
+            from urllib.parse import parse_qs
+            for k, vs in parse_qs(
+                handler.path.split("?", 1)[1], keep_blank_values=True,
+            ).items():
+                if vs:
+                    params[k] = vs[0]
+        include_all = params.get("include", "").strip().lower() == "all"
+        ctrl_port = int(os.environ.get(
+            "BOOTSTRAP_API_PORT",
+            os.environ.get("CONTROLLER_PORT", "9100"),
+        ))
+        handler._json_response(
+            200,
+            build_apps_listing(
+                list(SERVICES),
+                include_all=include_all,
+                controller_port=ctrl_port,
+            ),
+        )
 
     # In-process cache so a Sonarr poll every few minutes doesn't
     # hammer TVMaze. 6h matches Sonarr's default list-refresh

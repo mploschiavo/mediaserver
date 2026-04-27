@@ -149,3 +149,59 @@ class OidcCrypto:
                 .decode("ascii")
                 .rstrip("=")
                 .replace("+", "."))
+
+    @staticmethod
+    def _pbkdf2_b64_decode(value: str) -> bytes:
+        """Inverse of ``_pbkdf2_b64``. Adds back stripped padding
+        and unswaps the '.' → '+' substitution before standard
+        base64 decoding."""
+        cooked = value.replace(".", "+")
+        # Restore the standard base64 padding (length must be a
+        # multiple of 4).
+        pad = (-len(cooked)) % 4
+        cooked += "=" * pad
+        return base64.b64decode(cooked)
+
+    @classmethod
+    def verify_pbkdf2(cls, plaintext: str, hash_str: str) -> bool:
+        """Constant-time check that ``plaintext`` is the secret a
+        previous ``hash_client_secret`` call hashed into ``hash_str``.
+
+        Used by the diagnostic CLI (``bin/ops/verify_authelia_oidc.py``)
+        and by integration tests that want to round-trip the hash
+        format end-to-end. Returns False on any parse failure — the
+        helper is designed for "is this still a valid pbkdf2 string
+        the live Authelia binary will accept?" not "tell me why".
+        """
+        if not hash_str.startswith("$pbkdf2-sha512$"):
+            return False
+        # Format: ``$pbkdf2-sha512$<iters>$<salt-b64>$<hash-b64>``.
+        parts = hash_str.split("$")
+        if len(parts) != 5:
+            return False
+        try:
+            iters = int(parts[2])
+        except ValueError:
+            return False
+        try:
+            salt = cls._pbkdf2_b64_decode(parts[3])
+            expected = cls._pbkdf2_b64_decode(parts[4])
+        except (ValueError, base64.binascii.Error):
+            return False
+        # Require the canonical key length. Without this guard, a
+        # truncated hash would happily verify because pbkdf2 output
+        # is deterministic in its prefix bytes — a real downgrade
+        # vector if anyone ever stored a shortened hash.
+        if len(expected) != _PBKDF2_DKLEN:
+            return False
+        candidate = hashlib.pbkdf2_hmac(
+            "sha512",
+            plaintext.encode("utf-8"),
+            salt,
+            iters,
+            dklen=_PBKDF2_DKLEN,
+        )
+        # constant-time compare via hmac.compare_digest equivalent —
+        # hashlib.compare_digest exists from 3.3+.
+        import hmac
+        return hmac.compare_digest(candidate, expected)

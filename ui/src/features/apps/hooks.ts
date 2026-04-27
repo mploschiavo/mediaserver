@@ -20,6 +20,23 @@ export interface ServiceEntry {
   published_port?: number;
   preserve_path_prefix?: boolean;
   health_path?: string;
+  /** True when the service has a user-facing UI worth opening. */
+  web_ui?: boolean;
+  /** Compose-profile gates declared in the service's contract. */
+  profiles?: readonly string[];
+  /**
+   * True when the active deploy's ``COMPOSE_PROFILES`` enables
+   * this service. Profile-gated services that aren't active are
+   * filtered out of the response entirely (see backend), but the
+   * field is still surfaced when ``?include=all`` is queried.
+   */
+  enabled?: boolean;
+  /**
+   * Optional override URL for the service's logo / icon. Empty
+   * string means the dashboard derives a default from the id (CDN
+   * lookup; falls back to a generic glyph when the CDN 404s).
+   */
+  icon_url?: string;
 }
 
 interface ServicesResponse {
