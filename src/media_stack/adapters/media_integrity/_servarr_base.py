@@ -309,13 +309,47 @@ class _ServarrBaseAdapter:
             return []
         return [str(parent)]
 
-    # -- Subclass hooks -------------------------------------------------
+    # -- Default implementations (subclass overrides if needed) --------
+
+    def list_releases(self) -> list[MediaRelease]:
+        """Default: ``GET /{_media_endpoint}`` and feed each row
+        through ``_release_from_raw``. Sonarr overrides because a
+        series → episodes flattening is non-trivial; Radarr / Lidarr
+        / Readarr all use this default."""
+        raw = self._request_json("GET", f"/{self._media_endpoint}")
+        if not isinstance(raw, list):
+            return []
+        out: list[MediaRelease] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            release = self._release_from_raw(item)
+            if release is not None:
+                out.append(release)
+        return out
 
     def _list_files_for(self, release_id: str) -> list[MediaFile]:
-        """Default: ``/{media}file?{parent_query_key}={id}``. Subclass
-        overrides ``_parent_query_key`` (e.g., "movieId" for Radarr,
-        "seriesId" for Sonarr) or this method entirely."""
-        raise NotImplementedError
+        """Default: ``GET /{_media_file_endpoint}?{_parent_file_field}=ID``.
+        Sonarr overrides because the episode→file relationship is
+        many-to-one through episodeIds; Radarr / Lidarr / Readarr
+        all use this default."""
+        raw = self._request_json(
+            "GET",
+            f"/{self._media_file_endpoint}?"
+            f"{self._parent_file_field}={release_id}",
+        )
+        if not isinstance(raw, list):
+            return []
+        out: list[MediaFile] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            mf = self._file_from_raw(item, release_id)
+            if mf is not None:
+                out.append(mf)
+        return out
+
+    # -- Subclass hooks -------------------------------------------------
 
     def _release_from_raw(self, raw: dict[str, Any]) -> MediaRelease | None:
         raise NotImplementedError

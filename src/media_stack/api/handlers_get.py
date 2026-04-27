@@ -447,7 +447,8 @@ class GetRequestHandler:
             _media_integrity_handlers.dispatch_get(handler, path, actor)
         elif path == "/api/users" or path.startswith("/api/users/") \
                 or path in ("/api/roles", "/api/user-providers",
-                            "/api/audit-log", "/api/users-reconcile",
+                            "/api/audit-log", "/api/audit-log/stats",
+                            "/api/users-reconcile",
                             "/api/invites", "/api/me", "/metrics",
                             "/api/tokens"):
             self._handle_user_mgmt(handler, path)
@@ -1706,6 +1707,25 @@ class _UserMgmtGetHelper:
                 "entries": svc.audit_recent(
                     limit=limit, action_filter=action_filter),
             })
+            return True
+        if path == "/api/audit-log/stats":
+            # Operator-visible retention surface — entry count, disk
+            # bytes used, oldest/newest timestamps, archive count, and
+            # the configured rotation policy. Powers the "Audit log
+            # retention" banner on /audit-log so operators can see
+            # how long history is kept and how close to the cap they
+            # are. Cheap (~30ms for a 5MiB log) so safe to call from
+            # the page header.
+            try:
+                stats = svc._audit.stats()
+            except Exception as exc:  # noqa: BLE001
+                handler._json_response(500, {
+                    "error": str(exc)[:200],
+                    "entry_count": 0,
+                    "disk_bytes": 0,
+                })
+                return True
+            handler._json_response(ok, stats)
             return True
         return False
 
