@@ -30,6 +30,7 @@ import { CrashloopsCard } from "@/features/ops-detail/CrashloopsCard";
 import { FailedServicesCard } from "@/features/ops-detail/FailedServicesCard";
 import { HealthHistorySparkline } from "@/features/ops-detail/HealthHistorySparkline";
 import { HealthStoriesCard } from "@/features/ops-detail/HealthStoriesCard";
+import { OpsKpiChart } from "@/features/ops/OpsKpiChart";
 import { Route as RootRoute } from "@/routes/__root";
 
 type ActionKey = "refreshServices" | "rotateKeys" | "pullManifests" | "healthProbe";
@@ -193,6 +194,9 @@ function OpsPage() {
         className="grid grid-cols-1 gap-4 md:grid-cols-2"
         data-testid="ops-detail-grid"
       >
+        <div className="md:col-span-2">
+          <OpsKpiChart />
+        </div>
         <HealthStoriesCard />
         <CrashloopsCard />
         <FailedServicesCard />

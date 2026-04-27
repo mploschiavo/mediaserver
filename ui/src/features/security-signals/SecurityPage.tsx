@@ -1,6 +1,7 @@
 import { ConcurrentSpikesCard } from "./ConcurrentSpikesCard";
 import { FailedLoginsCard } from "./FailedLoginsCard";
 import { NewLocationsCard } from "./NewLocationsCard";
+import { SecurityClustersChart } from "./SecurityClustersChart";
 
 /**
  * Composes the three abuse-defence security signals into one
@@ -14,6 +15,7 @@ import { NewLocationsCard } from "./NewLocationsCard";
 export function SecurityPage() {
   return (
     <div className="flex flex-col gap-6" data-testid="security-page">
+      <SecurityClustersChart />
       <FailedLoginsCard />
       <NewLocationsCard />
       <ConcurrentSpikesCard />

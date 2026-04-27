@@ -49,8 +49,8 @@ services:
       - |
         for d in \
           /cfg/jellyfin /cfg/jellyseerr /cfg/sonarr /cfg/radarr /cfg/lidarr \
-          /cfg/readarr /cfg/prowlarr /cfg/bazarr /cfg/sabnzbd /cfg/qbittorrent \
-          /cfg/maintainerr /cfg/tautulli /cfg/homepage /cfg/envoy /cfg/unpackerr \
+          /cfg/readarr /cfg/prowlarr /cfg/bazarr /cfg/qbittorrent \
+          /cfg/maintainerr /cfg/homepage /cfg/envoy /cfg/unpackerr \
           /data/torrents /data/usenet /data/transcode \
           /data/torrents/incomplete \
           /data/torrents/completed \
@@ -604,25 +604,8 @@ services:
       - traefik.http.routers.maintainerr.rule=Host(`maintainerr.local`)
       - traefik.http.services.maintainerr.loadbalancer.server.port=6246
 
-  sabnzbd:
-    image: lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f
-    container_name: sabnzbd
-    environment: *arr-env
-    volumes:
-      - ${CONFIG_ROOT:-../config}/sabnzbd:/config
-      - ${DATA_ROOT:-../data}/usenet:/data/usenet
-    ports:
-      - "${SABNZBD_PORT:-8085}:8080"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.local`)
-      - traefik.http.services.sabnzbd.loadbalancer.server.port=8080
+  # sabnzbd retired from the default stack on 2026-04-26 — re-add
+  # under ``profiles: ["usenet"]`` if needed.
 
   plex:
     image: lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95
@@ -640,24 +623,8 @@ services:
       - ${DATA_ROOT:-../data}/transcode:/transcode
     restart: unless-stopped
 
-  tautulli:
-    image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
-    container_name: tautulli
-    environment: *arr-env
-    volumes:
-      - ${CONFIG_ROOT:-../config}/tautulli:/config
-    ports:
-      - "${TAUTULLI_PORT:-8181}:8181"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8181/"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.tautulli.rule=Host(`tautulli.local`)
-      - traefik.http.services.tautulli.loadbalancer.server.port=8181
+  # tautulli retired from the default stack on 2026-04-26 — Plex-only
+  # tool. Re-add under ``profiles: ["plex"]`` if a Plex deploy needs it.
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e

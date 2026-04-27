@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GuardrailDomainTab } from "./GuardrailDomainTab";
+import { GuardrailsByDomainChart } from "./GuardrailsByDomainChart";
 import {
   useGuardrails,
   useUpdateGuardrailsConfig,
@@ -74,6 +75,7 @@ export function GuardrailsPage({ focusedId }: GuardrailsPageProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      <GuardrailsByDomainChart />
       <CadenceEditor
         currentSeconds={query.data?.evaluation_interval_seconds ?? 300}
       />
