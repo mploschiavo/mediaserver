@@ -146,4 +146,100 @@ describe("DataTable coverage ratchet", () => {
     // key/value rows).
     expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(4);
   });
+
+  // -------------------------------------------------------------------
+  // Tabular <ul> ratchet — sister rule to the <Table>/<table> check
+  // above. Catches the legacy ``<ul>{rows.map(r => <li key={r.id}>...
+  // <Badge .../><span class="font-mono">...</span>...</li>)}</ul>``
+  // pattern that was rendered tabular data without going through
+  // <DataTable>. Older RunHistoryPanel (pre-v1.3.66) is the canonical
+  // example. Detection signals:
+  //   1. ``<li key={`` — keyed mapping (i.e. row rendering)
+  //   2. ``font-mono`` OR ``tabular-nums`` — a tabular column style
+  //      operators don't use for prose lists
+  //   3. Two or more ``<Badge`` references — multi-column row chrome
+  //   4. NOT importing from ``@/components/data-table``
+  // Files matching ALL FOUR signals are tabular-list-without-DataTable
+  // and need migration. The baseline is pinned at the current
+  // count; new files can't add to it.
+  // -------------------------------------------------------------------
+
+  // Pre-existing tabular <ul> users at the time this rule landed
+  // (v1.3.66). Each entry is a follow-up migration target — drop
+  // from the allowlist once the file uses DataTable. No new
+  // entries should be added without a "side-pane / non-sortable
+  // intentional" justification matching the _LEGACY_TABLE_ALLOWLIST
+  // pattern above. Goal is to drive this set to an empty set; the
+  // ``ratchets the size cap downward`` test below enforces that.
+  const _UL_TABULAR_ALLOWLIST: ReadonlySet<string> = new Set<string>([
+    // Side-pane / drawer-internal row layouts — small, contextual,
+    // not "what tabular data does the operator want to sort?".
+    "jobs/LastRunPanel.tsx",
+    "jobs/RunDrawerPanels.tsx",
+    "users-admin/UserDetailDrawer.tsx",
+    // Card-internal status rows (one row per service / config item).
+    // Sortable + filterable would be useful but each card is small
+    // (≤10 rows typically); migrate opportunistically.
+    "infra-detail/GpuCard.tsx",
+    "ops-detail/ConfigIntegrityCard.tsx",
+    "ops-detail/CrashloopsCard.tsx",
+    "routing-admin/EnvoyAdminSummaryCard.tsx",
+    "settings/DisplayPrefsCard.tsx",
+    "settings/EffectiveProfileCard.tsx",
+    "settings/EnvViewerCard.tsx",
+    // Genuinely tabular — high-value migration targets.
+    "livetv/EpgHealthCard.tsx",
+    "me/LoginHistoryCard.tsx",
+  ]);
+
+  function looksTabular(src: string): boolean {
+    if (!/<li\s+key=\{/.test(src)) return false;
+    if (!/font-mono|tabular-nums/.test(src)) return false;
+    const badgeMatches = src.match(/<Badge\b/g);
+    if (!badgeMatches || badgeMatches.length < 2) return false;
+    if (
+      /from\s+["']@\/components\/data-table["']/.test(src) ||
+      /\bDataTable\b/.test(src)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  it("no tabular <ul>...<li key=...> rendering outside DataTable adopters", () => {
+    const violations: string[] = [];
+    for (const file of walk(FEATURES_DIR)) {
+      const src = fs.readFileSync(file, "utf-8");
+      if (!looksTabular(src)) continue;
+      const rel = relPath(file);
+      if (_UL_TABULAR_ALLOWLIST.has(rel)) continue;
+      violations.push(rel);
+    }
+    if (violations.length > 0) {
+      const msg = [
+        `${violations.length} feature file(s) render tabular data via raw`,
+        "<ul>...<li key={...}> instead of <DataTable>. The signals: keyed",
+        "mapping + font-mono/tabular-nums + 2+ Badge cells. Migrate each",
+        "to <DataTable> for site-wide consistency. If a file legitimately",
+        "renders prose / non-tabular data via <ul>, refactor it to drop",
+        "the font-mono signal so it doesn't trip this ratchet, OR add an",
+        "entry to _UL_TABULAR_ALLOWLIST with a justification.",
+        "",
+        "Files needing migration:",
+        ...violations.map((v) => `  - features/${v}`),
+      ].join("\n");
+      throw new Error(msg);
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("UL allowlist size doesn't grow without reason", () => {
+    // Floor — only goes DOWN as files migrate to DataTable. v1.3.66
+    // seeded the allowlist with 12 pre-existing tabular <ul> users.
+    // Bump down each time you remove an entry (via a real
+    // DataTable migration). New tabular <ul> rendering MUST go
+    // through <DataTable> — only side-pane / drawer-internal row
+    // layouts get justified exemptions.
+    expect(_UL_TABULAR_ALLOWLIST.size).toBeLessThanOrEqual(12);
+  });
 });

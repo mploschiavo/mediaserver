@@ -494,6 +494,11 @@ export interface RunRecordShape {
    *  prior samples for this job. The UI tints rows above 1σ amber
    *  and above 2σ red. */
   anomaly_score?: number | null;
+  /** When ``parent_run_id`` is set AND the parent record is still
+   *  in the persistence window, the controller inlines the parent
+   *  record's ``job_name`` here so the UI can render
+   *  "child-job (under parent-name)" without a second fetch. */
+  parent_job_name?: string;
 }
 
 /** Returned by ``GET /api/runs/<run_id>`` — the record plus its
