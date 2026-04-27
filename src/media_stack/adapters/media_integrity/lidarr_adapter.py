@@ -47,18 +47,8 @@ class LidarrAdapter(_ServarrBaseAdapter):
 
     _NAMING_FIELDS = {"rename_files": "renameTracks"}
 
-    def list_releases(self) -> list[MediaRelease]:
-        raw = self._request_json("GET", "/album")
-        if not isinstance(raw, list):
-            return []
-        out: list[MediaRelease] = []
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            rel = self._release_from_raw(item)
-            if rel is not None:
-                out.append(rel)
-        return out
+    # list_releases inherited from _ServarrBaseAdapter (default
+    # GET /{_media_endpoint} → list of _release_from_raw rows).
 
     def _release_from_raw(self, raw: dict[str, Any]) -> MediaRelease | None:
         album_id = raw.get("id")
@@ -90,18 +80,8 @@ class LidarrAdapter(_ServarrBaseAdapter):
             monitored=bool(raw.get("monitored", True)),
         )
 
-    def _list_files_for(self, release_id: str) -> list[MediaFile]:
-        raw = self._request_json("GET", f"/trackfile?albumId={release_id}")
-        if not isinstance(raw, list):
-            return []
-        out: list[MediaFile] = []
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            mf = self._file_from_raw(item, release_id)
-            if mf is not None:
-                out.append(mf)
-        return out
+    # _list_files_for inherited from _ServarrBaseAdapter (default
+    # GET /{_media_file_endpoint}?{_parent_file_field}=<id>).
 
     def _file_from_raw(
         self, raw: dict[str, Any], release_id: str

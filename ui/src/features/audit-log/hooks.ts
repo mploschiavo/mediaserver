@@ -90,6 +90,35 @@ export function useAuditLogVerify(): UseMutationResult<
   });
 }
 
+/**
+ * Snapshot returned by ``GET /api/audit-log/stats``. Backs the
+ * "Retention" banner above the table. Cheap to compute server-side
+ * (~30ms for a 5MiB log), so safe to refetch on the same quiet
+ * cadence as the chain-head query.
+ */
+export interface AuditLogStatsShape {
+  entry_count: number;
+  disk_bytes: number;
+  oldest_ts: string;
+  newest_ts: string;
+  archive_count: number;
+  max_size_bytes: number;
+  keep_archives: number;
+  max_disk_bytes: number;
+}
+
+const STATS_KEY = ["audit-log", "stats"] as const;
+
+export function useAuditLogStats(): UseQueryResult<AuditLogStatsShape> {
+  return useQuery({
+    queryKey: STATS_KEY,
+    queryFn: () => fetcher<AuditLogStatsShape>("api/audit-log/stats"),
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+  });
+}
+
 export const auditLogQueryKeys = {
   head: HEAD_KEY,
+  stats: STATS_KEY,
 } as const;
