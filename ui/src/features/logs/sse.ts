@@ -20,7 +20,7 @@
 //   - On error, it sets `error` and stops re-opening; the consumer
 //     decides whether to retry.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getBaseUrl } from "@/api/client";
 
 export interface LogsSseFilters {

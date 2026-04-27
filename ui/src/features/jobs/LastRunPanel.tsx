@@ -23,6 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { useLatestRunForJob, useRun, type RunRecordShape } from "./hooks";
+import { epochToIso } from "./format";
 import { formatAbsolute, formatElapsed, formatRelative } from "./format";
 import { RunGanttChart } from "./RunGanttChart";
 
@@ -131,7 +132,7 @@ function RunSummaryCard({ run }: { run: RunRecordShape }) {
         <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <span title={formatAbsolute(run.started_at)}>
             <Clock aria-hidden className="mr-1 inline-block size-3" />
-            {formatRelative(epochSecToIso(run.started_at))}
+            {formatRelative(epochToIso(run.started_at))}
           </span>
           <span className="font-mono tabular-nums">
             {formatElapsed(liveElapsed)}
@@ -268,7 +269,8 @@ function RunStatusBadge({
   status: string;
   compact?: boolean;
 }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.unknown;
+  const cfg =
+    STATUS_CONFIG[status] ?? STATUS_CONFIG.unknown ?? STATUS_DEFAULT;
   const Icon = cfg.icon;
   return (
     <Badge
@@ -285,6 +287,10 @@ function RunStatusBadge({
   );
 }
 
+const STATUS_DEFAULT = {
+  variant: "default" as const,
+  icon: Activity,
+};
 const STATUS_CONFIG: Record<
   string,
   {
@@ -301,7 +307,3 @@ const STATUS_CONFIG: Record<
   unknown: { variant: "default", icon: Activity },
 };
 
-function epochSecToIso(ts: number): string {
-  if (!Number.isFinite(ts)) return "";
-  return new Date(ts * 1000).toISOString();
-}

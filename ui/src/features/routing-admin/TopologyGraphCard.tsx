@@ -167,18 +167,23 @@ export function TopologyGraphCard() {
       x: n.id === "__internet__" ? 60 : n.id === "__gateway__" ? WIDTH / 2 : WIDTH - 80,
       y: HEIGHT / 2,
     }));
-    // d3-force types its node generic loosely — node-id and node-kind
-    // payloads ride on top of the `SimulationNodeDatum` base. Use a
-    // narrow accessor type so the strict-TS gate (no `any`) stays clean.
-    interface _SimNode {
+    // d3-force's generic constraint is ``extends SimulationNodeDatum``
+    // — the type carries the runtime fields ``index/x/y/vx/vy/fx/fy``
+    // that the simulation mutates in-place. Our payload extends that
+    // base with the id + kind we care about; using the intersection
+    // keeps the strict-TS gate (no `any`) honest while satisfying
+    // d3-force's contract.
+    type _SimNode = import("d3-force").SimulationNodeDatum & {
       id: string;
       kind?: string;
-    }
-    const sim = forceSimulation<_SimNode>(simNodes)
+    };
+    const sim = forceSimulation<_SimNode>(simNodes as _SimNode[])
       .force(
         "link",
-        forceLink(graph.links.map((l) => ({ ...l })))
-          .id((d: _SimNode) => d.id)
+        forceLink<_SimNode, { source: string; target: string }>(
+          graph.links.map((l) => ({ ...l })),
+        )
+          .id((d) => d.id)
           .distance(120)
           .strength(0.3),
       )

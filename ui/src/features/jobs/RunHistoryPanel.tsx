@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 import { useRuns, type RunRecordShape } from "./hooks";
-import { formatAbsolute, formatElapsed, formatRelative } from "./format";
+import { epochToIso, formatAbsolute, formatElapsed, formatRelative } from "./format";
 
 /**
  * Phase-2 cross-job run history. Reads `GET /api/runs` and surfaces the
@@ -45,6 +45,10 @@ const STATUS_OPTIONS: readonly {
   { value: "timeout", label: "Timeout" },
 ];
 
+const STATUS_DEFAULT = {
+  variant: "default" as const,
+  icon: Activity,
+};
 const STATUS_CONFIG: Record<
   string,
   {
@@ -146,7 +150,9 @@ export function RunHistoryPanel({
           >
             {filtered.map((r) => {
               const cfg =
-                STATUS_CONFIG[r.status] ?? STATUS_CONFIG.unknown;
+                STATUS_CONFIG[r.status] ??
+                STATUS_CONFIG.unknown ??
+                STATUS_DEFAULT;
               const Icon = cfg.icon;
               return (
                 <li
@@ -172,7 +178,7 @@ export function RunHistoryPanel({
                     className="font-mono text-fg-muted"
                     title={formatAbsolute(r.started_at)}
                   >
-                    {formatRelative(epochSecToIso(r.started_at))}
+                    {formatRelative(epochToIso(r.started_at))}
                   </span>
                   <span className="font-mono tabular-nums text-fg-muted">
                     {formatElapsed(r.elapsed)}
@@ -190,7 +196,3 @@ export function RunHistoryPanel({
   );
 }
 
-function epochSecToIso(ts: number): string {
-  if (!Number.isFinite(ts)) return "";
-  return new Date(ts * 1000).toISOString();
-}
