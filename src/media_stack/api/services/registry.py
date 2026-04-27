@@ -69,6 +69,12 @@ class ServiceDef:
     scalable: bool = True
     scale_to_zero: bool = False
     top_level_config_key: bool = False
+    # Optional icon override. Empty string means "use the dashboard's
+    # default icon resolver" (CDN-served logo by service id, falling
+    # back to a generic glyph when the CDN 404s). YAML can set this
+    # to a fully-qualified URL or to a relative path the dashboard
+    # serves locally — the field is verbatim user-controlled.
+    icon_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +160,7 @@ def _parse_service_entry(entry: dict[str, Any]) -> ServiceDef | None:
         scalable=bool(entry.get("scalable", True)),
         scale_to_zero=bool(entry.get("scale_to_zero", False)),
         top_level_config_key=bool(entry.get("top_level_config_key", False)),
+        icon_url=str(entry.get("icon_url", "")),
     )
 
 
@@ -300,6 +307,62 @@ def get_enabled_services(
     """Filtered SERVICES list — drops profile-gated services that
     aren't enabled by the active deploy."""
     return [s for s in SERVICES if is_service_enabled(s, env)]
+
+
+def build_apps_listing(
+    services: list[ServiceDef] | None = None,
+    *,
+    include_all: bool = False,
+    controller_port: int = 9100,
+    env: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Build the JSON shape returned by ``GET /api/services``.
+
+    Pure helper extracted from ``_handle_services`` so the filter
+    logic is unit-testable without spinning up the full request
+    handler (which transitively imports auth modules that need
+    optional native deps).
+
+    Default path filters out:
+      * ``web_ui: false`` entries (job-DAG anchors with no UI).
+      * Profile-gated services whose declared profiles aren't in the
+        active ``COMPOSE_PROFILES`` env var.
+
+    ``include_all=True`` returns every registry entry — useful for
+    tooling and the registry inspector.
+    """
+    src = list(SERVICES if services is None else services)
+    if include_all:
+        candidates = src
+    else:
+        candidates = [s for s in src if is_service_enabled(s, env) and s.web_ui]
+
+    out: list[dict[str, Any]] = [
+        {
+            "id": s.id, "name": s.name, "desc": s.desc,
+            "category": s.category,
+            "host": s.host, "port": s.port,
+            "published_port": (s.published_port or s.port),
+            "preserve_path_prefix": bool(s.preserve_path_prefix),
+            "web_ui": bool(s.web_ui),
+            "profiles": list(s.profiles),
+            "enabled": bool(is_service_enabled(s, env)),
+            "icon_url": s.icon_url,
+        }
+        for s in candidates
+    ]
+    out.append({
+        "id": "controller", "name": "Media Stack Controller",
+        "desc": "Orchestration API and dashboard",
+        "category": "infrastructure", "host": "media-stack-controller",
+        "port": controller_port, "published_port": controller_port,
+        "health_path": "/healthz",
+        "web_ui": True,
+        "profiles": [],
+        "enabled": True,
+        "icon_url": "",
+    })
+    return out
 
 
 def get_scalable_services() -> list[ServiceDef]:

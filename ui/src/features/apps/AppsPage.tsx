@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ExternalLink, Grid3x3, AppWindow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,24 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { useServices, type ServiceEntry } from "./hooks";
+
+/**
+ * Default icon CDN. ``walkxcode/dashboard-icons`` is the de-facto
+ * registry for self-hosted service logos (used by Homarr, Heimdall,
+ * Organizr, etc.). The contract file can override per-service via
+ * ``icon_url`` — useful for services not in the public catalog or
+ * private deployments behind a corporate firewall.
+ */
+const DEFAULT_ICON_BASE =
+  "https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png";
+
+function resolveIconUrl(s: ServiceEntry): string | null {
+  if (s.icon_url && s.icon_url.length > 0) return s.icon_url;
+  if (!s.id) return null;
+  // The CDN 404s for unrecognised ids; the <img onError> handler
+  // hides the icon and falls back to the lucide AppWindow glyph.
+  return `${DEFAULT_ICON_BASE}/${encodeURIComponent(s.id)}.png`;
+}
 
 const CATEGORY_ORDER: ReadonlyArray<{ key: string; label: string }> = [
   { key: "media", label: "Media servers" },
@@ -125,12 +143,28 @@ export function AppsPage() {
 
 function AppCard({ service }: { service: ServiceEntry }) {
   const href = serviceLaunchUrl(service.id);
+  const iconUrl = resolveIconUrl(service);
+  const [iconBroken, setIconBroken] = useState(false);
+  const showIcon = iconUrl && !iconBroken;
   return (
     <Card data-testid={`apps-card-${service.id}`}>
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
         <div className="flex flex-col gap-1">
           <CardTitle className="flex items-center gap-2 text-base">
-            <AppWindow aria-hidden className="size-4 text-fg-muted" />
+            {showIcon ? (
+              <img
+                src={iconUrl}
+                alt=""
+                aria-hidden
+                width={20}
+                height={20}
+                className="size-5 rounded-sm object-contain"
+                onError={() => setIconBroken(true)}
+                data-testid={`apps-icon-${service.id}`}
+              />
+            ) : (
+              <AppWindow aria-hidden className="size-4 text-fg-muted" />
+            )}
             {service.name || service.id}
           </CardTitle>
           {service.desc ? (
@@ -170,6 +204,15 @@ function groupByCategory(
   const out: Record<string, ServiceEntry[]> = {};
   for (const s of services) {
     if (SERVICES_NOT_LAUNCHABLE.has(s.id)) continue;
+    // ``web_ui: false`` services exist only to anchor jobs in the
+    // bootstrap DAG (``core``, ``media_integrity``). Filter them
+    // even if the backend regresses — defense in depth.
+    if (s.web_ui === false) continue;
+    // ``enabled: false`` means the service's compose-profile gate
+    // didn't fire. Backend already filters these on the default
+    // path, but keep the guard here so an ``?include=all`` fetch
+    // still rendered through this component would still hide them.
+    if (s.enabled === false) continue;
     const key = s.category && CATEGORY_ORDER.some((c) => c.key === s.category)
       ? s.category
       : "other";
