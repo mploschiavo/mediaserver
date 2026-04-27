@@ -28,11 +28,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BASELINE_FILE = REPO_ROOT / ".ratchets" / "commit-message-baseline.txt"
 
-_BANNED_TRAILER_FRAGMENTS = (
-    "Co-Authored-By: Claude",
-    "Co-Authored-By: claude",
-    "Co-authored-by: Claude",
-    "Co-authored-by: claude",
+_BANNED_TRAILER_PREFIXES = (
+    "Co-Authored-By:",
+    "Co-authored-by:",
+    "co-authored-by:",
 )
 
 
@@ -110,13 +109,23 @@ def test_no_ai_coauthor_trailers_or_eof_markers_after_baseline() -> None:
 
     failures: list[str] = []
     for sha, message in commits:
-        for fragment in _BANNED_TRAILER_FRAGMENTS:
-            if fragment in message:
-                failures.append(
-                    f"{sha[:8]}: contains banned AI co-author trailer "
-                    f"({fragment!r})",
-                )
-                break
+        # Only flag actual trailer LINES — i.e. lines whose stripped
+        # form starts with the banned prefix. Otherwise a commit that
+        # describes the rule (e.g. "rule: no Co-Authored-By: …" inside
+        # a paragraph) gets caught for documenting itself.
+        lines = message.splitlines()
+        for line in lines:
+            stripped = line.strip()
+            for prefix in _BANNED_TRAILER_PREFIXES:
+                if stripped.startswith(prefix):
+                    failures.append(
+                        f"{sha[:8]}: contains banned AI co-author trailer "
+                        f"line: {stripped!r}",
+                    )
+                    break
+            else:
+                continue
+            break
         eof_lines = _looks_like_eof_marker(message)
         if eof_lines:
             failures.append(

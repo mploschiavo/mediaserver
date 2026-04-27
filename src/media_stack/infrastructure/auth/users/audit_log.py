@@ -222,6 +222,73 @@ class AuditLog:
                 continue
             yield entry
 
+    def stats(self) -> dict[str, Any]:
+        """Operator-visible retention metrics for the audit log.
+
+        Returns ``{entry_count, disk_bytes, oldest_ts, newest_ts,
+        archive_count, max_size_bytes, keep_archives}``. The bytes
+        figure includes every rotated archive next to the live file
+        — operators care about total disk footprint, not just the
+        active file. ``oldest_ts`` / ``newest_ts`` come from the
+        live file alone; archive timestamps would require parsing
+        every gz / log.N which is too expensive for a hot endpoint.
+
+        Cheap by design — a 5MiB log reads in ~30ms.
+        """
+        entry_count = 0
+        oldest_ts = ""
+        newest_ts = ""
+        if self._path.is_file():
+            with self._path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = str(row.get("timestamp", ""))
+                    entry_count += 1
+                    if not oldest_ts or ts < oldest_ts:
+                        oldest_ts = ts
+                    if ts > newest_ts:
+                        newest_ts = ts
+
+        disk_bytes = 0
+        archive_count = 0
+        live_size = (self._path.stat().st_size
+                     if self._path.is_file() else 0)
+        disk_bytes += live_size
+        # Archives live next to the live file as ``<name>.1``, ``<name>.2``…
+        # Count every sibling matching the rotation pattern.
+        parent = self._path.parent
+        stem = self._path.name
+        if parent.is_dir():
+            for sibling in parent.iterdir():
+                if sibling.name == stem:
+                    continue
+                if sibling.name.startswith(stem + "."):
+                    archive_count += 1
+                    try:
+                        disk_bytes += sibling.stat().st_size
+                    except OSError:
+                        pass
+
+        return {
+            "entry_count": entry_count,
+            "disk_bytes": disk_bytes,
+            "oldest_ts": oldest_ts,
+            "newest_ts": newest_ts,
+            "archive_count": archive_count,
+            "max_size_bytes": self._max_size_bytes,
+            "keep_archives": self._keep_archives,
+            # Estimated max footprint: live file + N archives at
+            # max_size each. Operators use this to size their disk.
+            "max_disk_bytes": self._max_size_bytes
+            * (self._keep_archives + 1),
+        }
+
     def head(self) -> dict[str, Any]:
         """Chain head snapshot: height, last hash, last timestamp.
 

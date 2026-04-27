@@ -60,8 +60,8 @@ export function ExposureCard() {
   const exposure: RoutingV2Exposure = q.data.config.exposure;
   const enabled = Boolean(exposure.enabled);
   const bindingLabel = bindingModeLabel(exposure.binding);
-  const publicHostnames = Array.isArray(publicHostnames)
-    ? publicHostnames
+  const publicHostnames: string[] = Array.isArray(exposure.public_hostnames)
+    ? exposure.public_hostnames
     : [];
 
   return (

@@ -1,0 +1,42 @@
+# CLI command registry — every src/media_stack/cli/commands/*_main.py is
+# enumerated below with a one-line purpose. Ratchet
+# tests/unit/ratchets/test_cli_commands_registered_ratchet.py asserts:
+#
+#   1. Every *_main.py file in src/media_stack/cli/commands/ is listed
+#      below.
+#   2. Every entry below corresponds to a file that exists.
+#   3. The repo never has two commands with the same purpose.
+#
+# Before adding a new *_main.py: skim this list. If anything here
+# already does the job, extend or re-use it instead. Adding a duplicate
+# fails CI.
+#
+# Format: each entry is "<filename>: <one-line purpose>" with the
+# purpose taken verbatim from the module's first docstring line.
+# Order alphabetical to make reviews predictable.
+#
+# To add a new command: append the entry here in the same format,
+# AND add the *_main.py file. The ratchet will fail if either
+# is missing.
+
+commands:
+  apply_scale_policy_main.py: Apply a scale policy to running controller services.
+  backup_stack_main.py: Snapshot the live stack to a tar archive for restore.
+  build_controller_image_main.py: Build (and optionally push) the controller container image.
+  build_ui_image_main.py: Build (and optionally push) the UI container image.
+  controller_all_main.py: Run every controller subprocess in one shell (dev / debug).
+  controller_main.py: Single-shot controller dispatcher used by deploy + tests.
+  deploy_stack_main.py: Cross-platform deploy + bootstrap orchestrator (k8s OR compose via profile YAML).
+  deploy_verify_main.py: Post-deploy smoke checks (services up, routes responding).
+  microk8s_reconcile_main.py: Reconcile microk8s state with the contracted profile.
+  microk8s_smoke_test_main.py: End-to-end smoke test for a microk8s deploy.
+  render_architecture_diagrams_main.py: Regenerate the architecture diagram SVGs from contract YAMLs.
+  reset_admin_main.py: Break-glass — reset the admin password from inside the controller container.
+  restore_stack_main.py: Restore a stack from a backup tar produced by backup_stack_main.
+  run_controller_job_main.py: Run a single named job from the controller's contract registry.
+  run_unit_tests_main.py: Run the unit test suite with the project's standard pytest config.
+  set_pvc_storage_class_main.py: Patch a PVC's storageClassName in-place (k8s).
+  setup_lan_tls_main.py: Mint a self-signed TLS bundle for LAN-only deploys.
+  validate_controller_config_main.py: Validate a controller config against the OpenAPI contract.
+  validate_controller_profile_main.py: Validate a bootstrap profile YAML for shape + cross-reference errors.
+  watch_install_main.py: Live-tail a deploy in progress, surfacing job + service state.
