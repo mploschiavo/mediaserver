@@ -4844,6 +4844,72 @@ paths:
                 id: 43
                 data: {"seq": 43, "ts": "2026-04-07T12:00:02", "msg": "Preflight: checking services", "action": "bootstrap"}
 
+  /api/events:
+    get:
+      operationId: streamEvents
+      tags: [State]
+      summary: Unified domain-event SSE stream
+      description: |
+        Server-Sent Events stream of typed domain events from the
+        controller's process-wide `EventBus`. Each frame's `event:`
+        line carries the dotted event-type (e.g. `job.started`,
+        `job.completed`, `login.succeeded`); the `data:` line is a
+        JSON object containing every field from the underlying event
+        plus `event_type` and `ts`.
+
+        The `topics=` query parameter narrows to a comma-separated
+        subset of operator-facing topic names. Empty / missing means
+        "all known topics". Unknown topic names are silently dropped
+        so a UI shipping a future topic name keeps working against an
+        older controller.
+
+        Heartbeat: when the bus is idle the stream emits an SSE
+        comment line (`: heartbeat`) every ~25s so reverse proxies
+        (Envoy, nginx, Cloudflare) don't idle-kill the connection.
+
+        Foundation for the live UI surfaces — the Jobs page invalidates
+        the `runs` query on every `job.completed` frame instead of
+        polling on a 5s timer.
+
+        **Example (JavaScript):**
+        ```javascript
+        const es = new EventSource('/api/events?topics=jobs,sessions');
+        es.addEventListener('job.completed', (e) => {
+          const data = JSON.parse(e.data);
+          console.log(`run ${data.run_id} → ${data.status}`);
+        });
+        ```
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            # Stream events for the jobs topic (Ctrl+C to stop)
+            curl -N "http://localhost:9100/api/events?topics=jobs"
+      parameters:
+        - name: topics
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "jobs,sessions"
+          description: |
+            Comma-separated subset of `jobs`, `sessions`,
+            `media_integrity`. Empty / missing means all known
+            topics.
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: job.started
+                data: {"event_type":"job.started","ts":"2026-04-27T18:00:01Z","run_id":"01J5...","job_name":"scan","triggered_by":"cron","actor":"","parent_run_id":"","batch_id":""}
+
+                event: job.completed
+                data: {"event_type":"job.completed","ts":"2026-04-27T18:00:02Z","run_id":"01J5...","job_name":"scan","status":"ok","elapsed":1.23,"error":""}
+
   # =========================================================================
   # Dashboard
   # =========================================================================

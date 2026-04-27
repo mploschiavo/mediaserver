@@ -1153,6 +1153,13 @@ class GetRequestHandler:
             # `/logs/stream` endpoint for the new UI tail mode while
             # leaving the old route in place for compat.
             _handle_logs_sse(handler)
+        elif path == "/api/events" or path.startswith("/api/events?"):
+            # Unified domain-event SSE bus. Forwards typed events from
+            # the process-wide ``EventBus`` (jobs, sessions,
+            # media_integrity for v1.0.277; access_log/health/
+            # guardrails to follow). The ``topics=`` query param
+            # narrows to a subset; empty means all known topics.
+            _handle_events_sse(handler)
         elif path == "/api/logs/sources" or path.startswith("/api/logs/sources?"):
             # Dynamic source list for the Logs UI's filter dropdown.
             # The legacy hardcoded list in LogsToolbar.tsx capped at 8
@@ -1742,6 +1749,77 @@ class GetRequestHandler:
                 handler.state.wait_for_log(timeout=30.0)
         except (BrokenPipeError, ConnectionResetError, OSError):
             log_swallowed(BaseException("sse client disconnected"))
+
+    @staticmethod
+    def _handle_events_sse(handler: ControllerAPIHandler) -> None:
+        """Stream typed domain events as Server-Sent Events.
+
+        The handler subscribes a per-request ``queue.Queue`` to the
+        process-wide ``EventBus`` and drains the queue into SSE
+        frames on the wire. Disconnects (broken pipe / reset) tear
+        down the subscription cleanly. A heartbeat comment frame
+        every 25 seconds keeps reverse proxies (Envoy, nginx,
+        Cloudflare) from idle-killing the connection.
+        """
+        from queue import Empty, Queue
+        from urllib.parse import parse_qs, unquote
+        from media_stack.api.services.events_sse import (
+            HEARTBEAT_FRAME,
+            event_matches_topics,
+            format_event_frame,
+            parse_topics,
+        )
+        from media_stack.core.events import get_default_bus
+        from media_stack.core.events.bus import Event
+
+        params: dict[str, str] = {}
+        if "?" in handler.path:
+            qs = handler.path.split("?", 1)[1]
+            parsed = parse_qs(qs, keep_blank_values=True)
+            for k, vs in parsed.items():
+                if vs:
+                    params[k] = unquote(vs[0])
+        topics = parse_topics(params.get("topics"))
+
+        # Bounded queue so a stuck client can't consume unbounded
+        # memory if the bus floods. 1000 events ≈ 30s of bursty
+        # traffic at our worst observed rate; if we ever fill up,
+        # the bus handler drops the event silently rather than
+        # blocking publishers.
+        events_queue: "Queue[Event]" = Queue(maxsize=1000)
+
+        def _on_event(ev: Event) -> None:
+            try:
+                events_queue.put_nowait(ev)
+            except Exception:  # noqa: BLE001 - queue.Full + defensive
+                log_swallowed(BaseException("events queue full; dropping"))
+
+        bus = get_default_bus()
+        sub = bus.subscribe_all(_on_event)
+
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Connection", "keep-alive")
+        handler.send_header("X-Accel-Buffering", "no")
+        handler.end_headers()
+
+        try:
+            while True:
+                try:
+                    ev = events_queue.get(timeout=25.0)
+                except Empty:
+                    handler.wfile.write(HEARTBEAT_FRAME)
+                    handler.wfile.flush()
+                    continue
+                if not event_matches_topics(ev, topics):
+                    continue
+                handler.wfile.write(format_event_frame(ev))
+                handler.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            log_swallowed(BaseException("events sse client disconnected"))
+        finally:
+            bus.unsubscribe(sub)
 
     @staticmethod
     def _handle_openapi_yaml(handler: ControllerAPIHandler) -> None:
@@ -2407,6 +2485,7 @@ _handle_service_api_key = _instance._handle_service_api_key
 _handle_snapshot_diff = _instance._handle_snapshot_diff
 _handle_logs = _instance._handle_logs
 _handle_logs_sse = _instance._handle_logs_sse
+_handle_events_sse = _instance._handle_events_sse
 _handle_service_logs = _instance._handle_service_logs
 _handle_openapi_yaml = _instance._handle_openapi_yaml
 _handle_ui_moved = _instance._handle_ui_moved

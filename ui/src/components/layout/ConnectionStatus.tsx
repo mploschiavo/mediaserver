@@ -3,6 +3,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useEventStreamStatus } from "@/lib/events/EventStreamProvider";
 
 type Status = "live" | "degraded" | "dead";
 
@@ -36,8 +37,9 @@ async function pingHealthz(): Promise<PingResult> {
  * The wall-clock age is recomputed every second locally so the
  * tooltip reads truthfully even between polls.
  */
-export function ConnectionStatus() {
+export function ConnectionStatus(): JSX.Element {
   const lastSuccessRef = useRef<PingResult | null>(null);
+  const sseStatus = useEventStreamStatus();
   const query = useQuery({
     queryKey: ["healthz"],
     queryFn: pingHealthz,
@@ -70,17 +72,21 @@ export function ConnectionStatus() {
     return "live";
   })();
 
+  const sseLabel = sseStatus.isOpen
+    ? "SSE live (events streaming)"
+    : "SSE polling (REST refetch)";
   const tooltip = (() => {
+    let head: string;
     if (status === "live" && last) {
-      return `Controller healthy · ${last.latencyMs}ms`;
+      head = `Controller healthy · ${last.latencyMs}ms`;
+    } else if (status === "degraded" && last) {
+      head = `Controller degraded · last response ${Math.round(ageMs / 1000)}s ago`;
+    } else if (last) {
+      head = `Controller unreachable · last response ${Math.round(ageMs / 1000)}s ago`;
+    } else {
+      head = "Controller unreachable";
     }
-    if (status === "degraded" && last) {
-      return `Controller degraded · last response ${Math.round(ageMs / 1000)}s ago`;
-    }
-    if (last) {
-      return `Controller unreachable · last response ${Math.round(ageMs / 1000)}s ago`;
-    }
-    return "Controller unreachable";
+    return `${head} · ${sseLabel}`;
   })();
 
   return (
@@ -92,15 +98,21 @@ export function ConnectionStatus() {
           className="flex size-7 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <motion.span
-            key={status}
+            key={`${status}-${sseStatus.isOpen ? "sse" : "poll"}`}
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            data-sse={sseStatus.isOpen ? "live" : "polling"}
             className={cn(
               "relative inline-flex size-2.5 rounded-full",
               status === "live" && "bg-success",
               status === "degraded" && "bg-warning",
               status === "dead" && "bg-danger",
+              // Thin accent ring when SSE is live — visually
+              // distinct from controller health, conveys the
+              // "events are streaming" mode to the operator at a
+              // glance.
+              sseStatus.isOpen && "ring-2 ring-info/60",
             )}
           >
             {status === "live" ? (

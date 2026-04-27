@@ -76,7 +76,15 @@ EXCLUDE_SUFFIXES: tuple[str, ...] = (
 
 def _git_diff_files(base: str) -> list[Path]:
     """Files changed between ``base`` and ``HEAD`` plus uncommitted
-    edits in the working tree. Returns absolute repo-rooted paths."""
+    edits AND untracked files in the working tree. Returns absolute
+    repo-rooted paths.
+
+    Untracked files matter because brand-new files added in the
+    current working tree (``?? path`` in ``git status``) are
+    "touched" too — without them the gate would silently let a new
+    file ship with weak coverage just because ``git diff`` only
+    shows modifications.
+    """
     try:
         committed = subprocess.run(
             ["git", "diff", "--name-only", f"{base}...HEAD"],
@@ -99,9 +107,19 @@ def _git_diff_files(base: str) -> list[Path]:
         ).stdout.splitlines()
     except subprocess.CalledProcessError:
         uncommitted = []
+    try:
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    except subprocess.CalledProcessError:
+        untracked = []
     out: list[Path] = []
     seen: set[str] = set()
-    for rel in [*committed, *uncommitted]:
+    for rel in [*committed, *uncommitted, *untracked]:
         rel = rel.strip()
         if not rel or rel in seen:
             continue
