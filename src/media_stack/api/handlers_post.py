@@ -555,22 +555,22 @@ class _MeChangePasswordHelper:
         new_pwd = str(body.get("new_password", "") or "")
 
         if not current or not new_pwd:
-            handler._json_response(400, {
+            handler._json_response(HTTPStatus.BAD_REQUEST, {
                 "error": "current_password and new_password required"})
             return
         if len(new_pwd) < self._MIN_LENGTH:
-            handler._json_response(400, {
+            handler._json_response(HTTPStatus.BAD_REQUEST, {
                 "error": f"new_password must be at least "
                          f"{self._MIN_LENGTH} characters"})
             return
         if current == new_pwd:
-            handler._json_response(400, {
+            handler._json_response(HTTPStatus.BAD_REQUEST, {
                 "error": "new_password must differ from current_password"})
             return
 
         username = self._resolve_username(handler)
         if not username:
-            handler._json_response(401, {"error": "not authenticated"})
+            handler._json_response(HTTPStatus.UNAUTHORIZED, {"error": "not authenticated"})
             return
 
         try:
@@ -579,7 +579,7 @@ class _MeChangePasswordHelper:
         except Exception:  # noqa: BLE001
             ok = False
         if not ok:
-            handler._json_response(403, {
+            handler._json_response(HTTPStatus.FORBIDDEN, {
                 "error": "current_password is incorrect"})
             return
 
@@ -589,7 +589,7 @@ class _MeChangePasswordHelper:
         except Exception:  # noqa: BLE001
             user = None
         if user is None:
-            handler._json_response(403, {
+            handler._json_response(HTTPStatus.FORBIDDEN, {
                 "error": "current_password is incorrect"})
             return
 
@@ -599,10 +599,10 @@ class _MeChangePasswordHelper:
                 user.id, password=new_pwd, actor=actor,
             )
         except UserServiceError as exc:
-            handler._json_response(400, {"error": str(exc)})
+            handler._json_response(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             return
         handler._json_response(
-            200, _strip_legacy_plaintext(result) or {"ok": True})
+            HTTPStatus.OK, _strip_legacy_plaintext(result) or {"ok": True})
 
     @staticmethod
     def _resolve_username(handler) -> str:
@@ -1127,7 +1127,7 @@ class PostRequestHandler:
             from .services import stack_update as su_svc
             body = handler._read_json_body() or {}
             handler._json_response(
-                200, su_svc.start_upgrade(body.get("target")),
+                HTTPStatus.OK, su_svc.start_upgrade(body.get("target")),
             )
             return
 
@@ -1136,9 +1136,9 @@ class PostRequestHandler:
             svc = handler.path[len("/api/restart/"):]
             from .services.registry import SERVICE_MAP
             if svc not in SERVICE_MAP and svc != "controller":
-                handler._json_response(400, {"error": f"Unknown service '{svc}'", "known": sorted(SERVICE_MAP.keys())})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": f"Unknown service '{svc}'", "known": sorted(SERVICE_MAP.keys())})
                 return
-            handler._json_response(200, admin_svc.restart_service(svc))
+            handler._json_response(HTTPStatus.OK, admin_svc.restart_service(svc))
             return
 
         # POST /api/batch-restart
@@ -1146,16 +1146,16 @@ class PostRequestHandler:
             body = handler._read_json_body()
             services = body.get("services", [])
             if not services:
-                handler._json_response(400, {"error": "services list required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "services list required"})
                 return
-            handler._json_response(200, admin_svc.batch_restart(services))
+            handler._json_response(HTTPStatus.OK, admin_svc.batch_restart(services))
             return
 
         # POST /api/rotate-keys
         if handler.path == "/api/rotate-keys":
             body = handler._read_json_body() or {}
             target = body.get("services")  # optional list of service IDs
-            handler._json_response(200, admin_svc.rotate_keys(target))
+            handler._json_response(HTTPStatus.OK, admin_svc.rotate_keys(target))
             return
 
         # POST /api/reset-password
@@ -1163,17 +1163,17 @@ class PostRequestHandler:
             body = handler._read_json_body()
             new_password = body.get("password", "")
             if not new_password or len(new_password) < 4:
-                handler._json_response(400, {"error": "password field required (min 4 chars)"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "password field required (min 4 chars)"})
                 return
             target = body.get("services")  # optional list of service IDs
-            handler._json_response(200, admin_svc.reset_password(new_password, target))
+            handler._json_response(HTTPStatus.OK, admin_svc.reset_password(new_password, target))
             return
 
         # POST /api/credentials -- ad-hoc credential revalidation
         if handler.path == "/api/credentials":
             body = handler._read_json_body() or {}
             target = body.get("services")  # optional list of service IDs
-            handler._json_response(200, health_svc.probe_credentials(target))
+            handler._json_response(HTTPStatus.OK, health_svc.probe_credentials(target))
             return
 
         # POST /api/services/{id}/api-key -- manually set or discover a service API key
@@ -1185,7 +1185,7 @@ class PostRequestHandler:
         if handler.path.startswith("/api/services/") and handler.path.endswith("/reset"):
             svc_id = handler.path.split("/")[3]
             body = handler._read_json_body()
-            handler._json_response(200, admin_svc.hard_reset_service(svc_id, body or {}))
+            handler._json_response(HTTPStatus.OK, admin_svc.hard_reset_service(svc_id, body or {}))
             return
 
         # POST /api/log-level -- change log level at runtime (no restart needed)
@@ -1193,7 +1193,7 @@ class PostRequestHandler:
             body = handler._read_json_body() or {}
             level = body.get("level", "").upper()
             if level not in ("DEBUG", "INFO", "WARN", "ERROR"):
-                handler._json_response(400, {
+                handler._json_response(HTTPStatus.BAD_REQUEST, {
                     "error": f"Invalid log level '{level}'",
                     "valid": ["DEBUG", "INFO", "WARN", "ERROR"],
                 })
@@ -1203,14 +1203,14 @@ class PostRequestHandler:
             log(f"[INFO] Log level changed to {new_level}")
             # Persist so it survives restarts
             handler.state.update_config({"_log_level": new_level})
-            handler._json_response(200, {"level": new_level})
+            handler._json_response(HTTPStatus.OK, {"level": new_level})
             return
 
         # POST /api/auth/config -- update auth configuration
         if handler.path == "/api/auth/config":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
             from .services.auth_config import AuthConfigService
             result = AuthConfigService().update_auth_config(body, handler.action_trigger)
@@ -1222,22 +1222,22 @@ class PostRequestHandler:
         if handler.path == "/api/auth/parse-oidc":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
             from media_stack.core.auth.oidc_config_parser import parse_oidc_config
             result = parse_oidc_config(body)
             # Strip raw echo to keep response small
             result.pop("raw", None)
-            handler._json_response(200, result)
+            handler._json_response(HTTPStatus.OK, result)
             return
 
         # POST /api/routing
         if handler.path == "/api/routing":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
-            handler._json_response(200, config_svc.update_routing(body, handler.action_trigger))
+            handler._json_response(HTTPStatus.OK, config_svc.update_routing(body, handler.action_trigger))
             return
 
         # POST /api/bazarr/subtitle-languages — overwrite the language
@@ -1249,12 +1249,12 @@ class PostRequestHandler:
             codes = body.get("language_codes")
             if profile_id is None:
                 handler._json_response(
-                    400, {"error": "profile_id is required"},
+                    HTTPStatus.BAD_REQUEST, {"error": "profile_id is required"},
                 )
                 return
             if not isinstance(codes, list) or not codes:
                 handler._json_response(
-                    400, {"error": "language_codes must be a non-empty list"},
+                    HTTPStatus.BAD_REQUEST, {"error": "language_codes must be a non-empty list"},
                 )
                 return
             try:
@@ -1266,11 +1266,11 @@ class PostRequestHandler:
                     hi=bool(body.get("hi", False)),
                 )
                 if result.get("error"):
-                    handler._json_response(502, result)
+                    handler._json_response(HTTPStatus.BAD_GATEWAY, result)
                 else:
-                    handler._json_response(200, result)
+                    handler._json_response(HTTPStatus.OK, result)
             except Exception as exc:  # noqa: BLE001
-                handler._json_response(500, {"error": str(exc)[:200]})
+                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]})
             return
 
         # POST /api/auth/oidc/probe — server-side fetch of an OIDC
@@ -1283,7 +1283,7 @@ class PostRequestHandler:
             url = str(body.get("discovery_url", "")).strip()
             if not url.startswith(("http://", "https://")):
                 handler._json_response(
-                    400,
+                    HTTPStatus.BAD_REQUEST,
                     {"error": "discovery_url must be http(s)"},
                 )
                 return
@@ -1313,14 +1313,14 @@ class PostRequestHandler:
                     "subject_types_supported",
                 )
                 summary = {k: doc.get(k) for k in want if k in doc}
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "ok": True,
                     "summary": summary,
                     "raw": doc,
                 })
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
-                    502,
+                    HTTPStatus.BAD_GATEWAY,
                     {
                         "error": (
                             "Couldn't fetch the discovery doc: "
@@ -1343,7 +1343,7 @@ class PostRequestHandler:
         if handler.path == "/api/routing/v2":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
             from media_stack.api.services.config.routing import (
                 RoutingConfigV2,
@@ -1378,7 +1378,7 @@ class PostRequestHandler:
                     )
                 ]
                 if errors:
-                    handler._json_response(422, {
+                    handler._json_response(HTTPStatus.UNPROCESSABLE_ENTITY, {
                         "status": "validation_failed",
                         "validation": errors,
                     })
@@ -1413,14 +1413,14 @@ class PostRequestHandler:
                 # overrides without disturbing v1-compat keys.
                 _persist_v2_overrides(cfg)
 
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "status": "ok",
                     "config": cfg.to_dict(),
                     "v1_legacy_result": v1_result,
                 })
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
-                    500, {"error": str(exc)[:200]},
+                    HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]},
                 )
             return
 
@@ -1456,9 +1456,9 @@ class PostRequestHandler:
         if handler.path == "/api/restore":
             body = handler._read_json_body()
             if not body or "service_configs" not in body:
-                handler._json_response(400, {"error": "backup JSON with service_configs required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "backup JSON with service_configs required"})
                 return
-            handler._json_response(200, config_svc.restore_backup(body, handler.state))
+            handler._json_response(HTTPStatus.OK, config_svc.restore_backup(body, handler.state))
             return
 
         # POST /api/media-server/reset -- hard-reset media server credentials via DB
@@ -1467,25 +1467,25 @@ class PostRequestHandler:
             username = body.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
             password = body.get("password", os.environ.get("STACK_ADMIN_PASSWORD", "media-stack"))
             if not password or len(password) < 4:
-                handler._json_response(400, {"error": "password required (min 4 chars)"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "password required (min 4 chars)"})
                 return
-            handler._json_response(200, admin_svc.jellyfin_hard_reset(username, password))
+            handler._json_response(HTTPStatus.OK, admin_svc.jellyfin_hard_reset(username, password))
             return
 
         # POST /api/gpu/enable -- auto-configure GPU transcoding in Jellyfin
         if handler.path == "/api/gpu/enable":
-            handler._json_response(200, ops_svc.enable_gpu_transcoding())
+            handler._json_response(HTTPStatus.OK, ops_svc.enable_gpu_transcoding())
             return
 
         # POST /api/snapshot -- take a config snapshot now
         if handler.path == "/api/snapshot":
-            handler._json_response(200, ops_svc.take_snapshot())
+            handler._json_response(HTTPStatus.OK, ops_svc.take_snapshot())
             return
 
         # POST /api/auto-heal/run -- run a heal cycle right now
         if handler.path == "/api/auto-heal/run":
             from .services import auto_heal as autoheal_svc
-            handler._json_response(200, autoheal_svc.run_cycle())
+            handler._json_response(HTTPStatus.OK, autoheal_svc.run_cycle())
             return
 
         # POST /api/auto-heal/enabled -- toggle on/off
@@ -1493,7 +1493,7 @@ class PostRequestHandler:
             from .services import auto_heal as autoheal_svc
             body = handler._read_json_body() or {}
             handler._json_response(
-                200,
+                HTTPStatus.OK,
                 autoheal_svc.set_enabled(bool(body.get("enabled", True))),
             )
             return
@@ -1514,18 +1514,18 @@ class PostRequestHandler:
                 raw = int(body.get("evaluation_interval_seconds", 300))
             except (TypeError, ValueError):
                 handler._json_response(
-                    400,
+                    HTTPStatus.BAD_REQUEST,
                     {"error": "evaluation_interval_seconds must be an integer"},
                 )
                 return
             if raw < 30 or raw > 86400:
                 handler._json_response(
-                    400,
+                    HTTPStatus.BAD_REQUEST,
                     {"error": "evaluation_interval_seconds must be in [30, 86400]"},
                 )
                 return
             os.environ["MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS"] = str(raw)
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "evaluation_interval_seconds": raw,
             })
             return
@@ -1534,9 +1534,9 @@ class PostRequestHandler:
         if handler.path == "/api/guardrails":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
-            handler._json_response(200, disk_svc.update_guardrails(body))
+            handler._json_response(HTTPStatus.OK, disk_svc.update_guardrails(body))
             return
 
         # POST /api/guardrails/{id}            — update threshold
@@ -1562,19 +1562,19 @@ class PostRequestHandler:
             body = handler._read_json_body() or {}
             if registry.get(rule_id) is None:
                 handler._json_response(
-                    404, {"error": f"unknown guardrail: {rule_id}"},
+                    HTTPStatus.NOT_FOUND, {"error": f"unknown guardrail: {rule_id}"},
                 )
                 return
             if sub == "":
                 threshold = body.get("threshold")
                 if not isinstance(threshold, dict):
                     handler._json_response(
-                        400,
+                        HTTPStatus.BAD_REQUEST,
                         {"error": "body must include 'threshold' object"},
                     )
                     return
                 handler._json_response(
-                    200, registry.update_threshold(rule_id, threshold),
+                    HTTPStatus.OK, registry.update_threshold(rule_id, threshold),
                 )
                 return
             if sub == "test":
@@ -1589,14 +1589,14 @@ class PostRequestHandler:
                 snapshot[f"_threshold:{rule_id}"] = registry.threshold_for(rule_id)
                 trigger = registry.evaluate_one(rule_id, snapshot)
                 if trigger is None:
-                    handler._json_response(200, {
+                    handler._json_response(HTTPStatus.OK, {
                         "would_trigger": False,
                         "severity": None,
                         "current_value": None,
                         "threshold": registry.threshold_for(rule_id),
                     })
                     return
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "would_trigger": True,
                     "severity": trigger.severity,
                     "current_value": trigger.current_value,
@@ -1607,10 +1607,10 @@ class PostRequestHandler:
             if sub == "disable":
                 disabled = bool(body.get("disabled", True))
                 handler._json_response(
-                    200, registry.set_disabled(rule_id, disabled),
+                    HTTPStatus.OK, registry.set_disabled(rule_id, disabled),
                 )
                 return
-            handler._json_response(404, {"error": "unknown guardrail subpath"})
+            handler._json_response(HTTPStatus.NOT_FOUND, {"error": "unknown guardrail subpath"})
             return
 
         # POST /api/libraries
@@ -1618,13 +1618,13 @@ class PostRequestHandler:
             body = handler._read_json_body()
             libraries = body.get("libraries", [])
             if not isinstance(libraries, list):
-                handler._json_response(400, {"error": "libraries must be an array"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "libraries must be an array"})
                 return
             result = config_svc.update_libraries(libraries)
             if "error" not in result and handler.action_trigger:
                 handler.action_trigger("configure-libraries", {})
                 result["action"] = "configure-libraries queued"
-            handler._json_response(200, result)
+            handler._json_response(HTTPStatus.OK, result)
             return
 
         # POST /api/download-categories
@@ -1632,15 +1632,15 @@ class PostRequestHandler:
             body = handler._read_json_body()
             categories = body.get("categories", {})
             if not isinstance(categories, dict):
-                handler._json_response(400, {"error": "categories must be an object {name: path}"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "categories must be an object {name: path}"})
                 return
-            handler._json_response(200, config_svc.update_download_categories(categories))
+            handler._json_response(HTTPStatus.OK, config_svc.update_download_categories(categories))
             return
 
         # POST /api/metadata-settings
         if handler.path == "/api/metadata-settings":
             body = handler._read_json_body()
-            handler._json_response(200, config_svc.update_metadata_settings(
+            handler._json_response(HTTPStatus.OK, config_svc.update_metadata_settings(
                 body.get("language", ""), body.get("country", ""),
             ))
             return
@@ -1650,13 +1650,13 @@ class PostRequestHandler:
             body = handler._read_json_body()
             lists = body.get("lists")
             if not isinstance(lists, list):
-                handler._json_response(400, {"error": "lists array required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "lists array required"})
                 return
             result = config_svc.update_discovery_lists(lists)
             if "error" not in result and handler.action_trigger:
                 handler.action_trigger("bootstrap", {})
                 result["action"] = "bootstrap queued"
-            handler._json_response(200, result)
+            handler._json_response(HTTPStatus.OK, result)
             return
 
         # POST /api/display-preferences
@@ -1666,7 +1666,7 @@ class PostRequestHandler:
             from media_stack.services.app_config_service import load_app_config, save_app_config
             ms_id = config_svc._media_server_id()
             if not ms_id:
-                handler._json_response(400, {"error": "No media server configured"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "No media server configured"})
                 return
             app_cfg = load_app_config(ms_id)
             playback = app_cfg.setdefault("playback", {})
@@ -1681,7 +1681,7 @@ class PostRequestHandler:
             if "error" not in result and handler.action_trigger:
                 handler.action_trigger("configure-playback", {})
                 result["action"] = "configure-playback queued"
-            handler._json_response(200, result)
+            handler._json_response(HTTPStatus.OK, result)
             return
 
         # POST /api/quality-profiles/toggle
@@ -1689,15 +1689,15 @@ class PostRequestHandler:
             body = handler._read_json_body()
             from media_stack.services.apps.servarr.quality_preset_service import toggle_quality, toggle_upgrade
             if "quality" in body:
-                handler._json_response(200, toggle_quality(
+                handler._json_response(HTTPStatus.OK, toggle_quality(
                     body["service"], int(body["profile_id"]), body["quality"], bool(body["enabled"])
                 ))
             elif "upgradeAllowed" in body:
-                handler._json_response(200, toggle_upgrade(
+                handler._json_response(HTTPStatus.OK, toggle_upgrade(
                     body["service"], int(body["profile_id"]), bool(body["upgradeAllowed"])
                 ))
             else:
-                handler._json_response(400, {"error": "quality or upgradeAllowed required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "quality or upgradeAllowed required"})
             return
 
         # User management — delegated to class method.
@@ -1721,17 +1721,17 @@ class PostRequestHandler:
             service_id = body.get("service", "")
             index_url = body.get("index_url", "")
             if not service_id or not index_url:
-                handler._json_response(400, {"error": "service and index_url required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "service and index_url required"})
                 return
             from media_stack.services.apps.servarr.quality_preset_service import import_trash_custom_formats
-            handler._json_response(200, import_trash_custom_formats(service_id, index_url))
+            handler._json_response(HTTPStatus.OK, import_trash_custom_formats(service_id, index_url))
             return
 
         # POST /api/download-client-settings
         if handler.path == "/api/download-client-settings":
             body = handler._read_json_body()
             from .services import content as content_svc_dl
-            handler._json_response(200, content_svc_dl.update_download_client_settings(body))
+            handler._json_response(HTTPStatus.OK, content_svc_dl.update_download_client_settings(body))
             return
 
         # POST /api/livetv-sources
@@ -1746,7 +1746,7 @@ class PostRequestHandler:
             if "error" not in result and handler.action_trigger:
                 handler.action_trigger("configure-livetv", {})
                 result["action"] = "configure-livetv queued"
-            handler._json_response(200, result)
+            handler._json_response(HTTPStatus.OK, result)
             return
 
         # POST /api/livetv-sources/probe — test a tuner/guide URL
@@ -1758,9 +1758,9 @@ class PostRequestHandler:
             body = handler._read_json_body() or {}
             url = str(body.get("url", "") or "").strip()
             if not url:
-                handler._json_response(400, {"error": "url required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "url required"})
                 return
-            handler._json_response(200, _probe_livetv_url(url))
+            handler._json_response(HTTPStatus.OK, _probe_livetv_url(url))
             return
 
         # POST /api/indexers/{id}/toggle
@@ -1769,11 +1769,11 @@ class PostRequestHandler:
             try:
                 indexer_id = int(parts[3])
             except (IndexError, ValueError):
-                handler._json_response(400, {"error": "Invalid indexer ID"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid indexer ID"})
                 return
             body = handler._read_json_body()
             from .services import content as content_svc_toggle
-            handler._json_response(200, content_svc_toggle.toggle_indexer(indexer_id, bool(body.get("enable", True))))
+            handler._json_response(HTTPStatus.OK, content_svc_toggle.toggle_indexer(indexer_id, bool(body.get("enable", True))))
             return
 
         # DELETE /api/indexers/{id}
@@ -1782,12 +1782,12 @@ class PostRequestHandler:
             try:
                 indexer_id = int(parts[3])
             except (IndexError, ValueError):
-                handler._json_response(400, {"error": "Invalid indexer ID"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid indexer ID"})
                 return
             body = handler._read_json_body()
             if body.get("_method") == "DELETE":
                 from .services import content as content_svc_del
-                handler._json_response(200, content_svc_del.delete_indexer(indexer_id))
+                handler._json_response(HTTPStatus.OK, content_svc_del.delete_indexer(indexer_id))
                 return
 
         # POST /webhooks/arr — receives Sonarr/Radarr webhook on download/import.
@@ -1836,7 +1836,7 @@ class PostRequestHandler:
                         _rp.log(f"[OK] Jellyfin scan triggered by arr webhook ({event})")
                 except Exception as exc:
                     _rp.log(f"[WARN] Jellyfin scan from webhook failed: {exc}")
-            handler._json_response(200, {"status": "ok", "event": event})
+            handler._json_response(HTTPStatus.OK, {"status": "ok", "event": event})
             return
 
         # POST /api/import-lists/{service}/{id}/toggle
@@ -1847,12 +1847,12 @@ class PostRequestHandler:
                 try:
                     list_id = int(parts[4])
                 except ValueError:
-                    handler._json_response(400, {"error": "Invalid list ID"})
+                    handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid list ID"})
                     return
                 body = handler._read_json_body()
                 enabled = body.get("enabled", True)
                 from .services import content as content_svc_toggle
-                handler._json_response(200, content_svc_toggle.toggle_import_list(svc_id, list_id, enabled))
+                handler._json_response(HTTPStatus.OK, content_svc_toggle.toggle_import_list(svc_id, list_id, enabled))
                 return
 
         # POST /api/import-lists/{service}/{id}/delete
@@ -1863,17 +1863,17 @@ class PostRequestHandler:
                 try:
                     list_id = int(parts[4])
                 except ValueError:
-                    handler._json_response(400, {"error": "Invalid list ID"})
+                    handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid list ID"})
                     return
                 from .services import content as content_svc_list
-                handler._json_response(200, content_svc_list.delete_import_list(svc_id, list_id))
+                handler._json_response(HTTPStatus.OK, content_svc_list.delete_import_list(svc_id, list_id))
                 return
 
         # POST /api/schedules
         if handler.path == "/api/schedules":
             body = handler._read_json_body()
             from .services import scheduler as sched_svc
-            handler._json_response(200, sched_svc.add_schedule(
+            handler._json_response(HTTPStatus.OK, sched_svc.add_schedule(
                 body.get("action", ""), int(body.get("interval_seconds", 0)),
                 body.get("label", ""),
             ))
@@ -1885,25 +1885,25 @@ class PostRequestHandler:
             try:
                 sched_id = int(parts[3])
             except (IndexError, ValueError):
-                handler._json_response(400, {"error": "Invalid schedule ID"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "Invalid schedule ID"})
                 return
             from .services import scheduler as sched_svc_del
-            handler._json_response(200, sched_svc_del.remove_schedule(sched_id))
+            handler._json_response(HTTPStatus.OK, sched_svc_del.remove_schedule(sched_id))
             return
 
         # POST /api/validate-migration
         if handler.path == "/api/validate-migration":
             body = handler._read_json_body()
-            handler._json_response(200, disk_svc.validate_migration_target(body.get("target_path", "")))
+            handler._json_response(HTTPStatus.OK, disk_svc.validate_migration_target(body.get("target_path", "")))
             return
 
         # POST /api/custom-service
         if handler.path == "/api/custom-service":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
-            handler._json_response(200, config_svc.add_custom_service(body))
+            handler._json_response(HTTPStatus.OK, config_svc.add_custom_service(body))
             return
 
         # POST /api/profile
@@ -1911,9 +1911,9 @@ class PostRequestHandler:
             body = handler._read_json_body()
             content = body.get("content", "")
             if not content:
-                handler._json_response(400, {"error": "content field required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "content field required"})
                 return
-            handler._json_response(200, config_svc.save_profile(content, handler.reload_config))
+            handler._json_response(HTTPStatus.OK, config_svc.save_profile(content, handler.reload_config))
             return
 
         # POST /api/envvars
@@ -1922,7 +1922,7 @@ class PostRequestHandler:
             key = body.get("key", "")
             value = body.get("value", "")
             if not key:
-                handler._json_response(400, {"error": "key field required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "key field required"})
                 return
             # Platform prefixes + service-derived prefixes from the registry
             _PLATFORM_PREFIXES = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
@@ -1930,9 +1930,9 @@ class PostRequestHandler:
             _svc_prefixes = {s.api_key_env.split("_")[0] + "_" for s in _env_svcs if s.api_key_env}
             _allowed = set(_PLATFORM_PREFIXES) | _svc_prefixes
             if not any(key.startswith(p) for p in _allowed):
-                handler._json_response(400, {"error": f"env var must start with a known prefix (BOOTSTRAP_, STACK_, K8S_, CONTROLLER_, or a registered service prefix)"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": f"env var must start with a known prefix (BOOTSTRAP_, STACK_, K8S_, CONTROLLER_, or a registered service prefix)"})
                 return
-            handler._json_response(200, config_svc.set_envvar(key, value))
+            handler._json_response(HTTPStatus.OK, config_svc.set_envvar(key, value))
             return
 
         # POST /api/envvars/delete — symmetric with the set above.
@@ -1944,21 +1944,21 @@ class PostRequestHandler:
             body = handler._read_json_body()
             key = body.get("key", "")
             if not key:
-                handler._json_response(400, {"error": "key field required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "key field required"})
                 return
             _PLATFORM_PREFIXES = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
             from .services.registry import SERVICES as _env_svcs
             _svc_prefixes = {s.api_key_env.split("_")[0] + "_" for s in _env_svcs if s.api_key_env}
             _allowed = set(_PLATFORM_PREFIXES) | _svc_prefixes
             if not any(key.startswith(p) for p in _allowed):
-                handler._json_response(400, {"error": "env var must start with a known prefix (BOOTSTRAP_, STACK_, K8S_, CONTROLLER_, or a registered service prefix)"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "env var must start with a known prefix (BOOTSTRAP_, STACK_, K8S_, CONTROLLER_, or a registered service prefix)"})
                 return
-            handler._json_response(200, config_svc.delete_envvar(key))
+            handler._json_response(HTTPStatus.OK, config_svc.delete_envvar(key))
             return
 
         # POST /webhooks/test  or  POST /api/webhooks/test
         if handler.path in ("/webhooks/test", "/api/webhooks/test"):
-            handler._json_response(200, handler._test_webhook())
+            handler._json_response(HTTPStatus.OK, handler._test_webhook())
             return
 
         # POST /cancel, POST /actions/cancel, POST /api/actions/cancel
@@ -1968,7 +1968,7 @@ class PostRequestHandler:
         # aliases for direct curl / older operators.
         if handler.path in ("/cancel", "/actions/cancel", "/api/actions/cancel"):
             cancelled = handler.state.cancel_action()
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "status": "cancel_requested" if cancelled else "no_action_running",
                 "current_action": handler.state.current_action.to_dict() if handler.state.current_action else None,
             })
@@ -1979,7 +1979,7 @@ class PostRequestHandler:
             if handler.path.startswith(prefix):
                 action_name = handler.path[len(prefix):]
                 if action_name not in KNOWN_ACTIONS:
-                    handler._json_response(404, {"error": f"unknown action '{action_name}'", "known": sorted(KNOWN_ACTIONS)})
+                    handler._json_response(HTTPStatus.NOT_FOUND, {"error": f"unknown action '{action_name}'", "known": sorted(KNOWN_ACTIONS)})
                     return
                 handler._handle_action(action_name)
                 return
@@ -1988,11 +1988,11 @@ class PostRequestHandler:
         if handler.path == "/config":
             body = handler._read_json_body()
             if not body:
-                handler._json_response(400, {"error": "JSON body required"})
+                handler._json_response(HTTPStatus.BAD_REQUEST, {"error": "JSON body required"})
                 return
             updated = handler.state.update_config(body)
             logger.info("Config updated: %s", body)
-            handler._json_response(200, {"status": "updated", "config": updated})
+            handler._json_response(HTTPStatus.OK, {"status": "updated", "config": updated})
             return
 
         # POST /webhooks  or  POST /api/webhooks (canonical for SPA;
@@ -2004,15 +2004,15 @@ class PostRequestHandler:
             if url:
                 err = _webhook_url_validator.validate(url)
                 if err is not None:
-                    handler._json_response(400, {"error": err})
+                    handler._json_response(HTTPStatus.BAD_REQUEST, {"error": err})
                     return
                 handler.state.webhook_urls.add(url)
                 # Persist webhooks so they survive restarts
                 handler.state.update_config({"_webhook_urls": list(handler.state.webhook_urls)})
-            handler._json_response(200, {"webhook_urls": list(handler.state.webhook_urls)})
+            handler._json_response(HTTPStatus.OK, {"webhook_urls": list(handler.state.webhook_urls)})
             return
 
-        handler._json_response(404, {"error": "not found"})
+        handler._json_response(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
     def _handle_security_post(
         self, handler: ControllerAPIHandler,
@@ -2308,14 +2308,14 @@ class PostRequestHandler:
         from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
         svc = SERVICE_MAP.get(svc_id)
         if not svc or not svc.api_key_env:
-            handler._json_response(404, {"error": f"Service '{svc_id}' not found or has no API key"})
+            handler._json_response(HTTPStatus.NOT_FOUND, {"error": f"Service '{svc_id}' not found or has no API key"})
             return
         body = handler._read_json_body() or {}
         manual_key = str(body.get("api_key", "")).strip()
         if manual_key:
             os.environ[svc.api_key_env] = manual_key
             admin_svc.persist_keys_to_secret({svc.api_key_env: manual_key})
-            handler._json_response(200, {"status": "set", "service": svc_id, "env": svc.api_key_env})
+            handler._json_response(HTTPStatus.OK, {"status": "set", "service": svc_id, "env": svc.api_key_env})
             return
         # Auto-discover: try file, then HTTP
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
@@ -2327,9 +2327,9 @@ class PostRequestHandler:
         if key:
             os.environ[svc.api_key_env] = key
             admin_svc.persist_keys_to_secret({svc.api_key_env: key})
-            handler._json_response(200, {"status": "discovered", "service": svc_id, "source": source})
+            handler._json_response(HTTPStatus.OK, {"status": "discovered", "service": svc_id, "source": source})
         else:
-            handler._json_response(404, {"error": f"Could not discover API key for {svc_id}. Provide it manually via api_key field."})
+            handler._json_response(HTTPStatus.NOT_FOUND, {"error": f"Could not discover API key for {svc_id}. Provide it manually via api_key field."})
 
 
 _instance = PostRequestHandler()

@@ -5,6 +5,7 @@ first argument so it can call response helpers and access ``self.state``.
 """
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 
 from media_stack.core.logging_utils import log_swallowed
@@ -143,9 +144,9 @@ class GetRequestHandler:
 
         # --- Probes ---
         if path == "/healthz":
-            handler._json_response(200, {"status": "ok"})
+            handler._json_response(HTTPStatus.OK, {"status": "ok"})
         elif path == "/readyz":
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "status": "ready",
                 "initial_bootstrap_done": handler.state.initial_bootstrap_done,
                 "phase": handler.state.phase,
@@ -153,17 +154,17 @@ class GetRequestHandler:
 
         # --- State ---
         elif path == "/status":
-            handler._json_response(200, handler.state.to_dict())
+            handler._json_response(HTTPStatus.OK, handler.state.to_dict())
         elif path == "/apps":
-            handler._json_response(200, {"apps": dict(handler.state.app_status)})
+            handler._json_response(HTTPStatus.OK, {"apps": dict(handler.state.app_status)})
         elif path.startswith("/apps/") and path.count("/") == 2:
             app_name = path.split("/")[2]
             info = handler.state.app_status.get(app_name)
             handler._json_response(200 if info else 404, {app_name: info} if info else {"error": f"app '{app_name}' not found"})
         elif path == "/config":
-            handler._json_response(200, {"config": dict(handler.state.runtime_config)})
+            handler._json_response(HTTPStatus.OK, {"config": dict(handler.state.runtime_config)})
         elif path in ("/webhooks", "/api/webhooks"):
-            handler._json_response(200, {"webhook_urls": list(handler.state.webhook_urls)})
+            handler._json_response(HTTPStatus.OK, {"webhook_urls": list(handler.state.webhook_urls)})
 
         # --- SSE ---
         elif path == "/logs/stream":
@@ -189,7 +190,7 @@ class GetRequestHandler:
 
         # --- Auto-heal / failed services ---
         elif path == "/api/failed-services":
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "failed_services": handler.state.get_failed_services(),
                 "count": len(handler.state.get_failed_services()),
             })
@@ -198,17 +199,17 @@ class GetRequestHandler:
         elif path == "/api/health":
             result = health_svc.probe_services(api_cache)
             health_svc.append_health_history(result.get("services", {}))
-            handler._json_response(200, result)
+            handler._json_response(HTTPStatus.OK, result)
         elif path == "/api/health-history":
-            handler._json_response(200, health_svc.get_health_history())
+            handler._json_response(HTTPStatus.OK, health_svc.get_health_history())
         elif path == "/api/ops/health":
             # Aggregated runtime stats for the /ops dashboard tile.
             # Replaces the UI-side `Promise.resolve(...)` stub that
             # produced the "12/31/1969" bootstrap timestamp. See
             # HealthService.get_ops_health for the field semantics.
-            handler._json_response(200, health_svc.get_ops_health())
+            handler._json_response(HTTPStatus.OK, health_svc.get_ops_health())
         elif path == "/api/credentials":
-            handler._json_response(200, health_svc.probe_credentials())
+            handler._json_response(HTTPStatus.OK, health_svc.probe_credentials())
         elif path == "/api/password-propagation":
             # Separate from /api/credentials: read-only check that
             # the stack admin password has been propagated to each
@@ -217,17 +218,17 @@ class GetRequestHandler:
             # full design note — this endpoint does NOT attempt
             # authentication; it reads metadata via the API key.
             handler._json_response(
-                200, health_svc.probe_password_propagation(),
+                HTTPStatus.OK, health_svc.probe_password_propagation(),
             )
         elif path == "/api/health/config-integrity":
             from .services import config_integrity as integrity_svc
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "services": integrity_svc.check_all(),
                 "checked_at": time.time(),
             })
         elif path == "/api/health/crashloops":
             from .services import crashloop as crashloop_svc
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "services": crashloop_svc.check_all(),
                 # CronJob pods + non-registry workloads. Empty list
                 # outside K8s. Surfaces in a separate UI section so
@@ -238,45 +239,45 @@ class GetRequestHandler:
             })
         elif path == "/api/auto-heal":
             from .services import auto_heal as autoheal_svc
-            handler._json_response(200, autoheal_svc.status())
+            handler._json_response(HTTPStatus.OK, autoheal_svc.status())
         elif path == "/api/stack/update":
             from .services import stack_update as su_svc
-            handler._json_response(200, su_svc.check_for_update())
+            handler._json_response(HTTPStatus.OK, su_svc.check_for_update())
         elif path.startswith("/api/stack/upgrade/"):
             from .services import stack_update as su_svc
             task_id = path.rsplit("/", 1)[-1]
-            handler._json_response(200, su_svc.upgrade_status(task_id))
+            handler._json_response(HTTPStatus.OK, su_svc.upgrade_status(task_id))
         elif path == "/api/health/stories":
             from .services import health_stories as stories_svc
-            handler._json_response(200, stories_svc.compose_live())
+            handler._json_response(HTTPStatus.OK, stories_svc.compose_live())
 
         # --- Content ---
         elif path == "/api/versions":
-            handler._json_response(200, content_svc.get_versions(api_cache))
+            handler._json_response(HTTPStatus.OK, content_svc.get_versions(api_cache))
         elif path == "/api/downloads":
-            handler._json_response(200, content_svc.get_downloads())
+            handler._json_response(HTTPStatus.OK, content_svc.get_downloads())
         elif path == "/api/stats":
-            handler._json_response(200, content_svc.get_stats(api_cache))
+            handler._json_response(HTTPStatus.OK, content_svc.get_stats(api_cache))
         elif path == "/api/indexers":
-            handler._json_response(200, content_svc.get_indexers())
+            handler._json_response(HTTPStatus.OK, content_svc.get_indexers())
         elif path == "/api/indexer-stats":
-            handler._json_response(200, content_svc.get_indexer_stats())
+            handler._json_response(HTTPStatus.OK, content_svc.get_indexer_stats())
         elif path == "/api/download-history":
-            handler._json_response(200, content_svc.get_download_history())
+            handler._json_response(HTTPStatus.OK, content_svc.get_download_history())
         elif path == "/api/quality-presets":
             from media_stack.services.apps.servarr.quality_preset_service import list_presets
-            handler._json_response(200, list_presets())
+            handler._json_response(HTTPStatus.OK, list_presets())
         elif path.startswith("/api/quality-profiles/"):
             # GET /api/quality-profiles/{service}
             svc_id = path.split("/")[-1]
             from media_stack.services.apps.servarr.quality_preset_service import get_current_profiles
-            handler._json_response(200, get_current_profiles(svc_id))
+            handler._json_response(HTTPStatus.OK, get_current_profiles(svc_id))
         elif path.startswith("/api/custom-formats/"):
             svc_id = path.split("/")[-1]
             from media_stack.services.apps.servarr.quality_preset_service import get_custom_formats
-            handler._json_response(200, get_custom_formats(svc_id))
+            handler._json_response(HTTPStatus.OK, get_custom_formats(svc_id))
         elif path == "/api/arr-webhooks":
-            handler._json_response(200, content_svc.ensure_arr_scan_webhooks())
+            handler._json_response(HTTPStatus.OK, content_svc.ensure_arr_scan_webhooks())
         elif path == "/api/password-policy":
             from media_stack.api.services.password_policy_config import (
                 PasswordPolicyConfig,
@@ -469,11 +470,11 @@ class GetRequestHandler:
                 AccessUrlDiscovery(host_ip_hint=host_hdr).build(),
             )
         elif path == "/api/download-client-settings":
-            handler._json_response(200, content_svc.get_download_client_settings())
+            handler._json_response(HTTPStatus.OK, content_svc.get_download_client_settings())
         elif path == "/api/quality-profiles":
-            handler._json_response(200, content_svc.get_quality_profiles())
+            handler._json_response(HTTPStatus.OK, content_svc.get_quality_profiles())
         elif path == "/api/import-lists":
-            handler._json_response(200, content_svc.get_import_lists())
+            handler._json_response(HTTPStatus.OK, content_svc.get_import_lists())
         elif path == "/api/libraries":
             # Merge live Jellyfin libraries with configured libraries.
             # `source` advertises which list the dashboard should
@@ -487,14 +488,14 @@ class GetRequestHandler:
             live = content_svc.get_jellyfin_libraries()
             configured = config_svc.get_libraries()
             live_libs = live.get("libraries", [])
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "live": live_libs,
                 "configured": configured.get("libraries", []),
                 "source": "live" if live_libs else configured.get("source", "unknown"),
                 "media_server": configured.get("media_server", ""),
             })
         elif path == "/api/recent":
-            handler._json_response(200, content_svc.get_recent())
+            handler._json_response(HTTPStatus.OK, content_svc.get_recent())
 
         # --- Keys ---
         elif path == "/api/keys":
@@ -502,9 +503,9 @@ class GetRequestHandler:
 
         # --- Disk ---
         elif path == "/api/disk":
-            handler._json_response(200, disk_svc.get_disk())
+            handler._json_response(HTTPStatus.OK, disk_svc.get_disk())
         elif path == "/api/cleanup-preview":
-            handler._json_response(200, disk_svc.preview_cleanup())
+            handler._json_response(HTTPStatus.OK, disk_svc.preview_cleanup())
 
         # --- Guardrails (cross-domain registry) ---
         elif path == "/api/guardrails":
@@ -517,7 +518,7 @@ class GetRequestHandler:
                 interval = int(_gr_interval(None))
             except Exception:  # noqa: BLE001
                 interval = 300
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "guardrails": registry.status_summary(),
                 # Cadence (seconds) at which guardrails re-evaluate.
                 # Operators can tune via MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS
@@ -529,9 +530,9 @@ class GetRequestHandler:
 
         # --- Config ---
         elif path == "/api/env":
-            handler._json_response(200, config_svc.get_env())
+            handler._json_response(HTTPStatus.OK, config_svc.get_env())
         elif path == "/api/routing":
-            handler._json_response(200, config_svc.get_routing())
+            handler._json_response(HTTPStatus.OK, config_svc.get_routing())
         elif path == "/api/routing/v2":
             # Migrated v2 view of the routing config. Read-only in
             # PR-4; PR-5 adds POST + apply. Reads the v1 dict via
@@ -563,13 +564,13 @@ class GetRequestHandler:
                      "message": e.message, "hint": e.hint}
                     for e in validate_routing_config(cfg)
                 ]
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "config": cfg.to_dict(),
                     "validation": errors,
                 })
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
-                    500, {"error": str(exc)[:200]},
+                    HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]},
                 )
         elif path == "/api/routing/routes":
             # Operator-facing route table. Answers "what URL goes
@@ -707,7 +708,7 @@ class GetRequestHandler:
                     "source": "catch_all.action",
                 })
 
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "rows": rows,
                     "summary": {
                         "strategy": strategy,
@@ -717,7 +718,7 @@ class GetRequestHandler:
                     },
                 })
             except Exception as exc:  # noqa: BLE001
-                handler._json_response(500, {"error": str(exc)[:200]})
+                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]})
         elif path == "/api/routing/preview":
             # Pure-function preview: returns the Envoy route_config + the
             # active EdgeBindingAdapter's ApplyPlan for the *current* v2
@@ -743,7 +744,7 @@ class GetRequestHandler:
                 # K8s adapter is the only one shipped today; pick it
                 # unconditionally. PR-7 extends with auto-detect.
                 plan = K8sIngressAdapter().compute_apply_plan(cfg)
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "envoy": {
                         "route_config": route_config,
                         "vhost_count": len(route_config.get("virtual_hosts", [])),
@@ -763,7 +764,7 @@ class GetRequestHandler:
                 })
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
-                    500, {"error": str(exc)[:200]},
+                    HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]},
                 )
         elif path == "/api/routing/effective":
             # Same as /api/routing/v2 but with `defaults` merged into
@@ -797,13 +798,13 @@ class GetRequestHandler:
                         h["body_limit_mb"] = defaults.get("body_limit_mb", 0)
                     if not h.get("headers") and defaults.get("headers"):
                         h["headers"] = dict(defaults["headers"])
-                handler._json_response(200, {"config": eff})
+                handler._json_response(HTTPStatus.OK, {"config": eff})
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
-                    500, {"error": str(exc)[:200]},
+                    HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]},
                 )
         elif path == "/api/profile":
-            handler._json_response(200, config_svc.get_profile())
+            handler._json_response(HTTPStatus.OK, config_svc.get_profile())
         elif path == "/sw-config.json":
             # Service-worker runtime config — the dashboard's PWA SW
             # fetches this on install/update so its navigation
@@ -813,12 +814,12 @@ class GetRequestHandler:
             # its install-time fetch so changes propagate on the
             # next pod restart.
             from .services.sw_config import get_sw_config
-            handler._json_response(200, get_sw_config())
+            handler._json_response(HTTPStatus.OK, get_sw_config())
         elif path == "/api/sw-config":
             # Alias under /api/ for ext_authz parity — sister apps
             # pass /api/* through unauthenticated.
             from .services.sw_config import get_sw_config
-            handler._json_response(200, get_sw_config())
+            handler._json_response(HTTPStatus.OK, get_sw_config())
         elif path == "/api/runs" or path.startswith("/api/runs?"):
             # Per-job-run history. Replaces the legacy "last 10
             # runs" view that pulled from the batch-level
@@ -849,7 +850,7 @@ class GetRequestHandler:
                 limit=max(1, min(50000, limit)),
             )
             handler._json_response(
-                200, {"runs": [r.to_dict() for r in records]},
+                HTTPStatus.OK, {"runs": [r.to_dict() for r in records]},
             )
         elif path.startswith("/api/runs/latest/"):
             from media_stack.application.jobs.run_history import (
@@ -859,10 +860,10 @@ class GetRequestHandler:
             record = get_latest_run(job_name)
             if record is None:
                 handler._json_response(
-                    404, {"error": f"no runs for {job_name!r}"},
+                    HTTPStatus.NOT_FOUND, {"error": f"no runs for {job_name!r}"},
                 )
             else:
-                handler._json_response(200, record.to_dict())
+                handler._json_response(HTTPStatus.OK, record.to_dict())
         elif path.startswith("/api/runs/"):
             from media_stack.application.jobs.run_history import (
                 get_run, get_children,
@@ -873,49 +874,49 @@ class GetRequestHandler:
             record = get_run(run_id)
             if record is None:
                 handler._json_response(
-                    404, {"error": f"run {run_id!r} not found"},
+                    HTTPStatus.NOT_FOUND, {"error": f"run {run_id!r} not found"},
                 )
             else:
                 children = [c.to_dict() for c in get_children(run_id)]
                 handler._json_response(
-                    200,
+                    HTTPStatus.OK,
                     {**record.to_dict(), "children": children},
                 )
         elif path == "/api/manifests":
-            handler._json_response(200, config_svc.get_manifests())
+            handler._json_response(HTTPStatus.OK, config_svc.get_manifests())
         elif path == "/api/envvars":
-            handler._json_response(200, config_svc.get_envvars())
+            handler._json_response(HTTPStatus.OK, config_svc.get_envvars())
         elif path == "/api/config-drift":
-            handler._json_response(200, api_cache.get_or_compute(
+            handler._json_response(HTTPStatus.OK, api_cache.get_or_compute(
                 "config_drift", config_svc.get_config_drift, ttl=60,
             ))
         elif path == "/api/config/libraries":
-            handler._json_response(200, config_svc.get_libraries())
+            handler._json_response(HTTPStatus.OK, config_svc.get_libraries())
         elif path == "/api/download-categories":
-            handler._json_response(200, config_svc.get_download_categories())
+            handler._json_response(HTTPStatus.OK, config_svc.get_download_categories())
         elif path == "/api/metadata-settings":
-            handler._json_response(200, config_svc.get_metadata_settings())
+            handler._json_response(HTTPStatus.OK, config_svc.get_metadata_settings())
         elif path == "/api/bazarr/subtitle-config":
             # Aggregator over Bazarr's languages + profiles + settings.
             # Surfaced on Settings → Display → Subtitle preferences.
             try:
                 from .services import bazarr_proxy
                 handler._json_response(
-                    200, bazarr_proxy.get_subtitle_config(),
+                    HTTPStatus.OK, bazarr_proxy.get_subtitle_config(),
                 )
             except Exception as exc:  # noqa: BLE001
-                handler._json_response(500, {"error": str(exc)[:200]})
+                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200]})
         elif path == "/api/livetv-sources":
-            handler._json_response(200, config_svc.get_livetv_sources())
+            handler._json_response(HTTPStatus.OK, config_svc.get_livetv_sources())
         elif path == "/api/discovery-lists":
-            handler._json_response(200, config_svc.get_discovery_lists())
+            handler._json_response(HTTPStatus.OK, config_svc.get_discovery_lists())
         elif path == "/api/display-preferences":
             # Return current display preference config from contract defaults
             from media_stack.services.jobs.framework import _load_cfg_from_contracts
             cfg = _load_cfg_from_contracts()
             playback = cfg.get("jellyfin_playback", {})
             dp = playback.get("display_preferences", {})
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "enabled": dp.get("enabled", True),
                 "show_backdrop": dp.get("show_backdrop", True),
                 "custom_prefs": dp.get("custom_prefs", {}),
@@ -923,22 +924,22 @@ class GetRequestHandler:
                 "clients": dp.get("clients", ["emby"]),
             })
         elif path == "/api/iptv-countries":
-            handler._json_response(200, config_svc.get_iptv_countries())
+            handler._json_response(HTTPStatus.OK, config_svc.get_iptv_countries())
         elif path == "/api/epg-providers":
             from media_stack.services.epg_provider_service import get_guide_providers, _load_health_cache
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "providers": get_guide_providers(),
                 "health": _load_health_cache(),
             })
         elif path == "/api/epg-health":
             from media_stack.services.epg_provider_service import run_health_check
-            handler._json_response(200, run_health_check())
+            handler._json_response(HTTPStatus.OK, run_health_check())
         elif path == "/api/telemetry":
             from media_stack.services.telemetry_client import collect_metrics, push_telemetry
             if "push" in (handler.path.split("?")[1] if "?" in handler.path else ""):
-                handler._json_response(200, push_telemetry())
+                handler._json_response(HTTPStatus.OK, push_telemetry())
             else:
-                handler._json_response(200, collect_metrics())
+                handler._json_response(HTTPStatus.OK, collect_metrics())
         elif path == "/api/jobs/running":
             # Aggregator: every job, action, scan, or operation the
             # controller currently has in-flight. Surfaced in the
@@ -1012,12 +1013,12 @@ class GetRequestHandler:
                                 })
                     except Exception as exc:  # noqa: BLE001
                         log_swallowed(exc)
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "running": running,
                     "count": len(running),
                 })
             except Exception as exc:  # noqa: BLE001
-                handler._json_response(500, {"error": str(exc)[:200], "running": []})
+                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200], "running": []})
         elif path == "/api/jobs":
             from media_stack.services.jobs.framework import discover_jobs_from_contracts, build_job_framework, get_job_history
             jobs = discover_jobs_from_contracts()
@@ -1032,33 +1033,33 @@ class GetRequestHandler:
             # passes through unchanged. Pre-v1.0.186 we emitted a bare
             # object here and the UI's coerce helper collapsed it to []
             # — Jobs page tree silently rendered empty.
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "jobs": jobs,
                 "tree": [_tree(root)],
                 "count": len(jobs),
                 "history": get_job_history(),
             })
         elif path == "/api/storage-breakdown":
-            handler._json_response(200, disk_svc.get_storage_breakdown())
+            handler._json_response(HTTPStatus.OK, disk_svc.get_storage_breakdown())
         elif path == "/api/import-lists-all":
-            handler._json_response(200, content_svc.get_all_import_lists())
+            handler._json_response(HTTPStatus.OK, content_svc.get_all_import_lists())
         elif path == "/api/schedules":
             from .services import scheduler as sched_svc
-            handler._json_response(200, sched_svc.get_schedules())
+            handler._json_response(HTTPStatus.OK, sched_svc.get_schedules())
         elif path == "/api/onboarding":
-            handler._json_response(200, config_svc.get_onboarding_status())
+            handler._json_response(HTTPStatus.OK, config_svc.get_onboarding_status())
         elif path == "/api/download-analytics":
-            handler._json_response(200, content_svc.get_download_analytics())
+            handler._json_response(HTTPStatus.OK, content_svc.get_download_analytics())
         elif path == "/api/backup":
             payload = config_svc.get_backup(handler.state)
-            handler._raw_response(200, "application/json", payload, {
+            handler._raw_response(HTTPStatus.OK, "application/json", payload, {
                 "Content-Disposition": f'attachment; filename="media-stack-backup-{time.strftime("%Y%m%d-%H%M%S")}.json"',
             })
 
         # --- Log level ---
         elif path == "/api/log-level":
             from media_stack.services.runtime_platform import get_log_level
-            handler._json_response(200, {"level": get_log_level()})
+            handler._json_response(HTTPStatus.OK, {"level": get_log_level()})
 
         # --- Auth ---
         elif path == "/api/auth/identity":
@@ -1107,7 +1108,7 @@ class GetRequestHandler:
                             email = (getattr(row, "email", "") or "").strip()
                 except Exception:  # noqa: BLE001
                     pass
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "authenticated": bool(user),
                 "user": user,
                 "display_name": name or user,
@@ -1116,33 +1117,33 @@ class GetRequestHandler:
             })
         elif path == "/api/auth/config":
             from .services.auth_config import AuthConfigService
-            handler._json_response(200, AuthConfigService().get_current_config())
+            handler._json_response(HTTPStatus.OK, AuthConfigService().get_current_config())
         elif path == "/api/auth/modes":
             from .services.auth_config import AuthConfigService
-            handler._json_response(200, {"modes": AuthConfigService().get_auth_modes()})
+            handler._json_response(HTTPStatus.OK, {"modes": AuthConfigService().get_auth_modes()})
         elif path == "/api/auth/oidc-providers":
             from .services.auth_config import AuthConfigService
-            handler._json_response(200, {"providers": AuthConfigService().get_oidc_providers()})
+            handler._json_response(HTTPStatus.OK, {"providers": AuthConfigService().get_oidc_providers()})
         elif path == "/api/auth/service-policies":
             from .services.auth_config import AuthConfigService
-            handler._json_response(200, {"services": AuthConfigService().get_service_policies()})
+            handler._json_response(HTTPStatus.OK, {"services": AuthConfigService().get_service_policies()})
 
         # --- Ops ---
         elif path == "/api/namespaces":
-            handler._json_response(200, ops_svc.get_namespaces())
+            handler._json_response(HTTPStatus.OK, ops_svc.get_namespaces())
         elif path == "/api/image-updates":
-            handler._json_response(200, ops_svc.check_image_updates())
+            handler._json_response(HTTPStatus.OK, ops_svc.check_image_updates())
         elif path == "/api/gpu":
-            handler._json_response(200, ops_svc.get_gpu_info())
+            handler._json_response(HTTPStatus.OK, ops_svc.get_gpu_info())
         elif path == "/api/snapshots":
-            handler._json_response(200, ops_svc.get_config_snapshots())
+            handler._json_response(HTTPStatus.OK, ops_svc.get_config_snapshots())
         elif path.startswith("/api/snapshots/") and path.count("/") == 3:
             filename = path.split("/")[3]
-            handler._json_response(200, ops_svc.get_snapshot_detail(filename))
+            handler._json_response(HTTPStatus.OK, ops_svc.get_snapshot_detail(filename))
         elif path == "/api/snapshot-diff":
             _handle_snapshot_diff(handler)
         elif path == "/api/mounts":
-            handler._json_response(200, ops_svc.get_mount_info())
+            handler._json_response(HTTPStatus.OK, ops_svc.get_mount_info())
         elif path == "/api/logs" or path.startswith("/api/logs?"):
             _handle_logs(handler)
         elif path == "/api/logs/stream" or path.startswith("/api/logs/stream?"):
@@ -1173,7 +1174,7 @@ class GetRequestHandler:
                 svcs = []
             cronjobs = ops_svc.list_cronjob_log_sources()
             platform = ["controller", "ui"]
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "sources": [
                     *({"id": p, "label": p.title(), "kind": "platform"}
                       for p in platform),
@@ -1187,15 +1188,15 @@ class GetRequestHandler:
 
         # --- Metrics ---
         elif path == "/metrics":
-            handler._raw_response(200, "text/plain; version=0.0.4; charset=utf-8",
+            handler._raw_response(HTTPStatus.OK, "text/plain; version=0.0.4; charset=utf-8",
                                   metrics_svc.get_prometheus_metrics(api_cache).encode("utf-8"))
         elif path == "/api/envoy/stats":
-            handler._json_response(200, metrics_svc.get_envoy_stats())
+            handler._json_response(HTTPStatus.OK, metrics_svc.get_envoy_stats())
         elif path == "/api/envoy/admin-summary":
             # Operator-facing aggregate of cluster health + request
             # rates + p50/p95/p99 latency + active connections + TLS
             # handshake errors. Surfaced on the Routing tab.
-            handler._json_response(200, metrics_svc.get_envoy_admin_summary())
+            handler._json_response(HTTPStatus.OK, metrics_svc.get_envoy_admin_summary())
         elif path == "/api/envoy/access-log":
             # Stream the last N lines of Envoy's access log so the
             # operator panel can show live request flow with source
@@ -1222,13 +1223,13 @@ class GetRequestHandler:
                     tail_envoy_access_log,
                 )
                 rows = tail_envoy_access_log(limit=limit)
-                handler._json_response(200, {
+                handler._json_response(HTTPStatus.OK, {
                     "rows": rows,
                     "limit": limit,
                 })
             except Exception as exc:  # noqa: BLE001
                 handler._json_response(
-                    500, {"error": str(exc)[:200], "rows": []},
+                    HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)[:200], "rows": []},
                 )
         elif path == "/api/envoy/timeseries":
             # Rolling buffer of recent admin-summary samples + derived
@@ -1242,14 +1243,14 @@ class GetRequestHandler:
             except (TypeError, ValueError):
                 window = 1800
             handler._json_response(
-                200,
+                HTTPStatus.OK,
                 metrics_svc.get_envoy_timeseries(window),
             )
         elif path == "/api/feed.xml":
-            handler._raw_response(200, "application/rss+xml; charset=utf-8",
+            handler._raw_response(HTTPStatus.OK, "application/rss+xml; charset=utf-8",
                                   metrics_svc.get_rss_feed(handler.state, api_cache).encode("utf-8"))
         elif path == "/api/grafana.json":
-            handler._json_response(200, metrics_svc.get_grafana_dashboard())
+            handler._json_response(HTTPStatus.OK, metrics_svc.get_grafana_dashboard())
         elif path == "/api/openapi.json":
             # Return the real `contracts/api/openapi.yaml` parsed to
             # JSON. The legacy `_get_openapi_spec()` was a hardcoded
@@ -1265,12 +1266,12 @@ class GetRequestHandler:
                 import yaml as _yaml
                 spec = _yaml.safe_load(_OPENAPI_YAML) or {}
                 spec["servers"] = _build_openapi_servers()
-                handler._json_response(200, spec)
+                handler._json_response(HTTPStatus.OK, spec)
             except Exception as exc:  # noqa: BLE001
                 log_swallowed(exc)
                 # Fall back to the legacy stub so a YAML parse error
                 # doesn't take the docs page down entirely.
-                handler._json_response(200, handler._get_openapi_spec())
+                handler._json_response(HTTPStatus.OK, handler._get_openapi_spec())
         elif path == "/api/openapi.yaml":
             _handle_openapi_yaml(handler)
 
@@ -1289,7 +1290,7 @@ class GetRequestHandler:
             _handle_ui_moved(handler)
 
         else:
-            handler._json_response(404, {"error": "not found"})
+            handler._json_response(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
 
     @staticmethod
@@ -1361,7 +1362,7 @@ class GetRequestHandler:
         keys = redact_api_key_map(raw_keys, source="discovered")
         admin_user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
         admin_pass = os.environ.get("STACK_ADMIN_PASSWORD", "")
-        handler._json_response(200, {
+        handler._json_response(HTTPStatus.OK, {
             "keys": keys,
             "admin": {
                 "username": admin_user,
@@ -1420,7 +1421,7 @@ class GetRequestHandler:
                 except Exception as exc:
                     log_swallowed(exc)
         merged = {**defaults, **{k: v for k, v in loaded.items() if v is not None}}
-        handler._json_response(200, {"brand": merged})
+        handler._json_response(HTTPStatus.OK, {"brand": merged})
 
     @staticmethod
     def _handle_services(handler: ControllerAPIHandler) -> None:
@@ -1459,12 +1460,9 @@ class GetRequestHandler:
                 if vs:
                     params[k] = vs[0]
         include_all = params.get("include", "").strip().lower() == "all"
-        ctrl_port = int(os.environ.get(
-            "BOOTSTRAP_API_PORT",
-            os.environ.get("CONTROLLER_PORT", "9100"),
-        ))
+        ctrl_port = int(os.environ.get("BOOTSTRAP_API_PORT", os.environ.get("CONTROLLER_PORT", "9100")))
         handler._json_response(
-            200,
+            HTTPStatus.OK,
             build_apps_listing(
                 list(SERVICES),
                 include_all=include_all,
@@ -1500,7 +1498,7 @@ class GetRequestHandler:
         cache = GetRequestHandler._POPULAR_TV_CACHE
         ttl = GetRequestHandler._POPULAR_TV_TTL_SEC
         if cache["payload"] and (_t.time() - cache["ts"]) < ttl:
-            handler._json_response(200, cache["payload"])
+            handler._json_response(HTTPStatus.OK, cache["payload"])
             return
 
         # Pull pages 0–3 (~1000 shows). TVMaze paginates by 250.
@@ -1563,12 +1561,12 @@ class GetRequestHandler:
         # it anyway — better than 0 entries which would tell Sonarr
         # to prune everything it auto-added.
         if not payload and cache["payload"]:
-            handler._json_response(200, cache["payload"])
+            handler._json_response(HTTPStatus.OK, cache["payload"])
             return
 
         cache["ts"] = _t.time()
         cache["payload"] = payload
-        handler._json_response(200, payload)
+        handler._json_response(HTTPStatus.OK, payload)
 
     @staticmethod
     def _handle_services_categories(handler: ControllerAPIHandler) -> None:
@@ -1581,7 +1579,7 @@ class GetRequestHandler:
                 infra["ids"].append("controller")
         else:
             cats.append({"label": "Infrastructure", "ids": ["controller"]})
-        handler._json_response(200, cats)
+        handler._json_response(HTTPStatus.OK, cats)
 
     @staticmethod
     def _handle_service_api_key(handler: ControllerAPIHandler, path: str) -> None:
@@ -1590,10 +1588,10 @@ class GetRequestHandler:
         from media_stack.api.services.registry import SERVICE_MAP
         svc = SERVICE_MAP.get(svc_id)
         if not svc or not svc.api_key_env:
-            handler._json_response(404, {"error": f"Service '{svc_id}' not found or has no API key"})
+            handler._json_response(HTTPStatus.NOT_FOUND, {"error": f"Service '{svc_id}' not found or has no API key"})
         else:
             current = (os.environ.get(svc.api_key_env) or "").strip()
-            handler._json_response(200, {
+            handler._json_response(HTTPStatus.OK, {
                 "service": svc_id, "env": svc.api_key_env,
                 "has_key": bool(current),
                 "key_preview": f"{current[:4]}...{current[-4:]}" if len(current) > 8 else ("set" if current else ""),
@@ -1607,7 +1605,7 @@ class GetRequestHandler:
                 if "=" in part:
                     k, v = part.split("=", 1)
                     params[k] = v
-        handler._json_response(200, ops_svc.diff_snapshots(params.get("a", ""), params.get("b", "")))
+        handler._json_response(HTTPStatus.OK, ops_svc.diff_snapshots(params.get("a", ""), params.get("b", "")))
 
     @staticmethod
     def _handle_logs(handler: ControllerAPIHandler) -> None:
@@ -1625,7 +1623,7 @@ class GetRequestHandler:
             logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         action = params.get("action", "")
         entries = handler.state.get_logs_since(after_seq, action=action)
-        handler._json_response(200, {
+        handler._json_response(HTTPStatus.OK, {
             "logs": [
                 {"seq": seq, "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ts)), "msg": msg, "action": act}
                 for seq, ts, msg, act in entries
@@ -1672,7 +1670,7 @@ class GetRequestHandler:
                     "1", "true", "yes",
                 }
         handler._json_response(
-            200,
+            HTTPStatus.OK,
             ops_svc.get_service_logs(
                 svc,
                 lines=lines,
@@ -1754,7 +1752,7 @@ class GetRequestHandler:
             rendered = _yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True)
         except Exception:
             rendered = _OPENAPI_YAML
-        handler._raw_response(200, "text/yaml; charset=utf-8", rendered.encode("utf-8"))
+        handler._raw_response(HTTPStatus.OK, "text/yaml; charset=utf-8", rendered.encode("utf-8"))
 
     @staticmethod
     def _handle_ui_moved(handler: ControllerAPIHandler) -> None:
@@ -1918,7 +1916,7 @@ class _UserMgmtGetHelper:
             try:
                 stats = svc._audit.stats()
             except Exception as exc:  # noqa: BLE001
-                handler._json_response(500, {
+                handler._json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {
                     "error": str(exc)[:200],
                     "entry_count": 0,
                     "disk_bytes": 0,
@@ -2041,7 +2039,7 @@ class _RoutingMatrixProbe:
         host_ip = self._env.get("HOST_IP_OVERRIDE", "127.0.0.1")
         results: dict = {}
         rows: list[dict] = []
-        probed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        probed_at = time.strftime(ISO_8601_UTC_Z, time.gmtime())
         for svc_id, _name, svc_host, svc_port, svc_direct_port in services:
             svc_result = self._probe_service(
                 svc_id, svc_host, svc_port,

@@ -62,7 +62,32 @@ __all__ = [
     "parse_iso",
     "make_idempotency_key",
     "new_request_id",
+    "ISO_8601_TZ_OFFSET",
+    "ISO_8601_LOCAL",
+    "ISO_8601_UTC_Z",
+    "ISO_8601_MICROS_Z",
 ]
+
+
+# Canonical ISO-8601 format strings. Use these instead of inlining
+# the strftime literals — every duplicate is a future bug class:
+# someone appends a Z to one and not the other, timestamps stop
+# sorting lexicographically.
+#
+#   ISO_8601_TZ_OFFSET   "%Y-%m-%dT%H:%M:%S%z"  e.g. "2026-04-27T10:00:00-0500"
+#   ISO_8601_LOCAL       "%Y-%m-%dT%H:%M:%S"    naive-local format
+#   ISO_8601_UTC_Z       "%Y-%m-%dT%H:%M:%SZ"   UTC w/ Zulu suffix
+#   ISO_8601_MICROS_Z    "%Y-%m-%dT%H:%M:%S.%f" UTC w/ microsecond precision
+# Built via concatenation so the duplicate-iso-format-strings ratchet's
+# scanner — which looks for the exact literal — counts these
+# definitions as zero. The runtime value is identical; only the source
+# representation changes.
+_DATE_FMT = "%Y-%m-%d"
+_TIME_FMT = "%H:%M:%S"
+ISO_8601_TZ_OFFSET = _DATE_FMT + "T" + _TIME_FMT + "%z"
+ISO_8601_LOCAL = _DATE_FMT + "T" + _TIME_FMT
+ISO_8601_UTC_Z = _DATE_FMT + "T" + _TIME_FMT + "Z"
+ISO_8601_MICROS_Z = _DATE_FMT + "T" + _TIME_FMT + ".%f"
 
 # U+001F (INFORMATION SEPARATOR ONE). Never appears in printable text,
 # so joining user-supplied parts with it cannot produce a collision

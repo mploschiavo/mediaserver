@@ -1,6 +1,7 @@
 """Maintainerr policy-rule translation helpers."""
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 
 from media_stack.core.logging_utils import log_swallowed
@@ -52,7 +53,7 @@ class MaintainerrRuleTranslationService:
     @staticmethod
     def _iso_days_ago(days: int) -> str:
         dt = datetime.now(timezone.utc) - timedelta(days=max(days, 0))
-        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return dt.strftime(ISO_8601_UTC_Z)
 
     @staticmethod
     def _coerce_list(value: Any) -> list[Any]:

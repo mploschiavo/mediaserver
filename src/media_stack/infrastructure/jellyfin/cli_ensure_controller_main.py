@@ -3,6 +3,7 @@ import json
 import sys
 import time
 from urllib import error, request
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 from .controller_api_key_service import (
     ensure_api_key,
@@ -26,7 +27,7 @@ from .controller_kube_service import (
 
 class EnsureJellyfinControllerMain:
     def log(self, level, message):
-        ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        ts = time.strftime(ISO_8601_TZ_OFFSET)
         print(f"[{ts}] [{level}] {message}", flush=True)
     
     

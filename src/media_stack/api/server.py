@@ -6,6 +6,7 @@ Route handling lives in api/handlers_get.py and api/handlers_post.py.
 """
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 
 from media_stack.core.logging_utils import log_swallowed
@@ -784,7 +785,7 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         return self._callbacks.get("reload_config")
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-        ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        ts = time.strftime(ISO_8601_TZ_OFFSET)
         logger.debug("[%s] %s %s", ts, self.command, self.path)
 
     # --- Auth ---

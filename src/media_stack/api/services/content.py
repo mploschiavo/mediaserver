@@ -21,6 +21,15 @@ from .registry import SERVICE_MAP, SERVICES
 from .runtime_keys import read_service_api_key
 import logging
 
+# HTTP timeouts. Two bands cover the call sites in this module:
+#   PROBE  — quick liveness / health checks (default for most calls)
+#   GET    — paginated lists or anything with a known-slow upstream
+# Operators tune both in one place rather than chasing per-call
+# ``timeout=N`` literals across 700+ lines.
+_HTTP_PROBE_TIMEOUT_S = 5
+_HTTP_GET_TIMEOUT_S = 10
+_HTTP_QUICK_TIMEOUT_S = 4
+
 
 # Extracted to remove 5+ duplicate string-literal warnings (duplicate-strings
 # ratchet). Content-Type / Accept header values are canonical JSON MIME —
@@ -94,7 +103,7 @@ def _update_jellyfin_scan_interval(scan_interval: Any) -> dict[str, Any]:
         if not (ms and api_key):
             return {"status": "skipped", "reason": "jellyfin not reachable"}
         tasks = json.loads(urllib.request.urlopen(
-            f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=5,
+            f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=_HTTP_PROBE_TIMEOUT_S,
         ).read())
         task = _find_scan_task(tasks)
         if task is None:
@@ -107,7 +116,7 @@ def _update_jellyfin_scan_interval(scan_interval: Any) -> dict[str, Any]:
             method="POST",
             headers={"Content-Type": _JSON_MIME},
         )
-        urllib.request.urlopen(req, timeout=5)
+        urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S)
         return {"status": "updated", "hours": int(scan_interval)}
     except Exception as exc:
         return {"error": str(exc)[:80]}
@@ -193,7 +202,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 headers["X-Api-Key"] = key
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers=headers)
-                with urllib.request.urlopen(req, timeout=4) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_QUICK_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                     parts = json_key.split(".")
                     val = data
@@ -251,7 +260,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 return name, {"count": 0, "label": label}
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 return name, {"count": len(data) if isinstance(data, list) else 0, "label": label}
             except Exception as exc:
@@ -285,7 +294,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 f"http://{svc.host}:{svc.port}{svc.indexer_path}",
                 headers={"X-Api-Key": key},
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                 data = json.loads(resp.read())
             indexers = [
                 {"id": i.get("id"), "name": i.get("name", ""), "enable": i.get("enable", False),
@@ -312,7 +321,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 f"http://{svc.host}:{svc.port}{svc.indexer_stats_path}",
                 headers={"X-Api-Key": key},
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                 data = json.loads(resp.read())
             stats = data.get("indexers", data) if isinstance(data, dict) else data
             return {"stats": stats if isinstance(stats, list) else []}
@@ -334,7 +343,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 return name, []
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 records = data.get("records", data) if isinstance(data, dict) else data
                 return name, [
@@ -370,7 +379,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 return name, []
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 if not isinstance(data, list):
                     return name, []
@@ -403,7 +412,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 return name, []
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 return name, [
                     {"id": i.get("id"), "name": i.get("name", ""), "enabled": i.get("enableAutomaticAdd"),
@@ -460,7 +469,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                     f"http://{svc.host}:{svc.port}/Library/VirtualFolders",
                     headers={auth_header: key},
                 )
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 libs: list[dict[str, Any]] = []
                 for lib in (data if isinstance(data, list) else []):
@@ -530,7 +539,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 f"http://{host}:{port}/Items?{'&'.join(params)}",
                 headers={auth_header: key},
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                 data = json.loads(resp.read())
             total = data.get("TotalRecordCount")
             return int(total) if isinstance(total, (int, float)) else 0
@@ -553,7 +562,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 return name, []
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 items = data[:5] if isinstance(data, list) else []
                 # arr APIs (radarr v3 / sonarr v3 / lidarr / readarr)
@@ -607,7 +616,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 f"http://{svc.host}:{svc.port}{svc.indexer_path}/{indexer_id}",
                 headers={"X-Api-Key": key},
             )
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                 indexer = json.loads(resp.read())
             indexer["enable"] = enable
             # PUT updated config
@@ -616,7 +625,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 data=json.dumps(indexer).encode(), method="PUT",
                 headers={"X-Api-Key": key, "Content-Type": _JSON_MIME},
             )
-            urllib.request.urlopen(put_req, timeout=5)
+            urllib.request.urlopen(put_req, timeout=_HTTP_PROBE_TIMEOUT_S)
             return {"status": "ok", "indexer_id": indexer_id, "enable": enable}
         except Exception as exc:
             return {"error": str(exc)[:120]}
@@ -635,7 +644,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 f"http://{svc.host}:{svc.port}{svc.indexer_path}/{indexer_id}",
                 method="DELETE", headers={"X-Api-Key": key},
             )
-            urllib.request.urlopen(req, timeout=5)
+            urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S)
             return {"status": "deleted", "indexer_id": indexer_id}
         except Exception as exc:
             return {"error": str(exc)[:120]}
@@ -655,7 +664,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 continue
             try:
                 req = urllib.request.Request(f"http://{host}:{port}{path}", headers={"X-Api-Key": key})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
                     data = json.loads(resp.read())
                 all_lists[svc_id] = [
                     {"id": l.get("id"), "name": l.get("name", ""), "listType": l.get("listType", ""),
@@ -681,14 +690,14 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
             # GET current list, flip enabled, PUT back
             url = f"http://{svc.host}:{svc.port}{svc.import_list_path}/{list_id}"
             req = urllib.request.Request(url, headers={"X-Api-Key": key})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=_HTTP_GET_TIMEOUT_S) as resp:
                 data = json.loads(resp.read().decode())
             data["enabled"] = enabled
             put_req = urllib.request.Request(
                 url, data=json.dumps(data).encode(),
                 method="PUT", headers={"X-Api-Key": key, "Content-Type": _JSON_MIME},
             )
-            urllib.request.urlopen(put_req, timeout=10)
+            urllib.request.urlopen(put_req, timeout=_HTTP_GET_TIMEOUT_S)
             return {"status": "toggled", "service": service_id, "list_id": list_id, "enabled": enabled}
         except Exception as exc:
             return {"error": str(exc)[:120]}
@@ -709,7 +718,7 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
                 f"http://{svc.host}:{svc.port}{svc.import_list_path}/{list_id}",
                 method="DELETE", headers={"X-Api-Key": key},
             )
-            urllib.request.urlopen(req, timeout=5)
+            urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S)
             return {"status": "deleted", "service": service_id, "list_id": list_id}
         except Exception as exc:
             return {"error": str(exc)[:120]}
@@ -735,9 +744,9 @@ def _fetch_qbit_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
         f"http://{svc_host}:{svc_port}/api/v2/auth/login",
         data=f"username={user}&password={pw}".encode(),
     )
-    opener.open(login, timeout=5)
+    opener.open(login, timeout=_HTTP_PROBE_TIMEOUT_S)
     req = urllib.request.Request(f"http://{svc_host}:{svc_port}/api/v2/torrents/info?filter=active")
-    with opener.open(req, timeout=5) as resp:
+    with opener.open(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
         torrents = json.loads(resp.read())
     items = [
         {"name": t.get("name", "")[:80],
@@ -768,7 +777,7 @@ def _fetch_sab_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
     req = urllib.request.Request(
         f"http://{svc_host}:{svc_port}/api?mode=queue&output=json&apikey={sab_key}"
     )
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
         data = json.loads(resp.read())
     queue = data.get("queue", {})
     slots = queue.get("slots", [])

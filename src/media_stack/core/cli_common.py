@@ -2,6 +2,7 @@
 """Shared helpers for migrated script CLIs."""
 
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 import os
 import subprocess
@@ -21,7 +22,7 @@ from media_stack.core.platforms.kubernetes.kube_client import resolve_kubectl_bi
 
 def ts() -> str:
     """ISO timestamp for log lines."""
-    return time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    return time.strftime(ISO_8601_TZ_OFFSET)
 
 
 def info(message: str) -> None:

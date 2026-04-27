@@ -1,5 +1,6 @@
 """System diagnostics, backup/restore, env vars, manifests, onboarding, drift."""
 from __future__ import annotations
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 
 from media_stack.core.logging_utils import log_swallowed
@@ -65,7 +66,7 @@ class DiagnosticsService:
 
     def get_backup(self, state: Any) -> bytes:
         backup: dict[str, Any] = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "timestamp": time.strftime(ISO_8601_TZ_OFFSET),
             "version": "2",
             "env": self.get_env(),
             "state": state.to_dict() if hasattr(state, "to_dict") else {},

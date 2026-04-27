@@ -40,6 +40,22 @@ from media_stack.api.services.health import discover_api_keys as _discover_api_k
 _QBIT_DEFAULT_USERNAME = os.environ.get("QBIT_USERNAME", "admin")
 _QBIT_DEFAULT_PASSWORD = os.environ.get("QBIT_PASSWORD", "adminadmin")
 
+# Centralised HTTP timeouts. Operators tune these in one place rather
+# than chasing per-call ``timeout=N`` literals scattered across the
+# adapter surface. The four bands match the SLOs the upstream apps
+# expose:
+#
+#   PROBE  — quick liveness/health checks (Sonarr ping, qBit auth)
+#   GET    — typical GET-and-parse (most adapters)
+#   LONG   — operations that pull a paginated list or do a multi-step
+#            login flow (qBit info, Sonarr indexers, Authelia OIDC)
+#   SLOW   — known-slow endpoints (Sonarr release-list re-scrape,
+#            Jellyfin import-library)
+_HTTP_PROBE_TIMEOUT_S = 5
+_HTTP_GET_TIMEOUT_S = 10
+_HTTP_LONG_TIMEOUT_S = 15
+_HTTP_SLOW_TIMEOUT_S = 20
+
 
 def _make_servarr_http_request():
     """Build an HTTP-request callable that survives URL-base
@@ -550,7 +566,7 @@ def ensure_bazarr_language_profile(ctx: JobContext) -> dict:
             f"{base}/system/languages/profiles",
             headers={"X-Api-Key": key},
         )
-        with _ur.urlopen(req, timeout=10) as r:
+        with _ur.urlopen(req, timeout=_HTTP_GET_TIMEOUT_S) as r:
             existing = _json.loads(r.read())
     except Exception as exc:
         return {"action": "ensure-bazarr-language-profile",
@@ -646,7 +662,7 @@ def ensure_bazarr_language_profile(ctx: JobContext) -> dict:
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
-        with _ur.urlopen(req, timeout=15) as r:
+        with _ur.urlopen(req, timeout=_HTTP_LONG_TIMEOUT_S) as r:
             status = r.status
     except _ue.HTTPError as exc:
         return {"action": "ensure-bazarr-language-profile",
@@ -727,10 +743,10 @@ def _mass_search_qbit_active_count(ctx: JobContext) -> int | None:
         opener.open(_ur.Request(
             f"{base}/api/v2/auth/login",
             data=_up.urlencode({"username": qb_user, "password": qb_pass}).encode(),
-        ), timeout=5)
+        ), timeout=_HTTP_PROBE_TIMEOUT_S)
         import json as _json
         with opener.open(
-            f"{base}/api/v2/torrents/info?filter=active", timeout=5,
+            f"{base}/api/v2/torrents/info?filter=active", timeout=_HTTP_PROBE_TIMEOUT_S,
         ) as r:
             return len(_json.loads(r.read()))
     except Exception:
@@ -786,7 +802,7 @@ def mass_search_throttled(ctx: JobContext) -> dict:
                 f"{_u.rstrip('/')}/api/{_ver}/{_path}",
                 headers={"X-Api-Key": _k},
             )
-            with _ur.urlopen(_req, timeout=10) as _r:
+            with _ur.urlopen(_req, timeout=_HTTP_GET_TIMEOUT_S) as _r:
                 _items = _json.loads(_r.read())
             if _app == "sonarr":
                 imported_count += sum(
@@ -842,7 +858,7 @@ def mass_search_throttled(ctx: JobContext) -> dict:
                 f"{api_base}{list_path}",
                 headers={"X-Api-Key": key},
             )
-            with _ur.urlopen(req, timeout=15) as r:
+            with _ur.urlopen(req, timeout=_HTTP_LONG_TIMEOUT_S) as r:
                 items = _json.loads(r.read())
         except Exception as exc:
             summary[app] = {"list_error": str(exc)[:60]}
@@ -865,7 +881,7 @@ def mass_search_throttled(ctx: JobContext) -> dict:
                 headers={"X-Api-Key": key, "Content-Type": "application/json"},
             )
             try:
-                with _ur.urlopen(cmd_req, timeout=10):
+                with _ur.urlopen(cmd_req, timeout=_HTTP_GET_TIMEOUT_S):
                     fired += 1
             except Exception:
                 errors += 1
@@ -902,7 +918,7 @@ def ensure_qbittorrent_categories(ctx: JobContext) -> dict:
         opener.open(_ur.Request(
             f"{base}/api/v2/auth/login",
             data=_up.urlencode({"username": qb_user, "password": qb_pass}).encode(),
-        ), timeout=10)
+        ), timeout=_HTTP_GET_TIMEOUT_S)
     except Exception as exc:
         return {"action": "ensure-qbittorrent-categories",
                 "error": f"login failed: {str(exc)[:80]}"}
@@ -920,7 +936,7 @@ def ensure_qbittorrent_categories(ctx: JobContext) -> dict:
         try:
             opener.open(_ur.Request(
                 f"{base}/api/v2/torrents/createCategory", data=body,
-            ), timeout=10)
+            ), timeout=_HTTP_GET_TIMEOUT_S)
             created.append(cat)
         except _ue.HTTPError as exc:
             # qBit returns 409 when the category already exists.
@@ -967,7 +983,7 @@ def ensure_arr_download_client(ctx: JobContext) -> dict:
         H = {"X-Api-Key": key, "Content-Type": "application/json"}
         try:
             req = _ur.Request(base, headers={"X-Api-Key": key})
-            with _ur.urlopen(req, timeout=10) as r:
+            with _ur.urlopen(req, timeout=_HTTP_GET_TIMEOUT_S) as r:
                 existing = _json.loads(r.read())
         except Exception as exc:
             summary[app] = f"list error: {str(exc)[:60]}"
@@ -1002,13 +1018,13 @@ def ensure_arr_download_client(ctx: JobContext) -> dict:
                 _ur.urlopen(_ur.Request(
                     f"{base}/{match['id']}", data=_json.dumps(payload).encode(),
                     method="PUT", headers=H,
-                ), timeout=10)
+                ), timeout=_HTTP_GET_TIMEOUT_S)
                 summary[app] = f"updated (id={match['id']})"
             else:
                 _ur.urlopen(_ur.Request(
                     base, data=_json.dumps(payload).encode(),
                     method="POST", headers=H,
-                ), timeout=10)
+                ), timeout=_HTTP_GET_TIMEOUT_S)
                 summary[app] = "created"
         except _ue.HTTPError as exc:
             summary[app] = f"HTTP {exc.code}: {exc.read()[:60].decode(errors='replace')}"
@@ -1052,7 +1068,7 @@ def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
             headers={"Accept": "application/json",
                      "X-Emby-Token": jf_key},
         )
-        with _ur.urlopen(req, timeout=10) as r:
+        with _ur.urlopen(req, timeout=_HTTP_GET_TIMEOUT_S) as r:
             existing = _json.loads(r.read())
     except Exception as exc:
         return {"action": "ensure-jellyfin-libraries",
@@ -1081,7 +1097,7 @@ def ensure_jellyfin_libraries(ctx: JobContext) -> dict:
                 f"{base}/Library/VirtualFolders?{params}",
                 method="POST",
                 headers={"X-Emby-Token": jf_key},
-            ), timeout=15)
+            ), timeout=_HTTP_LONG_TIMEOUT_S)
             added.append(name)
         except Exception as exc:
             return {"action": "ensure-jellyfin-libraries",
@@ -1130,13 +1146,13 @@ def ensure_sonarr_seed_series(ctx: JobContext) -> dict:
     try:
         qps = _json.loads(_ur.urlopen(_ur.Request(
             f"{base}/qualityprofile", headers={"X-Api-Key": key},
-        ), timeout=10).read())
+        ), timeout=_HTTP_GET_TIMEOUT_S).read())
         rfs = _json.loads(_ur.urlopen(_ur.Request(
             f"{base}/rootfolder", headers={"X-Api-Key": key},
-        ), timeout=10).read())
+        ), timeout=_HTTP_GET_TIMEOUT_S).read())
         existing = _json.loads(_ur.urlopen(_ur.Request(
             f"{base}/series", headers={"X-Api-Key": key},
-        ), timeout=15).read())
+        ), timeout=_HTTP_LONG_TIMEOUT_S).read())
     except Exception as exc:
         return {"action": "ensure-sonarr-seed-series",
                 "error": f"sonarr precheck failed: {str(exc)[:80]}"}
@@ -1153,7 +1169,7 @@ def ensure_sonarr_seed_series(ctx: JobContext) -> dict:
             q = _up.quote(name)
             hits = _json.loads(_ur.urlopen(_ur.Request(
                 f"{base}/series/lookup?term={q}", headers={"X-Api-Key": key},
-            ), timeout=10).read())
+            ), timeout=_HTTP_GET_TIMEOUT_S).read())
         except Exception:
             failed += 1
             continue
@@ -1184,7 +1200,7 @@ def ensure_sonarr_seed_series(ctx: JobContext) -> dict:
             _ur.urlopen(_ur.Request(
                 f"{base}/series", data=_json.dumps(body).encode(),
                 method="POST", headers=H,
-            ), timeout=15)
+            ), timeout=_HTTP_LONG_TIMEOUT_S)
             added += 1
         except Exception:
             failed += 1
@@ -1317,7 +1333,7 @@ def ensure_jellyseerr_oidc(ctx: JobContext) -> dict:
     restarted = False
     try:
         import docker as _docker
-        _docker.from_env().containers.get("jellyseerr").restart(timeout=15)
+        _docker.from_env().containers.get("jellyseerr").restart(timeout=_HTTP_LONG_TIMEOUT_S)
         restarted = True
     except Exception:
         try:
@@ -1438,7 +1454,7 @@ def ensure_arr_jellyfin_notifier(ctx: JobContext) -> dict:
 
         try:
             req = _ur.Request(base, headers={"X-Api-Key": key})
-            with _ur.urlopen(req, timeout=10) as r:
+            with _ur.urlopen(req, timeout=_HTTP_GET_TIMEOUT_S) as r:
                 existing = _json.loads(r.read())
         except Exception as exc:
             summary[app] = f"list error: {str(exc)[:60]}"
@@ -1478,7 +1494,7 @@ def ensure_arr_jellyfin_notifier(ctx: JobContext) -> dict:
                 base, data=_json.dumps(payload).encode(),
                 method="POST", headers=headers,
             )
-            with _ur.urlopen(req, timeout=15) as r:
+            with _ur.urlopen(req, timeout=_HTTP_LONG_TIMEOUT_S) as r:
                 summary[app] = f"created (HTTP {r.status})"
         except _ue.HTTPError as exc:
             summary[app] = f"HTTP {exc.code}: {exc.read()[:80].decode(errors='replace')}"
@@ -1503,8 +1519,8 @@ def _qbit_completed_torrents(ctx: JobContext) -> list[dict]:
         opener.open(_ur.Request(
             f"{base}/api/v2/auth/login",
             data=_up.urlencode({"username": qb_user, "password": qb_pass}).encode(),
-        ), timeout=5)
-        with opener.open(f"{base}/api/v2/torrents/info", timeout=10) as r:
+        ), timeout=_HTTP_PROBE_TIMEOUT_S)
+        with opener.open(f"{base}/api/v2/torrents/info", timeout=_HTTP_GET_TIMEOUT_S) as r:
             torrents = _json.loads(r.read())
     except Exception:
         return []
@@ -1569,7 +1585,7 @@ def recover_stuck_imports(ctx: JobContext) -> dict:
                 f"{api_base}/queue?pageSize=200",
                 headers={"X-Api-Key": key},
             )
-            with _ur.urlopen(req, timeout=15) as r:
+            with _ur.urlopen(req, timeout=_HTTP_LONG_TIMEOUT_S) as r:
                 queue_records = _json.loads(r.read()).get("records", [])
         except Exception:
             queue_records = []
@@ -1601,7 +1617,7 @@ def recover_stuck_imports(ctx: JobContext) -> dict:
                     f"?folder={_up.quote(content_path)}&filterExistingFiles=true"
                 )
                 req = _ur.Request(probe_url, headers={"X-Api-Key": key})
-                with _ur.urlopen(req, timeout=20) as r:
+                with _ur.urlopen(req, timeout=_HTTP_SLOW_TIMEOUT_S) as r:
                     items = _json.loads(r.read())
             except Exception:
                 errors += 1
@@ -1643,7 +1659,7 @@ def recover_stuck_imports(ctx: JobContext) -> dict:
                     data=_json.dumps(cmd_body).encode(),
                     method="POST", headers=H,
                 )
-                _ur.urlopen(req, timeout=15)
+                _ur.urlopen(req, timeout=_HTTP_LONG_TIMEOUT_S)
                 recovered += 1
             except Exception:
                 errors += 1
@@ -1664,7 +1680,7 @@ def recover_stuck_imports(ctx: JobContext) -> dict:
                     )
                     _ur.urlopen(_ur.Request(
                         del_url, method="DELETE", headers={"X-Api-Key": key},
-                    ), timeout=10)
+                    ), timeout=_HTTP_GET_TIMEOUT_S)
                 except Exception as exc:
                     # Per-entry delete failure — next run of recover-
                     # stuck-imports will try again. Don't abort the
@@ -1730,7 +1746,7 @@ def scan_completed_downloads(ctx: JobContext) -> dict:
             "X-Api-Key": key, "Content-Type": "application/json",
         })
         try:
-            with _ur.urlopen(req, timeout=10) as resp:
+            with _ur.urlopen(req, timeout=_HTTP_GET_TIMEOUT_S) as resp:
                 fired[app] = f"queued ({resp.status})"
         except _ue.HTTPError as exc:
             fired[app] = f"HTTP {exc.code}"
