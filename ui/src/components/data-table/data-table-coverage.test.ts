@@ -57,14 +57,10 @@ const _LEGACY_TABLE_ALLOWLIST: ReadonlyArray<{
       "scenario; intentionally non-DataTable. Extracted from " +
       "JobDetailPanel.tsx so the outer panel migrates cleanly.",
   },
-  {
-    file: "jobs/JobBreakdownTable.tsx",
-    reason:
-      "drawer-internal breakdown — opens on row-click, not a sort/filter " +
-      "scenario; intentionally non-DataTable. Extracted from " +
-      "JobHistoryPanel.tsx so the outer 'Recent batches' table " +
-      "(now <DataTable>) is unencumbered.",
-  },
+  // ``jobs/JobBreakdownTable.tsx`` retired in v1.0.284: the only
+  // consumer (``JobHistoryPanel``) was sunset when guardrails
+  // unified onto JobRunner, so every Recent-batches surface now
+  // flows through /api/runs + the DataTable-based RunHistoryPanel.
 ];
 
 // Catches both the `<Table>` primitive AND raw HTML `<table>` tags.
@@ -135,16 +131,14 @@ describe("DataTable coverage ratchet", () => {
   it("allowlist size doesn't grow without reason", () => {
     // Floor — only goes DOWN as we migrate. Bump down each time you
     // remove an entry. Prevents silent allowlist growth. Current
-    // floor: 4 (BulkImportDialog, UserDetailDrawer, JobDetailBreakdown,
-    // JobBreakdownTable). LogsTable was migrated once DataTable shipped
-    // the `renderRowAttributes` prop in v1.3.19. Wave 6 extracted the
-    // two drawer-internal breakdowns out of JobDetailPanel.tsx and
-    // JobHistoryPanel.tsx into their own components so the outer panels
-    // stay clean — the inner breakdowns are intentionally non-DataTable
-    // (opens on row-click, not sort/filter scenarios). Goal is 2 (only
-    // the truly non-table allowed entries — CSV preview + side-pane
-    // key/value rows).
-    expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(4);
+    // floor: 3 (BulkImportDialog, UserDetailDrawer, JobDetailBreakdown).
+    // v1.0.284 retired JobBreakdownTable when guardrails unified onto
+    // JobRunner and the legacy Recent-batches surface (its only
+    // consumer) was deleted. LogsTable was migrated once DataTable
+    // shipped the `renderRowAttributes` prop in v1.3.19. Goal is 2
+    // (only the truly non-table allowed entries — CSV preview +
+    // side-pane key/value rows).
+    expect(_LEGACY_TABLE_ALLOWLIST.length).toBeLessThanOrEqual(3);
   });
 
   // -------------------------------------------------------------------

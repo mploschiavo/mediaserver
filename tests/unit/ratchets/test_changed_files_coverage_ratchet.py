@@ -194,7 +194,14 @@ def _git_diff_files(base: str) -> list[Path]:
         if not rel or rel in seen:
             continue
         seen.add(rel)
-        out.append(REPO_ROOT / rel)
+        path = REPO_ROOT / rel
+        # Deleted files appear in ``git diff --name-only`` but
+        # have no on-disk content + no coverage entry. They're
+        # "touched" in the diff sense but we have nothing to
+        # grade against; skip silently.
+        if not path.is_file():
+            continue
+        out.append(path)
     return out
 
 

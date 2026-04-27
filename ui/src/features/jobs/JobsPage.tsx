@@ -15,7 +15,6 @@ import { QueueCard } from "./QueueCard";
 import { SchedulesCard } from "./SchedulesCard";
 import { JobsTreeView } from "./JobsTreeView";
 import { JobDetailPanel } from "./JobDetailPanel";
-import { JobHistoryPanel } from "./JobHistoryPanel";
 import { JobsRuntimeChart } from "./JobsRuntimeChart";
 import { RunHistoryPanel } from "./RunHistoryPanel";
 import {
@@ -515,7 +514,23 @@ export function JobsPage({
               }}
             />
           ) : (
-            <JobHistoryPanel history={history} catalog={catalog} />
+            // No-job-selected state. v1.0.284 retired the legacy
+            // "Recent batches" panel — every entry it surfaced
+            // (regular jobs, media-integrity, guardrails after the
+            // Phase B unification) now flows through /api/runs and
+            // renders below in the cross-job <RunHistoryPanel>.
+            // The hint here points operators at the tree on the
+            // left for per-job context + the table below for
+            // chronological history.
+            <Card data-testid="jobs-no-selection">
+              <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-sm text-fg-muted">
+                <p>
+                  Select a job on the left for its detail panel, or
+                  scroll down to <span className="font-medium">Recent
+                  runs</span> for the chronological view.
+                </p>
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
