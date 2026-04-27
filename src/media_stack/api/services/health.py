@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -664,7 +665,6 @@ class HealthService:
         entries used job-id prefixes like ``bootstrap:configure-...``.
         Walk newest-first and return on the first match. Empty string
         when no bootstrap has ever run (fresh deploy)."""
-        from datetime import datetime, timezone
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
         path = Path(config_root) / ".controller" / "job-history.json"
         try:

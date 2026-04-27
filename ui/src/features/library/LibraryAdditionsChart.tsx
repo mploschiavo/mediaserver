@@ -114,7 +114,7 @@ export function LibraryAdditionsChart() {
                     border: "1px solid var(--border)",
                     fontSize: 12,
                   }}
-                  labelFormatter={shortDay}
+                  labelFormatter={(label) => shortDay(String(label ?? ""))}
                 />
                 {services.map((svc, i) => (
                   <Area

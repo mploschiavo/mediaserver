@@ -415,7 +415,6 @@ def _probe_http_status(probe: dict) -> tuple[bool, str]:
             return (False, f"GET {url} failed: {exc}")
     try:
         # Don't follow redirects — we want to ASSERT on the redirect.
-        from urllib.parse import urlparse
         import http.client
         import ssl
         import socket

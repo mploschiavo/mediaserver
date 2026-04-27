@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -94,7 +95,6 @@ class OpsService:
         """Compose container info with resource usage."""
         try:
             import docker
-            from concurrent.futures import ThreadPoolExecutor, as_completed
             client = docker.from_env()
             containers = client.containers.list()
             ns_info = [{"namespace": "compose", "current": True, "pods": len(containers),

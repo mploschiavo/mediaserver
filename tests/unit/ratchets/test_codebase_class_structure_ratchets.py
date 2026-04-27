@@ -49,7 +49,7 @@ METHODS_OVER_50_LINES_RATCHET = 308       # long methods — extract sub-methods
 DEEPLY_NESTED_4PLUS_RATCHET = 184         # 4+ nesting levels — use early returns
 GOD_CLASSES_OVER_500_LINES_RATCHET = 14   # classes doing too much — split
 CLASSES_OVER_15_METHODS_RATCHET = 39      # too many responsibilities
-CIRCULAR_IMPORT_RISK_RATCHET = 236        # lazy imports in methods — poor layering
+CIRCULAR_IMPORT_RISK_RATCHET = 233        # lazy imports in methods — poor layering
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
