@@ -489,6 +489,11 @@ export interface RunRecordShape {
     action?: string;
   };
   child_run_ids: readonly string[];
+  /** Z-score relative to the rolling mean of recent runs of the
+   *  same job. ``null``/absent until the controller has 10+
+   *  prior samples for this job. The UI tints rows above 1σ amber
+   *  and above 2σ red. */
+  anomaly_score?: number | null;
 }
 
 /** Returned by ``GET /api/runs/<run_id>`` — the record plus its

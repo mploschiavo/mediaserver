@@ -19,6 +19,29 @@ import { RunDrawer } from "./RunDrawer";
 
 const RUN_ID_PREFIX_LEN = 8;
 
+// Anomaly tint thresholds — z-score units (number of standard
+// deviations above the rolling mean). Below ANOMALY_AMBER, the row
+// renders normally; between AMBER and RED, the row gets a warning
+// tone; at-or-above RED, a danger tone. Only the *high* tail flags;
+// runs that finish faster than baseline (negative z) are good news,
+// not anomalies, so we don't tint them.
+const ANOMALY_AMBER = 1;
+const ANOMALY_RED = 2;
+
+type AnomalyTone = "" | "warn" | "err";
+
+function anomalyTone(score: number | null | undefined): AnomalyTone {
+  if (score == null) return "";
+  if (score >= ANOMALY_RED) return "err";
+  if (score >= ANOMALY_AMBER) return "warn";
+  return "";
+}
+
+function anomalyTooltip(score: number | null | undefined): string {
+  if (score == null) return "";
+  return `Slower than baseline by ${score.toFixed(1)}σ`;
+}
+
 /**
  * Phase-2 cross-job run history. Reads `GET /api/runs` and surfaces the
  * last N records — one row per ULID, with status, who triggered it,
@@ -162,6 +185,7 @@ export function RunHistoryPanel({
               const Icon = cfg.icon;
               const childCount = r.child_run_ids.length;
               const hasParent = Boolean(r.parent_run_id);
+              const tone = anomalyTone(r.anomaly_score);
               return (
                 <li
                   key={r.run_id}
@@ -170,11 +194,20 @@ export function RunHistoryPanel({
                   data-job={r.job_name}
                   data-has-parent={hasParent ? "true" : "false"}
                   data-child-count={childCount}
+                  data-tone={tone || undefined}
+                  title={anomalyTooltip(r.anomaly_score)}
                 >
                   <button
                     type="button"
                     onClick={() => setSelectedRunId(r.run_id)}
-                    className="flex w-full items-center gap-2 rounded-md border border-border bg-bg-1 px-2 py-1.5 text-left text-xs [@media(hover:hover)]:hover:bg-bg-2"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md border bg-bg-1 px-2 py-1.5 text-left text-xs [@media(hover:hover)]:hover:bg-bg-2",
+                      tone === "err" &&
+                        "border-danger/40 bg-danger/5",
+                      tone === "warn" &&
+                        "border-warning/40 bg-warning/5",
+                      tone === "" && "border-border",
+                    )}
                     data-testid={`run-history-row-button-${r.run_id}`}
                   >
                     <Badge

@@ -130,6 +130,11 @@ class RunRecord:
     stdout_tail: Optional[str] = None
     log_anchor: Optional[LogAnchor] = None
     child_run_ids: list[str] = field(default_factory=list)
+    # Z-score relative to the rolling mean of this job's recent
+    # durations (Welford-tracked in ``application/jobs/runtime_
+    # stats.py``). ``None`` until enough history exists; the UI
+    # tints the row red when ``> 2`` and amber when ``> 1``.
+    anomaly_score: Optional[float] = None
 
     def __post_init__(self) -> None:
         # Cap the stdout tail defensively — callers should already
@@ -167,6 +172,8 @@ class RunRecord:
             out["stdout_tail"] = self.stdout_tail
         if self.log_anchor is not None:
             out["log_anchor"] = self.log_anchor.to_dict()
+        if self.anomaly_score is not None:
+            out["anomaly_score"] = self.anomaly_score
         return out
 
     @classmethod
@@ -206,6 +213,11 @@ class RunRecord:
             stdout_tail=data.get("stdout_tail"),
             log_anchor=anchor,
             child_run_ids=list(data.get("child_run_ids") or []),
+            anomaly_score=(
+                float(data["anomaly_score"])
+                if data.get("anomaly_score") is not None
+                else None
+            ),
         )
 
 

@@ -262,6 +262,62 @@ describe("RunHistoryPanel", () => {
     );
   });
 
+  it("does not tint a row when anomaly_score is absent or null", () => {
+    reset();
+    runsState.data = [
+      makeRun({ run_id: "01J5NORM0000000000000001" }),
+      makeRun({ run_id: "01J5NORM0000000000000002", anomaly_score: null }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(
+      screen.getByTestId("run-history-row-01J5NORM0000000000000001"),
+    ).not.toHaveAttribute("data-tone");
+    expect(
+      screen.getByTestId("run-history-row-01J5NORM0000000000000002"),
+    ).not.toHaveAttribute("data-tone");
+  });
+
+  it("tints a row warn for anomaly_score in [1, 2)", () => {
+    reset();
+    runsState.data = [makeRun({ run_id: "01J5WARN", anomaly_score: 1.4 })];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(screen.getByTestId("run-history-row-01J5WARN")).toHaveAttribute(
+      "data-tone",
+      "warn",
+    );
+  });
+
+  it("tints a row err for anomaly_score >= 2", () => {
+    reset();
+    runsState.data = [makeRun({ run_id: "01J5ERR", anomaly_score: 3.2 })];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(screen.getByTestId("run-history-row-01J5ERR")).toHaveAttribute(
+      "data-tone",
+      "err",
+    );
+  });
+
+  it("does not tint a row for negative z-scores (faster than baseline)", () => {
+    reset();
+    runsState.data = [
+      makeRun({ run_id: "01J5FAST", anomaly_score: -1.5 }),
+    ];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(screen.getByTestId("run-history-row-01J5FAST")).not.toHaveAttribute(
+      "data-tone",
+    );
+  });
+
+  it("surfaces the anomaly z-score in the row title for hover tooltip", () => {
+    reset();
+    runsState.data = [makeRun({ run_id: "01J5HOV", anomaly_score: 2.5 })];
+    renderWithProviders(<RunHistoryPanel />);
+    expect(screen.getByTestId("run-history-row-01J5HOV")).toHaveAttribute(
+      "title",
+      expect.stringContaining("2.5"),
+    );
+  });
+
   it("flags rows with parent + child indicators on data-attributes", () => {
     reset();
     runsState.data = [
