@@ -1,6 +1,7 @@
 import { createRoute } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { SessionsByProviderChart } from "@/features/sessions/SessionsByProviderChart";
 import { SessionsTable } from "@/features/sessions/SessionsTable";
 import { Route as RootRoute } from "@/routes/__root";
 
@@ -23,6 +24,7 @@ function SessionsPage() {
         title="Active sessions"
         description="Sessions across every provider. Revoke any that look wrong."
       />
+      <SessionsByProviderChart />
       <SessionsTable />
     </motion.div>
   );
