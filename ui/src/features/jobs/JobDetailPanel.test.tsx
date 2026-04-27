@@ -25,6 +25,18 @@ vi.mock("./hooks", async () => {
       isPending: false,
       error: null,
     }),
+    // The LastRunPanel child reads these — short-circuit to "no run yet"
+    // so this test stays focused on JobDetailPanel's own concerns.
+    useLatestRunForJob: () => ({
+      data: null,
+      isLoading: false,
+      error: null,
+    }),
+    useRun: () => ({
+      data: null,
+      isLoading: false,
+      error: null,
+    }),
   };
 });
 
@@ -270,9 +282,19 @@ describe("JobDetailPanel", () => {
     expect(link.tagName.toLowerCase()).toBe("a");
     expect(link.getAttribute("href")).toContain("/logs?");
     expect(link.getAttribute("href")).toContain("service=controller");
+    // v1.0.270: changed from ``filter=`` (regex search) to ``action=``
+    // (server-side action filter) so the deep link uses the new
+    // backend filter that's purpose-built for this case — operators
+    // were getting the SPA's regex-search treatment of job names,
+    // which choked on dotted/compound names like
+    // ``cron:reconcile``.
     expect(link.getAttribute("href")).toContain(
-      "filter=scan-completed-downloads",
+      "action=scan-completed-downloads",
     );
+    // The deep-link also pre-stages a useful default window so the
+    // Logs page doesn't open empty under heavy traffic.
+    expect(link.getAttribute("href")).toContain("limit=5000");
+    expect(link.getAttribute("href")).toContain("since=1h");
   });
 
   it("renders the Audit history deep-link with the action prefix", () => {

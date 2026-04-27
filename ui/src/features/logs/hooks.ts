@@ -176,19 +176,52 @@ interface UseMultiLogsResult {
  *     K8s, missing container, etc.) propagates up so the page can
  *     surface it inline.
  */
+export interface MultiLogsFilters {
+  /** Per-source line cap, threaded into the backend query. */
+  lines?: number;
+  /** Time window: relative shorthand (``5m``/``1h``/``24h``) OR ISO. */
+  since?: string;
+  /** Filter to lines mentioning ``[ACTION] <name>`` or ``[JOB] <name>``. */
+  action?: string;
+  /** Backend-side level filter (cheaper than client-side at 50k lines). */
+  level?: "error" | "warning" | "info" | "debug";
+  /** Free-text or ``/regex/i`` search. */
+  q?: string;
+  /** K8s only — attach previous container instance's logs (crashloop). */
+  previous?: boolean;
+}
+
 export function useMultiLogs(
   sources: readonly LogSource[],
-  opts: { tailing: boolean },
+  opts: { tailing: boolean; filters?: MultiLogsFilters },
 ): UseMultiLogsResult {
   const refetchInterval = opts.tailing ? 3000 : (false as const);
+  const filters = opts.filters ?? {};
   // `useQueries` infers a tuple per element; coerce to a uniform
   // `UseQueryResult<LogStreamShape>[]` for the map below — every entry
   // is the same shape (`LogStreamShape`) since each query hits the
   // same `api.logs(...)` endpoint.
   const results = useQueries({
     queries: sources.map((s) => ({
-      queryKey: ["logs", s] as const,
-      queryFn: () => api.logs(s),
+      queryKey: [
+        "logs",
+        s,
+        filters.lines ?? 0,
+        filters.since ?? "",
+        filters.action ?? "",
+        filters.level ?? "",
+        filters.q ?? "",
+        Boolean(filters.previous),
+      ] as const,
+      queryFn: () =>
+        api.logs(s, {
+          ...(filters.lines !== undefined && { lines: filters.lines }),
+          ...(filters.since && { since: filters.since }),
+          ...(filters.action && { action: filters.action }),
+          ...(filters.level && { level: filters.level }),
+          ...(filters.q && { q: filters.q }),
+          ...(filters.previous && { previous: true }),
+        }),
       refetchInterval,
       retry: false,
     })),

@@ -43,6 +43,7 @@ EXEMPT_ROUTES = frozenset({
     "__root.tsx",          # router root, no rendering of its own
     "me.tsx",              # /me — single-entity self profile
     "index.tsx",           # / redirects to /ops; cards live there
+    "about.tsx",           # /about — static version+links; no buffer to be empty
 })
 
 # Patterns that indicate each tier is present.

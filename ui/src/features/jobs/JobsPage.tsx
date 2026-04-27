@@ -14,6 +14,7 @@ import { JobsTreeView } from "./JobsTreeView";
 import { JobDetailPanel } from "./JobDetailPanel";
 import { JobHistoryPanel } from "./JobHistoryPanel";
 import { JobsRuntimeChart } from "./JobsRuntimeChart";
+import { RunHistoryPanel } from "./RunHistoryPanel";
 import {
   useJobs,
   type JobHistoryEntry,
@@ -513,6 +514,8 @@ export function JobsPage({
           )}
         </div>
       </div>
+
+      <RunHistoryPanel />
     </div>
   );
 }

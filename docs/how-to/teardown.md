@@ -24,7 +24,36 @@ curl -s http://localhost:9100/api/backup > media-stack-backup.json
 
 ## Docker Compose
 
-### Linux / macOS
+### Use the teardown script (recommended)
+
+The repo ships a teardown helper at [`bin/ops/teardown-compose.sh`](../../bin/ops/teardown-compose.sh). It handles the cases the manual recipe gets wrong:
+
+* Preserves git-tracked `config/defaults/` (the controller reads bootstrap templates from it on first run — nuking it breaks fresh installs).
+* Kills stale `kubectl port-forward` processes that bind compose host ports — a common silent failure when toggling between k8s and compose.
+* Three scopes, the safest one is the default:
+
+```bash
+# Default — wipes runtime config dirs only, keeps data/torrents and config/defaults/
+bin/ops/teardown-compose.sh
+
+# Also wipe data/ (torrents, usenet, transcode)
+bin/ops/teardown-compose.sh --with-data
+
+# Wipe everything including media/ (asks for confirmation per dir)
+bin/ops/teardown-compose.sh --everything
+
+# Show what would happen, take no action
+bin/ops/teardown-compose.sh --dry-run
+```
+
+After teardown, fresh-bootstrap with:
+
+```bash
+docker compose -f deploy/compose/docker-compose.yml up -d
+docker compose -f deploy/compose/docker-compose.yml logs -f media-stack-controller
+```
+
+### Manual (Linux / macOS)
 
 ```bash
 cd docker/
@@ -32,19 +61,19 @@ cd docker/
 # 1. Stop all containers and remove volumes
 docker compose down -v --remove-orphans
 
-# 2. Remove config data (API keys, app databases, settings)
-#    Default path: ./config (relative to docker-compose.yml)
-#    If you set CONFIG_ROOT, use that path instead.
-rm -rf config/
+# 2. Remove runtime config dirs (KEEP config/defaults/ — it's git-tracked)
+find config -mindepth 1 -maxdepth 1 -not -name defaults -exec rm -rf {} +
 
-# 3. Remove media and download data
-#    Default paths: ./media and ./data
-rm -rf media/ data/
+# 3. Remove download data (NOT /media — that's the library)
+rm -rf data/
 
-# 4. (Optional) Remove the controller image
+# 4. (Optional) Remove media library
+rm -rf media/
+
+# 5. (Optional) Remove the controller image
 docker rmi media-stack-controller:latest 2>/dev/null
 
-# 5. (Optional) Prune unused Docker resources
+# 6. (Optional) Prune unused Docker resources
 docker system prune -af --volumes
 ```
 

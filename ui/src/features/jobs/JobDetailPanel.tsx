@@ -26,6 +26,7 @@ import {
   JobDetailBreakdown,
   type JobDetailBreakdownRow,
 } from "./JobDetailBreakdown";
+import { LastRunPanel } from "./LastRunPanel";
 
 interface JobDetailPanelProps {
   job: JobMeta;
@@ -62,12 +63,31 @@ function lastRunsForJob(
   for (const entry of history) {
     const result = entry.jobs?.[name];
     if (!result) continue;
-    out.push({
+    const r = result as JobHistoryEntry["jobs"] extends Record<string, infer V>
+      ? V
+      : never;
+    const errorText =
+      r && typeof (r as { error?: unknown }).error === "string"
+        ? (r as { error?: string }).error
+        : undefined;
+    const skipReason =
+      r && typeof (r as { skip_reason?: unknown }).skip_reason === "string"
+        ? (r as { skip_reason?: string }).skip_reason
+        : undefined;
+    const attempts =
+      r && typeof (r as { attempts?: unknown }).attempts === "number"
+        ? (r as { attempts?: number }).attempts
+        : undefined;
+    const row: RunRow = {
       ts: entry.ts,
       status: typeof result.status === "string" ? result.status : "—",
       elapsed: typeof result.elapsed === "number" ? result.elapsed : undefined,
       source: typeof entry.source === "string" ? entry.source : undefined,
-    });
+    };
+    if (errorText) row.error = errorText;
+    if (skipReason) row.skipReason = skipReason;
+    if (attempts !== undefined) row.attempts = attempts;
+    out.push(row);
     if (out.length >= cap) break;
   }
   return out;
@@ -613,6 +633,8 @@ export function JobDetailPanel({
         </CardContent>
       </Card>
 
+      <LastRunPanel jobName={job.name} />
+
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -698,7 +720,12 @@ export function JobDetailPanel({
         >
           <Link
             to="/logs"
-            search={{ service: "controller", filter: job.name }}
+            search={{
+              service: "controller",
+              action: job.name,
+              limit: 5000,
+              since: "1h",
+            }}
           >
             <ScrollText aria-hidden />
             View logs

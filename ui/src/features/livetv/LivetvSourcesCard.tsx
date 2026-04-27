@@ -1,5 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Plus, Radio, Trash2 } from "lucide-react";
+import { Pencil, Plus, Radio, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "@/api";
 import { asArray } from "@/lib/coerce";
@@ -12,31 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/layout/EmptyState";
 import {
   ResponsiveTable,
   type ResponsiveTableColumn,
 } from "@/components/layout/ResponsiveTable";
+import { LivetvSourceDialog, type LivetvKind } from "./LivetvSourceDialog";
 import {
   useLivetvSources,
   useSaveLivetvSources,
@@ -53,20 +34,6 @@ function truncate(value: string | undefined, max = 56): string {
   if (!value) return "";
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
-
-type Kind = "tuner" | "guide";
-
-interface SourceFormState {
-  kind: Kind;
-  name: string;
-  url: string;
-}
-
-const EMPTY_FORM: SourceFormState = {
-  kind: "tuner",
-  name: "",
-  url: "",
-};
 
 /**
  * Live-TV / IPTV configuration — `tuners[]` (M3U playlists) and
@@ -95,7 +62,8 @@ export function LivetvSourcesCard() {
             pulls for live TV. The active pair is highlighted.
           </CardDescription>
         </div>
-        <SourceDialog
+        <LivetvSourceDialog
+          mode="add"
           tuners={tuners}
           guides={guides}
           trigger={
@@ -161,7 +129,7 @@ function SourceList({
   tuners,
   guides,
 }: {
-  kind: Kind;
+  kind: LivetvKind;
   entries: readonly LivetvUrlEntry[];
   activeUrl: string;
   tuners: readonly LivetvUrlEntry[];
@@ -211,6 +179,51 @@ function SourceList({
     );
   };
 
+  const renderActions = (row: LivetvUrlEntry, layout: "row" | "card") => {
+    const editTrigger = (
+      <Button
+        variant="ghost"
+        size={layout === "row" ? "icon" : "sm"}
+        aria-label={`Edit ${row.name}`}
+        data-testid={`livetv-${kind}-edit-${row.name}`}
+      >
+        <Pencil aria-hidden />
+        {layout === "card" ? <span className="ml-1">Edit</span> : null}
+      </Button>
+    );
+    return (
+      <>
+        {row.url !== activeUrl ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleActivate(row)}
+            data-testid={`livetv-${kind}-activate-${row.name}`}
+          >
+            Use
+          </Button>
+        ) : null}
+        <LivetvSourceDialog
+          mode="edit"
+          kind={kind}
+          entry={row}
+          tuners={tuners}
+          guides={guides}
+          trigger={editTrigger}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => handleDelete(row)}
+          aria-label={`Delete ${row.name}`}
+          data-testid={`livetv-${kind}-delete-${row.name}`}
+        >
+          <Trash2 aria-hidden className="text-danger" />
+        </Button>
+      </>
+    );
+  };
+
   const columns: ResponsiveTableColumn<LivetvUrlEntry>[] = [
     {
       id: "name",
@@ -243,25 +256,7 @@ function SourceList({
       header: <span className="sr-only">Actions</span>,
       cell: (row) => (
         <div className="flex items-center justify-end gap-1">
-          {row.url !== activeUrl ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleActivate(row)}
-              data-testid={`livetv-${kind}-activate-${row.name}`}
-            >
-              Use
-            </Button>
-          ) : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDelete(row)}
-            aria-label={`Delete ${row.name}`}
-            data-testid={`livetv-${kind}-delete-${row.name}`}
-          >
-            <Trash2 aria-hidden className="text-danger" />
-          </Button>
+          {renderActions(row, "row")}
         </div>
       ),
     },
@@ -269,7 +264,10 @@ function SourceList({
 
   return (
     <div className="flex flex-col gap-2 px-6 pb-4">
-      <h3 className="text-sm font-medium text-fg" data-testid={`livetv-${kind}-heading`}>
+      <h3
+        className="text-sm font-medium text-fg"
+        data-testid={`livetv-${kind}-heading`}
+      >
         {heading}{" "}
         <span className="text-fg-muted font-normal">({entries.length})</span>
       </h3>
@@ -291,170 +289,18 @@ function SourceList({
                 <span className="font-medium text-fg">{row.name}</span>
                 {row.url === activeUrl ? (
                   <Badge variant="success">active</Badge>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleActivate(row)}
-                  >
-                    Use
-                  </Button>
-                )}
+                ) : null}
               </div>
               <span className="truncate font-mono text-xs text-fg-muted">
                 {row.url}
               </span>
-              <div className="flex justify-end">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(row)}
-                  aria-label={`Delete ${row.name}`}
-                >
-                  <Trash2 aria-hidden className="text-danger" />
-                </Button>
+              <div className="flex flex-wrap justify-end gap-1">
+                {renderActions(row, "card")}
               </div>
             </div>
           )}
         />
       )}
     </div>
-  );
-}
-
-interface SourceDialogProps {
-  tuners: readonly LivetvUrlEntry[];
-  guides: readonly LivetvUrlEntry[];
-  trigger: ReactNode;
-}
-
-function SourceDialog({ tuners, guides, trigger }: SourceDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<SourceFormState>(EMPTY_FORM);
-  const save = useSaveLivetvSources();
-
-  // Reset form whenever the dialog opens so a previous draft doesn't
-  // bleed into the next session.
-  useEffect(() => {
-    if (open) setForm(EMPTY_FORM);
-  }, [open]);
-
-  const update1 = (patch: Partial<SourceFormState>) =>
-    setForm((prev) => ({ ...prev, ...patch }));
-
-  const handleSubmit = (ev: FormEvent) => {
-    ev.preventDefault();
-    const name = form.name.trim();
-    const url = form.url.trim();
-    if (!name) {
-      toast.error("Source name required");
-      return;
-    }
-    if (!url) {
-      toast.error("URL required");
-      return;
-    }
-
-    const existing = form.kind === "tuner" ? tuners : guides;
-    if (existing.some((s) => s.url === url)) {
-      toast.error(`URL already added`);
-      return;
-    }
-
-    const next: LivetvUrlEntry = { url, name };
-
-    save.mutate(
-      form.kind === "tuner"
-        ? { tuners: [...tuners, next] }
-        : { guides: [...guides, next] },
-      {
-        onSuccess: () => {
-          toast.success(`Added ${name}`);
-          setOpen(false);
-        },
-        onError: (err) =>
-          toast.error(`Save failed: ${explain(err, "request failed")}`),
-      },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent data-testid="livetv-add-dialog">
-        <DialogHeader>
-          <DialogTitle>Add live-TV source</DialogTitle>
-          <DialogDescription>
-            Pick whether you&apos;re adding an M3U tuner playlist or an
-            XMLTV EPG guide URL, then provide the URL.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={handleSubmit}
-          aria-label="Add live-TV source"
-        >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="livetv-kind">Kind</Label>
-            <Select
-              value={form.kind}
-              onValueChange={(v) => update1({ kind: v as Kind })}
-            >
-              <SelectTrigger id="livetv-kind" data-testid="livetv-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="tuner">Tuner (M3U playlist)</SelectItem>
-                <SelectItem value="guide">Guide (XMLTV EPG)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="livetv-name">Source name</Label>
-            <Input
-              id="livetv-name"
-              value={form.name}
-              onChange={(e) => update1({ name: e.target.value })}
-              placeholder={form.kind === "tuner" ? "My IPTV pack" : "My EPG guide"}
-              required
-              data-testid="livetv-name"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="livetv-url">
-              {form.kind === "tuner" ? "M3U playlist URL" : "EPG XMLTV URL"}
-            </Label>
-            <Input
-              id="livetv-url"
-              type="url"
-              value={form.url}
-              onChange={(e) => update1({ url: e.target.value })}
-              placeholder={
-                form.kind === "tuner"
-                  ? "https://example.com/playlist.m3u"
-                  : "https://example.com/epg.xml"
-              }
-              required
-              data-testid="livetv-url"
-            />
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
-                Cancel
-              </Button>
-            </DialogClose>
-            <Button
-              type="submit"
-              variant="primary"
-              loading={save.isPending}
-              data-testid="livetv-submit"
-            >
-              Add
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

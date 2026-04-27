@@ -39,48 +39,16 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
-      // The dashboard is admin-only and behind auth; keep the SW
-      // strategy lean: cache the app shell + static assets, never
-      // cache /api/* (that's session-tied data).
-      workbox: {
-        // Version-stamp the precache + runtime cache names so a new
-        // build registers under a fresh cache identity. Workbox's
-        // standard activate handler then deletes any cache whose
-        // name doesn't match the current set, killing stale HTML/JS
-        // automatically on the next SW activation.
-        cacheId: `media-stack-${BUILD_VERSION}`,
+      // ``injectManifest`` lets us own the SW source — required so
+      // the navigation denylist can be pulled from
+      // ``GET /sw-config.json`` at install time (single source of
+      // truth: the routing engine, not a hardcoded regex). See
+      // ``ui/src/sw.ts`` and ``ui/src/sw-config.ts``.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\/.*/,
-            handler: "NetworkOnly", // never cache API
-          },
-          {
-            urlPattern: /\.(?:woff2|woff|ttf|eot)$/,
-            handler: "CacheFirst",
-            options: {
-              cacheName: `media-stack-fonts-${BUILD_VERSION}`,
-              expiration: {
-                maxEntries: 16,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-            },
-          },
-          {
-            // Cache the Geist fonts loaded from jsdelivr.
-            urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/.*$/,
-            handler: "CacheFirst",
-            options: {
-              cacheName: `media-stack-cdn-fonts-${BUILD_VERSION}`,
-              expiration: {
-                maxEntries: 16,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-            },
-          },
-        ],
       },
       manifest: {
         name: "Media Stack",
@@ -133,10 +101,6 @@ export default defineConfig({
           },
         ],
       },
-      // Surface the PWA prompt at controlled times via the registration
-      // helper instead of the plugin's auto-prompt — luxury feel beats
-      // surprise dialogs.
-      injectManifest: undefined,
     }),
   ],
   resolve: {

@@ -1,4 +1,5 @@
 import { asArray } from "@/lib/coerce";
+import { authPortal } from "@/lib/auth-portal";
 import { useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Activity, AlertTriangle } from "lucide-react";
@@ -170,7 +171,7 @@ export function SessionsTable() {
           <CardContent className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Button asChild variant="secondary" size="sm">
               <a
-                href="/app/authelia/"
+                href={`${authPortal()}/`}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="sessions-link-authelia"

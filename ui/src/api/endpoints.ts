@@ -97,8 +97,35 @@ export const api = {
 
   // TODO(api): real /api/logs/stream endpoint with SSE; for now we
   // wrap the GET so consumers stay typed once it lands.
-  logs: (source: LogSource): Promise<LogStreamShape> =>
-    fetcher<LogStreamShape>(`api/logs/${encodeURIComponent(source)}`),
+  //
+  // ``opts`` mirrors the v1.0.270 backend filter set: ``lines`` (cap
+  // 50000), ``since`` (relative ``5m``/``1h``/``24h`` or ISO), ``action``
+  // (filter to a job/action's lines), ``level``, ``q`` (text or
+  // ``/regex/i``), ``previous`` (K8s previous container instance
+  // for crashloop debug).
+  logs: (
+    source: LogSource,
+    opts?: {
+      lines?: number;
+      since?: string;
+      action?: string;
+      level?: string;
+      q?: string;
+      previous?: boolean;
+    },
+  ): Promise<LogStreamShape> => {
+    const params: string[] = [];
+    if (opts?.lines) params.push(`lines=${opts.lines}`);
+    if (opts?.since) params.push(`since=${encodeURIComponent(opts.since)}`);
+    if (opts?.action) params.push(`action=${encodeURIComponent(opts.action)}`);
+    if (opts?.level) params.push(`level=${encodeURIComponent(opts.level)}`);
+    if (opts?.q) params.push(`q=${encodeURIComponent(opts.q)}`);
+    if (opts?.previous) params.push("previous=1");
+    const qs = params.length > 0 ? `?${params.join("&")}` : "";
+    return fetcher<LogStreamShape>(
+      `api/logs/${encodeURIComponent(source)}${qs}`,
+    );
+  },
 
   // System-level operations triggered from the Ops tab. Paths match
   // the controller's OpenAPI spec verbatim — earlier shapes

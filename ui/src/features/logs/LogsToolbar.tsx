@@ -43,6 +43,18 @@ interface LogsToolbarProps {
   onExport: () => void;
   /** Disable export when there's nothing visible to export. */
   exportDisabled?: boolean;
+  /** Per-source line cap (passed through to backend ?lines=). */
+  limit: number;
+  onLimitChange: (next: number) => void;
+  limitOptions: ReadonlyArray<number>;
+  /** Time window (relative shorthand or empty for "all available"). */
+  since: string;
+  onSinceChange: (next: string) => void;
+  sinceOptions: ReadonlyArray<{ value: string; label: string }>;
+  /** Action/job name filter — backend matches ``[ACTION] <name>``
+   *  and ``[JOB] <name>`` line prefixes. Empty disables. */
+  actionFilter: string;
+  onActionFilterChange: (next: string) => void;
 }
 
 const LEVEL_VARIANT: Record<LevelTag, "default" | "danger" | "warning" | "info" | "success"> = {
@@ -73,6 +85,14 @@ export function LogsToolbar({
   onToggleLevel,
   onExport,
   exportDisabled,
+  limit,
+  onLimitChange,
+  limitOptions,
+  since,
+  onSinceChange,
+  sinceOptions,
+  actionFilter,
+  onActionFilterChange,
 }: LogsToolbarProps) {
   // Local state so each keystroke renders without rebuilding the
   // parent on every char. The parent only sees the debounced value
@@ -151,6 +171,50 @@ export function LogsToolbar({
         })}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="logs-fetch-controls">
+        <label className="flex items-center gap-1.5 text-fg-muted">
+          <span>Limit</span>
+          <select
+            value={limit}
+            onChange={(e) => onLimitChange(Number(e.target.value))}
+            data-testid="logs-limit-select"
+            className="h-7 rounded-md border border-border bg-bg-1 px-2 text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {limitOptions.map((n) => (
+              <option key={n} value={n}>
+                {n.toLocaleString()} lines
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-fg-muted">
+          <span>Since</span>
+          <select
+            value={since}
+            onChange={(e) => onSinceChange(e.target.value)}
+            data-testid="logs-since-select"
+            className="h-7 rounded-md border border-border bg-bg-1 px-2 text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {sinceOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-1.5 text-fg-muted">
+          <span>Action</span>
+          <Input
+            type="text"
+            value={actionFilter}
+            onChange={(e) => onActionFilterChange(e.target.value)}
+            placeholder="bootstrap, envoy-config…"
+            aria-label="Filter to lines mentioning a job or action name"
+            data-testid="logs-action-filter"
+            className="h-7 w-48"
+          />
+        </label>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"

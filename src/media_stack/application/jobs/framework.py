@@ -215,6 +215,65 @@ def get_job_history() -> list[dict[str, Any]]:
         return []
 
 
+def _terminal_status(result: dict[str, Any] | None) -> str:
+    """Map a framework result dict to a ``RunStatus`` terminal
+    string. The framework uses ``"running_in_background"`` for in-
+    flight async jobs and ``"prereq_not_met"`` for blocked-by-
+    prereq skips; both collapse to the appropriate terminal value
+    in the run-history record."""
+    from media_stack.domain.jobs.run_record import RunStatus
+    if not result:
+        return RunStatus.OK
+    raw = str(result.get("status") or "").lower()
+    if raw in {"ok", "complete"}:
+        return RunStatus.OK
+    if raw in {"error", "errors", "failed"}:
+        return RunStatus.ERROR
+    if raw in {"skipped", "prereq_not_met"}:
+        return RunStatus.SKIPPED
+    if raw == "cancelled":
+        return RunStatus.CANCELLED
+    if raw in {"timeout", "timed_out"}:
+        return RunStatus.TIMEOUT
+    return RunStatus.OK
+
+
+def _iso_at(epoch_seconds: float) -> str:
+    """ISO-8601 UTC timestamp for the run-history log-anchor field."""
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(
+        epoch_seconds, tz=timezone.utc,
+    ).isoformat()
+
+
+def _build_per_job_history_record(r: dict[str, Any]) -> dict[str, Any]:
+    """Trim a per-job framework result down to the fields the
+    dashboard's Jobs UI surfaces, preserving the operator-debugging
+    payload (``error`` text, ``skip_reason`` for "why was this
+    skipped?" tooltips, ``attempts`` for retry counters). Pre-v1.0.270
+    this dropped ``error`` entirely — operators saw a red status chip
+    with no way to read the failure short of ssh + ``cat
+    job-history.json``."""
+    out: dict[str, Any] = {
+        "status": r.get("status", "?"),
+        "elapsed": r.get("elapsed", 0),
+    }
+    err = r.get("error")
+    if err:
+        # The framework already truncates exception strings to 200
+        # chars at the writer site; truncate here too as a
+        # belt-and-suspenders cap so a misbehaving handler can't
+        # bloat history.json.
+        out["error"] = str(err)[:500]
+    skip_reason = r.get("skip_reason") or r.get("skipped_reason")
+    if skip_reason:
+        out["skip_reason"] = str(skip_reason)[:200]
+    attempts = r.get("attempts") or r.get("attempt_count")
+    if isinstance(attempts, int) and attempts > 1:
+        out["attempts"] = attempts
+    return out
+
+
 def _record_history(
     result: dict[str, Any],
     *,
@@ -240,10 +299,7 @@ def _record_history(
         "source": _normalize_source(source),
         "actor": (str(actor).strip() or None) if actor else None,
         "jobs": {
-            name: {
-                "status": r.get("status", "?"),
-                "elapsed": r.get("elapsed", 0),
-            }
+            name: _build_per_job_history_record(r)
             for name, r in result.get("jobs", {}).items()
         },
     }
@@ -346,6 +402,27 @@ class JobRunner:
         all_job_names = {j.name for j in all_jobs}
         runtime_platform.log(f"[INFO] JobRunner: {len(all_jobs)} jobs to dispatch")
 
+        # Record a parent ``batch`` run that owns every job in this
+        # batch. The per-job run records below carry batch_id =
+        # batch.run_id + parent_run_id = batch.run_id, so the Jobs
+        # UI can render the full tree.
+        from media_stack.application.jobs.run_history import (
+            record_run_start as _rh_start,
+            record_run_complete as _rh_complete,
+        )
+        from media_stack.domain.jobs.run_record import RunStatus as _RS
+        try:
+            batch_run = _rh_start(
+                getattr(self.root, "name", "batch"),
+                triggered_by=self.source or "unknown",
+                actor=self.actor,
+            )
+            batch_id_for_children: str | None = batch_run.run_id
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
+            batch_run = None
+            batch_id_for_children = None
+
         attempt = 0
         while attempt <= self.max_attempts:
             pending = [j for j in all_jobs if j.name not in self.dispatched]
@@ -403,8 +480,22 @@ class JobRunner:
                         "status": "running_in_background", "elapsed": 0,
                     }
                     self.dispatched.add(job.name)
+                    # Open a run record so the Jobs UI can list this
+                    # async job before it completes.
+                    try:
+                        run_rec = _rh_start(
+                            job.name,
+                            parent_run_id=batch_id_for_children,
+                            batch_id=batch_id_for_children,
+                            triggered_by=self.source or "unknown",
+                            actor=self.actor,
+                        )
+                        async_run_id = run_rec.run_id
+                    except Exception as exc:  # noqa: BLE001
+                        log_swallowed(exc)
+                        async_run_id = None
 
-                    def _run_async(j=job):
+                    def _run_async(j=job, _run_id=async_run_id):
                         _t = time.time()
                         try:
                             r = j.run(self.ctx) or {}
@@ -420,6 +511,24 @@ class JobRunner:
                             f"{r.get('status','?')} ({r['elapsed']}s) "
                             f"— non-blocking finished"
                         )
+                        if _run_id is not None:
+                            try:
+                                _async_stdout = r.get("stdout_tail")
+                                _rh_complete(
+                                    _run_id,
+                                    status=_terminal_status(r),
+                                    error=r.get("error"),
+                                    stdout_tail=(
+                                        _async_stdout
+                                        if isinstance(_async_stdout, str)
+                                        else None
+                                    ),
+                                    log_anchor_source="controller",
+                                    log_anchor_since_iso=_iso_at(_t),
+                                    log_anchor_action=j.name,
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                log_swallowed(exc)
                     threading.Thread(
                         target=_run_async, daemon=True,
                         name=f"job-async-{job.name}",
@@ -432,6 +541,20 @@ class JobRunner:
                     continue
 
                 _t_job = time.time()
+                # Open a run record before the synchronous job
+                # executes; close with the terminal status afterward.
+                _sync_run_id: str | None = None
+                try:
+                    _sync_rec = _rh_start(
+                        job.name,
+                        parent_run_id=batch_id_for_children,
+                        batch_id=batch_id_for_children,
+                        triggered_by=self.source or "unknown",
+                        actor=self.actor,
+                    )
+                    _sync_run_id = _sync_rec.run_id
+                except Exception as exc:  # noqa: BLE001
+                    log_swallowed(exc)
                 result = job.run(self.ctx)
                 _job_elapsed = round(time.time() - _t_job, 1)
                 self.dispatched.add(job.name)
@@ -440,6 +563,24 @@ class JobRunner:
                     self._cv.notify_all()
                 self.results[job.name] = result
                 _status = (result or {}).get("status", "ok")
+                if _sync_run_id is not None:
+                    try:
+                        _stdout_tail_value = (result or {}).get("stdout_tail")
+                        _rh_complete(
+                            _sync_run_id,
+                            status=_terminal_status(result),
+                            error=(result or {}).get("error"),
+                            stdout_tail=(
+                                _stdout_tail_value
+                                if isinstance(_stdout_tail_value, str)
+                                else None
+                            ),
+                            log_anchor_source="controller",
+                            log_anchor_since_iso=_iso_at(_t_job),
+                            log_anchor_action=job.name,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log_swallowed(exc)
                 _remaining = sum(
                     1 for j in all_jobs if j.name not in self.done
                 )
@@ -465,6 +606,18 @@ class JobRunner:
             "jobs": self.results,
         }
         _record_history(result, source=self.source, actor=self.actor)
+        # Close the parent batch run with a terminal status so the
+        # Jobs UI can surface a single "last batch" entity.
+        if batch_run is not None:
+            try:
+                _rh_complete(
+                    batch_run.run_id,
+                    status=_RS.OK if errors == 0 else _RS.ERROR,
+                    log_anchor_source="controller",
+                    log_anchor_since_iso=_iso_at(t0),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log_swallowed(exc)
         return result
 
     def _flatten(self, job: Job) -> list[Job]:

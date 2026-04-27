@@ -18,6 +18,8 @@ import { Route as LivetvRoute } from "@/routes/livetv";
 import { Route as SecurityRoute } from "@/routes/security";
 import { Route as SnapshotsRoute } from "@/routes/snapshots";
 import { Route as ApiDocsRoute } from "@/routes/api-docs";
+import { Route as AboutRoute } from "@/routes/about";
+import { Route as AppsRoute } from "@/routes/apps";
 import {
   ContentRoute,
   LogsRoute,
@@ -53,6 +55,8 @@ export const routeTree = RootRoute.addChildren([
   SecurityRoute,
   SnapshotsRoute,
   ApiDocsRoute,
+  AboutRoute,
+  AppsRoute,
   // Splat catch-all is registered last so explicit paths win the match.
   NotFoundRoute,
 ]);

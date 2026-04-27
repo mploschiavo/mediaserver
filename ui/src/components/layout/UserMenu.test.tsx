@@ -104,9 +104,14 @@ describe("UserMenu", () => {
     expect(String(url)).toContain("/api/auth/logout");
     expect(init?.method).toBe("POST");
     expect(replaceMock).toHaveBeenCalled();
-    expect(String(replaceMock.mock.calls[0]?.[0] ?? "")).toContain(
-      "/app/authelia/",
-    );
+    // Pre-v1.0.270 we navigated to ``/app/authelia/`` (the portal
+    // root) which left the session cookie alive — operators got
+    // bounced back to the dashboard. The logout flow now goes to
+    // ``auth.<base>/logout`` which Authelia's SPA handles with a
+    // POST /api/logout that actually clears the cookie.
+    const navTarget = String(replaceMock.mock.calls[0]?.[0] ?? "");
+    expect(navTarget).toContain("/logout?rd=");
+    expect(navTarget).toContain("auth.");
   });
 
   it("Sign out still navigates to Authelia even when the logout POST 401s", async () => {

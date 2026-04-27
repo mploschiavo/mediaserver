@@ -30,6 +30,23 @@ vi.mock("@/features/jobs/hooks", async () => {
       isPending: false,
       error: null,
     }),
+    // Phase 2 run-history surfaces — short-circuit so the page test
+    // doesn't have to mock the controller's /api/runs* endpoints.
+    useLatestRunForJob: () => ({
+      data: null,
+      isLoading: false,
+      error: null,
+    }),
+    useRun: () => ({
+      data: null,
+      isLoading: false,
+      error: null,
+    }),
+    useRuns: () => ({
+      data: [],
+      isLoading: false,
+      error: null,
+    }),
   };
 });
 

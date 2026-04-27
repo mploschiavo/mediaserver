@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { onAuthEvent } from "@/api/client";
+import { authPortal } from "@/lib/auth-portal";
 import { routeTree } from "@/routeTree";
 import { toast } from "sonner";
 
@@ -77,8 +78,14 @@ export function App() {
   useEffect(() => {
     let redirected = false;
     const path = window.location.pathname;
+    const host = window.location.hostname;
+    // Already on the auth portal (either as a path-prefix legacy mount
+    // OR as a dedicated subdomain like ``auth.<base>``) — never
+    // re-redirect or we'd ping-pong.
     const isAuthPath =
-      path.startsWith("/app/authelia") || path.startsWith("/api/verify");
+      path.startsWith("/app/authelia") ||
+      path.startsWith("/api/verify") ||
+      host.startsWith("auth.");
 
     const redirectToLogin = () => {
       if (redirected || isAuthPath) return;
@@ -94,26 +101,31 @@ export function App() {
         // Toaster may not be mounted on the auth path; redirect is
         // the load-bearing step.
       }
-      // Clear the authelia session cookies BEFORE the redirect.
-      // Without this, an expired cookie keeps signalling "you're
-      // signed in" to the portal in incognito tabs and the redirect
-      // loops or shows a stale "already authenticated" state — the
-      // operator's "I have to close the browser to sign in again"
-      // bug. Path="/" matches how authelia sets it.
+      // Cookie clearing via document.cookie is a no-op for the
+      // ``authelia_session`` cookie because it's HttpOnly — the JS
+      // line below can't touch it. Kept only for the legacy
+      // ``authelia_session_remember`` (non-HttpOnly persistent
+      // cookie) which CAN be cleared client-side; everything else
+      // relies on Envoy's ext_authz check of the live session
+      // store (POST /api/logout already invalidated it).
       try {
-        document.cookie =
-          "authelia_session=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         document.cookie =
           "authelia_session_remember=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       } catch {
         // best-effort
       }
-      // Pass the current URL as `?rd=` so post-auth lands back
-      // where the operator was, not on /ops.
+      // Use the dedicated Authelia portal hostname (auth.<base>) for
+      // the redirect target. The earlier ``/app/authelia/?rd=…``
+      // pattern routed through the *same* host as the dashboard,
+      // which the Lua prefix-patch then mangled — operators got stuck
+      // at ``/app/authelia/<some-route>`` instead of seeing the login
+      // form. Going to ``auth.<base>`` matches the cookie's
+      // ``Domain=<base>`` scope and gets the operator the canonical
+      // login UI without the path-prefix gymnastics.
       const here = window.location.pathname + window.location.search;
-      const rd = encodeURIComponent(here);
+      const rd = encodeURIComponent(window.location.origin + here);
       window.setTimeout(() => {
-        window.location.replace(`/app/authelia/?rd=${rd}`);
+        window.location.replace(`${authPortal()}/?rd=${rd}`);
       }, 1500);
     };
 

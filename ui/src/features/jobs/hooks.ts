@@ -206,3 +206,130 @@ export function useCancelAction(): UseMutationResult<unknown, Error, void> {
     },
   });
 }
+
+// ---- Run history (Jobs Phase 2) ----------------------------------------
+
+/**
+ * Per-run telemetry record returned by ``GET /api/runs/...``. Mirrors
+ * the Python ``RunRecord`` shape (see
+ * ``src/media_stack/domain/jobs/run_record.py``). All optional fields
+ * may be absent.
+ */
+export interface RunRecordShape {
+  run_id: string;
+  job_name: string;
+  status:
+    | "running"
+    | "ok"
+    | "skipped"
+    | "error"
+    | "cancelled"
+    | "timeout"
+    | string;
+  started_at: number;
+  parent_run_id?: string;
+  batch_id?: string;
+  completed_at?: number;
+  elapsed?: number;
+  triggered_by: string;
+  actor?: string;
+  attempts: number;
+  error?: string;
+  stdout_tail?: string;
+  log_anchor?: {
+    source: string;
+    since_iso: string;
+    until_iso?: string;
+    action?: string;
+  };
+  child_run_ids: readonly string[];
+}
+
+/** Returned by ``GET /api/runs/<run_id>`` — the record plus its
+ *  child runs inlined. */
+export interface RunRecordWithChildrenShape extends RunRecordShape {
+  children: readonly RunRecordShape[];
+}
+
+/** Most-recent run for a given job name. ``null`` when there's no
+ *  history yet. */
+export function useLatestRunForJob(
+  jobName: string | null | undefined,
+  opts?: { refetchInterval?: number | false },
+): UseQueryResult<RunRecordShape | null> {
+  return useQuery<RunRecordShape | null>({
+    queryKey: ["runs", "latest", jobName ?? ""],
+    queryFn: async () => {
+      if (!jobName) return null;
+      try {
+        return await fetcher<RunRecordShape>(
+          `api/runs/latest/${encodeURIComponent(jobName)}`,
+        );
+      } catch (err) {
+        if (
+          typeof err === "object" &&
+          err !== null &&
+          "status" in err &&
+          (err as { status?: number }).status === 404
+        ) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: Boolean(jobName),
+    refetchInterval: opts?.refetchInterval ?? 5_000,
+    retry: false,
+  });
+}
+
+/** A single run by id, including its inline children. */
+export function useRun(
+  runId: string | null | undefined,
+  opts?: { refetchInterval?: number | false },
+): UseQueryResult<RunRecordWithChildrenShape | null> {
+  return useQuery<RunRecordWithChildrenShape | null>({
+    queryKey: ["runs", "detail", runId ?? ""],
+    queryFn: async () => {
+      if (!runId) return null;
+      return await fetcher<RunRecordWithChildrenShape>(
+        `api/runs/${encodeURIComponent(runId)}`,
+      );
+    },
+    enabled: Boolean(runId),
+    refetchInterval: opts?.refetchInterval ?? 5_000,
+    retry: false,
+  });
+}
+
+/** Filtered list of runs. Useful for the Run history tab. */
+export function useRuns(
+  filters: {
+    jobName?: string;
+    parentRunId?: string;
+    batchId?: string;
+    sinceTs?: number;
+    limit?: number;
+  } = {},
+): UseQueryResult<readonly RunRecordShape[]> {
+  return useQuery<readonly RunRecordShape[]>({
+    queryKey: ["runs", "list", filters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters.jobName) params.set("job", filters.jobName);
+      if (filters.parentRunId) params.set("parent", filters.parentRunId);
+      if (filters.batchId) params.set("batch", filters.batchId);
+      if (filters.sinceTs !== undefined) {
+        params.set("since", String(filters.sinceTs));
+      }
+      params.set("limit", String(filters.limit ?? 100));
+      const qs = params.toString();
+      const data = await fetcher<{ runs?: readonly RunRecordShape[] }>(
+        `api/runs?${qs}`,
+      );
+      return data.runs ?? [];
+    },
+    refetchInterval: 5_000,
+    retry: false,
+  });
+}
