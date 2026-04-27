@@ -16,10 +16,16 @@ already-triggered rule re-fires every 60s polluting the operator's
 without writing history. Tests can override via the ``min_interval``
 kwarg on ``tick()``.
 
-History is recorded via ``cli.commands.job_framework._record_history``
-with ``source="guardrail:<rule-id>"`` and ``actor="auto-heal"`` so
-operators see guardrail fires alongside cron + manual runs in the
-existing job-history table.
+History is recorded via the unified Job framework
+(``record_run_start`` / ``record_run_complete``) since v1.0.284 —
+the auto-heal loop now invokes ``run_job("guardrails:evaluate",
+source="auto-heal")`` rather than calling ``tick()`` directly,
+so JobRunner owns history. The legacy ``_record_history``
+write inside ``_record()`` below is kept for backwards-compat
+with any caller that still passes ``record_history=True``, but
+the production path threads ``record_history=False`` to avoid
+double-writes (the dashboard reads ``/api/runs`` for both
+sources).
 """
 
 from __future__ import annotations
