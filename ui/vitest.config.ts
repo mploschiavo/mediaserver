@@ -49,7 +49,12 @@ export default defineConfig({
         // Test helpers.
         "src/test/**",
       ],
-      reporter: ["text", "html"],
+      // ``json-summary`` writes ``coverage/coverage-summary.json`` —
+      // consumed by the changed-files-coverage ratchet at
+      // ``tests/unit/ratchets/test_changed_files_coverage_ratchet.py``
+      // so per-file 85%-on-touched-files is enforced regardless of
+      // the global aggregate.
+      reporter: ["text", "html", "json-summary"],
       thresholds: {
         lines: 85,
         branches: 75,
