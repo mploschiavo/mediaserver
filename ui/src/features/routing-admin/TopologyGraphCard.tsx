@@ -167,20 +167,29 @@ export function TopologyGraphCard() {
       x: n.id === "__internet__" ? 60 : n.id === "__gateway__" ? WIDTH / 2 : WIDTH - 80,
       y: HEIGHT / 2,
     }));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sim = forceSimulation(simNodes as any)
+    // d3-force types its node generic loosely — node-id and node-kind
+    // payloads ride on top of the `SimulationNodeDatum` base. Use a
+    // narrow accessor type so the strict-TS gate (no `any`) stays clean.
+    interface _SimNode {
+      id: string;
+      kind?: string;
+    }
+    const sim = forceSimulation<_SimNode>(simNodes)
       .force(
         "link",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        forceLink(graph.links.map((l) => ({ ...l }))).id((d: any) => d.id).distance(120).strength(0.3),
+        forceLink(graph.links.map((l) => ({ ...l })))
+          .id((d: _SimNode) => d.id)
+          .distance(120)
+          .strength(0.3),
       )
       .force("charge", forceManyBody().strength(-200))
       .force("collide", forceCollide(28))
       .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
       .force(
         "x-spread",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        forceX((d: any) => (d.kind === "cluster" ? WIDTH - 100 : WIDTH / 2)).strength(0.1),
+        forceX<_SimNode>((d) =>
+          d.kind === "cluster" ? WIDTH - 100 : WIDTH / 2,
+        ).strength(0.1),
       )
       .force("y-spread", forceY(HEIGHT / 2).strength(0.05))
       .stop();

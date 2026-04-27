@@ -16,10 +16,48 @@ from typing import Any
 import yaml
 
 
-# Resolve auth contract path: repo-relative first, then container mount fallback.
-_CONTRACT_PATH_REPO = Path(__file__).resolve().parents[4] / "contracts" / "auth.yaml"
-_CONTRACT_PATH_CONTAINER = Path("/contracts/auth.yaml")
-_CONTRACT_PATH = _CONTRACT_PATH_REPO if _CONTRACT_PATH_REPO.exists() else _CONTRACT_PATH_CONTAINER
+# Resolve the auth contract path. parents[4] from this module is
+# only correct when the source tree is checked out in development —
+# once shipped as a wheel the same calculation lands in
+# ``site-packages`` ancestors with no ``contracts/`` sibling. The
+# previous code then fell back to a hardcoded ``/contracts/auth.yaml``
+# bind mount that K8s pods don't have, returning an empty contract
+# and silently disabling ``ext_authz`` injection in Envoy. The
+# v1.0.268 K8s Authelia bypass was one symptom of this.
+#
+# Try every plausible location and pick the first one that exists.
+def _resolve_contract_path() -> Path:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(p: Path) -> None:
+        try:
+            resolved = p.resolve()
+        except OSError:
+            return
+        if resolved not in seen:
+            seen.add(resolved)
+            candidates.append(resolved)
+
+    try:
+        add(Path(__file__).resolve().parents[4] / "contracts" / "auth.yaml")
+    except IndexError:
+        pass
+    add(Path("/opt/media-stack/contracts/auth.yaml"))
+    add(Path("/usr/local/share/media-stack/contracts/auth.yaml"))
+    add(Path("/contracts/auth.yaml"))
+    add(Path.cwd() / "contracts" / "auth.yaml")
+
+    for c in candidates:
+        if c.is_file():
+            return c
+    # No file found anywhere — return the first candidate so the
+    # caller's existence check fails and ``_load_contract`` returns
+    # an empty mapping (preserves prior fail-soft behavior).
+    return candidates[0] if candidates else Path("/contracts/auth.yaml")
+
+
+_CONTRACT_PATH = _resolve_contract_path()
 
 
 @dataclass(frozen=True)

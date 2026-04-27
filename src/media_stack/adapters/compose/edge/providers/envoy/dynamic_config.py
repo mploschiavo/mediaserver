@@ -89,7 +89,57 @@ class EnvoyDynamicConfigService:
     auth_policy: GatewayAuthPolicy | None = None
 
     @staticmethod
-    def _repo_root() -> Path:
+    def _candidate_template_roots() -> list[Path]:
+        """Plausible bases for ``config/defaults/compose/...``.
+
+        ``Path(__file__).resolve().parents[8]`` worked when the
+        repo was checked out alongside the source tree (parents counted
+        through ``src/media_stack/adapters/compose/edge/providers/envoy``
+        landing on the repo root). Once the controller is shipped as
+        a wheel installed under ``site-packages/``, parents[8] points
+        at ``/usr/local/lib`` and the lookup fails — this is what
+        wedged auth on K8s (the ``envoy-config`` job errored, so the
+        ``ext_authz`` filter was never injected into the live envoy.yaml,
+        so every request bypassed Authelia).
+
+        The fix is to try several roots in order and return the first
+        one that contains the template. Order:
+          1. ``parents[8]`` — original behavior, still right for
+             source-tree runs.
+          2. ``/opt/media-stack`` — image WORKDIR baked into both the
+             compose and K8s controller container layouts.
+          3. CWD — last-resort for ad-hoc invocations.
+        """
+        roots: list[Path] = []
+        seen: set[Path] = set()
+
+        def add(p: Path) -> None:
+            try:
+                resolved = p.resolve()
+            except OSError:
+                return
+            if resolved not in seen:
+                seen.add(resolved)
+                roots.append(resolved)
+
+        try:
+            add(Path(__file__).resolve().parents[8])
+        except IndexError:
+            pass
+        add(Path("/opt/media-stack"))
+        add(Path.cwd())
+        return roots
+
+    @classmethod
+    def _repo_root(cls) -> Path:
+        """First candidate that actually contains the canonical template.
+        Falls back to the legacy parents[8] computation so callers that
+        deliberately resolve other paths against the repo root stay
+        consistent with previous behavior even on filesystems where
+        the template is missing."""
+        for root in cls._candidate_template_roots():
+            if (root / _DEFAULT_TEMPLATE_RELATIVE_PATH).is_file():
+                return root
         return Path(__file__).resolve().parents[8]
 
     def _resolve_runtime_template_path(self) -> Path:

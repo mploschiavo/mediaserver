@@ -10,6 +10,7 @@ import {
   OnboardingChecklist,
   onboardingHasContent,
 } from "@/features/onboarding/OnboardingChecklist";
+import { QuickStartCards } from "@/features/onboarding/QuickStartCards";
 import { useOnboarding } from "@/features/onboarding/hooks";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Route as RootRoute } from "@/routes/__root";
@@ -59,9 +60,10 @@ function HomePage() {
     >
       <PageHeader
         title="Welcome"
-        description="Stack overview, onboarding progress, and pre-upgrade safety checks."
+        description="Three steps to a working stack — everything else is optional."
       />
       <BootstrapProgressBanner />
+      <QuickStartCards />
       {showOnboarding ? <OnboardingChecklist /> : null}
       {showMigration ? <MigrationCheckCard /> : null}
     </motion.div>

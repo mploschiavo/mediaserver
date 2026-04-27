@@ -437,8 +437,18 @@ class AdminService:
                 return {"status": "restarted", "method": "k8s"}
             else:
                 import docker
+                from media_stack.core.docker_resolver import (
+                    resolve_compose_container,
+                )
                 client = docker.from_env()
-                container = client.containers.get(service_name)
+                container = resolve_compose_container(client, service_name)
+                if container is None:
+                    return {
+                        "status": "skipped",
+                        "reason": (
+                            f"'{service_name}' not deployed in this profile"
+                        ),
+                    }
                 container.restart(timeout=15)
                 return {"status": "restarted", "method": "docker"}
         except Exception as exc:

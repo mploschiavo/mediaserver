@@ -29,6 +29,12 @@ const VALID_SOURCES: ReadonlySet<string> = new Set(
 export interface LogsSearch {
   service?: LogSource;
   filter?: string;
+  /** Per-source line cap (passed through to backend ?lines=). */
+  limit?: number;
+  /** Time window — relative shorthand (5m/1h/24h) or ISO. */
+  since?: string;
+  /** Filter to lines mentioning a job/action name. */
+  action?: string;
 }
 
 /**
@@ -97,6 +103,21 @@ export const Route = createRoute({
     const filter = raw.filter;
     if (typeof filter === "string" && filter.length > 0) {
       out.filter = filter;
+    }
+    const limit = raw.limit;
+    if (typeof limit === "number" && Number.isFinite(limit)) {
+      out.limit = limit;
+    } else if (typeof limit === "string") {
+      const n = Number.parseInt(limit, 10);
+      if (Number.isFinite(n) && n > 0) out.limit = n;
+    }
+    const since = raw.since;
+    if (typeof since === "string" && since.length > 0) {
+      out.since = since;
+    }
+    const action = raw.action;
+    if (typeof action === "string" && action.length > 0) {
+      out.action = action;
     }
     return out;
   },

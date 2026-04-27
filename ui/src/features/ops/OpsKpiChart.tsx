@@ -69,12 +69,18 @@ export function OpsKpiChart() {
             <Gauge
               icon={Database}
               label="Containers"
-              value={Math.min(
-                100,
-                Number(data?.containers ?? 0) * 5,
+              value={containerPercent(
+                data?.containers,
+                data?.containers_total,
               )}
-              caption={`${data?.containers ?? 0} running`}
-              tone="success"
+              caption={containerCaption(
+                data?.containers,
+                data?.containers_total,
+              )}
+              tone={containerTone(
+                data?.containers,
+                data?.containers_total,
+              )}
             />
             <Gauge
               icon={HardDrive}
@@ -164,6 +170,42 @@ function diskTone(pct: number | undefined): "success" | "warning" | "danger" {
   const v = Number(pct ?? 0);
   if (v >= 90) return "danger";
   if (v >= 70) return "warning";
+  return "success";
+}
+
+function containerPercent(
+  running: number | undefined,
+  total: number | undefined,
+): number {
+  const r = Number(running ?? 0);
+  const t = Number(total ?? 0);
+  // Total of 0 means the controller couldn't enumerate (older
+  // backend, or platform-specific failure). Treat as 100 % so the
+  // gauge doesn't lie when only the running count is known.
+  if (t <= 0) return r > 0 ? 100 : 0;
+  return Math.max(0, Math.min(100, (r / t) * 100));
+}
+
+function containerCaption(
+  running: number | undefined,
+  total: number | undefined,
+): string {
+  const r = Number(running ?? 0);
+  const t = Number(total ?? 0);
+  if (t <= 0 || t === r) return `${r} running`;
+  return `${r} / ${t} running`;
+}
+
+function containerTone(
+  running: number | undefined,
+  total: number | undefined,
+): "success" | "warning" | "danger" {
+  const r = Number(running ?? 0);
+  const t = Number(total ?? 0);
+  if (t <= 0) return "success";
+  const pct = (r / t) * 100;
+  if (pct < 60) return "danger";
+  if (pct < 90) return "warning";
   return "success";
 }
 

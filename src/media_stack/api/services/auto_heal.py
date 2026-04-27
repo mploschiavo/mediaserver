@@ -480,10 +480,14 @@ def _default_restart(service_id: str) -> bool:
     then K8s pod-delete. Returns True if either worked."""
     try:
         import docker  # type: ignore
+        from media_stack.core.docker_resolver import (
+            resolve_compose_container,
+        )
         client = docker.from_env()
-        container = client.containers.get(service_id)
-        container.restart(timeout=15)
-        return True
+        container = resolve_compose_container(client, service_id)
+        if container is not None:
+            container.restart(timeout=15)
+            return True
     except Exception as exc:
         _log.debug("[DEBUG] auto-heal docker restart failed: %s", exc)
     try:

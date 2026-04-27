@@ -10,6 +10,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { authPortal } from "@/lib/auth-portal";
 
 interface UserMenuProps {
   name?: string;
@@ -58,11 +59,25 @@ export function UserMenu({
     } catch {
       // swallowed — Authelia is the source of truth for the cookie.
     }
-    // Authelia clears its session cookie when you GET its portal
-    // root; navigating there is the canonical sign-out flow with
-    // ext_authz. Authelia then redirects to the configured
-    // ``default_redirection_url`` which lands on the login screen.
-    window.location.replace("/app/authelia/?rd=" + encodeURIComponent(window.location.origin));
+    // Trigger the Authelia logout flow.
+    //
+    // The earlier code redirected to ``/app/authelia/?rd=…`` — Authelia's
+    // *portal* root, not its logout route. With a still-valid session
+    // cookie the portal saw the user as authenticated and bounced them
+    // straight back to the dashboard; the cookie never got cleared.
+    // Operators reported "I clicked Sign out and now I can't log back
+    // in unless I open an incognito window."
+    //
+    // Authelia's SPA handles ``/logout`` by POST-ing ``/api/logout``
+    // (which invalidates the server-side session and emits the
+    // cookie-clearing ``Set-Cookie``) and then redirecting to ``rd``.
+    // Hitting it through the dedicated portal hostname (``auth.<domain>``)
+    // ensures the ``Domain=<base>`` cookie scope matches what the
+    // login flow originally set.
+    const rd = `${window.location.origin}/app/media-stack-ui/`;
+    window.location.replace(
+      `${authPortal()}/logout?rd=${encodeURIComponent(rd)}`,
+    );
   };
 
   return (

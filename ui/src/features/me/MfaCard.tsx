@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelative } from "@/features/media-integrity/format";
+import { authPortal } from "@/lib/auth-portal";
 import { useMeMfaState, type MeMfaState } from "./hooks";
 
 function isEnabled(state: MeMfaState | undefined): boolean {
@@ -90,7 +91,7 @@ export function MfaCard() {
           </div>
         )}
         <Button variant="secondary" asChild data-testid="mfa-manage">
-          <a href="/app/authelia/settings">
+          <a href={`${authPortal()}/settings`}>
             Manage
             <ExternalLink aria-hidden className="size-3.5" />
           </a>

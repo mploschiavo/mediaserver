@@ -67,6 +67,41 @@ def _running_compose_container_names() -> set[str]:
         log_swallowed(exc)
     return names
 
+
+def _total_k8s_pod_names(namespace: str) -> set[str]:
+    """Return the ``app`` label of every pod in *namespace* regardless
+    of phase. Used as the denominator for "containers running %"."""
+    names: set[str] = set()
+    try:
+        from kubernetes import client as k8s_client, config as k8s_config
+        try:
+            k8s_config.load_incluster_config()
+        except Exception:
+            k8s_config.load_kube_config()
+        v1 = k8s_client.CoreV1Api()
+        pods = v1.list_namespaced_pod(namespace)
+        for p in pods.items:
+            labels = p.metadata.labels or {}
+            names.add(labels.get("app", p.metadata.name))
+    except Exception as exc:
+        log_swallowed(exc)
+    return names
+
+
+def _total_compose_container_names() -> set[str]:
+    """Return the names of every compose container (running OR
+    stopped) in this stack. Used as the denominator for the ops
+    KPI gauge so 17 running out of 20 deployed renders 85 %."""
+    names: set[str] = set()
+    try:
+        import docker
+        client = docker.from_env()
+        for c in client.containers.list(all=True):
+            names.add(c.name)
+    except Exception as exc:
+        log_swallowed(exc)
+    return names
+
 # Build probe dicts from the service registry — no hardcoded service details here
 SERVICE_PROBES: dict[str, tuple[str, int, str]] = {
     s.id: (s.host, s.port, s.health_path) for s in SERVICES
@@ -631,12 +666,26 @@ class HealthService:
             entry with source=='bootstrap' OR a job key starting
             with 'bootstrap'). Empty string if no bootstrap run is
             recorded — the UI renders that as ``—``."""
+        running = self._get_running_containers()
+        total = self._get_total_containers()
         return {
             "uptime_seconds": int(time.time() - _PROCESS_START_TIME),
-            "containers": len(self._get_running_containers()),
+            "containers": len(running),
+            "containers_total": max(len(running), len(total)),
             "disk_used_pct": self._max_disk_pct(),
             "last_bootstrap_at": self._last_bootstrap_iso(),
         }
+
+    @staticmethod
+    def _get_total_containers() -> set[str]:
+        """Containers/pods in the namespace regardless of phase. The
+        denominator for the running-% gauge so 17 running out of 20
+        deployed renders correctly. Falls back to running-only on
+        platforms that can't enumerate non-running entities."""
+        namespace = os.environ.get("K8S_NAMESPACE", "")
+        if namespace:
+            return _total_k8s_pod_names(namespace)
+        return _total_compose_container_names()
 
     @staticmethod
     def _max_disk_pct() -> float:

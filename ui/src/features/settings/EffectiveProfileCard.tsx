@@ -97,7 +97,7 @@ function readBlock(
       continue;
     }
     const m = /^(\s*)/.exec(line);
-    const ind = m ? m[1]!.length : 0;
+    const ind = m?.[1]?.length ?? 0;
     if (inferIndent === null) {
       inferIndent = ind;
     }

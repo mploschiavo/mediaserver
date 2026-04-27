@@ -1506,7 +1506,8 @@ class PostRequestHandler:
         # behaviour was 60s via the auto-heal cycle, which polluted
         # ``/api/jobs.history`` with one row per minute per
         # already-firing rule. Floor 30s so operators can't ddos
-        # themselves; ceiling 3600s.
+        # themselves; ceiling 86400s (24h) so an operator drowning
+        # in always-firing alerts can quiet the loop to "once a day".
         if handler.path == "/api/guardrails/config":
             body = handler._read_json_body() or {}
             try:
@@ -1517,10 +1518,10 @@ class PostRequestHandler:
                     {"error": "evaluation_interval_seconds must be an integer"},
                 )
                 return
-            if raw < 30 or raw > 3600:
+            if raw < 30 or raw > 86400:
                 handler._json_response(
                     400,
-                    {"error": "evaluation_interval_seconds must be in [30, 3600]"},
+                    {"error": "evaluation_interval_seconds must be in [30, 86400]"},
                 )
                 return
             os.environ["MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS"] = str(raw)
@@ -1746,6 +1747,20 @@ class PostRequestHandler:
                 handler.action_trigger("configure-livetv", {})
                 result["action"] = "configure-livetv queued"
             handler._json_response(200, result)
+            return
+
+        # POST /api/livetv-sources/probe — test a tuner/guide URL
+        # before save. Returns ``{ok, status, content_type, bytes,
+        # sample}`` so the operator can see at a glance whether
+        # the URL serves an M3U / XMLTV body. Server-side because
+        # most providers don't expose CORS for browser fetches.
+        if handler.path == "/api/livetv-sources/probe":
+            body = handler._read_json_body() or {}
+            url = str(body.get("url", "") or "").strip()
+            if not url:
+                handler._json_response(400, {"error": "url required"})
+                return
+            handler._json_response(200, _probe_livetv_url(url))
             return
 
         # POST /api/indexers/{id}/toggle
@@ -2468,6 +2483,60 @@ def _parse_query_string(raw: str) -> dict:
     if not raw:
         return {}
     return {k: v for k, v in parse_qsl(raw, keep_blank_values=True)}
+
+
+def _probe_livetv_url(url: str) -> dict:
+    """Probe an M3U / XMLTV URL via a HEAD then a small GET range.
+    Returns ``{ok, status, content_type, bytes, sample, kind, error}``
+    so the UI's Probe button can give the operator a verdict before
+    saving the source.
+
+    Best-effort, never raises — every error path collapses into
+    ``{ok: False, error: '<short reason>'}``. The body sample is
+    capped at 4 KiB so a giant M3U doesn't fill the response."""
+    import urllib.request as _ur
+    import urllib.error as _ue
+    out: dict = {
+        "ok": False, "status": 0, "content_type": "",
+        "bytes": 0, "sample": "", "kind": "unknown", "error": "",
+    }
+    try:
+        req = _ur.Request(url, method="GET", headers={
+            "User-Agent": "media-stack/livetv-probe",
+            "Range": "bytes=0-4095",
+        })
+        with _ur.urlopen(req, timeout=8) as resp:
+            out["status"] = int(resp.status or 0)
+            out["content_type"] = (
+                resp.headers.get("Content-Type", "") or ""
+            ).split(";")[0].strip()
+            data = resp.read(4096) or b""
+            out["bytes"] = len(data)
+            text = data.decode("utf-8", errors="replace")
+            out["sample"] = text[:512]
+            head = text.lstrip()[:32].lower()
+            if head.startswith("#extm3u"):
+                out["kind"] = "m3u"
+                out["ok"] = True
+            elif head.startswith("<?xml") and "tv" in head:
+                out["kind"] = "xmltv"
+                out["ok"] = True
+            elif "xml" in (out["content_type"] or "").lower():
+                out["kind"] = "xmltv"
+                out["ok"] = True
+            elif "mpegurl" in (out["content_type"] or "").lower():
+                out["kind"] = "m3u"
+                out["ok"] = True
+            else:
+                out["error"] = (
+                    "URL responded but body doesn't look like M3U or XMLTV"
+                )
+    except _ue.HTTPError as exc:
+        out["status"] = int(exc.code or 0)
+        out["error"] = f"HTTP {exc.code}: {exc.reason}"
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = str(exc)[:200]
+    return out
 
 
 def _run_mi_job_and_extract(

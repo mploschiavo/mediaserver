@@ -21,8 +21,33 @@ import { parseSearch } from "./format";
 
 const STORAGE_KEY = "media-stack:logs-sources";
 const URL_DEBOUNCE_MS = 300;
-const MAX_RENDER_LINES = 1000;
 const VALID_SOURCES = new Set<LogSource>(ALL_SOURCES.map((s) => s.value));
+
+// Operator-pickable limits. The backend hard cap is 50000 (see
+// LOG_LINES_HARD_CAP in src/media_stack/api/services/ops.py); the
+// dashboard exposes everything from 100 (the default) up to 50k.
+// Each step is roughly 5x so the picker stays short.
+export const LIMIT_OPTIONS: ReadonlyArray<number> = [
+  100, 500, 1000, 5000, 10000, 50000,
+];
+
+// Time-range presets. ``""`` = no filter (rely on ``lines`` cap
+// alone). Anything else is passed through to the backend as
+// ``?since=`` and resolved against the docker/k8s log timestamp.
+export const SINCE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "", label: "All available" },
+  { value: "5m", label: "Last 5 min" },
+  { value: "30m", label: "Last 30 min" },
+  { value: "1h", label: "Last hour" },
+  { value: "24h", label: "Last 24h" },
+  { value: "7d", label: "Last 7 days" },
+];
+
+// How many lines we render in the DOM at once. Bumped from the
+// previous 1000 to 5000 — even a slow Chromebook scrolls 5k log
+// rows fine, and the operator's whole point is to NOT have to ssh
+// into the container.
+const MAX_RENDER_LINES = 5000;
 
 /** Read the last-used source set from localStorage. Defaults to controller. */
 function loadStoredSources(): readonly LogSource[] {
@@ -46,14 +71,32 @@ function loadStoredSources(): readonly LogSource[] {
 }
 
 /** Read the URL once on mount. */
-function readUrlState(): { service: LogSource | null; filter: string } {
-  if (typeof window === "undefined") return { service: null, filter: "" };
+function readUrlState(): {
+  service: LogSource | null;
+  filter: string;
+  limit: number;
+  since: string;
+  action: string;
+} {
+  if (typeof window === "undefined") {
+    return { service: null, filter: "", limit: 100, since: "", action: "" };
+  }
   const params = new URLSearchParams(window.location.search);
   const svc = params.get("service");
   const filter = params.get("filter") ?? "";
+  const rawLimit = Number.parseInt(params.get("limit") ?? "", 10);
+  const limit =
+    Number.isFinite(rawLimit) && LIMIT_OPTIONS.includes(rawLimit)
+      ? rawLimit
+      : 100;
+  const since = params.get("since") ?? "";
+  const action = params.get("action") ?? "";
   return {
     service: svc && VALID_SOURCES.has(svc as LogSource) ? (svc as LogSource) : null,
     filter,
+    limit,
+    since,
+    action,
   };
 }
 
@@ -80,6 +123,11 @@ export function LogsPage() {
   });
   const [tailing, setTailing] = useState(true);
   const [search, setSearch] = useState(initialUrl.current.filter);
+  const [limit, setLimit] = useState<number>(initialUrl.current.limit);
+  const [since, setSince] = useState<string>(initialUrl.current.since);
+  const [actionFilter, setActionFilter] = useState<string>(
+    initialUrl.current.action,
+  );
   const [enabledLevels, setEnabledLevels] = useState<ReadonlySet<LevelTag>>(
     () => new Set(LEVELS),
   );
@@ -116,13 +164,23 @@ export function LogsPage() {
           ...prev,
           service: sources[0],
           filter: search || undefined,
+          limit: limit !== 100 ? limit : undefined,
+          since: since || undefined,
+          action: actionFilter || undefined,
         }),
       });
     }, URL_DEBOUNCE_MS);
     return () => window.clearTimeout(id);
-  }, [sources, search, navigate]);
+  }, [sources, search, limit, since, actionFilter, navigate]);
 
-  const stream = useMultiLogs(sources, { tailing });
+  const stream = useMultiLogs(sources, {
+    tailing,
+    filters: {
+      lines: limit,
+      ...(since && { since }),
+      ...(actionFilter && { action: actionFilter }),
+    },
+  });
 
   // Parse + flatten + sort + filter. Memoised; otherwise the table
   // re-derives on every keystroke even when the streams are idle.
@@ -209,6 +267,14 @@ export function LogsPage() {
           onToggleLevel={toggleLevel}
           onExport={handleExport}
           exportDisabled={visibleLines.length === 0}
+          limit={limit}
+          onLimitChange={setLimit}
+          limitOptions={LIMIT_OPTIONS}
+          since={since}
+          onSinceChange={setSince}
+          sinceOptions={SINCE_OPTIONS}
+          actionFilter={actionFilter}
+          onActionFilterChange={setActionFilter}
         />
 
         <div

@@ -60,10 +60,15 @@ describe("MfaCard", () => {
     expect(screen.getByText(/WEBAUTHN/)).toBeInTheDocument();
   });
 
-  it("links the Manage button to the Authelia settings route", () => {
+  it("links the Manage button to the Authelia portal /settings route", () => {
     mfaState.data = { enabled: true };
     renderWithProviders(<MfaCard />);
     const manage = screen.getByTestId("mfa-manage");
-    expect(manage).toHaveAttribute("href", "/app/authelia/settings");
+    const href = manage.getAttribute("href") ?? "";
+    // Pre-v1.0.270 this hard-coded ``/app/authelia/settings`` (the
+    // path-prefix mount) — the Lua prefix filter mangled it. Now we
+    // route through the dedicated portal hostname so the cookie scope
+    // matches the original login flow.
+    expect(href).toMatch(/^https?:\/\/auth\..+\/settings$/);
   });
 });

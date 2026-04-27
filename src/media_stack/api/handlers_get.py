@@ -804,6 +804,83 @@ class GetRequestHandler:
                 )
         elif path == "/api/profile":
             handler._json_response(200, config_svc.get_profile())
+        elif path == "/sw-config.json":
+            # Service-worker runtime config — the dashboard's PWA SW
+            # fetches this on install/update so its navigation
+            # denylist tracks the routing engine instead of being
+            # hard-coded in the bundled SW. Cached for 5 min by
+            # default; the SW itself adds ``cache: 'no-store'`` to
+            # its install-time fetch so changes propagate on the
+            # next pod restart.
+            from .services.sw_config import get_sw_config
+            handler._json_response(200, get_sw_config())
+        elif path == "/api/sw-config":
+            # Alias under /api/ for ext_authz parity — sister apps
+            # pass /api/* through unauthenticated.
+            from .services.sw_config import get_sw_config
+            handler._json_response(200, get_sw_config())
+        elif path == "/api/runs" or path.startswith("/api/runs?"):
+            # Per-job-run history. Replaces the legacy "last 10
+            # runs" view that pulled from the batch-level
+            # job-history.json. Filters via querystring.
+            from urllib.parse import parse_qs, unquote
+            from media_stack.application.jobs.run_history import get_runs
+            qs = handler.path.split("?", 1)[1] if "?" in handler.path else ""
+            params = parse_qs(qs, keep_blank_values=True)
+            job = unquote(params.get("job", [""])[0]) or None
+            parent = unquote(params.get("parent", [""])[0]) or None
+            batch = unquote(params.get("batch", [""])[0]) or None
+            try:
+                limit = int(params.get("limit", ["100"])[0])
+            except ValueError:
+                limit = 100
+            since_ts: float | None = None
+            since_raw = unquote(params.get("since", [""])[0])
+            if since_raw:
+                try:
+                    since_ts = float(since_raw)
+                except ValueError:
+                    since_ts = None
+            records = get_runs(
+                job_name=job,
+                since_ts=since_ts,
+                parent_run_id=parent,
+                batch_id=batch,
+                limit=max(1, min(50000, limit)),
+            )
+            handler._json_response(
+                200, {"runs": [r.to_dict() for r in records]},
+            )
+        elif path.startswith("/api/runs/latest/"):
+            from media_stack.application.jobs.run_history import (
+                get_latest_run,
+            )
+            job_name = path[len("/api/runs/latest/"):]
+            record = get_latest_run(job_name)
+            if record is None:
+                handler._json_response(
+                    404, {"error": f"no runs for {job_name!r}"},
+                )
+            else:
+                handler._json_response(200, record.to_dict())
+        elif path.startswith("/api/runs/"):
+            from media_stack.application.jobs.run_history import (
+                get_run, get_children,
+            )
+            run_id = path[len("/api/runs/"):]
+            # Strip any query string the caller appended.
+            run_id = run_id.split("?", 1)[0]
+            record = get_run(run_id)
+            if record is None:
+                handler._json_response(
+                    404, {"error": f"run {run_id!r} not found"},
+                )
+            else:
+                children = [c.to_dict() for c in get_children(run_id)]
+                handler._json_response(
+                    200,
+                    {**record.to_dict(), "children": children},
+                )
         elif path == "/api/manifests":
             handler._json_response(200, config_svc.get_manifests())
         elif path == "/api/envvars":
@@ -1068,6 +1145,13 @@ class GetRequestHandler:
             handler._json_response(200, ops_svc.get_mount_info())
         elif path == "/api/logs" or path.startswith("/api/logs?"):
             _handle_logs(handler)
+        elif path == "/api/logs/stream" or path.startswith("/api/logs/stream?"):
+            # Filterable SSE stream of the controller's ring buffer.
+            # Same filter dimensions as `/api/logs/{source}` (action,
+            # level, q, since). Replaces the legacy unfiltered
+            # `/logs/stream` endpoint for the new UI tail mode while
+            # leaving the old route in place for compat.
+            _handle_logs_sse(handler)
         elif path == "/api/logs/sources" or path.startswith("/api/logs/sources?"):
             # Dynamic source list for the Logs UI's filter dropdown.
             # The legacy hardcoded list in LogsToolbar.tsx capped at 8
@@ -1535,16 +1619,115 @@ class GetRequestHandler:
 
     @staticmethod
     def _handle_service_logs(handler: ControllerAPIHandler, path: str) -> None:
+        from urllib.parse import parse_qs, unquote
+        from media_stack.api.services.ops import LOG_LINES_HARD_CAP
+
         svc = path.split("/")[3]
         lines = 100
+        since: str | None = None
+        action: str | None = None
+        level: str | None = None
+        q: str | None = None
+        include_previous = False
         if "?" in handler.path:
-            for part in handler.path.split("?", 1)[1].split("&"):
-                if part.startswith("lines="):
-                    try:
-                        lines = min(500, int(part.split("=", 1)[1]))
-                    except ValueError:
-                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
-        handler._json_response(200, ops_svc.get_service_logs(svc, lines))
+            qs = handler.path.split("?", 1)[1]
+            params = parse_qs(qs, keep_blank_values=True)
+            if "lines" in params:
+                try:
+                    raw_lines = int(params["lines"][0])
+                    # Hard cap is the source of truth — the dashboard
+                    # exposes a picker up to 50k. Anything beyond is
+                    # an operator typing nonsense or a bug.
+                    lines = max(1, min(LOG_LINES_HARD_CAP, raw_lines))
+                except ValueError:
+                    logging.getLogger("media_stack").debug(
+                        "[DEBUG] Swallowed exception", exc_info=True,
+                    )
+            if "since" in params:
+                since = unquote(params["since"][0]) or None
+            if "action" in params:
+                action = unquote(params["action"][0]) or None
+            if "level" in params:
+                level = unquote(params["level"][0]) or None
+            if "q" in params:
+                q = unquote(params["q"][0]) or None
+            if "previous" in params:
+                include_previous = params["previous"][0].lower() in {
+                    "1", "true", "yes",
+                }
+        handler._json_response(
+            200,
+            ops_svc.get_service_logs(
+                svc,
+                lines=lines,
+                since=since,
+                action=action,
+                level=level,
+                q=q,
+                include_previous=include_previous,
+            ),
+        )
+
+    @staticmethod
+    def _handle_logs_sse(handler: ControllerAPIHandler) -> None:
+        """Stream filtered controller log lines as Server-Sent Events.
+
+        Same filter dimensions as ``GET /api/logs/{source}`` so the UI
+        can fall back from SSE → polling and keep the same query state.
+        Closes cleanly on broken pipe / connection reset (the operator
+        navigated away or the EventSource was disposed); other I/O errors
+        are swallowed so a single bad client doesn't hang the loop.
+        """
+        from urllib.parse import parse_qs, unquote
+        from media_stack.api.services.logs_sse import (
+            compile_q,
+            format_sse_event,
+            should_emit_log_line,
+        )
+
+        params: dict[str, str] = {}
+        if "?" in handler.path:
+            qs = handler.path.split("?", 1)[1]
+            parsed = parse_qs(qs, keep_blank_values=True)
+            for k, vs in parsed.items():
+                if vs:
+                    params[k] = unquote(vs[0])
+
+        try:
+            after_seq = int(params.get("after_seq", "0"))
+        except ValueError:
+            after_seq = 0
+        action_filter = params.get("action") or None
+        level_filter = params.get("level") or None
+        q_pattern = compile_q(params.get("q"))
+
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Connection", "keep-alive")
+        handler.send_header("X-Accel-Buffering", "no")
+        handler.end_headers()
+
+        try:
+            while True:
+                entries = handler.state.get_logs_since(after_seq)
+                for seq, ts, msg, action_field, *_ in entries:
+                    after_seq = seq
+                    if not should_emit_log_line(
+                        msg,
+                        action_field,
+                        action_filter=action_filter,
+                        level_filter=level_filter,
+                        q_pattern=q_pattern,
+                    ):
+                        continue
+                    handler.wfile.write(
+                        format_sse_event(seq, ts, msg, action_field),
+                    )
+                handler.wfile.flush()
+                handler.state.wait_for_log(timeout=30.0)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            log_swallowed(BaseException("sse client disconnected"))
 
     @staticmethod
     def _handle_openapi_yaml(handler: ControllerAPIHandler) -> None:
@@ -2209,6 +2392,7 @@ _handle_services_categories = _instance._handle_services_categories
 _handle_service_api_key = _instance._handle_service_api_key
 _handle_snapshot_diff = _instance._handle_snapshot_diff
 _handle_logs = _instance._handle_logs
+_handle_logs_sse = _instance._handle_logs_sse
 _handle_service_logs = _instance._handle_service_logs
 _handle_openapi_yaml = _instance._handle_openapi_yaml
 _handle_ui_moved = _instance._handle_ui_moved

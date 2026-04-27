@@ -198,7 +198,8 @@ describe("PWA manifest contract", () => {
 
         // Strip query string so `/media-integrity?action=reconcile`
         // resolves to the `/media-integrity` route.
-        const pathOnly = shortcut.url.split("?")[0]!.split("#")[0]!;
+        const pathOnly = (shortcut.url.split("?")[0] ?? "")
+          .split("#")[0] ?? "";
         expect(
           ALLOWED_ROUTES.has(pathOnly),
           `shortcut "${shortcut.name}" url "${shortcut.url}" (path "${pathOnly}") not in route allow-list: ${[...ALLOWED_ROUTES].join(", ")}`,

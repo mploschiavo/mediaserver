@@ -73,11 +73,16 @@ describe("auth redirect — loop guards", () => {
       if (event !== "unauthenticated") return;
       if (redirected) return;
       const path = window.location.pathname;
-      if (path.startsWith("/app/authelia") || path.startsWith("/api/verify")) {
+      const host = window.location.hostname;
+      if (
+        path.startsWith("/app/authelia") ||
+        path.startsWith("/api/verify") ||
+        host.startsWith("auth.")
+      ) {
         return;
       }
       redirected = true;
-      window.location.replace("/app/authelia/");
+      window.location.replace(`https://auth.iomio.io/?rd=${encodeURIComponent(window.location.origin + path)}`);
     });
   }
 
@@ -89,7 +94,7 @@ describe("auth redirect — loop guards", () => {
     });
   }
 
-  it("redirects to /app/authelia/ once on a normal app path", async () => {
+  it("redirects to the auth portal subdomain once on a normal app path", async () => {
     setPath("/app/media-stack-ui/media-integrity");
     wireListener();
     const { fetcher } = await import("@/api/client");
@@ -101,10 +106,12 @@ describe("auth redirect — loop guards", () => {
       // expected
     });
     expect(replaceMock).toHaveBeenCalledTimes(1);
-    expect(replaceMock).toHaveBeenCalledWith("/app/authelia/");
+    const target = String(replaceMock.mock.calls[0]?.[0] ?? "");
+    expect(target).toMatch(/^https:\/\/auth\./);
+    expect(target).toContain("/?rd=");
   });
 
-  it("does NOT redirect when already at /app/authelia/* (loop guard)", async () => {
+  it("does NOT redirect when already at /app/authelia/* (legacy loop guard)", async () => {
     setPath("/app/authelia/");
     wireListener();
     globalThis.fetch = vi.fn(async () =>
@@ -115,6 +122,28 @@ describe("auth redirect — loop guards", () => {
     await fetcher("api/auth/identity").catch(() => {});
     await fetcher("api/anything").catch(() => {});
     expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT redirect when already on the auth subdomain (new loop guard)", async () => {
+    Object.defineProperty(window.location, "hostname", {
+      configurable: true,
+      writable: true,
+      value: "auth.iomio.io",
+    });
+    setPath("/");
+    wireListener();
+    globalThis.fetch = vi.fn(async () =>
+      new Response("nope", { status: 401 }),
+    ) as unknown as typeof fetch;
+    const { fetcher } = await import("@/api/client");
+    await fetcher("api/verify").catch(() => {});
+    expect(replaceMock).not.toHaveBeenCalled();
+    // Reset for subsequent tests.
+    Object.defineProperty(window.location, "hostname", {
+      configurable: true,
+      writable: true,
+      value: "localhost",
+    });
   });
 
   it("does NOT redirect on /api/verify path even from a non-authelia origin", async () => {
@@ -146,7 +175,7 @@ describe("auth redirect — loop guards", () => {
     expect(replaceMock).toHaveBeenCalledTimes(1);
   });
 
-  it("never embeds the current URL into the redirect target (no rd= leak)", async () => {
+  it("redirect target encodes the current URL only once (no recursive embedding)", async () => {
     setPath("/app/media-stack-ui/audit-log");
     wireListener();
     globalThis.fetch = vi.fn(async () =>
@@ -156,10 +185,20 @@ describe("auth redirect — loop guards", () => {
     await fetcher("api/auth/identity").catch(() => {});
     expect(replaceMock).toHaveBeenCalledTimes(1);
     const target = String(replaceMock.mock.calls[0]?.[0] ?? "");
-    expect(target).not.toMatch(/[?&]rd=/);
-    expect(target).not.toContain("audit-log");
-    // Sanity: target is short. A regression that re-embeds would
-    // grow this past 200 chars on the first cycle, then 400+, etc.
-    expect(target.length).toBeLessThan(64);
+    // Target IS allowed to carry ``?rd=<current-url>`` — operators
+    // benefit from landing back where they were after re-auth, and
+    // the post-v1.0.270 host-based loop guard (``auth.<base>``)
+    // prevents the recursive embedding that the old path-based
+    // guard couldn't stop.
+    expect(target).toMatch(/[?&]rd=/);
+    // Crucial: the embedded rd should appear EXACTLY once. A
+    // regression where the listener fires after the redirect would
+    // re-encode the current URL inside the rd param, doubling its
+    // length each cycle — guard against that here.
+    const rdMatches = target.match(/rd=/g) ?? [];
+    expect(rdMatches.length).toBe(1);
+    // And the target must point at the dedicated portal subdomain,
+    // not a path-prefix mount.
+    expect(target).toMatch(/^https?:\/\/auth\./);
   });
 });

@@ -13,3 +13,10 @@ DEFAULT_REDIRECT_FALLBACK_SLUG = "homepage"
 
 # Dashboard slug used for the bare app-root redirect (e.g. /app -> /app/homepage).
 APP_ROOT_DASHBOARD_SLUG = "homepage"
+
+# Service ID of the operator dashboard (this very SPA). The PWA service
+# worker uses it to decide which navigations to intercept (only its own
+# route prefix) vs which to pass through to sister apps. Single source
+# of truth — used by the routing engine, the SW config endpoint, and
+# anywhere code refers to "the dashboard" by name.
+DASHBOARD_SERVICE_ID = "media-stack-ui"

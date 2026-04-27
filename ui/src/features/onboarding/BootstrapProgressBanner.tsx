@@ -1,6 +1,17 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, X } from "lucide-react";
 import { fetcher } from "@/api/client";
+import { Button } from "@/components/ui/button";
+
+// Sanity timeout — if the controller insists bootstrap is still
+// "running" after this long the banner suppresses itself rather
+// than spinning forever. Real bootstraps complete in ~1-3 min;
+// 10 min is a generous ceiling that catches the failure mode
+// where ``finish()`` was never called (process crashed mid-run,
+// state never flipped to ``complete``).
+const SANITY_TIMEOUT_SECONDS = 10 * 60;
+const DISMISS_KEY = "media-stack:bootstrap-banner-dismissed";
 
 /**
  * First-run progress banner. Polls ``/status`` while the controller's
@@ -27,10 +38,32 @@ export function BootstrapProgressBanner() {
     refetchIntervalInBackground: false,
     staleTime: 1000,
   });
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(DISMISS_KEY) === "1";
+  });
+  useEffect(() => {
+    if (!dismissed || typeof window === "undefined") return;
+    window.localStorage.setItem(DISMISS_KEY, "1");
+  }, [dismissed]);
 
   const data = status.data;
   if (!data) return null;
-  if (data.initial_bootstrap_done && data.phase === "complete") return null;
+  if (dismissed) return null;
+  // Bootstrap has finished at least once — never show again, regardless
+  // of current phase. The earlier rule (require phase=="complete" too)
+  // wedged the banner on stacks where bootstrap finished with
+  // phase=="error" because the controller forced
+  // ``initial_bootstrap_done=True`` on error too.
+  if (data.initial_bootstrap_done) return null;
+  // Terminal phases: don't show. ``error`` shows a separate banner
+  // upstream (alert engine); we don't double-render it here.
+  if (data.phase === "complete" || data.phase === "error") return null;
+  // Sanity timeout — if the run has been alive for longer than
+  // SANITY_TIMEOUT_SECONDS, assume the state machine is wedged and
+  // suppress the banner so the operator can see the dashboard.
+  const elapsedNow = computeElapsed(data);
+  if (elapsedNow > SANITY_TIMEOUT_SECONDS) return null;
 
   const phaseDisplay =
     typeof data.phase === "string" && data.phase ? data.phase : "starting";
@@ -61,16 +94,29 @@ export function BootstrapProgressBanner() {
                 {stepLabel}
               </div>
             </div>
-            <div className="text-right tabular-nums">
-              <div className="text-xs uppercase tracking-wide text-fg-faint">
-                Phase
+            <div className="flex items-start gap-2">
+              <div className="text-right tabular-nums">
+                <div className="text-xs uppercase tracking-wide text-fg-faint">
+                  Phase
+                </div>
+                <div
+                  className="font-mono text-xs text-fg"
+                  data-testid="bootstrap-progress-banner-phase"
+                >
+                  {phaseDisplay}
+                </div>
               </div>
-              <div
-                className="font-mono text-xs text-fg"
-                data-testid="bootstrap-progress-banner-phase"
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Dismiss bootstrap banner"
+                title="Dismiss — only do this if you're confident the stack is up"
+                onClick={() => setDismissed(true)}
+                data-testid="bootstrap-progress-banner-dismiss"
               >
-                {phaseDisplay}
-              </div>
+                <X aria-hidden className="size-3" />
+              </Button>
             </div>
           </div>
           <div

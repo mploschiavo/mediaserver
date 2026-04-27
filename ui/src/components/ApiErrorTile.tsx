@@ -1,6 +1,7 @@
 import { LogIn, ShieldAlert, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/api/client";
+import { authPortal } from "@/lib/auth-portal";
 
 interface ApiErrorTileProps {
   /** The error from a TanStack Query / fetcher call. */
@@ -42,7 +43,7 @@ export function ApiErrorTile({
   error,
   onRetry,
   variant = "card",
-  signInPath = "/app/authelia/",
+  signInPath,
 }: ApiErrorTileProps) {
   const status = error instanceof ApiError ? error.status : undefined;
   const message =
@@ -103,29 +104,29 @@ function SessionExpiredCta({
   signInPath,
 }: {
   variant: "card" | "inline";
-  signInPath: string;
+  signInPath?: string;
 }) {
   const handleSignIn = () => {
-    // Clear the authelia session cookie client-side first. Without
-    // this, an expired cookie keeps signalling "you're signed in"
-    // to the portal and the redirect loops or shows a stale state.
-    // Path "/" matches how authelia sets it; SameSite/Secure don't
-    // affect deletion.
+    // ``authelia_session`` is HttpOnly so this clear is a no-op for
+    // the load-bearing cookie. Kept only for the legacy
+    // ``authelia_session_remember`` (non-HttpOnly).
     try {
-      document.cookie =
-        "authelia_session=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-      // Some deploys also set `authelia_session_remember`.
       document.cookie =
         "authelia_session_remember=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     } catch {
-      // Cookie clearing is best-effort — the redirect is the
-      // load-bearing step.
+      // best-effort
     }
     // Pass the current URL as `?rd=` so the portal lands you back
-    // here after re-auth instead of dropping you on /ops.
+    // here after re-auth. Default target is the dedicated portal
+    // subdomain (auth.<base>) — matches the cookie's
+    // ``Domain=<base>`` scope and avoids the path-prefix Lua filter
+    // that mangles ``/app/authelia/...`` mounts.
     const here = window.location.pathname + window.location.search;
-    const rd = encodeURIComponent(here);
-    window.location.assign(`${signInPath}?rd=${rd}`);
+    const rd = encodeURIComponent(window.location.origin + here);
+    const target = signInPath
+      ? `${signInPath}?rd=${rd}`
+      : `${authPortal()}/?rd=${rd}`;
+    window.location.assign(target);
   };
   return (
     <Frame

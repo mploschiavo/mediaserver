@@ -1,12 +1,15 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   Activity,
+  AppWindow,
   Ban,
   BookOpen,
   Camera,
+  ChevronDown,
   FileText,
   GaugeCircle,
   Github,
+  Info,
   KeyRound,
   Layers,
   type LucideIcon,
@@ -24,6 +27,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { useBranding, type BrandingShape } from "@/api";
 import { Kbd, formatShortcut } from "@/lib/keyboard";
 import { cn } from "@/lib/cn";
@@ -42,6 +46,16 @@ interface NavSection {
 }
 
 const PRIMARY_SECTIONS: NavSection[] = [
+  {
+    // App launcher — opens deployed services (Sonarr, Radarr,
+    // Jellyfin, qBittorrent, etc.) in new tabs. Pinned to the top
+    // because navigating to other apps is the most-frequent
+    // cross-cutting operator action and gets buried otherwise.
+    label: "Launcher",
+    items: [
+      { to: "/apps", label: "Apps", icon: AppWindow },
+    ],
+  },
   {
     // Media-only — what's actually in the operator's library. Logs
     // and Routing previously lived here for historical reasons but
@@ -114,6 +128,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
 const SECONDARY_ITEMS: NavItem[] = [
   { to: "/api-docs", label: "API docs", icon: BookOpen },
   { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/about", label: "About", icon: Info },
 ];
 
 interface SidebarProps {
@@ -129,6 +144,15 @@ interface SidebarProps {
  * sheet after a successful navigation.
  */
 export function Sidebar({ onNavigate }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
+    readCollapsedState(),
+  );
+  useEffect(() => {
+    writeCollapsedState(collapsed);
+  }, [collapsed]);
+  const toggleSection = (label: string) =>
+    setCollapsed((prev) => ({ ...prev, [label]: !prev[label] }));
+
   return (
     <motion.aside
       initial={{ opacity: 0, x: -8 }}
@@ -148,6 +172,8 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             key={section.label}
             section={section}
             onNavigate={onNavigate}
+            collapsed={Boolean(collapsed[section.label])}
+            onToggle={() => toggleSection(section.label)}
           />
         ))}
       </nav>
@@ -272,25 +298,78 @@ function BrandMark() {
   );
 }
 
+// localStorage key used to persist per-section collapse state across
+// reloads. The shape is ``Record<sectionLabel, boolean>`` where
+// ``true`` means "collapsed". Sections default to expanded — first
+// load shows everything; the operator decides what to fold.
+const COLLAPSED_KEY = "media-stack:sidebar-collapsed";
+
+function readCollapsedState(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCollapsedState(state: Record<string, boolean>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(state));
+  } catch {
+    // best-effort; quota errors are not actionable here.
+  }
+}
+
 function NavSectionBlock({
   section,
   onNavigate,
+  collapsed,
+  onToggle,
 }: {
   section: NavSection;
   onNavigate?: () => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }) {
+  const headerId = `sidebar-section-${section.label
+    .toLowerCase()
+    .replace(/\s+/g, "-")}`;
   return (
     <div className="mb-5">
-      <div className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-fg-faint">
-        {section.label}
-      </div>
-      <ul className="flex flex-col gap-0.5">
-        {section.items.map((item) => (
-          <li key={item.to}>
-            <NavLink item={item} onNavigate={onNavigate} />
-          </li>
-        ))}
-      </ul>
+      <button
+        type="button"
+        id={headerId}
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+        className="flex w-full items-center gap-1 rounded-md px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-fg-faint transition-colors hover:text-fg-muted"
+        data-testid={`sidebar-section-toggle-${section.label.toLowerCase()}`}
+      >
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "size-3 transition-transform duration-150",
+            collapsed ? "-rotate-90" : "rotate-0",
+          )}
+        />
+        <span>{section.label}</span>
+      </button>
+      {collapsed ? null : (
+        <ul
+          className="mt-0.5 flex flex-col gap-0.5"
+          aria-labelledby={headerId}
+        >
+          {section.items.map((item) => (
+            <li key={item.to}>
+              <NavLink item={item} onNavigate={onNavigate} />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

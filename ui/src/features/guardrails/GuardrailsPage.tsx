@@ -73,6 +73,28 @@ export function GuardrailsPage({ focusedId }: GuardrailsPageProps) {
     );
   }
 
+  // Empty-state — fires while the controller is booting (no rules
+  // loaded yet) or in the rare case where an operator wiped the
+  // contract directory. Always-rendered, never hidden, per the
+  // empty-state-visibility feedback.
+  const ruleCount = rules.length;
+  if (ruleCount === 0) {
+    return (
+      <div
+        className="flex flex-col items-center gap-2 rounded-lg border border-border bg-bg-1 p-6 text-center text-sm text-fg-muted"
+        data-testid="guardrails-empty"
+      >
+        <p className="font-medium text-fg">No guardrail rules loaded</p>
+        <p className="max-w-md">
+          Rules ship as YAML in <code>contracts/guardrails/</code>.
+          They populate this page once the controller finishes its
+          initial bootstrap. If you're seeing this on a steady-state
+          stack, check the controller logs for a load error.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <GuardrailsByDomainChart />
@@ -123,14 +145,15 @@ function CadenceEditor({ currentSeconds }: { currentSeconds: number }) {
 
   // Quick-set buttons: common operator choices. 60s is the legacy
   // "every minute" cadence (allowed, not recommended); 300s is the
-  // new default; 600s/1800s for slower stacks where the operator
-  // cares more about quiet history than fresh signals.
-  const presets = [60, 300, 600, 1800];
+  // new default; 1800s for slower stacks; 12h/24h for operators
+  // drowning in always-firing rules who'd rather see a daily digest
+  // than continuous noise.
+  const presets = [60, 300, 1800, 43200, 86400];
 
   const onSave = () => {
     const n = Number.parseInt(draft, 10);
-    if (!Number.isFinite(n) || n < 30 || n > 3600) {
-      toast.error("Cadence must be between 30 and 3600 seconds.");
+    if (!Number.isFinite(n) || n < 30 || n > 86400) {
+      toast.error("Cadence must be between 30 and 86400 seconds.");
       return;
     }
     update.mutate(
@@ -161,7 +184,7 @@ function CadenceEditor({ currentSeconds }: { currentSeconds: number }) {
           id="guardrail-cadence"
           type="number"
           min={30}
-          max={3600}
+          max={86400}
           step={10}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -179,7 +202,17 @@ function CadenceEditor({ currentSeconds }: { currentSeconds: number }) {
             onClick={() => setDraft(String(p))}
             data-testid={`guardrails-cadence-preset-${p}`}
           >
-            {p === 60 ? "1m" : p === 300 ? "5m" : p === 600 ? "10m" : "30m"}
+            {p === 60
+              ? "1m"
+              : p === 300
+                ? "5m"
+                : p === 1800
+                  ? "30m"
+                  : p === 43200
+                    ? "12h"
+                    : p === 86400
+                      ? "24h"
+                      : `${p}s`}
           </Button>
         ))}
       </div>
@@ -195,7 +228,8 @@ function CadenceEditor({ currentSeconds }: { currentSeconds: number }) {
       </Button>
       <p className="text-xs text-fg-muted sm:ml-auto">
         How often the registry re-evaluates every rule. Storage rules
-        rarely need {"<"} 5 min. Floor 30s, ceiling 1h.
+        rarely need {"<"} 5 min. If everything is firing at once, drop
+        to 12h or 24h while you tune the rules. Floor 30s, ceiling 24h.
       </p>
     </div>
   );

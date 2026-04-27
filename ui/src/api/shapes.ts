@@ -238,6 +238,10 @@ export interface UsersShape {
 export interface OpsHealthShape {
   uptime_seconds: number;
   containers: number;
+  /** Total deployed (running + stopped). Optional for back-compat
+   *  with controllers <v1.0.267. Falls back to ``containers`` on
+   *  the consumer side so a missing field renders 100 %. */
+  containers_total?: number;
   disk_used_pct: number;
   last_bootstrap_at: string;
 }

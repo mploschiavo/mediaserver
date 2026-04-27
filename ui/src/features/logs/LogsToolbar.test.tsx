@@ -20,6 +20,19 @@ function harness(overrides: Partial<ToolbarProps> = {}): ToolbarProps {
     enabledLevels: new Set(LEVELS) as ReadonlySet<LevelTag>,
     onToggleLevel: vi.fn(),
     onExport: vi.fn(),
+    // v1.0.270 Logs Phase 1 controls — these are required props now;
+    // tests pass sane defaults that exercise the same UX as before.
+    limit: 100,
+    onLimitChange: vi.fn(),
+    limitOptions: [100, 500, 1000, 5000, 10000, 50000],
+    since: "",
+    onSinceChange: vi.fn(),
+    sinceOptions: [
+      { value: "", label: "All available" },
+      { value: "5m", label: "Last 5 min" },
+    ],
+    actionFilter: "",
+    onActionFilterChange: vi.fn(),
   };
   return { ...defaults, ...overrides };
 }
