@@ -9,6 +9,10 @@ service:
   login_mode: form
   login_path: /api/v2/auth/login
 plugin:
+  # ADR-0003 Phase 3: ServiceLifecycle Protocol implementation.
+  # qBit's "key" is the WebUI admin password (no static API key); see
+  # the lifecycle module docstring for the auth-flow rationale.
+  lifecycle_class: media_stack.adapters.qbittorrent.lifecycle:QbittorrentLifecycle
   technology: qbittorrent
   aliases:
   - qbit
