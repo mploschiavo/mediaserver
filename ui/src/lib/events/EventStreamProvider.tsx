@@ -96,6 +96,12 @@ export function handleEvent(
   if (eventType === "job.started" || eventType === "job.completed") {
     void qc.invalidateQueries({ queryKey: ["runs"] });
     void qc.invalidateQueries({ queryKey: ["jobs"] });
+    // Onboarding's auto-tracked checklist derives its status from
+    // service health and registry state — both of which can flip
+    // when a bootstrap step finishes. Refresh on job events so the
+    // first-run checklist transitions in real time.
+    void qc.invalidateQueries({ queryKey: ["onboarding"] });
+    void qc.invalidateQueries({ queryKey: ["controller", "status"] });
     // ``job.completed`` also touches the per-run detail cache so
     // any open RunDrawer / LastRunPanel re-fetches the settled
     // record without waiting for its 30s slow poll.

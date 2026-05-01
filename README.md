@@ -56,6 +56,53 @@ Quality ratchets enforced in CI: `pnpm size` (250 KB total JS gzip ceiling, curr
 
 UI image: `harbor.iomio.io/library/media-stack-ui:v1.1.0` (see [CHANGELOG.md](CHANGELOG.md)).
 
+## CI/CD (Python-first)
+
+Use the unified Python release command to avoid mutable-tag drift:
+
+```bash
+# Show source-of-truth versions and default image refs
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main versions
+
+# Enforce version bump policy vs base ref (CI gate)
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main policy-check \
+  --base-ref origin/main
+
+# Build and push both images, writing digest metadata
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main build \
+  --output-json /tmp/media-stack-release-build.json
+
+# Reuse the exact refs emitted by `versions`; do not reuse old mutable tags.
+CONTROLLER_IMAGE="$(PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main versions | python3 -c 'import json,sys; print(json.load(sys.stdin)["controller_image"])')"
+UI_IMAGE="$(PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main versions | python3 -c 'import json,sys; print(json.load(sys.stdin)["ui_image"])')"
+
+# Compose deploy with explicit image refs (no implicit latest drift)
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main deploy-compose \
+  --controller-image "$CONTROLLER_IMAGE" \
+  --ui-image "$UI_IMAGE"
+
+# Verify compose runtime images + health
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main verify-compose \
+  --controller-image "$CONTROLLER_IMAGE" \
+  --ui-image "$UI_IMAGE"
+```
+
+For Kubernetes:
+
+```bash
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main deploy-k8s \
+  --namespace media-stack \
+  --controller-image "$CONTROLLER_IMAGE" \
+  --ui-image "$UI_IMAGE" \
+  --include-controller-cronjobs
+
+PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main verify-k8s \
+  --namespace media-stack \
+  --controller-image "$CONTROLLER_IMAGE" \
+  --ui-image "$UI_IMAGE" \
+  --include-controller-cronjobs
+```
+
 ## Project status
 
 Active. The controller image is published as `harbor.iomio.io/library/media-stack-controller:vX.Y.Z`. Recent changes are in [CHANGELOG.md](CHANGELOG.md).

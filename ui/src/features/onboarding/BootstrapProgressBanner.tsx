@@ -1,43 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Sparkles, X } from "lucide-react";
 import { fetcher } from "@/api/client";
-import { Button } from "@/components/ui/button";
+import { useJobs, useJobsRunning, useRunAction } from "@/features/jobs/hooks";
+import {
+  buildSetupExperienceState,
+  type BootstrapStatus,
+} from "./setupState";
+import { SetupStatus } from "./setupStatusConstants";
+import { BootstrapProgressBannerView } from "./BootstrapProgressBannerView";
 
-// Sanity timeout — if the controller insists bootstrap is still
-// "running" after this long the banner suppresses itself rather
-// than spinning forever. Real bootstraps complete in ~1-3 min;
-// 10 min is a generous ceiling that catches the failure mode
-// where ``finish()`` was never called (process crashed mid-run,
-// state never flipped to ``complete``).
-const SANITY_TIMEOUT_SECONDS = 10 * 60;
 const DISMISS_KEY = "media-stack:bootstrap-banner-dismissed";
+const CELEBRATED_KEY = "media-stack:bootstrap-celebrated";
+const STATUS_POLL_INTERVAL_MS = 2_000;
+const CELEBRATION_HOLD_MS = 8_000;
 
 /**
- * First-run progress banner. Polls ``/status`` while the controller's
- * initial bootstrap is in flight; renders nothing once
- * ``initial_bootstrap_done`` flips to true. The point is to give a
- * fresh-deploy operator a friendly "stack is starting up" surface
- * instead of a half-broken dashboard with empty tiles + 401 noise.
+ * Production-side wrapper: subscribes to the live ``/status``,
+ * ``/api/jobs/running``, and ``/api/jobs?history`` queries, derives
+ * the ``SetupExperienceState`` via ``buildSetupExperienceState``,
+ * and hands the data off to ``BootstrapProgressBannerView``.
  *
- * Per project memory: "the controller runs a job that uses defaults
- * to configure and wire everything for a default system. The only
- * thing onboard means is some minor tweaks to existing defaults" —
- * this banner is the visibility surface, NOT a wizard. No setup
- * choices, no input fields. Just progress.
+ * Pull this into the ``AppShell`` (chrome-level) so it appears
+ * exactly once per session. For demo / Storybook surfaces that
+ * want to render specific phases without going through the live
+ * controller, use ``BootstrapProgressBannerView`` directly.
  */
-export function BootstrapProgressBanner() {
-  const status = useQuery<BootstrapStatus>({
+export function BootstrapProgressBanner(): JSX.Element | null {
+  const statusQuery = useQuery<BootstrapStatus>({
     queryKey: ["controller", "status"],
     queryFn: () => fetcher<BootstrapStatus>("status"),
-    // Faster cadence than the dashboard's 30s default — the bootstrap
-    // window is short, so we want the bar to feel responsive.
-    refetchInterval: 2000,
-    // Once bootstrap completes the banner self-trims; no need to keep
-    // hitting /status forever.
+    refetchInterval: STATUS_POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
-    staleTime: 1000,
+    staleTime: 1_000,
+    retry: 1,
   });
+  const runningQuery = useJobsRunning();
+  const jobsQuery = useJobs();
+  const retryBootstrap = useRunAction("bootstrap");
+
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(DISMISS_KEY) === "1";
@@ -47,169 +47,64 @@ export function BootstrapProgressBanner() {
     window.localStorage.setItem(DISMISS_KEY, "1");
   }, [dismissed]);
 
-  const data = status.data;
-  if (!data) return null;
-  if (dismissed) return null;
-  // Bootstrap has finished at least once — never show again, regardless
-  // of current phase. The earlier rule (require phase=="complete" too)
-  // wedged the banner on stacks where bootstrap finished with
-  // phase=="error" because the controller forced
-  // ``initial_bootstrap_done=True`` on error too.
-  if (data.initial_bootstrap_done) return null;
-  // Terminal phases: don't show. ``error`` shows a separate banner
-  // upstream (alert engine); we don't double-render it here.
-  if (data.phase === "complete" || data.phase === "error") return null;
-  // Sanity timeout — if the run has been alive for longer than
-  // SANITY_TIMEOUT_SECONDS, assume the state machine is wedged and
-  // suppress the banner so the operator can see the dashboard.
-  const elapsedNow = computeElapsed(data);
-  if (elapsedNow > SANITY_TIMEOUT_SECONDS) return null;
+  const [, setTick] = useState(0);
 
-  const phaseDisplay =
-    typeof data.phase === "string" && data.phase ? data.phase : "starting";
-  const elapsed = Math.max(0, computeElapsed(data));
-  const stepLabel = currentStepLabel(data);
-  const progress = estimateProgress(data);
+  const setup = useMemo(
+    () =>
+      buildSetupExperienceState({
+        status: statusQuery.data,
+        statusReachable: !statusQuery.isError,
+        runningTree: runningQuery.data?.tree ?? [],
+        history: jobsQuery.data?.history ?? [],
+      }),
+    [
+      statusQuery.data,
+      statusQuery.isError,
+      runningQuery.data?.tree,
+      jobsQuery.data?.history,
+    ],
+  );
+
+  // Live elapsed re-tick while running — banner feels alive even
+  // between status polls.
+  useEffect(() => {
+    if (setup.phase !== SetupStatus.Running) return undefined;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1_000);
+    return () => window.clearInterval(id);
+  }, [setup.phase]);
+
+  // Celebration holds the success state for a beat then fades out
+  // and yields the dashboard to the OnboardingChecklist.
+  const [celebratedHidden, setCelebratedHidden] = useState(false);
+  const celebrateTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (setup.phase !== SetupStatus.Complete) return;
+    if (window.localStorage.getItem(CELEBRATED_KEY) === "1") {
+      setCelebratedHidden(true);
+      return;
+    }
+    if (celebrateTimer.current !== null) return;
+    celebrateTimer.current = window.setTimeout(() => {
+      window.localStorage.setItem(CELEBRATED_KEY, "1");
+      setCelebratedHidden(true);
+    }, CELEBRATION_HOLD_MS);
+    return () => {
+      if (celebrateTimer.current !== null) {
+        window.clearTimeout(celebrateTimer.current);
+        celebrateTimer.current = null;
+      }
+    };
+  }, [setup.phase]);
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      data-testid="bootstrap-progress-banner"
-      className="rounded-md border border-info/40 bg-info/10 p-4"
-    >
-      <div className="flex items-start gap-3">
-        <Loader2
-          aria-hidden
-          className="mt-0.5 size-4 shrink-0 animate-spin text-info"
-        />
-        <div className="flex flex-1 flex-col gap-2">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                <Sparkles aria-hidden className="size-3.5 text-info" />
-                First-time setup in progress
-              </div>
-              <div className="text-xs text-fg-muted">
-                {stepLabel}
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <div className="text-right tabular-nums">
-                <div className="text-xs uppercase tracking-wide text-fg-faint">
-                  Phase
-                </div>
-                <div
-                  className="font-mono text-xs text-fg"
-                  data-testid="bootstrap-progress-banner-phase"
-                >
-                  {phaseDisplay}
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="Dismiss bootstrap banner"
-                title="Dismiss — only do this if you're confident the stack is up"
-                onClick={() => setDismissed(true)}
-                data-testid="bootstrap-progress-banner-dismiss"
-              >
-                <X aria-hidden className="size-3" />
-              </Button>
-            </div>
-          </div>
-          <div
-            className="h-2 w-full overflow-hidden rounded-full bg-bg-3"
-            data-testid="bootstrap-progress-banner-bar"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(progress * 100)}
-          >
-            <div
-              className="h-full rounded-full bg-info transition-all"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-[11px] text-fg-faint tabular-nums">
-            <span>
-              Bootstrap is automatic — no action required. Dashboard
-              unlocks once all phases complete.
-            </span>
-            <span data-testid="bootstrap-progress-banner-elapsed">
-              {formatElapsed(elapsed)}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <BootstrapProgressBannerView
+      setup={setup}
+      dismissed={dismissed}
+      celebratedHidden={celebratedHidden}
+      onDismiss={() => setDismissed(true)}
+      onRetry={() => void retryBootstrap.mutateAsync()}
+      retryDisabled={retryBootstrap.isPending}
+    />
   );
-}
-
-interface ActionRecord {
-  id?: string;
-  name?: string;
-  status?: string;
-  started_at?: number;
-  completed_at?: number | null;
-  elapsed_seconds?: number | null;
-}
-
-interface BootstrapStatus {
-  phase?: string;
-  initial_bootstrap_done?: boolean;
-  current_action?: ActionRecord | null;
-  action_history?: ActionRecord[];
-}
-
-function currentStepLabel(d: BootstrapStatus): string {
-  const cur = d.current_action;
-  if (cur && cur.name) {
-    return `Running ${cur.name}…`;
-  }
-  if (Array.isArray(d.action_history) && d.action_history.length > 0) {
-    const last = d.action_history[d.action_history.length - 1];
-    if (last && last.name) {
-      return `Last finished: ${last.name}`;
-    }
-  }
-  return "Waiting for the controller to pick up the bootstrap job…";
-}
-
-function computeElapsed(d: BootstrapStatus): number {
-  const cur = d.current_action;
-  if (cur && cur.started_at) {
-    return Date.now() / 1000 - cur.started_at;
-  }
-  if (Array.isArray(d.action_history) && d.action_history.length > 0) {
-    const first = d.action_history[0];
-    if (first && first.started_at) {
-      return Date.now() / 1000 - first.started_at;
-    }
-  }
-  return 0;
-}
-
-/** Heuristic 0..1 progress: phase=running with current action ≈ 50 %,
- *  phase=complete = 1, phase=error = 1 (terminal), idle = 0. */
-function estimateProgress(d: BootstrapStatus): number {
-  if (d.phase === "complete") return 1;
-  if (d.phase === "error") return 1;
-  const history = Array.isArray(d.action_history) ? d.action_history : [];
-  // Each completed action contributes some weight; bootstrap is
-  // historically about 4-6 actions long, so saturate around 5.
-  const completed = history.filter(
-    (a) => a && a.status === "complete",
-  ).length;
-  const ratio = Math.min(0.9, completed / 5);
-  // Add a small bump when a current_action is in flight.
-  return d.current_action ? Math.max(ratio, 0.1) + 0.1 : ratio;
-}
-
-function formatElapsed(s: number): string {
-  if (!Number.isFinite(s) || s <= 0) return "—";
-  if (s < 60) return `${s.toFixed(0)}s`;
-  if (s < 3600) return `${(s / 60).toFixed(0)}m ${(s % 60).toFixed(0)}s`;
-  return `${(s / 3600).toFixed(1)}h`;
 }

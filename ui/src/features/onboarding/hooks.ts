@@ -2,51 +2,65 @@
 //
 // Lives here rather than in `src/api/hooks.ts` because the parent
 // barrel is owned by sibling agents shipping other waves in parallel.
-// The onboarding endpoint is opaque (`additionalProperties: true` in
-// OpenAPI) so we model only the canonical fields the UI needs and
-// fall back gracefully when any of them is missing.
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetcher } from "@/api/client";
 
 const ONBOARDING_PATH = "api/onboarding";
 
+const FIRST_RUN_STALE_MS = 5_000;
+const SETTLED_STALE_MS = 60_000;
+
+export type OnboardingStepStatus = "ok" | "warn" | "pending" | "error";
+
 /**
- * A single onboarding step. The controller may emit either a string
- * (label only) or a structured `{ id, label, route }` object — the
- * wizard renders both shapes by way of the helpers in
- * `OnboardingChecklist.tsx`.
+ * Single auto-tracked checklist step emitted by `/api/onboarding`.
+ * The controller derives `status` from live probes (service health,
+ * api-key discovery, library config, routing config, download-client
+ * bindings) so the UI never has to ask the operator to confirm work
+ * the bootstrap job already finished.
  */
-export type OnboardingStep =
-  | string
-  | {
-      id?: string;
-      label?: string;
-      title?: string;
-      route?: string;
-      href?: string;
-      description?: string;
-    };
+export interface OnboardingStep {
+  id: string;
+  label: string;
+  status: OnboardingStepStatus;
+  detail: string;
+}
 
 export interface OnboardingShape {
-  /** Current step (id or label) the wizard is paused on, if any. */
-  step?: string;
-  completed?: readonly OnboardingStep[];
-  pending?: readonly OnboardingStep[];
+  steps: readonly OnboardingStep[];
+  completed: number;
+  total: number;
+  progress_pct: number;
+  is_first_run: boolean;
 }
 
 export const onboardingQueryKey = ["onboarding"] as const;
 
 /**
- * `useOnboarding` — fetches `/api/onboarding`. Cache for 30 s; the
- * wizard state changes only when the operator finishes a step, and
- * mutations on those forms can invalidate the key directly.
+ * Default route per step id. The controller emits step ids only;
+ * UX wiring for "where the operator goes to satisfy this step"
+ * lives in the UI. Lifting this onto the contract is a follow-up.
  */
+export const ONBOARDING_STEP_ROUTES: Readonly<Record<string, string>> = {
+  services_running: "/ops",
+  api_keys: "/services",
+  libraries: "/content",
+  routing: "/routing",
+  download_clients: "/services",
+  bootstrap: "/jobs",
+};
+
 export function useOnboarding(): UseQueryResult<OnboardingShape> {
   return useQuery({
     queryKey: onboardingQueryKey,
     queryFn: () => fetcher<OnboardingShape>(ONBOARDING_PATH),
-    staleTime: 30_000,
+    staleTime: FIRST_RUN_STALE_MS,
+    refetchInterval: (query) => {
+      const data = query.state.data as OnboardingShape | undefined;
+      if (!data) return FIRST_RUN_STALE_MS;
+      return data.is_first_run ? FIRST_RUN_STALE_MS : SETTLED_STALE_MS;
+    },
     retry: false,
   });
 }

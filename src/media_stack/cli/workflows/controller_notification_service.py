@@ -7,6 +7,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+WEBHOOK_TIMEOUT_SECONDS = 8
+
 
 @dataclass(frozen=True)
 class ControllerNotificationConfig:
@@ -28,7 +30,7 @@ class ControllerNotificationService:
             headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=8):
+            with urllib.request.urlopen(request, timeout=WEBHOOK_TIMEOUT_SECONDS):
                 return
         except urllib.error.URLError:
             return

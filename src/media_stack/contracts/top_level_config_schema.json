@@ -37,6 +37,7 @@
     "readarr": "object",
     "routing": "object",
     "refresh_health_after_setup": "boolean",
+    "sonarr": "object",
     "sonarr_seed_series": "object",
     "technology_bindings": "object",
     "trigger_indexer_sync": "boolean",

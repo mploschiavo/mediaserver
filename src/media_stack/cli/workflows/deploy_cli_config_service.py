@@ -28,6 +28,8 @@ except ModuleNotFoundError:  # pragma: no cover
     from media_stack.core.defaults import default_controller_image
     from media_stack.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
 
+DEFAULT_PREPARE_HOST_ROOT = Path("/", "srv", "media-stack").as_posix()
+
 
 @dataclass
 class DeployStackConfig:
@@ -46,7 +48,7 @@ class DeployStackConfig:
     auto_download_content: str = "0"
     run_smoke_test: str = "1"
     skip_prepare_host: str = "0"
-    prepare_host_root: str = "/srv/media-stack"
+    prepare_host_root: str = DEFAULT_PREPARE_HOST_ROOT
     storage_mode: str = "dynamic-pvc"
     pvc_storage_class: str = ""
     ingress_domain: str = "local"
@@ -277,7 +279,7 @@ def parse_deploy_stack_config(argv: list[str], *, root_dir: Path) -> DeployStack
         ),
         run_smoke_test=_pick(_env_value("RUN_SMOKE_TEST"), default="1"),
         skip_prepare_host=_pick(_env_value("SKIP_PREPARE_HOST"), default="0"),
-        prepare_host_root=_pick(_env_value("PREPARE_HOST_ROOT"), default="/srv/media-stack"),
+        prepare_host_root=_pick(_env_value("PREPARE_HOST_ROOT"), default=DEFAULT_PREPARE_HOST_ROOT),
         storage_mode=_pick(_env_value("STORAGE_MODE"), default="dynamic-pvc"),
         pvc_storage_class=_pick(_env_value("PVC_STORAGE_CLASS"), default=""),
         ingress_domain=_pick(

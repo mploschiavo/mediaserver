@@ -46,15 +46,23 @@ class GenerateBootstrapConfigCommand:
 
         # 2. Load service contract defaults
         svc_dir = contracts_dir / "services"
-        # Load the schema to know which service IDs are valid top-level keys
-        schema_path = contracts_dir.parent / "src" / "media_stack" / "contracts" / "top_level_config_schema.json"
-        allowed_keys: set[str] = set()
-        if schema_path.is_file():
-            try:
-                schema = json.loads(schema_path.read_text(encoding="utf-8"))
-                allowed_keys = set(schema.get("allowed_keys", schema.get("properties", {})).keys())
-            except Exception as exc:
-                log_swallowed(exc)
+        # Load the same schema the validator uses so the generator
+        # never emits a top-level key the validator will reject.
+        # Earlier this resolved a dev-relative ``src/...`` path that
+        # doesn't exist inside the runtime container, leaving
+        # ``allowed_keys`` empty and silently emitting every service
+        # as a top-level key (including ones the schema forbids).
+        # Importing through ``top_level_config_model`` guarantees we
+        # read the exact same schema regardless of install layout.
+        try:
+            from media_stack.services.top_level_config_model import (
+                _load_top_level_schema,
+            )
+            schema_allowed, _schema_required = _load_top_level_schema()
+            allowed_keys: set[str] = set(schema_allowed.keys())
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
+            allowed_keys = set()
         if svc_dir.is_dir():
             for svc_yaml in sorted(svc_dir.glob("*.yaml")):
                 if svc_yaml.name.startswith("_"):

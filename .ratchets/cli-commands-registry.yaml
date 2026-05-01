@@ -31,6 +31,7 @@ commands:
   deploy_verify_main.py: Post-deploy smoke checks (services up, routes responding).
   microk8s_reconcile_main.py: Reconcile microk8s state with the contracted profile.
   microk8s_smoke_test_main.py: End-to-end smoke test for a microk8s deploy.
+  release_pipeline_main.py: Build, deploy, and prove Compose/Kubernetes release images.
   render_architecture_diagrams_main.py: Regenerate the architecture diagram SVGs from contract YAMLs.
   reset_admin_main.py: Break-glass — reset the admin password from inside the controller container.
   restore_stack_main.py: Restore a stack from a backup tar produced by backup_stack_main.
@@ -38,6 +39,7 @@ commands:
   run_unit_tests_main.py: Run the unit test suite with the project's standard pytest config.
   set_pvc_storage_class_main.py: Patch a PVC's storageClassName in-place (k8s).
   setup_lan_tls_main.py: Mint a self-signed TLS bundle for LAN-only deploys.
+  teardown_stack_main.py: Safely tear down Compose and Kubernetes media-stack deployments.
   validate_controller_config_main.py: Validate a controller config against the OpenAPI contract.
   validate_controller_profile_main.py: Validate a bootstrap profile YAML for shape + cross-reference errors.
   watch_install_main.py: Live-tail a deploy in progress, surfacing job + service state.

@@ -26,7 +26,7 @@ curl -s http://localhost:9100/api/backup > media-stack-backup.json
 
 ### Use the teardown script (recommended)
 
-The repo ships a teardown helper at [`bin/ops/teardown-compose.sh`](../../bin/ops/teardown-compose.sh). It handles the cases the manual recipe gets wrong:
+The repo ships a teardown helper at `media-stack-teardown`. It handles the cases the manual recipe gets wrong:
 
 * Preserves git-tracked `config/defaults/` (the controller reads bootstrap templates from it on first run — nuking it breaks fresh installs).
 * Kills stale `kubectl port-forward` processes that bind compose host ports — a common silent failure when toggling between k8s and compose.
@@ -34,17 +34,25 @@ The repo ships a teardown helper at [`bin/ops/teardown-compose.sh`](../../bin/op
 
 ```bash
 # Default — wipes runtime config dirs only, keeps data/torrents and config/defaults/
-bin/ops/teardown-compose.sh
+media-stack-teardown --dry-run
+media-stack-teardown --execute
 
 # Also wipe data/ (torrents, usenet, transcode)
-bin/ops/teardown-compose.sh --with-data
+media-stack-teardown --scope data --dry-run
+media-stack-teardown --scope data --execute
 
 # Wipe everything including media/ (asks for confirmation per dir)
-bin/ops/teardown-compose.sh --everything
+media-stack-teardown --scope everything --dry-run
+media-stack-teardown --scope everything --execute
+
+# Production execute mode requires an explicit namespace token
+media-stack-teardown --target k8s --environment prod --execute --confirm-token "TEARDOWN media-stack"
 
 # Show what would happen, take no action
-bin/ops/teardown-compose.sh --dry-run
+media-stack-teardown --dry-run
 ```
+
+Dry-run previews the planned mutations. Verification is a separate step: inspect the running deployment after teardown or deploy and prove containers, pods, namespaces, and image refs match the expected state.
 
 After teardown, fresh-bootstrap with:
 
