@@ -2,6 +2,22 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.295] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 1 — `ServiceLifecycle` Protocol landed.** New
+  `media_stack.domain.services` package with the Protocol every service
+  adapter will implement (`probe_running`, `probe_has_api_key`,
+  `mint_api_key`, `discover_api_key`, `persist_api_key`) plus the
+  value types it speaks (`ProbeResult` tri-state probe outcome,
+  `Outcome[T]` ensurer result with transient-vs-permanent failure
+  signal, `OrchestrationContext` read-only runtime). Pure addition;
+  no behavior change — runtime image is unchanged from v1.0.294.
+  Phase 2 (Jellyfin + Servarr lifecycle implementations as the
+  proofs) will deploy.
+- 20 unit tests pinning factories, frozen-ness, runtime-checkable
+  Protocol semantics, and the package re-export surface.
+
 ## [v1.0.294] — 2026-05-01
 
 ### Fixed
