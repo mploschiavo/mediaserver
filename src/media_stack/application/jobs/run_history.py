@@ -393,13 +393,22 @@ def iter_records() -> Iterable[RunRecord]:
 
 
 def get_running_tree() -> list[dict]:
-    """Tree of in-flight runs grouped parent → children.
+    """Tree of in-flight roots with their full descendant tree.
 
-    Used by ``GET /api/jobs/running`` to power the "Currently
-    running" card on the Jobs page (design doc §3 lines 168-174 —
-    bootstrap with sub-step glyphs and per-step elapsed). The tree
-    only contains records whose ``status`` is ``running`` so the
-    card auto-empties as terminal updates land via SSE.
+    Used by ``GET /api/jobs/running`` to power the onboarding
+    banner's "N done of M steps" counter and the Jobs page
+    "Currently running" card (design doc §3 lines 168-174 —
+    bootstrap with sub-step glyphs and per-step elapsed).
+
+    Top-level roots are gated to ``status=running`` so the card
+    auto-empties as the parent settles (this preserves the
+    "currently running" semantic — when bootstrap finishes, it
+    stops surfacing here). But descendants beneath a running root
+    include settled children too, with their terminal status
+    intact. Without that, the onboarding banner's counter is
+    forever stuck at "0 done of N running" because completed
+    sub-jobs vanish from the tree the instant they finish, taking
+    the "done" tally with them instead of contributing to it.
 
     Each node is a dict (not a RunRecord) so the API serializer
     doesn't have to know about LogAnchor + dataclass nesting; the
@@ -413,13 +422,31 @@ def get_running_tree() -> list[dict]:
     running = [r for r in records if r.status == RunStatus.RUNNING]
     by_id = {r.run_id: r for r in running}
 
+    # Index every record (running + settled) by parent so the
+    # descendant walk is O(1) per node and naturally bounded to the
+    # subtree under whichever root we start from.
+    by_parent: dict[str, list[RunRecord]] = {}
+    for r in records:
+        if r.parent_run_id:
+            by_parent.setdefault(r.parent_run_id, []).append(r)
+
+    now = time.time()
+
+    def _elapsed(record: RunRecord) -> float:
+        if record.status == RunStatus.RUNNING:
+            return round(now - record.started_at, 2)
+        # Settled: prefer the stored elapsed so the value stops
+        # advancing once the job finished. Fall back to
+        # completed_at - started_at, then to 0 for malformed rows.
+        if record.elapsed is not None:
+            return round(record.elapsed, 2)
+        if record.completed_at is not None:
+            return round(record.completed_at - record.started_at, 2)
+        return 0.0
+
     def _node(record: RunRecord) -> dict:
-        # Children are the running records whose parent_run_id
-        # points at this one. We pre-filter against ``running``
-        # rather than the full record set so settled children stop
-        # cluttering the tree the moment their JobCompleted lands.
         child_records = sorted(
-            (c for c in running if c.parent_run_id == record.run_id),
+            by_parent.get(record.run_id, []),
             key=lambda c: c.started_at,
         )
         return {
@@ -427,9 +454,7 @@ def get_running_tree() -> list[dict]:
             "job_name": record.job_name,
             "status": record.status,
             "started_at": record.started_at,
-            "elapsed_seconds": (
-                round(time.time() - record.started_at, 2)
-            ),
+            "elapsed_seconds": _elapsed(record),
             "triggered_by": record.triggered_by,
             "actor": record.actor or "",
             "parent_run_id": record.parent_run_id or "",

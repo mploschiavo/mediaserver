@@ -2,6 +2,20 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.294] — 2026-05-01
+
+### Fixed
+- **Onboarding banner counter now advances honestly.** The banner used to
+  read "0 done / N running of N steps" forever even as bootstrap sub-jobs
+  finished. Root cause: ``get_running_tree()`` filtered children to
+  ``status=running``, so settled siblings vanished from the tree the
+  instant they completed — taking the "done" tally with them instead of
+  contributing to it. The tree now keeps settled descendants under their
+  still-running parent (with terminal status intact and elapsed frozen at
+  completion), while the top-level set stays gated to running so the Jobs
+  page card still empties when bootstrap finishes. Backend-only change;
+  the existing frontend flatten-and-count logic lights up automatically.
+
 ## [ui-v1.1.0] — 2026-04-24
 
 ### UI

@@ -1,12 +1,17 @@
 """Verify ``get_running_tree`` correctly assembles a parent→children
-tree of in-flight runs.
+tree of in-flight roots, with their full descendant subtree.
 
 The tree powers ``GET /api/jobs/running`` ``tree`` field, which the
-Jobs page's ``CurrentlyRunningCard`` renders with per-step elapsed
-glyphs. Five behaviours we need to be confident about:
+onboarding banner uses to drive the "N done of M steps" counter and
+the Jobs page's ``CurrentlyRunningCard`` renders with per-step
+elapsed glyphs. Behaviours we need to be confident about:
 
-  * Settled runs (status != running) are excluded from every level.
-  * Children whose parent is still running nest under that parent.
+  * Top-level roots are gated to status=running (the card empties
+    when the parent finishes).
+  * Settled descendants of a running root REMAIN in the tree with
+    their terminal status — without that, the onboarding counter
+    sticks at "0 done of N" forever because completed sub-jobs
+    vanish from the tree the instant they finish.
   * Children whose parent has settled surface as top-level orphans
     so the operator still sees the work in flight.
   * Each node carries the fields the UI renders directly — no
@@ -37,7 +42,9 @@ class TestGetRunningTree:
     def test_empty_when_no_runs_in_flight(self) -> None:
         assert run_history.get_running_tree() == []
 
-    def test_settled_runs_excluded(self) -> None:
+    def test_settled_top_level_runs_excluded(self) -> None:
+        # When the only candidate root has settled, the tree is
+        # empty — the card auto-empties at the parent layer.
         rec = run_history.record_run_start("scan", triggered_by="cron")
         run_history.record_run_complete(rec.run_id, status=RunStatus.OK)
         assert run_history.get_running_tree() == []
@@ -97,7 +104,14 @@ class TestGetRunningTree:
         ordering = [n["run_id"] for n in tree]
         assert ordering == [first.run_id, second.run_id]
 
-    def test_settled_child_is_pruned_but_running_sibling_is_kept(self) -> None:
+    def test_settled_child_kept_under_running_parent(self) -> None:
+        # Onboarding banner contract: the counter renders "N done of
+        # M steps" by flattening the tree and counting status. If we
+        # prune settled children, the counter is forever stuck at
+        # "0 done of N running" because every child that finishes
+        # disappears instead of contributing to "done". The settled
+        # child MUST stay in the tree under the still-running parent
+        # with its terminal status intact.
         parent = run_history.record_run_start(
             "bootstrap", triggered_by="manual",
         )
@@ -107,7 +121,7 @@ class TestGetRunningTree:
             triggered_by="parent",
         )
         live_child = run_history.record_run_start(
-            "scan-completed",
+            "mass-search-throttled",
             parent_run_id=parent.run_id,
             triggered_by="parent",
         )
@@ -117,5 +131,33 @@ class TestGetRunningTree:
         tree = run_history.get_running_tree()
         assert len(tree) == 1
         kids = tree[0]["children"]
-        assert len(kids) == 1
-        assert kids[0]["run_id"] == live_child.run_id
+        assert len(kids) == 2, (
+            "settled siblings must remain under a running parent so "
+            "the banner's done-counter is honest"
+        )
+        by_id = {k["run_id"]: k for k in kids}
+        assert by_id[done_child.run_id]["status"] == RunStatus.OK
+        assert by_id[live_child.run_id]["status"] == RunStatus.RUNNING
+
+    def test_settled_child_elapsed_freezes_at_completion(self) -> None:
+        # A settled child's elapsed must come from the stored value,
+        # not "now - started_at" — otherwise the UI shows it ticking
+        # forward forever even though the job finished.
+        parent = run_history.record_run_start(
+            "bootstrap", triggered_by="manual",
+        )
+        child = run_history.record_run_start(
+            "discover-api-keys",
+            parent_run_id=parent.run_id,
+            triggered_by="parent",
+        )
+        rec = run_history.record_run_complete(
+            child.run_id, status=RunStatus.OK,
+        )
+        assert rec is not None and rec.elapsed is not None
+        frozen = rec.elapsed
+        tree = run_history.get_running_tree()
+        kids = tree[0]["children"]
+        assert kids[0]["elapsed_seconds"] == pytest.approx(
+            round(frozen, 2), abs=0.01,
+        )
