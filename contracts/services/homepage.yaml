@@ -8,6 +8,8 @@ service:
   health_path: /
   top_level_config_key: true
 plugin:
+  # ADR-0003 Phase 3c: ServiceLifecycle Protocol implementation.
+  lifecycle_class: media_stack.adapters.homepage.lifecycle:HomepageLifecycle
   technology: homepage
   app_service_classes:
     homepage_service: media_stack.services.apps.homepage.service:HomepageService

@@ -14,3 +14,11 @@ service:
   profiles: ['auth-authentik']
 
   scalable: false
+plugin:
+  # ADR-0003 Phase 3c: ServiceLifecycle Protocol implementation.
+  # Authentik does have API tokens but the controller doesn't mint
+  # or manage them today (operator-provisioned out-of-band). For
+  # now, Authentik uses the no-API-key shape from the lifecycle's
+  # perspective. Phase 5+ may add token-management.
+  lifecycle_class: media_stack.adapters.authentik.lifecycle:AuthentikLifecycle
+  technology: authentik

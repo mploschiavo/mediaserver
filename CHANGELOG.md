@@ -2,6 +2,38 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.299] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 3c — auth + no-API-key lifecycles, ADR-0003
+  Phase 3 closes.** Five more `ServiceLifecycle` adapters
+  (Authelia, Authentik, Homepage, FlareSolverr, Envoy) all in the
+  no-API-key shape. The repetition is captured in a new shared
+  base, `media_stack.adapters._lifecycle_base.NoApiKeyLifecycleBase`,
+  so each per-service adapter is ~10 LOC:
+
+      class HomepageLifecycle(NoApiKeyLifecycleBase):
+          service_id = "homepage"
+          _default_health_path = "/"
+
+  The contract YAML still names the concrete class
+  (`adapters.homepage.lifecycle:HomepageLifecycle`), so the
+  orchestrator + ratchet keep their per-service granularity. The
+  base just kills ~80 LOC of repetition per service.
+- `MaintainerrLifecycle` (Phase 3b) refactored to use the same
+  base — net ~70 LOC removed in that file. Behavior is identical;
+  the seven Phase-3b Maintainerr tests continue to pass unchanged.
+- Five more contract YAMLs declare `plugin.lifecycle_class`. Two
+  of them (Authentik, Envoy) didn't have a `plugin:` section at
+  all before — added.
+- Ratchet floor 11 → 16. **All 16 services that this slice plans
+  to cover are now Protocol-conformant.** Phase 3 is done.
+- 24 new unit tests cover the base's tri-state probe,
+  health-path-overridable behavior, the uniform no-API-key
+  contract, and per-service metadata (parameterized across all 6
+  no-key adapters incl. refactored Maintainerr).
+- Pure additive code — runtime image unchanged.
+
 ## [v1.0.298] — 2026-05-01
 
 ### Architecture

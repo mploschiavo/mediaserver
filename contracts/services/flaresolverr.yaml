@@ -10,6 +10,8 @@ service:
   scale_to_zero: true
   top_level_config_key: true
 plugin:
+  # ADR-0003 Phase 3c: ServiceLifecycle Protocol implementation.
+  lifecycle_class: media_stack.adapters.flaresolverr.lifecycle:FlaresolverrLifecycle
   technology: flaresolverr
 defaults:
   enabled: true

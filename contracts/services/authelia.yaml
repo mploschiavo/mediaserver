@@ -15,6 +15,10 @@ service:
 
   scalable: false
 plugin:
+  # ADR-0003 Phase 3c: ServiceLifecycle Protocol implementation.
+  # Authelia uses session cookies for end-user auth — no static API
+  # key for the controller to mint. Uses the no-API-key shape.
+  lifecycle_class: media_stack.adapters.authelia.lifecycle:AutheliaLifecycle
   technology: authelia
   jobs:
     configure-auth:
