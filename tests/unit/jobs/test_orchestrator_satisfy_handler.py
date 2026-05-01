@@ -132,6 +132,49 @@ class TestHandlerContract:
         assert result["elapsed"] == pytest.approx(1.5)
 
 
+class TestLiveServicesEnv:
+    """Phase 5a rollout knob: ``ORCHESTRATOR_LIVE_SERVICES`` env is
+    parsed into the ``live_services`` allowlist. Operators flip this
+    without rebuilding to expand the rollout family-by-family."""
+
+    def test_unset_env_yields_no_allowlist(self, monkeypatch) -> None:
+        monkeypatch.delenv("ORCHESTRATOR_LIVE_SERVICES", raising=False)
+        from media_stack.application.jobs.orchestrator_satisfy import (
+            _live_services_from_env,
+        )
+        assert _live_services_from_env() is None
+
+    def test_empty_string_yields_no_allowlist(self, monkeypatch) -> None:
+        monkeypatch.setenv("ORCHESTRATOR_LIVE_SERVICES", "")
+        from media_stack.application.jobs.orchestrator_satisfy import (
+            _live_services_from_env,
+        )
+        assert _live_services_from_env() is None
+
+    def test_single_service(self, monkeypatch) -> None:
+        # Phase 5a: jellyfin only.
+        monkeypatch.setenv("ORCHESTRATOR_LIVE_SERVICES", "jellyfin")
+        from media_stack.application.jobs.orchestrator_satisfy import (
+            _live_services_from_env,
+        )
+        assert _live_services_from_env() == frozenset({"jellyfin"})
+
+    def test_multiple_services_with_whitespace_normalize(
+        self, monkeypatch,
+    ) -> None:
+        # Operators may add whitespace; case is normalized to lower
+        # so YAML-author conventions don't have to match.
+        monkeypatch.setenv(
+            "ORCHESTRATOR_LIVE_SERVICES", " Jellyfin , sonarr,RADARR ",
+        )
+        from media_stack.application.jobs.orchestrator_satisfy import (
+            _live_services_from_env,
+        )
+        assert _live_services_from_env() == frozenset(
+            {"jellyfin", "sonarr", "radarr"},
+        )
+
+
 class TestContractRegistration:
     def test_handler_registered_in_guardrails_yaml(self) -> None:
         # The auto-heal cycle calls run_job("orchestrator:satisfy-shadow"),

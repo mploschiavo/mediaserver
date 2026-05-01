@@ -49,13 +49,14 @@ def _promise(
     depends_on: tuple[str, ...] = (),
     platforms: tuple[str, ...] = ("compose", "k8s"),
     ensurer: Any = None,
+    service: str = "x",
 ) -> Promise:
     return Promise(
         id=pid,
         description=pid,
         platforms=platforms,
-        probe=LifecycleProbe(service="x", method="probe_running"),
-        ensurer=ensurer or DeployEnsurer(target="x"),
+        probe=LifecycleProbe(service=service, method="probe_running"),
+        ensurer=ensurer or DeployEnsurer(target=service),
         depends_on=depends_on,
     )
 
@@ -363,6 +364,137 @@ class TestSummary:
         line = summary.summary_line()
         assert "ok" in line
         assert "platform_skip" in line
+
+
+class TestLiveServicesAllowlist:
+    """Phase 5 staged-rollout knob: ``live_services`` flips effective
+    ``dry_run`` to False for promises whose service is in the
+    allowlist, while keeping every other promise in dry-run shadow.
+
+    Pin: when the allowlist is set, only matched promises run their
+    ensurers; unmatched promises continue to dry-run-shadow.
+    """
+
+    def test_promise_in_allowlist_runs_ensurer_under_dry_run_baseline(
+        self, fresh_cooldown, history_emit,
+    ) -> None:
+        # dry_run=True is the global baseline (Phase 4c shadow), but
+        # live_services={"jellyfin"} promotes jellyfin promises to
+        # primary mode — their ensurers fire on probe failure.
+        registry = [
+            _promise(
+                "jellyfin-api-key-discoverable",
+                service="jellyfin",
+                ensurer=LifecycleEnsurer(
+                    service="jellyfin", method="mint_api_key",
+                ),
+            ),
+        ]
+        # Probe fails → orchestrator should call ensurer because
+        # jellyfin is in the live allowlist
+        with patch(
+            "media_stack.application.services.orchestrator.dispatch_probe",
+            return_value=ProbeResult.failed("not yet"),
+        ), patch(
+            "media_stack.application.services.orchestrator.dispatch_ensurer",
+            return_value=Outcome.success(None),
+        ) as mock_ensure:
+            satisfy_promises(
+                registry,
+                platform="compose",
+                cooldown=fresh_cooldown,
+                history_emit=history_emit,
+                dry_run=True,
+                live_services=frozenset({"jellyfin"}),
+            )
+        # Ensurer fired despite dry_run=True — that's the whole point.
+        assert mock_ensure.call_count >= 1
+
+    def test_promise_not_in_allowlist_stays_dry_run(
+        self, fresh_cooldown, history_emit,
+    ) -> None:
+        registry = [
+            _promise(
+                "sonarr-running",
+                service="sonarr",
+                ensurer=LifecycleEnsurer(
+                    service="sonarr", method="probe_running",
+                ),
+            ),
+        ]
+        # sonarr NOT in allowlist → dry_run path; ensurer never called.
+        with patch(
+            "media_stack.application.services.orchestrator.dispatch_probe",
+            return_value=ProbeResult.failed("not yet"),
+        ), patch(
+            "media_stack.application.services.orchestrator.dispatch_ensurer",
+        ) as mock_ensure:
+            satisfy_promises(
+                registry,
+                platform="compose",
+                cooldown=fresh_cooldown,
+                history_emit=history_emit,
+                dry_run=True,
+                live_services=frozenset({"jellyfin"}),
+            )
+        mock_ensure.assert_not_called()
+
+    def test_no_allowlist_falls_back_to_global_dry_run(
+        self, fresh_cooldown, history_emit,
+    ) -> None:
+        # live_services=None preserves the Phase 4c default — full
+        # shadow mode; no ensurer ever fires.
+        registry = [_promise("jellyfin-running", service="jellyfin")]
+        with patch(
+            "media_stack.application.services.orchestrator.dispatch_probe",
+            return_value=ProbeResult.failed("not yet"),
+        ), patch(
+            "media_stack.application.services.orchestrator.dispatch_ensurer",
+        ) as mock_ensure:
+            satisfy_promises(
+                registry,
+                platform="compose",
+                cooldown=fresh_cooldown,
+                history_emit=history_emit,
+                dry_run=True,
+                live_services=None,
+            )
+        mock_ensure.assert_not_called()
+
+    def test_promise_with_no_service_honors_global_dry_run(
+        self, fresh_cooldown, history_emit,
+    ) -> None:
+        # File probes have no .service attribute → can't be in any
+        # allowlist → always honor global dry_run flag. Otherwise an
+        # operator who set live_services={"jellyfin"} might
+        # accidentally promote unrelated file-based promises.
+        from media_stack.domain.services.promises import (
+            FileTextProbe, JobEnsurer as _JE,
+        )
+        registry = [
+            Promise(
+                id="overrides-seeded",
+                description="",
+                platforms=("compose", "k8s"),
+                probe=FileTextProbe(path="x", assert_expr="True"),
+                ensurer=_JE(job_name="seed-overrides"),
+            ),
+        ]
+        with patch(
+            "media_stack.application.services.orchestrator.dispatch_probe",
+            return_value=ProbeResult.failed("not yet"),
+        ), patch(
+            "media_stack.application.services.orchestrator.dispatch_ensurer",
+        ) as mock_ensure:
+            satisfy_promises(
+                registry,
+                platform="compose",
+                cooldown=fresh_cooldown,
+                history_emit=history_emit,
+                dry_run=True,
+                live_services=frozenset({"jellyfin"}),
+            )
+        mock_ensure.assert_not_called()
 
 
 class TestPromiseIdInRunRecords:

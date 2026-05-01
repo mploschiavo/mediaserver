@@ -643,7 +643,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.305}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.306}
     container_name: media-stack-controller
     # Image ENTRYPOINT is already "media-stack-controller" — only
     # pass flags here, otherwise the binary's own name re-arrives as
@@ -672,6 +672,12 @@ services:
       ENVOY_LISTENER_PORT: "8880"
       BOOTSTRAP_API_PORT: "9100"
       FULLY_PRECONFIGURED: "1"
+      # ADR-0003 Phase 5 staged rollout knob. Comma-separated list
+      # of service ids whose ensurers run for real (the orchestrator
+      # remains in dry-run-shadow for everything else). Empty/unset
+      # = full Phase-4c shadow. 5a deploy: "jellyfin"; 5b adds
+      # sonarr,radarr,lidarr,readarr,prowlarr; 5c adds the rest.
+      ORCHESTRATOR_LIVE_SERVICES: "${ORCHESTRATOR_LIVE_SERVICES:-jellyfin}"
       # In-place upgrade button on the dashboard. When set, the
       # controller exposes /api/stack/upgrade which spawns a
       # docker:cli sibling container holding the docker socket and

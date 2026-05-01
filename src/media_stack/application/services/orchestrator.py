@@ -75,6 +75,7 @@ def satisfy_promises(
     cooldown: CooldownTracker | None = None,
     secrets: Mapping[str, str] | None = None,
     dry_run: bool = False,
+    live_services: frozenset[str] | None = None,
     history_emit: Any = None,
     workers: int = _DEFAULT_PROBE_WORKERS,
 ) -> TickSummary:
@@ -97,6 +98,23 @@ def satisfy_promises(
                         probes fail. Used by the discrepancy logger
                         in Phase 4c to compare orchestrator's view
                         of the world to legacy without mutating.
+                        Phase 5a: ``dry_run=True`` with ``live_services``
+                        set is the per-family rollout knob — see
+                        ``live_services`` below.
+    ``live_services`` — Phase 5 staged-rollout allowlist. When
+                        provided, the dry-run gate is RELAXED for any
+                        promise whose probe.service (or
+                        ensurer.service for LifecycleEnsurer) is in
+                        the set: those promises run their ensurers
+                        for real even when ``dry_run=True``. All
+                        other promises continue to dry-run-shadow.
+                        Default ``None`` → strict ``dry_run`` honored
+                        for every promise. Phase 5a deploy sets
+                        ``frozenset({"jellyfin"})``; Phase 5b adds
+                        the Servarr family; etc. Promises with no
+                        service id (file probes, k8s probes,
+                        infra ensurers) always honor the global
+                        ``dry_run`` flag.
     ``history_emit``  — optional callable ``(RunRecord) -> None``
                         invoked for each probe + ensurer outcome.
                         Default is the run-history append.
@@ -182,6 +200,15 @@ def satisfy_promises(
         )
 
         for promise, probe_result, probe_started, probe_elapsed in probe_results:
+            # Phase 5 staged rollout: a promise's effective dry_run
+            # flips to False when its service is in ``live_services``.
+            # Promises with no resolvable service id (file probes,
+            # infra ensurers) always honor the global flag.
+            effective_dry_run = dry_run
+            if dry_run and live_services:
+                svc = _promise_service(promise)
+                if svc and svc in live_services:
+                    effective_dry_run = False
             attempt = _handle_probe_outcome(
                 promise=promise,
                 probe_result=probe_result,
@@ -190,7 +217,7 @@ def satisfy_promises(
                 resolver=resolver,
                 cooldown=cooldown,
                 secrets=secrets,
-                dry_run=dry_run,
+                dry_run=effective_dry_run,
                 history_emit=history_emit,
             )
             attempts[promise.id] = attempt
@@ -437,6 +464,24 @@ def _probe_level(
 # ============================================================================
 # Helpers
 # ============================================================================
+
+
+def _promise_service(promise: Promise) -> str | None:
+    """The service id this promise pertains to, for staged-rollout
+    allowlist gating. Reads probe.service first (the most direct
+    signal), then falls back to ensurer.service for LifecycleEnsurers.
+
+    Returns ``None`` when the promise has no service-bound probe
+    (file probes, k8s_resource probes, infra ensurers) — those
+    always honor the global ``dry_run`` flag.
+    """
+    probe = promise.probe
+    if hasattr(probe, "service") and getattr(probe, "service", ""):
+        return str(probe.service).strip().lower() or None
+    ensurer = promise.ensurer
+    if hasattr(ensurer, "service") and getattr(ensurer, "service", ""):
+        return str(ensurer.service).strip().lower() or None
+    return None
 
 
 def _filter_applicable(
