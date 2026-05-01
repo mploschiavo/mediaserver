@@ -2,6 +2,33 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.297] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 3a — download-client lifecycles.** First slice
+  of Phase 3, covering the two services whose absence broke the
+  bootstrap on 2026-05-01:
+  - `media_stack.adapters.qbittorrent.lifecycle.QbittorrentLifecycle`
+    — qBit's auth model (session-cookie via username/password, no
+    static API key) maps the "API key" concept to the WebUI admin
+    password. `mint_api_key` fails LOUDLY (`transient=False`) when
+    the password env is missing — explicitly avoiding the
+    `ensure-qbittorrent-categories` silent-error-as-ok bug class
+    noted in memory. Probe treats both 200 and 403 as "running"
+    (403 just means the auth gate is doing its job).
+  - `media_stack.adapters.sabnzbd.lifecycle.SabnzbdLifecycle` —
+    structurally a sibling to `ServarrLifecycle` but with INI
+    rather than XML config. Same "wait for the file" mint
+    semantic — `transient=True` while sabnzbd.ini hasn't been
+    written, `transient=False` when the file exists but the
+    `[misc] api_key=` line is missing.
+- Two more contract YAMLs (qbittorrent + sabnzbd) declare
+  `plugin.lifecycle_class`. Permissive ratchet floor bumped from
+  6 → 8 services.
+- 29 new unit tests pinning probe tri-state, idempotent mints,
+  honest mint failures, env+secret persist semantics.
+- Pure additive code — runtime image unchanged.
+
 ## [v1.0.296] — 2026-05-01
 
 ### Architecture

@@ -130,7 +130,7 @@ class ServiceLifecycleRatchet(unittest.TestCase):
     # Phase 2 commits Jellyfin + sonarr/radarr/lidarr/readarr/prowlarr.
     # If any of these loses its lifecycle_class field, the count drops
     # and this test fails. Tightens upward as Phase 3 adds more.
-    EXPECTED_LIFECYCLE_FLOOR = 6
+    EXPECTED_LIFECYCLE_FLOOR = 8
 
     def test_lifecycle_floor_does_not_regress(self) -> None:
         actual = sum(
