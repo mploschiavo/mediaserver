@@ -72,14 +72,65 @@ _INFRA_VOCABULARY = frozenset({
 
 
 def default_registry_path() -> Path:
-    """Repo-root-relative default. Phase 5 may take an env-var
-    override; today the path is fixed."""
-    # registry.py is at src/media_stack/infrastructure/promises/, so
-    # parents[4] is the repo root. Verified at import time below.
-    return (
-        Path(__file__).resolve().parents[4]
-        / "contracts" / "promises" / "promises.yaml"
-    )
+    """Find ``contracts/promises/promises.yaml`` in either dev or
+    container layouts.
+
+    Dev: ``<repo>/contracts/promises/promises.yaml`` — registry.py
+        sits at ``<repo>/src/media_stack/infrastructure/promises/``,
+        so ``parents[4]`` is the repo root.
+
+    Container: contracts ship at ``/app/contracts/...`` (or
+        ``/contracts/...`` in some layouts). The package itself is
+        installed at ``/usr/local/lib/python3.12/site-packages/...``
+        where ``parents[4]`` is NOT the repo. Walk a list of likely
+        roots and return the first one that holds a real file.
+
+    Env override: ``MEDIA_STACK_CONTRACTS_ROOT`` short-circuits the
+        search when the deploy puts contracts in a non-standard
+        location."""
+    import os as _os
+    explicit = (_os.environ.get("MEDIA_STACK_CONTRACTS_ROOT") or "").strip()
+    if explicit:
+        return Path(explicit) / "promises" / "promises.yaml"
+
+    candidates = [
+        Path(__file__).resolve().parents[4] / "contracts",  # dev / mounted-source
+        Path("/app/contracts"),                              # standard container
+        Path("/contracts"),                                  # alternate container
+        Path("/usr/local/share/media-stack/contracts"),      # share dir
+        Path("/opt/media-stack/contracts"),                  # opt dir
+    ]
+    for c in candidates:
+        p = c / "promises" / "promises.yaml"
+        if p.is_file():
+            return p
+    # Fall back to the first candidate (dev path) so the missing-file
+    # warning at least points somewhere meaningful.
+    return candidates[0] / "promises" / "promises.yaml"
+
+
+def default_contracts_root() -> Path:
+    """Find the ``contracts/`` directory regardless of dev/container
+    layout. Same candidate list as ``default_registry_path``; used
+    by the dispatcher to read ``contracts/services/<id>.yaml``.
+
+    Returns the first existing root, or the dev candidate as
+    fallback so the not-found error path is meaningful."""
+    import os as _os
+    explicit = (_os.environ.get("MEDIA_STACK_CONTRACTS_ROOT") or "").strip()
+    if explicit:
+        return Path(explicit)
+    candidates = [
+        Path(__file__).resolve().parents[4] / "contracts",
+        Path("/app/contracts"),
+        Path("/contracts"),
+        Path("/usr/local/share/media-stack/contracts"),
+        Path("/opt/media-stack/contracts"),
+    ]
+    for c in candidates:
+        if (c / "services").is_dir() or (c / "promises").is_dir():
+            return c
+    return candidates[0]
 
 
 def load_registry(path: Path | None = None) -> list[Promise]:

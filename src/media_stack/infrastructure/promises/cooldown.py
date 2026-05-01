@@ -43,10 +43,12 @@ _DEFAULT_PERMANENT_COOLDOWN_SECONDS = 300.0
 
 def default_state_path() -> Path:
     """Sibling to ``run-history.jsonl`` so existing PVC/bind mounts
-    cover both files automatically."""
-    config_root = (os.environ.get("CONFIG_ROOT") or "").strip()
-    base = Path(config_root) if config_root else Path("config")
-    return base / ".controller" / "promise_state.json"
+    cover both files automatically. Falls back to ``/srv-config``
+    when ``CONFIG_ROOT`` env is unset — matches the
+    ``resolve_run_history_path()`` convention so both files always
+    land in the same directory."""
+    config_root = (os.environ.get("CONFIG_ROOT") or "/srv-config").strip()
+    return Path(config_root) / ".controller" / "promise_state.json"
 
 
 class CooldownTracker:
