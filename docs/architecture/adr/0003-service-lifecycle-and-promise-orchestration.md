@@ -44,7 +44,7 @@ The codebase has accumulated three real architectural patterns in tension:
 
    The contract is uniform across 29 services. The code re-invents per-service. The contract's `api_key_format=sqlite|xml|ini` field is not consumed by a uniform reader; instead, four different SQLite readers exist for Jellyfin alone (in `health.py::discover_api_keys`, in `_harvest_keys_from_disk`, in `infrastructure/jellyfin/api_key_db.py`, and in `controller_db_discovery_service.py`).
 
-3. **Two orchestrators, neither complete.** Bootstrap uses an imperative pipeline (`_run_preflights` + `_try_satisfy_prereqs` + `phase_scripts.media_server_bootstrap` + `compose_preflight_handler` + `plugin.preflight_handler`). The promise framework (`.ratchets/promises/promises.yaml` + `media-stack-probe-promises`) runs as a separate verification layer *after* bootstrap. They have overlapping responsibilities, no shared state, and no shared retry/cooldown discipline.
+3. **Two orchestrators, neither complete.** Bootstrap uses an imperative pipeline (`_run_preflights` + `_try_satisfy_prereqs` + `phase_scripts.media_server_bootstrap` + `compose_preflight_handler` + `plugin.preflight_handler`). The promise framework (`contracts/promises/promises.yaml` + `media-stack-probe-promises`) runs as a separate verification layer *after* bootstrap. They have overlapping responsibilities, no shared state, and no shared retry/cooldown discipline.
 
    Concrete failure observed on a fresh compose deploy of `v1.0.290`:
 
@@ -132,7 +132,7 @@ domain/services/lifecycle.py             ← Protocol; pure
 domain/services/promises.py              ← promise types; pure
 application/services/orchestrator.py     ← satisfy_promises(registry, ctx)
 adapters/<service>/lifecycle.py          ← one ServiceLifecycle impl per service
-infrastructure/promises/registry.py      ← YAML loader for .ratchets/promises/promises.yaml
+infrastructure/promises/registry.py      ← YAML loader for contracts/promises/promises.yaml
 ```
 
 Ratchet-enforced (extending `tests/unit/ratchets/test_layering.py`):
@@ -175,7 +175,7 @@ The current pattern of "every service is a snowflake" is unsustainable at 29 ser
 
 **Phase 0 (this week, ~50 LOC, immediate):**
 
-- Add the missing `jellyfin-api-key-discoverable` promise to `.ratchets/promises/promises.yaml`
+- Add the missing `jellyfin-api-key-discoverable` promise to `contracts/promises/promises.yaml`
 - Wire it to be re-evaluated on the auto-heal cycle (cooldown, idempotent)
 - Fix Jellyfin's API key end-to-end as a side effect
 - Do NOT introduce `ServiceLifecycle` Protocol yet
@@ -232,7 +232,7 @@ A new ratchet `tests/unit/ratchets/test_service_lifecycle_ratchet.py`:
 
 - Every `contracts/services/<id>.yaml` (excluding `_template.yaml`, `_core.yaml`) MUST name `plugin.lifecycle_class`
 - The named class MUST exist and MUST be a `ServiceLifecycle`
-- Every promise in `.ratchets/promises/promises.yaml` MUST have either an `ensured_by: ensure-<name>` (ensurer registered in code) or `ensured_by: { type: lifecycle, service: <id>, method: <name> }` resolving against the lifecycle Protocol
+- Every promise in `contracts/promises/promises.yaml` MUST have either an `ensured_by: ensure-<name>` (ensurer registered in code) or `ensured_by: { type: lifecycle, service: <id>, method: <name> }` resolving against the lifecycle Protocol
 - New services that merge without a lifecycle FAIL CI
 
 Once the ratchet is in place, the architecture cannot drift back.

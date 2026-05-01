@@ -1,4 +1,4 @@
-"""Run every promise in .ratchets/promises/promises.yaml against the live stack.
+"""Run every promise in contracts/promises/promises.yaml against the live stack.
 
 Console-script: ``media-stack-probe-promises`` (after ``pip install``).
 Module path: ``python -m media_stack.cli.commands.probe_promises``.
@@ -38,7 +38,7 @@ REPO = Path(__file__).resolve().parents[4]
 # --- K8s-mode globals ---------------------------------------------------
 #
 # When the runner is invoked with ``--k8s --unified``, the same
-# ``.ratchets/promises/promises.yaml`` runs against a Kubernetes deployment by
+# ``contracts/promises/promises.yaml`` runs against a Kubernetes deployment by
 # delegating each probe to the controller pod via ``kubectl exec``.
 # Routes that hit ``localhost:<port>`` on compose hit
 # ``<service>:<port>`` on K8s (cluster DNS), and file probes read the
@@ -53,7 +53,7 @@ _K8S_CONTROLLER_POD: str | None = None
 
 
 def _load_registry() -> dict:
-    """Load the unified promises registry (.ratchets/promises/promises.yaml).
+    """Load the unified promises registry (contracts/promises/promises.yaml).
 
     Every promise carries a ``platforms:`` field — ``[compose, k8s]``,
     ``[compose]``, or ``[k8s]``. The runner filters by current platform
@@ -66,7 +66,7 @@ def _load_registry() -> dict:
     except ImportError:
         print("error: PyYAML not installed", file=sys.stderr)
         sys.exit(2)
-    path = REPO / ".ratchets" / "promises" / "promises.yaml"
+    path = REPO / "contracts" / "promises" / "promises.yaml"
     if not path.is_file():
         print(f"error: registry missing at {path}", file=sys.stderr)
         sys.exit(2)
@@ -231,7 +231,7 @@ def _http_open(url: str, headers: dict, timeout: int = 15):
     pod via kubectl exec. The controller has cluster DNS for service
     hostnames, accepts self-signed certs the same way envoy upstream
     does, and reaches the configured public gateway as a real client
-    would. This keeps the same ``.ratchets/promises/promises.yaml`` valid on
+    would. This keeps the same ``contracts/promises/promises.yaml`` valid on
     both platforms — the runner adapts the delivery."""
     if _K8S_UNIFIED:
         return _http_via_controller(url, headers, timeout=timeout)

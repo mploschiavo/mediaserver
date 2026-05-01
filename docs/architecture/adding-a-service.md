@@ -66,7 +66,7 @@ def ensure_myservice_config(*, log=None, **kwargs) -> None:
 
 ### 3. Add the promise
 
-If the new service ships a guarantee (e.g. "MyService has its API key configured after a fresh install"), add an entry to `.ratchets/promises/promises.yaml` and re-render the reference. See [promises-registry.md](promises-registry.md) for the full procedure.
+If the new service ships a guarantee (e.g. "MyService has its API key configured after a fresh install"), add an entry to `contracts/promises/promises.yaml` and re-render the reference. See [promises-registry.md](promises-registry.md) for the full procedure.
 
 ### 4. Add the service to the deployment
 
