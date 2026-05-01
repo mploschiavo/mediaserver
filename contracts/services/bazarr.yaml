@@ -17,6 +17,11 @@ service:
   preserve_path_prefix: true
   top_level_config_key: true
 plugin:
+  # ADR-0003 Phase 3: ServiceLifecycle Protocol implementation.
+  # YAML variant of the *arr/Sab "wait for the file" mint pattern.
+  # Eliminates the silent-error-as-ok shape that the legacy
+  # ensure-bazarr-language-profile job exhibited.
+  lifecycle_class: media_stack.adapters.bazarr.lifecycle:BazarrLifecycle
   technology: bazarr
   aliases:
   - barr

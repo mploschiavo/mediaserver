@@ -2,6 +2,32 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.298] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 3b — media-management lifecycles.** Three more
+  ServiceLifecycle adapters land:
+  - `BazarrLifecycle` — YAML variant of the Sab/*arr "wait for the
+    file" pattern (`bazarr/config/config.yaml` ``apikey: <value>``).
+    Replaces the structural shape that allowed
+    `ensure-bazarr-language-profile` to log a settings POST 500 while
+    returning status=ok.
+  - `JellyseerrLifecycle` — JSON variant (`settings.json`
+    `main.apiKey`). Same flow, different format reader.
+  - `MaintainerrLifecycle` — first "no API key concept" lifecycle.
+    Maintainerr is a consumer of upstream services' keys (Jellyfin,
+    Sonarr, Radarr, Jellyseerr, Tautulli) and has no key of its own.
+    `probe_has_api_key` returns ok with explanatory detail; mint /
+    discover / persist are inert with `reason=no_api_key_concept`
+    evidence. Establishes the uniform shape so the orchestrator can
+    call every lifecycle method on every service without
+    per-service if-statements.
+- Three more contract YAMLs (bazarr + jellyseerr + maintainerr)
+  declare `plugin.lifecycle_class`. Ratchet floor 8 → 11.
+- 25 new unit tests pinning YAML/JSON discover paths, structural
+  vs transient mint failures, and the no-api-key uniform contract.
+- Pure additive code — runtime image unchanged.
+
 ## [v1.0.297] — 2026-05-01
 
 ### Architecture

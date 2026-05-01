@@ -13,6 +13,9 @@ service:
   api_key_format: json
   top_level_config_key: true
 plugin:
+  # ADR-0003 Phase 3: ServiceLifecycle Protocol implementation.
+  # JSON variant of the *arr/Sab "wait for the file" mint pattern.
+  lifecycle_class: media_stack.adapters.jellyseerr.lifecycle:JellyseerrLifecycle
   technology: jellyseerr
   aliases:
   - seerr
