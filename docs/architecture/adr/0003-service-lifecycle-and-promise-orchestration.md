@@ -4,7 +4,8 @@
 
 - Phase 0: **shipped** in v1.0.291 / v1.0.292 (`jellyfin:ensure-api-key` ensurer) and v1.0.293 (`jobs:close-stale-runs` ensurer). Pattern proven on two services.
 - Phase 1: **shipped** in v1.0.295 — `ServiceLifecycle` Protocol, `ProbeResult`, `Outcome[T]`, `OrchestrationContext` in `domain/services/`. Pure addition; no behavior change. 20 unit tests covering factories, frozen-ness, runtime-checkable Protocol semantics, and the package re-export surface.
-- Phase 2: pending — implement `JellyfinLifecycle` + `ServarrLifecycle` as the proofs.
+- Phase 2: **shipped** in v1.0.296 — `JellyfinLifecycle` (wraps existing `infrastructure.jellyfin`) and `ServarrLifecycle(service_id)` parameterized for sonarr/radarr/lidarr/readarr/prowlarr. Six contract YAMLs name `plugin.lifecycle_class`; permissive ratchet asserts conformance. Bazarr deferred to Phase 3. 47 unit tests; pure additive code, runtime behavior unchanged.
+- Phase 3: pending — remaining `ServiceLifecycle` impls (qBittorrent, SABnzbd, Jellyseerr, Maintainerr, Bazarr, Authelia, Authentik, Homepage, FlareSolverr, Envoy).
 
 **Related:** ADR-0002's tail (Phase 16-F shim removals + `services/` and `core/` cleanup) runs in **parallel** with this ADR — neither blocks the other. ADR-0001 punted "service uniformity" as out of scope; this ADR addresses it.
 

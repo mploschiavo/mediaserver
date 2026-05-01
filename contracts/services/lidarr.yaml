@@ -21,6 +21,10 @@ service:
   password_api_path: /api/v1/config/host
   preserve_path_prefix: true
 plugin:
+  # ADR-0003 Phase 2: ServiceLifecycle Protocol implementation.
+  # Phase 4 switches the orchestrator over; today this is consumed
+  # by the permissive lifecycle ratchet only.
+  lifecycle_class: media_stack.adapters.servarr.lifecycle:ServarrLifecycle
   # Preflight — Envoy keeps the /app/lidarr prefix on forwarded
   # requests, so the app must be told to serve from that base.
   # Shared handler across the *arr family; iterates internally
