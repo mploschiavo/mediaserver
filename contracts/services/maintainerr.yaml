@@ -9,6 +9,12 @@ service:
   preserve_path_prefix: true
   top_level_config_key: true
 plugin:
+  # ADR-0003 Phase 3: ServiceLifecycle Protocol implementation.
+  # Maintainerr is a downstream consumer of other services' API
+  # keys; it has no key of its own. The lifecycle implements the
+  # "no api key concept" shape (probe_running real, key methods
+  # return ProbeResult.ok / Outcome.success(None)).
+  lifecycle_class: media_stack.adapters.maintainerr.lifecycle:MaintainerrLifecycle
   technology: maintainerr
   app_service_classes:
     maintainerr_service: media_stack.services.apps.maintainerr.service:MaintainerrService
