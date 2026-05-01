@@ -675,10 +675,12 @@ services:
       # ADR-0003 Phase 5 staged rollout knob. Comma-separated list
       # of service ids whose ensurers run for real (the orchestrator
       # remains in dry-run-shadow for everything else). Empty/unset
-      # = full Phase-4c shadow. 5a: "jellyfin"; 5b (current) adds
-      # the Servarr family; 5c adds the rest. Operator can shrink
-      # to roll back without rebuilding.
-      ORCHESTRATOR_LIVE_SERVICES: "${ORCHESTRATOR_LIVE_SERVICES:-jellyfin,sonarr,radarr,lidarr,readarr,prowlarr}"
+      # = full Phase-4c shadow. 5a: jellyfin only. 5b: + Servarr
+      # family. 5c (current): all 16 Phase-3-covered services. 5d
+      # retires the legacy auto-heal hooks. 5e deletes the legacy
+      # preflight code. Operator can shrink to roll back without
+      # rebuilding.
+      ORCHESTRATOR_LIVE_SERVICES: "${ORCHESTRATOR_LIVE_SERVICES:-jellyfin,sonarr,radarr,lidarr,readarr,prowlarr,qbittorrent,sabnzbd,bazarr,jellyseerr,maintainerr,authelia,authentik,homepage,flaresolverr,envoy}"
       # In-place upgrade button on the dashboard. When set, the
       # controller exposes /api/stack/upgrade which spawns a
       # docker:cli sibling container holding the docker socket and

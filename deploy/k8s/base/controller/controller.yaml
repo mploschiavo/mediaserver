@@ -209,12 +209,13 @@ spec:
             # ADR-0003 Phase 5 staged-rollout allowlist. Comma-
             # separated service ids whose orchestrator-driven
             # ensurers run for real (vs Phase-4c dry-run-shadow).
-            # Empty/unset = full shadow. 5a: "jellyfin"; 5b
-            # (current) adds the Servarr family; 5c adds the rest.
+            # 5a: jellyfin only. 5b: + Servarr family. 5c (current):
+            # all 16 Phase-3-covered services. 5d retires legacy
+            # auto-heal hooks. 5e deletes legacy preflight code.
             # Operators can flip with `kubectl set env` to roll
             # back without re-deploying the image.
             - name: ORCHESTRATOR_LIVE_SERVICES
-              value: "jellyfin,sonarr,radarr,lidarr,readarr,prowlarr"
+              value: "jellyfin,sonarr,radarr,lidarr,readarr,prowlarr,qbittorrent,sabnzbd,bazarr,jellyseerr,maintainerr,authelia,authentik,homepage,flaresolverr,envoy"
             # In-place upgrade button on the dashboard. See
             # docker/docker-compose.yml for the long rationale.
             - name: STACK_UPDATE_ALLOW_INPLACE
