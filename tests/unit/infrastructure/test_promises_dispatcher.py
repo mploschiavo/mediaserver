@@ -436,10 +436,13 @@ class TestSyntheticServiceUrls:
         assert "localhost:9100" in str(called_url)
 
     @patch("urllib.request.urlopen")
-    def test_gateway_https_resolves_compose_to_localhost_443(
+    def test_gateway_https_resolves_compose_to_envoy_8880(
         self, mock_open: MagicMock, monkeypatch,
     ) -> None:
-        # KUBERNETES_SERVICE_HOST absent → compose layout.
+        # KUBERNETES_SERVICE_HOST absent → compose layout. The
+        # orchestrator runs INSIDE the controller container, so the
+        # public host:443 mapping isn't reachable here — must hit
+        # envoy's internal TLS listener (8880) directly.
         monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
         resp = MagicMock()
         resp.status = 200
@@ -459,7 +462,12 @@ class TestSyntheticServiceUrls:
         assert result.is_ok
         called_url = mock_open.call_args[0][0]
         called_url = called_url.full_url if hasattr(called_url, "full_url") else called_url
-        assert "https://localhost:443/health" in str(called_url)
+        assert "https://envoy:8880/health" in str(called_url), (
+            f"expected internal envoy:8880, got {called_url!r}"
+        )
+        # TLS verification disabled for envoy:8880 (self-signed cert)
+        ssl_ctx = mock_open.call_args.kwargs.get("context")
+        assert ssl_ctx is not None and ssl_ctx.verify_mode.name == "CERT_NONE"
 
     @patch("urllib.request.urlopen")
     def test_gateway_https_resolves_k8s_to_envoy(
@@ -502,6 +510,61 @@ class TestSyntheticServiceUrls:
 
 
 # --- jellyfin_key auth alias (Phase 4d) ------------------------------
+
+
+class TestControllerBasicAuth:
+    """``auth: controller_basic`` is HTTP Basic against the
+    controller's own API as the seeded stack admin. Used by promises
+    that probe controller-served endpoints (``/api/jobs``,
+    ``/api/auth/config``, etc.). Without this header, every probe
+    lands on 401 and reports failed_transient — same bug class as
+    the unhandled ``jellyfin_key`` was for jellyfin-libraries."""
+
+    @patch("urllib.request.urlopen")
+    def test_basic_auth_header_uses_stack_admin_creds(
+        self, mock_open: MagicMock, monkeypatch,
+    ) -> None:
+        monkeypatch.setenv("STACK_ADMIN_USERNAME", "admin")
+        monkeypatch.setenv("STACK_ADMIN_PASSWORD", "rotate-me-please")
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b'{"jobs": []}'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = lambda *_: None
+        mock_open.return_value = resp
+
+        r = _StubResolver(configs={})
+        dispatch_probe(
+            HttpJsonProbe(
+                service="controller",
+                path="/api/jobs",
+                auth="controller_basic",
+                assert_expr="True",
+            ),
+            resolver=r, now=0.0,
+        )
+        req = mock_open.call_args[0][0]
+        headers = {k.lower(): v for k, v in req.headers.items()}
+        assert headers.get("authorization", "").startswith("Basic "), (
+            f"expected Basic auth header, got {headers}"
+        )
+        # Round-trip the base64 to confirm the seeded creds reached
+        # the request.
+        import base64
+        token = headers["authorization"].split(" ", 1)[1]
+        decoded = base64.b64decode(token).decode()
+        assert decoded == "admin:rotate-me-please"
+
+    def test_returns_empty_when_password_unset(self, monkeypatch) -> None:
+        # Don't fabricate a Basic header with an empty password —
+        # better to let the probe hit 401 honestly so the operator
+        # sees "STACK_ADMIN_PASSWORD missing" rather than "wrong
+        # creds".
+        monkeypatch.delenv("STACK_ADMIN_PASSWORD", raising=False)
+        from media_stack.infrastructure.promises.dispatcher import (
+            _controller_basic_headers,
+        )
+        assert _controller_basic_headers(None) == {}
 
 
 class TestJellyfinKeyAuth:
