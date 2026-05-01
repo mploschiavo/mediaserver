@@ -414,12 +414,17 @@ promises:
       service: jellyfin
       path: /Library/VirtualFolders
       auth: jellyfin_key
+      # Only the 4 required user-media types must point at /media/*.
+      # Jellyfin auto-creates a boxsets/Collections library at
+      # /config/data/collections (system-managed, internal storage)
+      # which would fail an "all libraries" check.
       assert: |
         isinstance(response, list)
         and {l.get('CollectionType') for l in response} >= {'movies', 'tvshows', 'music', 'books'}
         and all(
           any(p.startswith('/media/') for p in (l.get('Locations') or []))
           for l in response
+          if l.get('CollectionType') in ('movies', 'tvshows', 'music', 'books')
         )
 
   # --- Jellyseerr server connections --------------------------------------
@@ -471,13 +476,20 @@ promises:
     description: Envoy's HTTPS listener accepts TLS handshakes on host:443
     ensured_by: envoy-config
     platforms: [compose, k8s]
+    # Earlier probes against ``/.well-known/openid-configuration``
+    # (with SNI=authelia.*) failed on stacks where OIDC isn't
+    # configured — the promise's intent is "TLS listener up", not
+    # "Authelia is OIDC-enabled". Switched to ``http_status`` against
+    # ``/`` and accept ANY HTTP response code as evidence that the
+    # TLS handshake succeeded and Envoy routed somewhere. Connection-
+    # refused / TLS-error / network-error continue to register as
+    # failures — that's what we actually care about.
     probe:
-      type: http_text
+      type: http_status
       service: gateway_https
-      path: /.well-known/openid-configuration
+      path: /
       auth: none
-      sni: authelia.media-stack.local
-      assert: "'issuer' in data"
+      assert: "isinstance(status, int) and status >= 100"
 
   - id: gateway-jellyfin-route
     description: Jellyfin reachable via subdomain through Envoy gateway

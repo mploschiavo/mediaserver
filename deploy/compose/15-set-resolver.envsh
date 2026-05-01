@@ -34,6 +34,17 @@
 #     Service hostnames to stable ClusterIPs. Same hook reads the
 #     correct value either way.
 #
+# v1.3.71: also handle k8s search-domain expansion. nginx's
+# resolver doesn't honor ``/etc/resolv.conf``'s ``search:`` line —
+# bare names like ``media-stack-controller`` produce NXDOMAIN
+# inside nginx even though they resolve fine for any other
+# process in the same pod. Workaround: read the first search
+# domain and append it to ``API_UPSTREAM`` if the upstream's host
+# part has no dots. On compose ``/etc/resolv.conf`` has no
+# search line and the upstream stays bare; on k8s the upstream
+# becomes ``<bare>.<first-search-domain>`` (FQDN) which nginx
+# resolves cleanly.
+#
 # Sourced (not executed) by the base image's docker-entrypoint
 # because of the ``.envsh`` extension. Runs at priority 15 so the
 # RESOLVER export is visible to ``20-envsubst-on-templates.sh``.
@@ -47,3 +58,30 @@ if [ -z "$RESOLVER" ]; then
 fi
 echo "[15-set-resolver.envsh] RESOLVER=${RESOLVER}"
 export RESOLVER
+
+# Detect first search domain. On k8s this is typically
+# ``<namespace>.svc.cluster.local``; on compose this is empty.
+# ``awk`` trims everything past the first whitespace token so a
+# multi-domain search list (``search a.b c.d``) yields just ``a.b``.
+SEARCH_DOMAIN=$(awk '/^search/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+
+# If API_UPSTREAM's host part has no dots AND a search domain
+# exists, rewrite to FQDN so nginx's resolver doesn't NXDOMAIN.
+# Operator-supplied API_UPSTREAM with an explicit dot in the host
+# (e.g. an IP, or already-FQDN, or external DNS) bypasses the
+# rewrite.
+if [ -n "$API_UPSTREAM" ] && [ -n "$SEARCH_DOMAIN" ]; then
+    HOST_PART="${API_UPSTREAM%%:*}"
+    PORT_PART=""
+    case "$API_UPSTREAM" in
+        *:*) PORT_PART=":${API_UPSTREAM#*:}" ;;
+    esac
+    case "$HOST_PART" in
+        *.*) ;;  # already has a dot — leave alone
+        *)
+            API_UPSTREAM="${HOST_PART}.${SEARCH_DOMAIN}${PORT_PART}"
+            echo "[15-set-resolver.envsh] API_UPSTREAM rewritten to FQDN: ${API_UPSTREAM}"
+            export API_UPSTREAM
+            ;;
+    esac
+fi
