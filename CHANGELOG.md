@@ -2,6 +2,28 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.308] — 2026-05-01
+
+### Fixed
+- **`apply-arr-runtime-defaults` was silently no-op on every fresh
+  deploy.** The wrapper in `services/apps/core/job_adapters.py`
+  re-cases `app_keys` to capitalized names (`Radarr`, `Sonarr`)
+  when `cfg.arr_apps` is empty (the default on contract-driven
+  deploys). But every downstream patch checks `"radarr" in app_keys`
+  with lowercase, so the check `impl in by_impl and impl in
+  app_keys` always failed on the second clause. Result: `updated:
+  {}` returned ok every tick, while NONE of the patches (language=
+  Any, FLAC unlimited size, Readarr unknown-text, the new
+  enableAuto auto-add) actually ran.
+  - Removed the re-casing. ``app_keys`` now stays lowercase
+    end-to-end. The prior assumption ("downstream wants
+    Capitalized to match `arr_apps[].name`") was wrong; the
+    downstream wants lowercase to match `by_impl` keys.
+  - 14 unit tests pinning the dispatch logic continue to pass.
+  - This is the bug behind v1.0.307's `updated: {}` symptom on
+    radarr — the new `patch_arr_import_lists_auto` helper was
+    fine, just never reached.
+
 ## [v1.0.307] — 2026-05-01
 
 ### Fixed

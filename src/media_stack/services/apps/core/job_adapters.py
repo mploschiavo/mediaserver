@@ -1793,8 +1793,16 @@ def apply_arr_runtime_defaults(ctx: JobContext) -> dict:
                 "implementation": name.capitalize(),
                 "url": url,
             })
-        # The keys downstream are looked up by capitalized name.
-        app_keys = {n.capitalize(): k for n, k in app_keys.items()}
+        # NOTE: app_keys MUST stay lowercase. The downstream
+        # ``apply_arr_runtime_defaults`` patches all check
+        # ``"radarr" in app_keys`` etc. (lowercase). An earlier
+        # version of this code re-cased them to Capitalized to match
+        # the ``arr_apps[].name`` field, but that broke every patch
+        # silently — by_impl is lowercase, so the check
+        # ``impl in by_impl and impl in app_keys`` failed on the
+        # second clause, and apply_arr_runtime_defaults returned
+        # ``updated: {}`` on every fresh deploy. (Surfaced by ADR-
+        # 0003 Phase 4d shadow probes.) Keep keys lowercase here.
     # Lazy http_request: re-use the same shape the rest of the
     # *arr ops use — small synchronous urllib wrapper.
     import json as _json
