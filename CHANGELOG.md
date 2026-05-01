@@ -2,6 +2,39 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.304] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 4d — orchestrator dispatcher gap fixes from live
+  shadow data.** First v1.0.303 shadow tick on compose surfaced 15
+  `failed_transient` promises; categorized into:
+  - **7 synthetic-service-id failures** (`controller`, `gateway_https`,
+    `gateway_http` — services without a `contracts/services/<id>.yaml`).
+    Legacy `probe_promises.py` hardcodes URLs for these; orchestrator
+    now does too. Compose: `controller` → `localhost:9100`,
+    `gateway_http` → `localhost:80`, `gateway_https` → `localhost:443`.
+    K8s: routes to the `envoy` Service for both gateway pseudo-
+    services.
+  - **1 jellyfin_key auth alias** (`jellyfin-libraries` HTTP 401).
+    Promises authored with `auth: jellyfin_key` resolve to the same
+    `X-Emby-Token` header the contract YAML's `auth_mode` declares,
+    reading from `JELLYFIN_API_KEY` env. Was being silently dropped
+    (returning empty headers) because dispatcher only recognized
+    `auth: api_key`.
+  - **5 file-path resolution failures** (relative paths under
+    unset `CONFIG_ROOT`). `_resolve_file_path()` now falls back to
+    `/srv-config` like `resolve_run_history_path()` does — the
+    file-system layout the controller's PVC/bind mount establishes.
+- 7 new tests covering synthetic-service URL builders (compose +
+  k8s variants), unknown-service failure shape, and `jellyfin_key`
+  → `X-Emby-Token` header round-trip.
+- Remaining failures after this slice are legitimate service-side
+  issues, NOT orchestrator bugs (e.g. JELLYFIN_API_KEY env empty
+  while Phase 0 ensurer is mid-mint, jellyseerr/unpackerr not
+  deployed in this compose stack). Phase 5 will retire the legacy
+  ensurers; those will resolve on the orchestrator's own ensurer
+  cycle.
+
 ## [v1.0.303] — 2026-05-01
 
 ### Fixed
