@@ -1,6 +1,10 @@
 # ADR-0003 — Service-lifecycle protocol and promise-driven orchestration
 
-**Status:** Proposed (2026-05-01). Multi-week migration. Builds on ADR-0001 and ADR-0002, both of which are largely implemented as of 2026-05-01 — the new hexagonal layers (`domain/`, `application/`, `adapters/`, `infrastructure/`, `interfaces/`) exist with substantial code (~52k LOC across ~383 files), so this ADR can begin without waiting on prior cleanup. Awaiting steward approval to begin Phase 1.
+**Status:** In progress (2026-05-01). Multi-week migration. Builds on ADR-0001 and ADR-0002, both of which are largely implemented as of 2026-05-01 — the new hexagonal layers (`domain/`, `application/`, `adapters/`, `infrastructure/`, `interfaces/`) exist with substantial code (~52k LOC across ~383 files), so this ADR can begin without waiting on prior cleanup.
+
+- Phase 0: **shipped** in v1.0.291 / v1.0.292 (`jellyfin:ensure-api-key` ensurer) and v1.0.293 (`jobs:close-stale-runs` ensurer). Pattern proven on two services.
+- Phase 1: **shipped** in v1.0.295 — `ServiceLifecycle` Protocol, `ProbeResult`, `Outcome[T]`, `OrchestrationContext` in `domain/services/`. Pure addition; no behavior change. 20 unit tests covering factories, frozen-ness, runtime-checkable Protocol semantics, and the package re-export surface.
+- Phase 2: pending — implement `JellyfinLifecycle` + `ServarrLifecycle` as the proofs.
 
 **Related:** ADR-0002's tail (Phase 16-F shim removals + `services/` and `core/` cleanup) runs in **parallel** with this ADR — neither blocks the other. ADR-0001 punted "service uniformity" as out of scope; this ADR addresses it.
 
