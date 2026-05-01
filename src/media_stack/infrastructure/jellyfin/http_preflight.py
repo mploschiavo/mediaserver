@@ -84,7 +84,13 @@ class JellyfinHttpPreflight:
             raise RuntimeError(f"Jellyfin not reachable at {jellyfin_url} within {wait_timeout}s")
 
         # Use the SAME auth service as the compose preflight.
-        from .cli.jellyfin_controller_auth_service import JellyfinBootstrapAuthService
+        # Path was `.cli.jellyfin_controller_auth_service` before
+        # ADR-0002 Phase 16-D moved the canonical home into
+        # ``infrastructure/jellyfin/``. The old shim path is still
+        # importable via ``services.apps.jellyfin.cli.*``, but
+        # ``infrastructure.jellyfin.*`` is the source of truth and
+        # works regardless of shim-removal progress.
+        from .controller_auth_service import JellyfinBootstrapAuthService
 
         auth_service = JellyfinBootstrapAuthService(
             http_request=_http,
