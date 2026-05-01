@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.services.apps.servarr.arr_runtime_defaults import (
     apply_arr_runtime_defaults,
+    patch_arr_import_lists_auto,
     patch_lidarr_quality_sizes,
     patch_radarr_language_any,
     patch_readarr_allow_unknown_text,
@@ -200,6 +201,84 @@ class ReadarrUnknownTextPatch(unittest.TestCase):
             readarr_url="http://readarr:8787", api_key="K",
             http_request=srv.request, log=log,
         ))
+
+
+class ImportListsAutoPatch(unittest.TestCase):
+    """Operator-zero-touch: a fresh deploy with TMDb/Trakt lists
+    seeded ought to start fetching titles immediately, not require
+    the user to click into Radarr/Sonarr settings and toggle each
+    list. Pin the patch's three jobs:
+
+      * flips ``enableAuto=True`` on enabled lists
+      * skips lists already at True (idempotent)
+      * leaves operator-disabled lists alone
+    """
+
+    def test_flips_disabled_auto_to_true_on_enabled_lists(self) -> None:
+        srv = FakeArrServer({
+            "/api/v3/importlist": [
+                {"id": 1, "name": "TMDb Popular Movies",
+                 "enabled": True, "enableAuto": False},
+                {"id": 2, "name": "TMDb Top Rated",
+                 "enabled": True, "enableAuto": False},
+            ],
+        })
+        captured, log = _stub_log_collector()
+        n = patch_arr_import_lists_auto(
+            arr_url="http://radarr:7878", api_ver="v3", api_key="K",
+            http_request=srv.request, log=log, impl="radarr",
+        )
+        self.assertEqual(n, 2)
+        for path, payload in srv.put_calls:
+            self.assertIn("/api/v3/importlist/", path)
+            self.assertIs(payload["enableAuto"], True)
+
+    def test_idempotent_when_already_true(self) -> None:
+        srv = FakeArrServer({
+            "/api/v3/importlist": [
+                {"id": 1, "name": "X", "enabled": True, "enableAuto": True},
+            ],
+        })
+        _, log = _stub_log_collector()
+        self.assertEqual(0, patch_arr_import_lists_auto(
+            arr_url="http://radarr:7878", api_ver="v3", api_key="K",
+            http_request=srv.request, log=log, impl="radarr",
+        ))
+        self.assertEqual(srv.put_calls, [])
+
+    def test_skips_disabled_lists(self) -> None:
+        # Operator deliberately disabled this list — our auto-flip
+        # must NOT silently re-enable it.
+        srv = FakeArrServer({
+            "/api/v3/importlist": [
+                {"id": 1, "name": "X", "enabled": False, "enableAuto": False},
+            ],
+        })
+        _, log = _stub_log_collector()
+        self.assertEqual(0, patch_arr_import_lists_auto(
+            arr_url="http://radarr:7878", api_ver="v3", api_key="K",
+            http_request=srv.request, log=log, impl="radarr",
+        ))
+        self.assertEqual(srv.put_calls, [])
+
+    def test_sets_legacy_field_too_when_present(self) -> None:
+        # Older *arr versions use ``enableAutomaticAdd``. When
+        # present in the GET response, the PUT should set both
+        # so the API accepts the patch on either schema.
+        srv = FakeArrServer({
+            "/api/v3/importlist": [
+                {"id": 1, "name": "X", "enabled": True,
+                 "enableAuto": False, "enableAutomaticAdd": False},
+            ],
+        })
+        _, log = _stub_log_collector()
+        patch_arr_import_lists_auto(
+            arr_url="http://radarr:7878", api_ver="v3", api_key="K",
+            http_request=srv.request, log=log, impl="radarr",
+        )
+        _, payload = srv.put_calls[0]
+        self.assertIs(payload["enableAuto"], True)
+        self.assertIs(payload["enableAutomaticAdd"], True)
 
 
 class DispatcherSelectsConfiguredArrApps(unittest.TestCase):

@@ -2,6 +2,62 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.307] — 2026-05-01
+
+### Fixed
+- **`apply-arr-runtime-defaults` now flips `enableAuto=True` on
+  every enabled import list** (sonarr / radarr / lidarr / readarr).
+  Previously the job's name promised "runtime defaults" but didn't
+  touch import lists at all; a fresh deploy with TMDb/Trakt lists
+  seeded would start with all of them set to `enableAuto=False`,
+  meaning **the *arr stack wouldn't actually start fetching anything
+  on its own**. Operators had to manually click into each list and
+  toggle the auto-add slider — defeats the zero-touch design.
+  - New helper `patch_arr_import_lists_auto()` PUTs the updated
+    list back. Idempotent (skips lists already at True);
+    respects operator intent (lists explicitly disabled stay off).
+    Sets both `enableAuto` (newer API) and `enableAutomaticAdd`
+    (older API) when the GET response shows either field.
+  - Wired into `apply_arr_runtime_defaults()` for all four *arr
+    types — same pattern as the existing `patch_arr_usenet_enabled`
+    fan-out.
+  - 4 new tests: flips disabled→enabled, idempotent at True, skips
+    operator-disabled lists, sets legacy `enableAutomaticAdd` field
+    when present.
+- **3 ADR-0003 Phase 4d service-level promises tightened** based
+  on live shadow data:
+  - `jellyfin-libraries`: assert no longer requires `/media/*` for
+    Jellyfin's auto-managed `boxsets` collection (Jellyfin stores
+    those at `/config/data/collections` internally, never user
+    media). Only the 4 user-required types (movies/tvshows/music/
+    books) must point at `/media/*`.
+  - `gateway-https-listener-up`: stops requiring Authelia OIDC
+    discovery (`/.well-known/openid-configuration`) which 404s on
+    stacks that haven't enabled OIDC server mode. Switched to a
+    plain `http_status` probe — any HTTP response from the gateway
+    proves TLS handshake + Envoy routing.
+  - `radarr-import-lists-auto` left strict (operator confirmed:
+    auto-add IS the intended out-of-the-box behavior); the
+    underlying ensurer now actually flips the toggle.
+
+## [ui-v1.3.71] — 2026-05-01
+
+### Fixed
+- **K8s 502s after controller pod recreate**, exposed by the
+  v1.0.306 Phase 5a deploy. UI nginx couldn't resolve the bare
+  `media-stack-controller` service name on k8s — `/etc/resolv.conf`
+  has the right `search` domains but nginx's internal resolver
+  doesn't honor them. The v1.3.70 fix only extracted the
+  `nameserver`; it assumed bare names resolve fine on k8s, which
+  isn't true.
+- v1.3.71 extends `15-set-resolver.envsh` to also detect the first
+  search domain. When `API_UPSTREAM`'s host part has no dots AND a
+  search domain exists, the hook rewrites `API_UPSTREAM` to FQDN
+  (`media-stack-controller.media-stack.svc.cluster.local:9100` on
+  k8s; unchanged on compose where there's no search domain).
+  Self-correcting: operator-supplied IPs or already-FQDN values
+  bypass the rewrite.
+
 ## [v1.0.306] — 2026-05-01
 
 ### Architecture

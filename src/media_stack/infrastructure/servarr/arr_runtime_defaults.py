@@ -282,6 +282,71 @@ def patch_arr_usenet_enabled(
     return updated
 
 
+def patch_arr_import_lists_auto(
+    *,
+    arr_url: str,
+    api_ver: str,
+    api_key: str,
+    http_request: Callable,
+    log: Callable[[str], None],
+    impl: str,
+) -> int:
+    """Set ``enableAuto=True`` on every enabled import list.
+
+    Operator-zero-touch: a fresh deploy with TMDb/Trakt lists already
+    seeded ought to start fetching titles immediately, not require
+    the user to click into Radarr/Sonarr settings and toggle each
+    list. Idempotent — lists already at ``enableAuto=True`` are
+    skipped, and disabled lists are left alone.
+
+    Returns the number of lists updated."""
+    status, lists, body = http_request(
+        arr_url, f"/api/{api_ver}/importlist", api_key=api_key,
+    )
+    if status != 200 or not isinstance(lists, list):
+        log(
+            f"[WARN] {impl} import-lists-auto: fetch failed "
+            f"(HTTP {status}): {str(body)[:200]}"
+        )
+        return 0
+
+    updated = 0
+    for il in lists:
+        # Skip operator-disabled lists — turning auto on a list the
+        # operator deliberately disabled would silently override
+        # their intent.
+        if not il.get("enabled", False):
+            continue
+        if il.get("enableAuto") is True:
+            continue
+        # Some Arr versions store the auto-toggle as ``enableAuto``,
+        # some as ``enableAutomaticAdd``. Set both so the API
+        # accepts the patch on either schema.
+        new = dict(il)
+        new["enableAuto"] = True
+        if "enableAutomaticAdd" in new:
+            new["enableAutomaticAdd"] = True
+        lid = il.get("id")
+        if lid is None:
+            continue
+        st, _, b = http_request(
+            arr_url, f"/api/{api_ver}/importlist/{lid}",
+            api_key=api_key, method="PUT", payload=new,
+        )
+        if st in (200, 202):
+            updated += 1
+            log(
+                f"[OK] {impl} import-lists-auto: '{il.get('name')!s}' "
+                "enableAuto False → True"
+            )
+        else:
+            log(
+                f"[WARN] {impl} import-lists-auto: failed updating "
+                f"'{il.get('name')!s}' (HTTP {st}): {str(b)[:200]}"
+            )
+    return updated
+
+
 def apply_arr_runtime_defaults(
     *,
     arr_apps: list[dict],
@@ -332,6 +397,31 @@ def apply_arr_runtime_defaults(
             summary["radarr"] = n
         except Exception as exc:
             log(f"[WARN] Radarr quality-defaults: {exc}")
+
+    # Auto-add toggle for import lists: applies to sonarr/radarr/
+    # lidarr/readarr uniformly. Each *arr's import-list endpoint is
+    # at /api/v{3,3,1,1}/importlist and uses ``enableAuto`` (newer)
+    # / ``enableAutomaticAdd`` (older). Skipping when the list is
+    # operator-disabled preserves explicit "off" intent.
+    for impl, api_ver in (
+        ("sonarr", "v3"), ("radarr", "v3"),
+        ("lidarr", "v1"), ("readarr", "v1"),
+    ):
+        if impl not in by_impl or impl not in app_keys:
+            continue
+        try:
+            n = patch_arr_import_lists_auto(
+                arr_url=service_url(impl),
+                api_ver=api_ver,
+                api_key=app_keys[impl],
+                http_request=http_request,
+                log=log,
+                impl=impl,
+            )
+            if n:
+                summary[f"{impl}_import_lists"] = n
+        except Exception as exc:
+            log(f"[WARN] {impl} import-lists-auto: {exc}")
 
     if "lidarr" in by_impl and "lidarr" in app_keys:
         try:
