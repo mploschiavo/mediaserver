@@ -82,3 +82,17 @@ plugin:
       phase: post
       priority: 80
       requires: []
+
+    # ADR-0003 Phase 4c — shadow-mode orchestrator. Calls
+    # satisfy_promises in dry_run=True so probes fire but ensurers
+    # DO NOT — no conflict with the legacy bootstrap pipeline still
+    # driving real mutations. Tick-level record lands in run-history
+    # alongside the other auto-heal jobs; per-promise outcomes live
+    # in promise_state.json. Phase 5 will flip dry_run off and
+    # retire the legacy ensurers.
+    "orchestrator:satisfy-shadow":
+      handler: "media_stack.application.jobs.orchestrator_satisfy:satisfy_shadow"
+      label: "Orchestrator shadow-mode promise evaluation"
+      phase: post
+      priority: 70
+      requires: []
