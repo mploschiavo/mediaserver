@@ -163,10 +163,15 @@ def record_run_start(
     batch_id: Optional[str] = None,
     triggered_by: str = "unknown",
     actor: Optional[str] = None,
+    promise_id: Optional[str] = None,
 ) -> RunRecord:
     """Persist a ``status=running`` record for a job that just
     started. Returns the record (the caller wants the run_id for
-    the eventual ``record_run_complete`` call)."""
+    the eventual ``record_run_complete`` call).
+
+    ``promise_id`` is the ADR-0003 Phase 4b annotation — the
+    orchestrator passes it so operators can query "every evaluation
+    of promise X" through the existing run-history API."""
     record = RunRecord(
         run_id=make_run_id(),
         job_name=job_name,
@@ -176,6 +181,7 @@ def record_run_start(
         batch_id=batch_id,
         triggered_by=triggered_by,
         actor=actor,
+        promise_id=promise_id,
     )
     with _LOCK:
         _append_record(record)
