@@ -67,3 +67,18 @@ plugin:
       phase: post
       priority: 90
       requires: []
+
+    # Promise-style ensurer — closes any run-history records stuck
+    # at ``status=running`` for >5 minutes. Companion to v1.0.293's
+    # ``JobRunner.run()`` try/finally fix: try/finally prevents NEW
+    # zombies from handler exceptions; this handler closes OLD
+    # zombies left behind by controller processes that died
+    # mid-run (SIGKILL, OOM, force-recreate, etc.). Idempotent —
+    # if no stale records exist, returns ``skipped: nothing_stale``
+    # in <10ms. Same Phase 0 pattern as ``jellyfin:ensure-api-key``.
+    "jobs:close-stale-runs":
+      handler: "media_stack.application.jobs.close_stale_runs:close_stale_runs"
+      label: "Close stale status=running run records"
+      phase: post
+      priority: 80
+      requires: []

@@ -446,6 +446,26 @@ class AutoHealService:
                 "[DEBUG] auto-heal: jellyfin:ensure-api-key run_job failed: %s",
                 exc,
             )
+
+        # Same Phase 0 pattern: close any run-history records that
+        # got stuck at status=running because a controller process
+        # died mid-run before the v1.0.293 try/finally fix could
+        # close them. Companion to that fix — try/finally prevents
+        # NEW zombies from being created; this catches OLD ones
+        # left behind by SIGKILL / OOM / force-recreate. Idempotent;
+        # short-circuits in <10ms when no stale records exist.
+        try:
+            from media_stack.application.jobs.framework import run_job
+            run_job(
+                "jobs:close-stale-runs",
+                source="auto-heal",
+                actor="auto-heal",
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "[DEBUG] auto-heal: jobs:close-stale-runs run_job failed: %s",
+                exc,
+            )
         elapsed = round(time.time() - t0, 2)
         # Surface the cycle in /api/jobs.history with an
         # ``auto-heal`` source tag whenever it actually took action
