@@ -980,6 +980,41 @@ promises:
           for c in resources
         )
 
+  # --- ADR-0003 lifecycle-shaped promises (Phase 4a) -----------------------
+  # First entries that consume the new ``lifecycle`` probe + ensurer
+  # types. The Phase 4b orchestrator dispatches against these; today
+  # they're loaded by the registry but the legacy bootstrap pipeline
+  # is still primary. Phase 4c expands the set; Phase 5 flips the
+  # switch.
+
+  - id: jellyfin-running
+    description: Jellyfin HTTP endpoint is responsive (probe via lifecycle)
+    platforms: [compose, k8s]
+    probe:
+      type: lifecycle
+      service: jellyfin
+      method: probe_running
+    ensured_by:
+      # Service-running ensurers are deploy-layer; the orchestrator
+      # can't run them in Phase 4 (Phase 5+ scope). Recorded as
+      # externally-ensured — deploy tooling brings the service up,
+      # the orchestrator just probes.
+      type: deploy
+      target: jellyfin
+
+  - id: jellyfin-api-key-discoverable
+    description: Jellyfin api key discoverable in env or controller-readable SQLite
+    platforms: [compose, k8s]
+    depends_on: [jellyfin-running]
+    probe:
+      type: lifecycle
+      service: jellyfin
+      method: probe_has_api_key
+    ensured_by:
+      type: lifecycle
+      service: jellyfin
+      method: mint_api_key
+
   - id: overrides-seeded-at-bootstrap
     description: routing-overrides.yaml exists on the controller PVC after bootstrap (seeded from profile)
     ensured_by: seed-runtime-overrides
