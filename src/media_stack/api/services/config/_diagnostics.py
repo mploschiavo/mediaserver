@@ -294,17 +294,48 @@ class DiagnosticsService:
 
         steps: list[dict[str, Any]] = []
         health = probe_services(api_cache)
-        healthy = health.get("healthy", 0)
-        total = health.get("total", 0)
-        steps.append({"id": "services_running", "label": "Services running",
-                       "status": "ok" if healthy >= total * 0.8 else "warn" if healthy > 0 else "error",
-                       "detail": f"{healthy}/{total} healthy"})
+        healthy = int(health.get("healthy", 0))
+        # Disabled services are intentionally not deployed — they
+        # should NOT count against the "services running" ratio or
+        # the "api keys discovered" denominator. Otherwise a stack
+        # with 15/15 enabled services healthy reads as 15/29 (51%)
+        # because 14 disabled-but-registry-listed services dominate
+        # the denominator.
+        services = health.get("services", {}) or {}
+        disabled_ids = {
+            sid for sid, info in services.items()
+            if isinstance(info, dict) and info.get("status") == "disabled"
+        }
+        total_active = max(0, int(health.get("total", 0)) - len(disabled_ids))
+        steps.append({
+            "id": "services_running",
+            "label": "Services running",
+            "status": (
+                "ok"
+                if total_active > 0 and healthy >= total_active * 0.8
+                else "warn"
+                if healthy > 0
+                else "error"
+            ),
+            "detail": f"{healthy}/{total_active} healthy"
+                + (f" ({len(disabled_ids)} disabled)" if disabled_ids else ""),
+        })
         keys = discover_api_keys()
         key_count = len(keys)
-        expected = len([s for s in SERVICES if s.api_key_env])
-        steps.append({"id": "api_keys", "label": "API keys discovered",
-                       "status": "ok" if key_count >= expected else "warn",
-                       "detail": f"{key_count}/{expected} keys"})
+        # Same correction for api keys: a disabled service does not
+        # need a key, so don't count it in the denominator. Otherwise
+        # a stack with every enabled servarr's key discovered reads
+        # 7/10 because sabnzbd + tautulli are disabled-and-keyless.
+        expected = len([
+            s for s in SERVICES
+            if s.api_key_env and s.id not in disabled_ids
+        ])
+        steps.append({
+            "id": "api_keys",
+            "label": "API keys discovered",
+            "status": "ok" if expected > 0 and key_count >= expected else "warn",
+            "detail": f"{key_count}/{expected} keys",
+        })
         libs = _libs.get_libraries()
         lib_count = len(libs.get("libraries", []))
         steps.append({"id": "libraries", "label": "Media libraries configured",

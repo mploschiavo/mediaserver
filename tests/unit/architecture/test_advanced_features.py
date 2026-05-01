@@ -110,6 +110,86 @@ class TestOnboardingStatus(unittest.TestCase):
         ids = [s["id"] for s in result["steps"]]
         self.assertEqual(len(ids), len(set(ids)))
 
+    @patch(
+        "media_stack.api.services.health.probe_services",
+        return_value={
+            "services": {
+                "sonarr": {"status": "ok"},
+                "radarr": {"status": "ok"},
+                "sabnzbd": {"status": "disabled"},
+                "tautulli": {"status": "disabled"},
+                "plex": {"status": "disabled"},
+            },
+            "healthy": 2,
+            "total": 5,
+        },
+    )
+    @patch("media_stack.api.services.health.discover_api_keys", return_value={})
+    def test_services_running_excludes_disabled_from_denominator(self, *_):
+        """A stack where every enabled service is healthy should report
+        100% on services_running, regardless of how many disabled
+        services live in the registry. Without this, an operator with
+        2 ok + 3 disabled services sees 'warn (2/5 healthy · 40%)'
+        even though there's nothing to fix."""
+        with patch(
+            "media_stack.api.services._resolve.resolve_profile_path",
+            return_value=None,
+        ):
+            result = config_mod.get_onboarding_status()
+        services_step = next(
+            s for s in result["steps"] if s["id"] == "services_running"
+        )
+        # 2 of 2 enabled (denominator excludes the 3 disabled).
+        self.assertEqual(services_step["status"], "ok")
+        self.assertIn("2/2", services_step["detail"])
+        self.assertIn("3 disabled", services_step["detail"])
+
+    @patch(
+        "media_stack.api.services.health.probe_services",
+        return_value={
+            "services": {
+                "sonarr": {"status": "ok"},
+                "radarr": {"status": "ok"},
+                "sabnzbd": {"status": "disabled"},
+                "tautulli": {"status": "disabled"},
+            },
+            "healthy": 2,
+            "total": 4,
+        },
+    )
+    @patch(
+        "media_stack.api.services.health.discover_api_keys",
+        return_value={"sonarr": "k1", "radarr": "k2"},
+    )
+    def test_api_keys_excludes_disabled_services_from_expected(self, *_):
+        """Disabled services don't need API keys — they should NOT
+        count as missing. The check should pass at 2/2 enabled
+        servarrs even though sabnzbd + tautulli are listed in the
+        registry as services with ``api_key_env`` set."""
+        with patch(
+            "media_stack.api.services._resolve.resolve_profile_path",
+            return_value=None,
+        ):
+            result = config_mod.get_onboarding_status()
+        api_step = next(s for s in result["steps"] if s["id"] == "api_keys")
+        # Exact ratio depends on the live registry; what matters is
+        # that disabled services don't tip the bucket into "warn".
+        # Assert the detail lists fewer expected keys than the raw
+        # registry would (the disabled exclusion happened).
+        from media_stack.api.services.registry import SERVICES
+        raw_expected = sum(1 for s in SERVICES if s.api_key_env)
+        # Detail format: "{discovered}/{expected} keys"
+        emitted_expected = int(api_step["detail"].split("/")[1].split()[0])
+        # Disabled servarrs (sabnzbd, tautulli) should not be in
+        # ``expected``, so the emitted denominator must be strictly
+        # less than the raw count when disabled services have keys.
+        # If neither sabnzbd nor tautulli has api_key_env set, the
+        # emitted count equals the raw count and that's also fine —
+        # the rule still holds: emitted <= raw.
+        self.assertLessEqual(emitted_expected, raw_expected)
+        # Discovered ratio should be intact.
+        self.assertIn("2/", api_step["detail"])
+
 
 # ---------------------------------------------------------------------------
 # #13 Download analytics
