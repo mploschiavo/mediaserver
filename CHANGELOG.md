@@ -2,6 +2,39 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.300] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 4a — promise types + registry loader.** First slice
+  of the orchestrator track:
+  - New `media_stack.domain.services.promises` package with typed
+    value classes — `Promise`, `ProbeSpec` (8 probe kinds: lifecycle,
+    http_json, http_text, http_status, file_json, file_text,
+    k8s_resource, k8s_exec) and `EnsurerSpec` (4 ensurer kinds:
+    lifecycle, job, deploy, infra). Discriminated unions; the Phase
+    4b orchestrator pattern-matches on `.kind` without per-handler
+    if-statements. Pure, frozen, no I/O.
+  - New `media_stack.infrastructure.promises.registry` loader that
+    parses `contracts/promises/promises.yaml` into typed values.
+    Both schemas coexist by design: legacy `ensured_by: ensure-foo`
+    string entries (~50 today) become `JobEnsurer`; new
+    `ensured_by: { type: lifecycle, ... }` entries become
+    `LifecycleEnsurer`. Errors carry the offending promise id +
+    one-line reason — operator-actionable.
+  - First two lifecycle-shaped promises in the registry as
+    end-to-end proof: `jellyfin-running` (lifecycle probe + deploy
+    ensurer) and `jellyfin-api-key-discoverable` (lifecycle probe
+    + lifecycle ensurer + depends_on chain). Phase 4c expands.
+- **New ratchet** `test_promise_dispatch_resolution_ratchet.py`
+  enforces: every lifecycle-typed probe/ensurer resolves to a real
+  service whose contract names a `lifecycle_class` whose class
+  satisfies `ServiceLifecycle` AND has the named method;
+  `depends_on` references real promise ids; the dependency graph
+  has no cycles. Failing fast at CI rather than at orchestrator
+  boot.
+- 30 new unit tests; 169 total ADR-0003 tests green.
+- Pure additive code — runtime image unchanged from v1.0.294.
+
 ## [v1.0.299] — 2026-05-01
 
 ### Architecture
