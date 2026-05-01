@@ -466,6 +466,27 @@ class AutoHealService:
                 "[DEBUG] auto-heal: jobs:close-stale-runs run_job failed: %s",
                 exc,
             )
+
+        # ADR-0003 Phase 4c — orchestrator shadow-mode evaluation.
+        # Calls satisfy_promises in dry_run=True so probes fire but
+        # ensurers DO NOT (avoids conflict with the legacy bootstrap
+        # pipeline still driving real mutations). Tick-level record
+        # lands in run-history under triggered_by=auto-heal; per-
+        # promise outcomes live in cooldown state file. Phase 5 will
+        # flip dry_run off and retire the legacy ensurers.
+        try:
+            from media_stack.application.jobs.framework import run_job
+            run_job(
+                "orchestrator:satisfy-shadow",
+                source="auto-heal",
+                actor="auto-heal",
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "[DEBUG] auto-heal: orchestrator:satisfy-shadow run_job "
+                "failed: %s",
+                exc,
+            )
         elapsed = round(time.time() - t0, 2)
         # Surface the cycle in /api/jobs.history with an
         # ``auto-heal`` source tag whenever it actually took action

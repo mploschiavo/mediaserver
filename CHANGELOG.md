@@ -2,6 +2,41 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.302] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 4c — orchestrator shadow-mode hookup.** First
+  runtime change since v1.0.294: the auto-heal cycle now calls
+  `run_job("orchestrator:satisfy-shadow")` every 60s, alongside the
+  existing `guardrails:evaluate` / `jellyfin:ensure-api-key` /
+  `jobs:close-stale-runs` hooks.
+  - The new handler `media_stack.application.jobs.orchestrator_satisfy:
+    satisfy_shadow` calls `satisfy_promises(dry_run=True)`. Probes
+    fire across all 50+ registered promises in parallel; ensurers
+    do NOT (avoids conflict with the legacy bootstrap pipeline
+    still driving real mutations).
+  - Per-tick aggregate lands in run-history under
+    `job_name=orchestrator:satisfy-shadow` with summary fields
+    (`ok_count`, `failed_transient_count`, `elapsed`, etc.) so
+    operators can chart "promises green over time" through the
+    existing `/api/jobs/history` endpoint without parsing logs.
+  - Per-promise current state lives in
+    `.controller/promise_state.json` (cooldown tracker file). The
+    legacy ratchet meta-test (`test_promises_registry.py`) and the
+    new dispatch-resolution ratchet (`test_promise_dispatch_resolution
+    _ratchet.py`) continue to gate the registry's correctness.
+- Platform detection (`KUBERNETES_SERVICE_HOST` env / explicit
+  `MEDIA_STACK_RUNTIME` override) routes the orchestrator to the
+  right platform-specific promise subset.
+- 7 new unit tests covering platform detection, dry-run
+  enforcement, no-op per-promise emit, and contract-registration
+  ratcheting. 221 ADR-0003 tests total green.
+
+### Operational
+- Image rebuild + deploy. Compose: ``deploy/compose/docker-compose.yml``
+  pinned to v1.0.302. K8s: ``kubectl set image`` rolled the controller
+  deployment to v1.0.302 (kustomization newTag also bumped).
+
 ## [v1.0.301] — 2026-05-01
 
 ### Architecture
