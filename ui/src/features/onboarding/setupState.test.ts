@@ -71,6 +71,65 @@ describe("buildSetupExperienceState", () => {
     expect(state.timeline.length).toBe(2);
   });
 
+  it("counts settled siblings as done so the counter advances", () => {
+    // Regression: the banner used to be stuck at "0 done of N
+    // running" because the backend stripped settled children from
+    // the tree, taking the "done" tally with them. With the fixed
+    // get_running_tree(), settled descendants stay under their
+    // running parent with terminal status intact, and the banner
+    // honestly reports progress.
+    const state = buildSetupExperienceState({
+      status: { initial_bootstrap_done: false },
+      statusReachable: true,
+      runningTree: [
+        {
+          run_id: "r1",
+          job_name: "bootstrap",
+          status: SetupStatus.Running,
+          started_at: 100,
+          elapsed_seconds: 50,
+          triggered_by: "manual",
+          actor: "",
+          parent_run_id: "",
+          batch_id: "",
+          children: [
+            {
+              run_id: "r2",
+              job_name: "discover-api-keys",
+              status: SetupStatus.Ok,
+              started_at: 110,
+              elapsed_seconds: 5,
+              triggered_by: "parent",
+              actor: "",
+              parent_run_id: "r1",
+              batch_id: "r1",
+              children: [],
+            },
+            {
+              run_id: "r3",
+              job_name: "mass-search-throttled",
+              status: SetupStatus.Running,
+              started_at: 120,
+              elapsed_seconds: 30,
+              triggered_by: "parent",
+              actor: "",
+              parent_run_id: "r1",
+              batch_id: "r1",
+              children: [],
+            },
+          ],
+        },
+      ],
+      history: [],
+    });
+    expect(state.summary.total).toBe(3);
+    expect(state.summary.completed).toBe(1);
+    expect(state.summary.running).toBe(2);
+    expect(state.summary.failed).toBe(0);
+    // Active path still reflects the deepest running step.
+    expect(state.activePath).toEqual(["bootstrap", "mass-search-throttled"]);
+  });
+
   it("falls back to current_action when running tree is empty", () => {
     const state = buildSetupExperienceState({
       status: {
