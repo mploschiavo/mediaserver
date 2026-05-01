@@ -2,6 +2,38 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.305] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 4d follow-up.** v1.0.304 cut transient failures
+  on compose from 15 → 5 + 4 unknown. The remaining 9 split into
+  two known classes; this commit handles both:
+  - **4 gateway probes refused** (`gateway-https-listener-up`,
+    `gateway-app-prefix-route`, `gateway-jellyfin-route`,
+    `gateway-http-redirects-to-https`). v1.0.304's synthetic resolver
+    used `localhost:443`/`localhost:80` (matching the legacy CLI's
+    host-shell perspective). But the orchestrator runs INSIDE the
+    controller container, where those mappings aren't reachable.
+    Routes now go to `envoy:8880` (compose HTTPS listener) /
+    `envoy:8080` (compose plain HTTP) / `envoy:80` (k8s — TLS
+    terminated at ingress). HTTPS to envoy:8880 disables TLS
+    verification (self-signed cert valid for the public hostname,
+    not the internal `envoy` DNS name).
+  - **5 controller_basic 401s** (`adaptive-search-scheduled`,
+    `dns-readiness-banner-data`, `foundational-jobs-run-before-app-jobs`,
+    `internet-exposed-stack-must-have-auth`, `stuck-imports-scheduled`).
+    Promises with `auth: controller_basic` need HTTP Basic against
+    the controller's own API as the seeded stack admin. Same flow
+    `probe_promises.py` uses; lifted into the dispatcher's
+    `_auth_headers()` switch.
+- 3 new tests (gateway-compose-internal URL, gateway-TLS-skip-verify,
+  controller_basic header round-trip + empty-password defensive).
+- After this: remaining shadow failures should be legitimate
+  service-side issues only — JELLYFIN_API_KEY env empty mid-mint,
+  jellyseerr/unpackerr/etc. not actually deployed in this stack.
+  Phase 5 retires the legacy ensurers and orchestrator's own
+  ensurer cycle resolves these.
+
 ## [v1.0.304] — 2026-05-01
 
 ### Architecture

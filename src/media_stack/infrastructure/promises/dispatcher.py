@@ -607,31 +607,52 @@ def _build_service_url(
 
 
 def _synthetic_service_url(service_id: str, path: str) -> str:
-    """Hardcoded URL builders for service ids that don't have a
-    contracts/services YAML. Same shape as
-    ``probe_promises.py::_resolve_service_url`` so the orchestrator
-    and CLI agree on what these promises probe.
+    """Hardcoded URL builders for service ids without a
+    contracts/services YAML.
 
-    Returns ``""`` when the service id isn't recognized — caller
-    treats that as "can't build url".
+    The orchestrator runs INSIDE the controller container, which
+    means it has to reach gateways at their cluster-internal
+    addresses, NOT the host's published 443/80 ports the legacy
+    ``probe_promises.py`` CLI uses (it runs on the host shell). On
+    compose, envoy's TLS listener is on container port 8880 and
+    plain on 8080 (host:443 → 8880 / host:80 → 8080 mapping); on
+    k8s, the envoy Service exposes port 80 and TLS terminates at
+    the ingress before routing.
+
+    Returns ``""`` when the service id isn't recognized.
     """
     import os as _os
     in_k8s = bool(_os.environ.get("KUBERNETES_SERVICE_HOST"))
     if service_id == "controller":
-        # Controller's own HTTP API — the orchestrator runs INSIDE the
-        # controller process, so localhost works on both platforms.
+        # Controller's own HTTP API — same process; localhost works
+        # on both platforms.
         return f"http://localhost:9100{path}"
     if service_id == "gateway_http":
-        host = "envoy" if in_k8s else "localhost"
-        return f"http://{host}:80{path}"
-    if service_id == "gateway_https":
-        # K8s: envoy listens on Service port 80 and serves the
-        # public vhost via Host-header routing. Compose: localhost
-        # 443 with TLS.
         if in_k8s:
             return f"http://envoy:80{path}"
-        return f"https://localhost:443{path}"
+        # Compose: envoy:8080 is the plain-HTTP listener (mapped
+        # from host:80).
+        return f"http://envoy:8080{path}"
+    if service_id == "gateway_https":
+        if in_k8s:
+            # Ingress terminates TLS; envoy serves plain HTTP and
+            # routes by Host header.
+            return f"http://envoy:80{path}"
+        # Compose: envoy:8880 is the TLS listener (mapped from
+        # host:443). Self-signed cert — caller's HTTP get disables
+        # verification for synthetic gateway probes.
+        return f"https://envoy:8880{path}"
     return ""
+
+
+def _is_synthetic_gateway_url(url: str) -> bool:
+    """True if the URL hits the compose internal gateway (envoy:8880).
+    Used by the HTTP get to relax TLS verification — the gateway
+    serves a self-signed cert valid for the public hostname, not
+    ``envoy``. Verifying would always fail; skipping is sound
+    because the probe's question is "is it answering?", not "does
+    the cert chain validate?"."""
+    return "://envoy:8880" in url
 
 
 def _auth_headers(
@@ -671,11 +692,38 @@ def _auth_headers(
         return _api_key_headers("jellyfin", secrets, resolver)
     if auth_l == "api_key":
         return _api_key_headers(service_id, secrets, resolver)
-    # controller_basic / qbit_basic / others — not yet implemented;
-    # let the probe go through unauthenticated so we can see the
-    # resulting 401/403 in run-history. Phase 4d / 5+ will wire
-    # these up once we know which promises actually rely on them.
+    if auth_l == "controller_basic":
+        return _controller_basic_headers(secrets)
+    # qbit_basic / others — not yet implemented; let the probe go
+    # through unauthenticated so the resulting 401 surfaces in
+    # run-history. Phase 5+ will wire these once promises that need
+    # them are confirmed to be in scope.
     return {}
+
+
+def _controller_basic_headers(
+    secrets: Mapping[str, str] | None,
+) -> dict[str, str]:
+    """HTTP Basic against the controller's own API as the seeded
+    stack admin. Same flow ``probe_promises.py`` uses; lets the
+    orchestrator probe controller-served promises like
+    ``adaptive-search-scheduled`` and ``foundational-jobs-run-before-
+    app-jobs`` instead of always landing on 401."""
+    import base64 as _b64
+    import os as _os
+    user = ""
+    pwd = ""
+    if secrets is not None:
+        user = (secrets.get("STACK_ADMIN_USERNAME") or "").strip()
+        pwd = (secrets.get("STACK_ADMIN_PASSWORD") or "").strip()
+    if not user:
+        user = (_os.environ.get("STACK_ADMIN_USERNAME") or "admin").strip()
+    if not pwd:
+        pwd = (_os.environ.get("STACK_ADMIN_PASSWORD") or "").strip()
+    if not pwd:
+        return {}
+    token = _b64.b64encode(f"{user}:{pwd}".encode()).decode()
+    return {"Authorization": f"Basic {token}"}
 
 
 def _api_key_headers(
@@ -701,7 +749,18 @@ def _api_key_headers(
 
 def _http_get(url: str, headers: Mapping[str, str]) -> tuple[str, int]:
     req = urllib.request.Request(url, headers=dict(headers))
-    with urllib.request.urlopen(req, timeout=_PROBE_TIMEOUT_SECONDS) as resp:
+    kwargs: dict[str, Any] = {"timeout": _PROBE_TIMEOUT_SECONDS}
+    if _is_synthetic_gateway_url(url):
+        # Internal gateway probe — envoy serves a self-signed cert
+        # valid for the public hostname, not "envoy". Skip
+        # verification; the probe's question is reachability, not
+        # cert chain.
+        import ssl as _ssl
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        kwargs["context"] = ctx
+    with urllib.request.urlopen(req, **kwargs) as resp:
         body = resp.read().decode("utf-8", errors="replace")
         return body, resp.status
 
