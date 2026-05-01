@@ -2,6 +2,53 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.301] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 4b — orchestrator core.** `satisfy_promises(...)`
+  in `application/services/orchestrator.py` is the new central
+  evaluation loop:
+  - Topologically sorts promises by `depends_on` (deps probed first;
+    dependents marked `dep_failed` when an upstream fails this tick)
+  - Probes IN PARALLEL within each topo-level via
+    `ThreadPoolExecutor` (default 8 workers, 30s batch bound) — a
+    slow probe doesn't block faster siblings
+  - Honors per-promise cooldown via the new
+    `infrastructure/promises/cooldown.py::CooldownTracker` (in-mem +
+    JSON persistence at `.controller/promise_state.json`; 30s
+    transient / 300s permanent backoff windows)
+  - Runs ensurers when probes fail (unless `dry_run`); re-probes to
+    confirm; records `failed_permanent` only when the ensurer
+    explicitly signals non-transient failure
+  - Tier-leveled logging: INFO for tick start/end + state
+    transitions, WARN for slow probes (>1s) + repeated transients,
+    ERROR for permanent failures + defensive topology violations
+- **Probe + ensurer dispatch tables** in
+  `infrastructure/promises/dispatcher.py`. Pattern-matches
+  `ProbeSpec.kind` / `EnsurerSpec.kind` to per-kind handlers:
+  `lifecycle` / `http_json` / `http_text` / `http_status` /
+  `file_json` / `file_text` for probes; `lifecycle` / `job` /
+  `deploy` / `infra` for ensurers. K8s probes (`k8s_resource`,
+  `k8s_exec`) return `unknown` with a Phase-5 marker — the legacy
+  `probe_promises.py` CLI still handles those. Reuses the existing
+  centralized `_evaluate(...)` helper from `probe_promises.py` for
+  assert expressions — single auditable evaluation site.
+- **`RunRecord.promise_id`** additive field. The orchestrator emits
+  one record per probe + ensurer attempt, with `source=
+  orchestrator_shadow` and `promise_id=<id>`, so operators can
+  query the existing run-history API per-promise. Backwards-
+  compatible: legacy records without `promise_id` round-trip as
+  `None`.
+- **CLI:** `bin/ops/orchestrator-eval.sh` runs one tick and prints
+  a per-promise table (or JSON via `--json`). Exit 0 when no
+  failures, 1 otherwise. Useful for local debugging and Phase 4d
+  discrepancy chasing.
+- 45 new unit tests (orchestrator topology + cooldown + dry-run +
+  parallelism + summary, dispatcher per-kind, cooldown windows +
+  persistence + atomic-write); 214 ADR-0003 tests total green.
+- Pure additive — runtime image unchanged from v1.0.294. Auto-heal
+  hookup + first deploy lands in Phase 4c.
+
 ## [v1.0.300] — 2026-05-01
 
 ### Architecture
