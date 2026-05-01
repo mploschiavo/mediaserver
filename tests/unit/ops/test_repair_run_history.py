@@ -1,34 +1,26 @@
-"""Tests for ``bin/ops/repair_run_history.py``.
+"""Tests for the run-history repair tool.
 
-Loads the script as a module (not a normal import — it lives under
-``bin/`` to keep operator-tools out of the runtime package) and
-drives ``run_repair`` against fixture run-history.jsonl files.
+Logic lives in ``media_stack.application.jobs.run_history_repair``
+(canonical, importable). ``bin/ops/repair_run_history.py`` is a
+thin operator CLI wrapper. Tests target the module.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPT_PATH = REPO_ROOT / "bin" / "ops" / "repair_run_history.py"
-
-
 def _load_module():
-    spec = importlib.util.spec_from_file_location(
-        "_repair_run_history_under_test", SCRIPT_PATH,
-    )
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["_repair_run_history_under_test"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+    """Convenience accessor — kept as a function for back-compat
+    with the prior importlib-based pattern, but it's now just a
+    normal import. Future tests should import the module directly."""
+    from media_stack.application.jobs import run_history_repair
+
+    return run_history_repair
 
 
 @pytest.fixture

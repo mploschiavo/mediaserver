@@ -352,6 +352,39 @@ def get_children(parent_run_id: str) -> list[RunRecord]:
     return out
 
 
+# Default staleness threshold: 5 minutes. Anything actually running
+# longer than this on a healthy controller is either a wedged handler
+# or a zombie from a SIGTERM mid-run. The repair tool's CLI default
+# is 10 min for safety; the auto-heal cycle is more aggressive
+# because it runs every 60s and self-heals continuously.
+_STALE_RUNNING_THRESHOLD_SECONDS = 5 * 60
+
+
+def count_stale_running(
+    threshold_seconds: int = _STALE_RUNNING_THRESHOLD_SECONDS,
+) -> int:
+    """Number of run records still at status=running with started_at
+    older than ``threshold_seconds`` ago. Used as the probe for the
+    ``run-history-no-stale-running`` promise.
+
+    Zero is the steady-state expectation. Any positive count means
+    either (a) a handler is genuinely taking >5min (rare; a job that
+    long should be non_blocking), OR (b) zombies from a controller
+    process that died mid-run before the v1.0.293 try/finally fix
+    landed. The auto-heal cycle's ensurer reads this number and
+    runs ``repair_run_history.run_repair`` to close them."""
+    import time
+
+    cutoff = time.time() - threshold_seconds
+    with _LOCK:
+        records = list(_read_all_records())
+    return sum(
+        1
+        for r in records
+        if r.status == RunStatus.RUNNING and r.started_at and r.started_at <= cutoff
+    )
+
+
 def iter_records() -> Iterable[RunRecord]:
     """Generator interface for tests + admin tooling. Returns
     records in oldest → newest order."""
