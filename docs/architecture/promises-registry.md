@@ -1,6 +1,6 @@
 # Promises Registry
 
-`.ratchets/promises/promises.yaml` is the source of truth for "what works out-of-the-box after a fresh install." Every claim like *"after fresh install, Bazarr has English subtitles enabled"* lives there as one declarative entry.
+`contracts/promises/promises.yaml` is the source of truth for "what works out-of-the-box after a fresh install." Every claim like *"after fresh install, Bazarr has English subtitles enabled"* lives there as one declarative entry.
 
 For the human-readable index of every shipped promise, see [reference/promises.md](../reference/promises.md) (regenerate with `media-stack-render-promises`).
 
@@ -12,7 +12,7 @@ The promises registry forces three things to stay in sync:
 
 1. **An `ensure_*` adapter** that re-asserts the desired state on every bootstrap run.
 2. **A contract job** in `contracts/services/*.yaml` pointing at the adapter.
-3. **A promise entry** in `.ratchets/promises/promises.yaml` with a probe that verifies the adapter actually worked.
+3. **A promise entry** in `contracts/promises/promises.yaml` with a probe that verifies the adapter actually worked.
 
 If any of the three is missing, the meta-ratchet flags it.
 
@@ -82,7 +82,7 @@ Generator expressions in `any()` / `all()` use their own scope — names need to
          priority: 95
          requires: []
    ```
-3. **Add a promise** to `.ratchets/promises/promises.yaml`:
+3. **Add a promise** to `contracts/promises/promises.yaml`:
    ```yaml
    - id: my-feature-works
      description: My feature is configured after a fresh install

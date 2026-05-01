@@ -85,7 +85,7 @@ The platform follows a strict desired-state hierarchy. ![Source-of-truth flow](.
    - `docker/docker-compose.yml`, `docker/.env.example`
    - `contracts/defaults/*.yaml`, `contracts/services/*.yaml`
    - `contracts/media-stack.profile.yaml`, `contracts/media-stack.profile.schema.json`
-   - `.ratchets/promises/promises.yaml` — post-install promises registry
+   - `contracts/promises/promises.yaml` — post-install promises registry
    - `src/media_stack/contracts/runner_operation_plans.json`
    - `src/media_stack/contracts/media_server_operation_plans.json`
    - scripts under `bin/`
@@ -238,7 +238,7 @@ flowchart TD
 - Drift is reduced through periodic reconcile and explicit verification.
 - Technology replacement is role-local and binding-driven.
 - Removing one technology manifest does not break unrelated technologies when that role is rebound.
-- Promises in `.ratchets/promises/promises.yaml` survive `compose down -v` because the meta-ratchet enforces every promise traces back to a real handler.
+- Promises in `contracts/promises/promises.yaml` survive `compose down -v` because the meta-ratchet enforces every promise traces back to a real handler.
 
 ---
 
