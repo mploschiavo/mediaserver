@@ -1,7 +1,6 @@
 # ADR-0002 — Hexagonal restructure of `src/media_stack/`
 
-**Status:** Proposed (2026-04-25). Multi-week migration. Awaiting
-steward approval to begin.
+**Status:** Largely implemented (as of 2026-05-01). The target hexagonal layout is real and populated: `domain/` (68 files, 8.5k LOC), `application/` (121 files, 22.5k LOC), `adapters/` (100 files, 10.5k LOC), `infrastructure/` (87 files, 11.8k LOC), `interfaces/` (7 files, Protocols). Remaining tail: ~99 shim files in `services/apps/` (re-exports of canonical modules in the new layers) and ~140 still-unmigrated files in `services/` plus subdirs in `core/` (auth, edge, platforms, events, observability, notifications, controller_profile). Cleanup tracked as Phase 16-F.
 
 **Related:** ADR-0001 Phase 16 references this. ADR-0001 explicitly
 punted the hexagonal restructure as "too expensive for the

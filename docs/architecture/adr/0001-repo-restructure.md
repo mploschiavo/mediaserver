@@ -1,6 +1,6 @@
 # ADR-0001 — Repository restructure plan
 
-**Status:** Proposed (2026-04-25). Awaiting steward approval to begin Phase 0.
+**Status:** Largely implemented (as of 2026-05-01). Phase 0 was approved and executed informally over the v1.0.180–v1.0.290 window; the repo's current shape reflects the target layout described below. Remaining tail: cleanup of legacy `core/` subdirs and dual-home shim files — tracked under ADR-0002 Phase 16-F.
 
 ## Context
 
