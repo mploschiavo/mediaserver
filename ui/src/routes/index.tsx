@@ -5,7 +5,6 @@ import {
   migrationCheckHasContent,
 } from "@/features/stack-lifecycle/MigrationCheckCard";
 import { useValidateMigration } from "@/features/stack-lifecycle/hooks";
-import { BootstrapProgressBanner } from "@/features/onboarding/BootstrapProgressBanner";
 import {
   OnboardingChecklist,
   onboardingHasContent,
@@ -15,28 +14,21 @@ import { useOnboarding } from "@/features/onboarding/hooks";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Route as RootRoute } from "@/routes/__root";
 
+const QUICK_START_PROGRESS_THRESHOLD = 80;
+
 /**
- * Landing route. The page renders the onboarding checklist +
- * pre-upgrade migration safety check when the controller surfaces
- * them, and otherwise lands on /ops — the operator dashboard.
+ * Landing route. Renders the onboarding checklist + pre-upgrade
+ * migration safety check when the controller surfaces them, and
+ * otherwise lands on /ops — the operator dashboard.
  *
- * Why /ops: it's the broadest "what's the state of my stack right
- * now?" surface. The historical /media-integrity default surprised
- * operators ("why is the dashboard a single subsystem?"). /ops is
- * the natural homepage for an admin tool.
- *
- * The decision is component-local rather than `beforeLoad` so we
- * can gate on Tanstack Query results — the redirect only fires
- * once neither hook has anything to say.
+ * `BootstrapProgressBanner` is mounted at chrome level in
+ * `AppShell`, so this page does not re-mount it.
  */
 function HomePage() {
   const reduce = useReducedMotion();
   const onboarding = useOnboarding();
   const migration = useValidateMigration();
 
-  // While either probe is in flight, render nothing. The fallback
-  // redirect mustn't fire until we've heard back, otherwise an admin
-  // with onboarding still pending would get bounced before we know.
   if (onboarding.isLoading || migration.isLoading) {
     return null;
   }
@@ -44,11 +36,18 @@ function HomePage() {
   const showOnboarding = onboardingHasContent(onboarding.data);
   const showMigration = migrationCheckHasContent(migration.data);
 
-  // Default landing — /ops gives the operator the breadth they
-  // expect from a "home" view (services, jobs, quick actions).
   if (!showOnboarding && !showMigration) {
     return <Navigate to="/ops" replace />;
   }
+
+  // Quick-start CTAs only earn the dashboard's attention once the
+  // system is largely ready. Below the threshold the hero card +
+  // checklist tell the story; piling "what to do next" on top of
+  // an in-progress setup feels noisy.
+  const quickStartReady =
+    !!onboarding.data &&
+    typeof onboarding.data.progress_pct === "number" &&
+    onboarding.data.progress_pct >= QUICK_START_PROGRESS_THRESHOLD;
 
   return (
     <motion.div
@@ -62,9 +61,8 @@ function HomePage() {
         title="Welcome"
         description="Three steps to a working stack — everything else is optional."
       />
-      <BootstrapProgressBanner />
-      <QuickStartCards />
       {showOnboarding ? <OnboardingChecklist /> : null}
+      {quickStartReady ? <QuickStartCards /> : null}
       {showMigration ? <MigrationCheckCard /> : null}
     </motion.div>
   );

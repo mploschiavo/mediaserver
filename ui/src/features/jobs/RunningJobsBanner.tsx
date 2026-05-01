@@ -37,6 +37,14 @@ interface RunningJobsResponse {
   count: number;
 }
 
+interface ControllerStatusShape {
+  initial_bootstrap_done?: boolean;
+}
+
+function isBootstrapJob(job: RunningJob): boolean {
+  return job.name.toLowerCase() === "bootstrap";
+}
+
 /**
  * Persistent global indicator: "N jobs running" pill in the chrome
  * with a popover that lists every running action / job / CronJob
@@ -65,7 +73,26 @@ export function RunningJobsBanner() {
     staleTime: 5_000,
   });
 
-  const items = q.data?.running ?? [];
+  // During the first-run window, the BootstrapProgressBanner hero
+  // card is the canonical surface for the bootstrap job — surfacing
+  // it here too is double coverage. After first-run completes
+  // (`initial_bootstrap_done === true`), bootstrap re-runs are
+  // operator-initiated and absolutely should appear here so the
+  // operator knows the system is mid-reconfigure.
+  const status = useQuery<ControllerStatusShape>({
+    queryKey: ["controller", "status"],
+    queryFn: () =>
+      fetcher<ControllerStatusShape>("status", {
+        silenceAuthEvent: true,
+      }),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+  const inFirstRunWindow = status.data?.initial_bootstrap_done === false;
+
+  const items = (q.data?.running ?? []).filter((job) =>
+    inFirstRunWindow ? !isBootstrapJob(job) : true,
+  );
   if (items.length === 0) return null;
 
   return (

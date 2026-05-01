@@ -15,9 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useOnboarding,
   type OnboardingShape,
   type OnboardingStep,
 } from "./hooks";
@@ -48,40 +46,31 @@ function groupSteps(data: OnboardingShape | undefined): GroupedSteps {
   return { actionable, done };
 }
 
+interface OnboardingChecklistViewProps {
+  data: OnboardingShape;
+  /** Initial expanded/collapsed state of the "Done for you" group.
+   *  Demos pass ``true`` so completed steps are visible by default. */
+  initialShowCompleted?: boolean;
+}
+
 /**
- * Auto-tracked first-run checklist sourced from `/api/onboarding`.
- *
- * The bootstrap job satisfies most steps automatically; this surface
- * is intentionally a celebration of what the system did for the
- * operator first ("Done for you"), then a focused, single CTA for
- * whatever still needs a human ("Up next"). No checklist fatigue.
+ * Pure-presentational checklist. Use this directly to render
+ * specific shapes (demos, Storybook, fixtures); the production
+ * surface ``OnboardingChecklist`` wraps this with the live
+ * ``useOnboarding()`` query.
  */
-export function OnboardingChecklist(): JSX.Element | null {
-  const query = useOnboarding();
-  const [showCompleted, setShowCompleted] = useState(false);
+export function OnboardingChecklistView({
+  data,
+  initialShowCompleted = false,
+}: OnboardingChecklistViewProps): JSX.Element | null {
+  const [showCompleted, setShowCompleted] = useState(initialShowCompleted);
+  const grouped = useMemo(() => groupSteps(data), [data]);
 
-  const grouped = useMemo(() => groupSteps(query.data), [query.data]);
-
-  if (query.isLoading) {
-    return (
-      <Card data-testid="onboarding-checklist-loading">
-        <CardHeader>
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-3 w-64" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-16 w-full" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (query.error || !query.data) return null;
-  if (query.data.total === 0) return null;
+  if (data.total === 0) return null;
 
   const { actionable, done } = grouped;
   const allDone = actionable.length === 0;
-  const progressPct = Math.max(0, Math.min(100, query.data.progress_pct));
+  const progressPct = Math.max(0, Math.min(100, data.progress_pct));
   const firstActionable = actionable[0];
   const firstRoute = firstActionable ? stepRoute(firstActionable) : undefined;
 
@@ -106,7 +95,7 @@ export function OnboardingChecklist(): JSX.Element | null {
             <CardDescription>
               {allDone
                 ? "Every checklist item is satisfied. You can keep customizing whenever you like."
-                : `${query.data.completed} of ${query.data.total} ready · ${actionable.length} ${actionable.length === 1 ? "item" : "items"} need attention`}
+                : `${data.completed} of ${data.total} ready · ${actionable.length} ${actionable.length === 1 ? "item" : "items"} need attention`}
             </CardDescription>
           </div>
           <div
@@ -119,10 +108,7 @@ export function OnboardingChecklist(): JSX.Element | null {
             </div>
           </div>
         </div>
-        <OnboardingProgressBar
-          pct={progressPct}
-          firstRun={query.data.is_first_run}
-        />
+        <OnboardingProgressBar pct={progressPct} firstRun={data.is_first_run} />
       </CardHeader>
       <CardContent className="space-y-4">
         {actionable.length > 0 ? (
@@ -206,19 +192,4 @@ export function OnboardingChecklist(): JSX.Element | null {
       </CardContent>
     </Card>
   );
-}
-
-/**
- * Used by the home route to decide whether to mount the checklist
- * card at all. Returns true when the controller has any steps to
- * report — first-run or returning, the card explains what's done
- * and what's pending.
- */
-export function onboardingHasContent(
-  data: Pick<OnboardingShape, "total" | "steps"> | undefined,
-): boolean {
-  if (!data) return false;
-  if (typeof data.total === "number" && data.total > 0) return true;
-  if (Array.isArray(data.steps) && data.steps.length > 0) return true;
-  return false;
 }

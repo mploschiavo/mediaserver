@@ -139,6 +139,8 @@ media-stack-generate-envoy-config = "media_stack.services.edge.envoy_config_gene
 media-stack-generate-bootstrap-config = "media_stack.services.jobs.bootstrap_config_generator:main"
 media-stack-render-arch-diagrams = "media_stack.cli.commands.render_architecture_diagrams_main:main"
 media-stack-run-unit-tests = "media_stack.cli.commands.run_unit_tests_main:main"
+media-stack-release = "media_stack.cli.commands.release_pipeline_main:main"
+media-stack-teardown = "media_stack.cli.commands.teardown_stack_main:main"
 
 # Phase 12-B migration (DONE in v1.0.190; bin/ shims removed v1.0.192).
 media-stack-probe-promises = "media_stack.cli.commands.probe_promises:main"

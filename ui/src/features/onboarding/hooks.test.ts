@@ -29,18 +29,34 @@ describe("useOnboarding", () => {
     fetchMock.mockReset();
   });
 
-  it("GETs /api/onboarding", async () => {
+  it("GETs /api/onboarding and exposes the auto-tracked step list", async () => {
     fetchMock.mockResolvedValueOnce({
-      step: "indexers",
-      completed: ["welcome"],
-      pending: [{ id: "indexers", label: "Indexers", route: "/indexers" }],
+      steps: [
+        {
+          id: "services_running",
+          label: "Services running",
+          status: "ok",
+          detail: "12/14 healthy",
+        },
+        {
+          id: "libraries",
+          label: "Media libraries configured",
+          status: "pending",
+          detail: "No libraries — go to Config > Libraries",
+        },
+      ],
+      completed: 1,
+      total: 2,
+      progress_pct: 50,
+      is_first_run: true,
     });
     const wrapper = makeWrapper();
     const { result } = renderHook(() => useOnboarding(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(fetchMock).toHaveBeenCalledWith("api/onboarding", undefined);
-    expect(result.current.data?.step).toBe("indexers");
-    expect(result.current.data?.completed).toHaveLength(1);
-    expect(result.current.data?.pending).toHaveLength(1);
+    expect(result.current.data?.progress_pct).toBe(50);
+    expect(result.current.data?.is_first_run).toBe(true);
+    expect(result.current.data?.steps).toHaveLength(2);
+    expect(result.current.data?.steps[0]?.status).toBe("ok");
   });
 });

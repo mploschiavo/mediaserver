@@ -56,5 +56,4 @@ bin/utils/stack-status.sh
 bin/utils/validate-bootstrap-config.sh
 bin/utils/validate-bootstrap-profile.sh
 bin/with-env.sh
-deploy-compose.sh
 deploy-k8s.sh

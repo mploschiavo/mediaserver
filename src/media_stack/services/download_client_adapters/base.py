@@ -1,68 +1,28 @@
-"""Base contract for download-client bootstrap adapters."""
+"""Migration shim — see ``media_stack.domain.download_client_adapters.base``.
 
-from __future__ import annotations
+Same content as the canonical module under another tree (the
+ADR-0002 migration left two parallel homes for the same code).
+Re-exported here so ``isinstance`` / ``issubclass`` checks against
+``services.download_client_adapters.base.DownloadClientAdapterBase``
+agree with checks against the canonical
+``domain.download_client_adapters.base.DownloadClientAdapterBase``.
+Without this re-export, every adapter that imports its base from
+``adapters.download_client_adapters.usenet`` (which pulls the
+domain copy) was failing the factory's
+``must inherit from DownloadClientAdapterBase`` check.
 
-from dataclasses import dataclass, field
-from typing import Any, Callable
+Delete this shim once nothing under ``src/`` or ``tests/`` imports
+from ``media_stack.services.download_client_adapters.base`` directly.
+"""
 
-LogFn = Callable[[str], None]
-NormalizeUrlFn = Callable[[str], str]
-WaitForServiceFn = Callable[[str, str, str, int], None]
-BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
-InvokeHandlerFn = Callable[..., Any]
-
-
-@dataclass
-class DownloadClientAdapterContext:
-    key: str
-    display_name: str
-    cfg: dict[str, Any]
-    wait_timeout: int
-    config_root: str
-    arr_apps_raw: list[dict[str, Any]]
-    fully_preconfigured: bool
-    configure_arr_clients: bool = False
-    set_categories: bool = False
-    login_required: bool = False
-    username: str = ""
-    password: str = ""
-    url: str = ""
-    status: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DownloadClientAdapterDependencies:
-    log: LogFn
-    normalize_url: NormalizeUrlFn
-    wait_for_service: WaitForServiceFn
-    bool_cfg: BoolCfgFn
-    invoke_handler: InvokeHandlerFn
-
-
-@dataclass
-class DownloadClientAdapterBase:
-    context: DownloadClientAdapterContext
-    deps: DownloadClientAdapterDependencies
-
-    def is_enabled(self) -> bool:
-        return bool(self.context.configure_arr_clients)
-
-    def load(self) -> None:
-        if not self.is_enabled():
-            return
-        self.context.url = self.deps.normalize_url(str(self.context.cfg.get("url", "")))
-
-    def precheck(self) -> None:
-        return
-
-    def prepare(self) -> None:
-        return
-
-    def configure(self) -> None:
-        return
-
-    def ensure(self) -> None:
-        return
-
-    def status_check(self) -> dict[str, Any]:
-        return dict(self.context.status)
+from media_stack.domain.download_client_adapters.base import *  # noqa: F401, F403
+from media_stack.domain.download_client_adapters.base import (  # noqa: F401
+    BoolCfgFn,
+    DownloadClientAdapterBase,
+    DownloadClientAdapterContext,
+    DownloadClientAdapterDependencies,
+    InvokeHandlerFn,
+    LogFn,
+    NormalizeUrlFn,
+    WaitForServiceFn,
+)
