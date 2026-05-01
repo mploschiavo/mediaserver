@@ -211,12 +211,51 @@ The current pattern of "every service is a snowflake" is unsustainable at 29 ser
 - Compare outputs; flag discrepancies in run-history
 - Fix any disagreements before flipping the switch
 
-**Phase 5 (~3 days):**
+**Phase 5 (~1-2 weeks, staged per service-family):**
 
-- Make `satisfy_promises(...)` the primary orchestrator
-- Delete `_run_preflights`, `_try_satisfy_prereqs`, `phase_scripts.media_server_bootstrap` field, `compose_preflight_handler` field, the `max_attempts` retry loop in `JobRunner.run()`
-- Delete `media-stack-probe-promises` CLI (same code path as the orchestrator)
-- Update bootstrap docs
+Per Phase 4d's live shadow data, the orchestrator probes are honest
+and the lifecycle implementations are well-tested (216 unit tests
+across Phase 1-3). The ensurer side is less battle-tested in
+production scenarios — flipping `dry_run=False` globally would
+expose every service's mint/persist code at once. Staged rollout
+limits blast radius:
+
+- **Phase 5a (`~1 day`):** flip `dry_run=False` for **Jellyfin
+  promises only**. Concretely: add a `force_dry_run_unless` allowlist
+  to `satisfy_promises` that runs ensurers ONLY for promises whose
+  matching service id is in the allowlist; default starts with
+  `["jellyfin"]`. Other promises continue to dry-run-shadow as in
+  Phase 4. Soak for ~24h on compose; confirm `JELLYFIN_API_KEY`
+  state matches what the legacy `jellyfin:ensure-api-key` Phase 0
+  ensurer produced. Keep the legacy ensurer running in parallel
+  during the soak — both being idempotent, double-mint is a no-op.
+
+- **Phase 5b (`~1-2 days`):** expand allowlist to Servarr family
+  (sonarr, radarr, lidarr, readarr, prowlarr). Soak ~24h. Servarr
+  "mint" is poll-and-wait (auto-generated config.xml); the
+  orchestrator's mint just observes whether the file is there yet,
+  so the risk is even lower than Jellyfin's REST mint.
+
+- **Phase 5c (`~2-3 days`):** expand to qBittorrent + SABnzbd +
+  Bazarr + Jellyseerr + Maintainerr (the file-based + auth-cookie
+  families). Then auth + no-API-key services (Authelia, Authentik,
+  Homepage, FlareSolverr, Envoy).
+
+- **Phase 5d (`~2 days`):** retire the legacy ensurer hooks in
+  `api/services/auto_heal.py` (the per-service `run_job` calls for
+  `jellyfin:ensure-api-key`, `jobs:close-stale-runs`, etc.). The
+  orchestrator covers the same ground via its own ensurer cycle.
+
+- **Phase 5e (`~3 days`):** delete `_run_preflights`,
+  `_try_satisfy_prereqs`, `phase_scripts.media_server_bootstrap`
+  field, `compose_preflight_handler` field, the `max_attempts`
+  retry loop in `JobRunner.run()`, and `media-stack-probe-promises`
+  CLI (same code path as the orchestrator now).
+
+Rollback: at any phase, revert the allowlist to the previous size.
+The orchestrator's ensurers are idempotent, so a regression
+("orchestrator and legacy disagree on what should happen") just
+shows up as a no-op overlap; revert to shadow and investigate.
 
 **Phase 6 (cleanup):**
 

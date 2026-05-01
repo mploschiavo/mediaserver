@@ -51,11 +51,17 @@ ROOT = Path(__file__).resolve().parents[3]
 INFRA_ENSURED_BY = {"kubectl-apply", "operator", "seed-runtime-overrides"}
 
 # Supported probe types. K8s-specific ones only valid when the promise
-# is tagged ``platforms: [k8s]``.
+# is tagged ``platforms: [k8s]``. The ``lifecycle`` type is the
+# ADR-0003 Phase 4a addition; lifecycle-typed entries are validated
+# by ``test_promise_dispatch_resolution_ratchet.py`` (which checks
+# the resolved class + method actually exist), so this legacy ratchet
+# accepts the type literal but skips the legacy ``assert``-expression
+# requirement for it.
 COMPOSE_PROBE_TYPES = {"http_json", "http_text", "http_status",
                        "file_json", "file_text"}
 K8S_PROBE_TYPES = {"k8s_resource", "k8s_exec"}
-ALL_PROBE_TYPES = COMPOSE_PROBE_TYPES | K8S_PROBE_TYPES
+LIFECYCLE_PROBE_TYPES = {"lifecycle"}
+ALL_PROBE_TYPES = COMPOSE_PROBE_TYPES | K8S_PROBE_TYPES | LIFECYCLE_PROBE_TYPES
 
 # Allowed kinds for k8s_resource probes.
 ALLOWED_K8S_KINDS = {
@@ -199,6 +205,12 @@ class PromisesRegistryConsistent(unittest.TestCase):
                     f"(supported: {sorted(ALL_PROBE_TYPES)})"
                 )
                 continue
+            # Lifecycle probes don't have an ``assert:`` expression —
+            # the lifecycle method's ProbeResult IS the assertion.
+            # Validation of service+method resolution is handled by
+            # test_promise_dispatch_resolution_ratchet.py.
+            if ptype in LIFECYCLE_PROBE_TYPES:
+                continue
             if "assert" not in probe:
                 bad.append(f"  {pid}: probe missing ``assert`` expression")
             platforms = set(p.get("platforms") or [])
@@ -235,6 +247,13 @@ class PromisesRegistryConsistent(unittest.TestCase):
             pid = p.get("id")
             ensured = p.get("ensured_by")
             platforms = set(p.get("platforms") or [])
+            # ADR-0003 Phase 4a: dict-typed ensurers (lifecycle /
+            # deploy / infra / job) are validated by the
+            # test_promise_dispatch_resolution_ratchet.py — skip
+            # them here so the legacy meta-ratchet's narrower
+            # vocabulary doesn't block the new schema.
+            if isinstance(ensured, dict):
+                continue
             if ensured in INFRA_ENSURED_BY:
                 # seed-runtime-overrides is agnostic (bootstrap seeds
                 # on both platforms); kubectl-apply/operator are k8s-
@@ -271,7 +290,13 @@ class PromisesRegistryConsistent(unittest.TestCase):
         """Every ``ensure-*`` job in contracts SHOULD appear as an
         ``ensured_by`` somewhere. Orphans likely indicate the registry
         drifted away from the real bootstrap surface."""
-        referenced = {p.get("ensured_by") for p in self.promises}
+        # Dict-typed ensurers (Phase 4a) aren't hashable — collect
+        # only the string-typed ones for the orphan check. Dict
+        # ensurers don't reference contract jobs anyway.
+        referenced = {
+            p.get("ensured_by") for p in self.promises
+            if isinstance(p.get("ensured_by"), str)
+        }
         orphans = [
             name for name in self.jobs
             if name.startswith("ensure-") and name not in referenced

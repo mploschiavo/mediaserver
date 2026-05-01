@@ -14,3 +14,15 @@ plugin:
     optional: true
   phase_scripts:
     component_key_sync: media_stack.services.apps.unpackerr.cli.sync_unpackerr_keys_main
+  jobs:
+    # The ``unpackerr-post`` ensurer name is referenced by the
+    # ``unpackerr-config-valid`` promise. Same handler the legacy
+    # post_setup_handler dispatches to (kept above for back-compat
+    # during the ADR-0003 migration). Phase 6 will collapse the two
+    # registration paths into one.
+    unpackerr-post:
+      handler: media_stack.api.preflight.unpackerr:write_config_and_restart
+      label: "Write unpackerr config and restart"
+      phase: post
+      priority: 60
+      requires: []
