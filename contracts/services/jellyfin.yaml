@@ -18,6 +18,10 @@ service:
   top_level_config_key: true
 plugin:
   technology: jellyfin
+  # ADR-0003 Phase 2: ServiceLifecycle Protocol implementation.
+  # Phase 4 will switch the orchestrator to consume this; today the
+  # field is consumed by the permissive lifecycle ratchet only.
+  lifecycle_class: media_stack.adapters.jellyfin.lifecycle:JellyfinLifecycle
   adapter_class: media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins
   capabilities:
     media_server: true

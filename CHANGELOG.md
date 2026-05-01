@@ -2,6 +2,36 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.296] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 2 — first lifecycle implementations land.** Two
+  adapters now satisfy the Phase-1 `ServiceLifecycle` Protocol:
+  - `media_stack.adapters.jellyfin.lifecycle.JellyfinLifecycle` —
+    wraps the existing `infrastructure.jellyfin` code (probe via
+    `/System/Info/Public`, discover via the canonical SQLite reader
+    with name-preference matching, mint via `http_preflight`,
+    persist via env + best-effort k8s secret patch). The 13 existing
+    Jellyfin infrastructure classes stay in place for now; Phase
+    4-6 will switch consumers over and prune the redundancy.
+  - `media_stack.adapters.servarr.lifecycle.ServarrLifecycle(service_id)` —
+    one parameterized class for sonarr / radarr / lidarr / readarr /
+    prowlarr (Bazarr is genuinely different — Phase 3). "Mint" is
+    poll-and-wait for the *arr-process-generated `<ApiKey>` in
+    `config.xml`; transient=True signals warmup, transient=False
+    signals "file present but key missing" (operator action needed).
+- **Six contract YAMLs** (jellyfin + 5 *arr) now name a
+  `plugin.lifecycle_class`. The orchestrator doesn't consume it yet
+  (Phase 4 territory) — the field is currently policed by a permissive
+  ratchet that asserts: when present, the class MUST exist and MUST
+  pass `isinstance(impl, ServiceLifecycle)`. Floor pinned at 6
+  services; ratchets upward as Phase 3 lands more.
+- 47 unit tests covering both adapters' tri-state probes, idempotent
+  mints, file-not-yet-generated transient handling, env+secret
+  persist with partial-failure semantics, and the YAML ratchet.
+- Pure additive code — runtime behavior unchanged from v1.0.294. No
+  image rebuild; legacy paths still in use until Phase 4.
+
 ## [v1.0.295] — 2026-05-01
 
 ### Architecture
