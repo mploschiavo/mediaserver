@@ -581,13 +581,57 @@ def _instantiate(dotted: str, service_id: str) -> Any:
 def _build_service_url(
     service_id: str, path: str, resolver: LifecycleResolver,
 ) -> str:
+    """Resolve ``service_id + path`` to a URL.
+
+    First tries the contracts/services/<id>.yaml file. If that's
+    absent, falls back to a small set of synthetic service ids the
+    legacy promise CLI also recognizes:
+
+      * ``controller``      — the controller's own API
+      * ``gateway_https``   — the public HTTPS edge (envoy/Traefik)
+      * ``gateway_http``    — the public HTTP edge (redirects to HTTPS)
+
+    Without these synthetic resolutions the orchestrator can't probe
+    promises like ``adaptive-search-scheduled`` (controller jobs API)
+    or ``gateway-https-listener-up`` (gateway health) — they'd all
+    return ``can't build url for service`` even though the legacy
+    CLI handles them fine.
+    """
     cfg = resolver.read_service_config(service_id)
     host = (cfg.get("host") or "").strip()
     port = cfg.get("port")
-    if not host or not port:
-        return ""
-    scheme = (cfg.get("scheme") or "http").strip()
-    return f"{scheme}://{host}:{port}{path}"
+    if host and port:
+        scheme = (cfg.get("scheme") or "http").strip()
+        return f"{scheme}://{host}:{port}{path}"
+    return _synthetic_service_url(service_id, path)
+
+
+def _synthetic_service_url(service_id: str, path: str) -> str:
+    """Hardcoded URL builders for service ids that don't have a
+    contracts/services YAML. Same shape as
+    ``probe_promises.py::_resolve_service_url`` so the orchestrator
+    and CLI agree on what these promises probe.
+
+    Returns ``""`` when the service id isn't recognized — caller
+    treats that as "can't build url".
+    """
+    import os as _os
+    in_k8s = bool(_os.environ.get("KUBERNETES_SERVICE_HOST"))
+    if service_id == "controller":
+        # Controller's own HTTP API — the orchestrator runs INSIDE the
+        # controller process, so localhost works on both platforms.
+        return f"http://localhost:9100{path}"
+    if service_id == "gateway_http":
+        host = "envoy" if in_k8s else "localhost"
+        return f"http://{host}:80{path}"
+    if service_id == "gateway_https":
+        # K8s: envoy listens on Service port 80 and serves the
+        # public vhost via Host-header routing. Compose: localhost
+        # 443 with TLS.
+        if in_k8s:
+            return f"http://envoy:80{path}"
+        return f"https://localhost:443{path}"
+    return ""
 
 
 def _auth_headers(
@@ -596,8 +640,49 @@ def _auth_headers(
     secrets: Mapping[str, str] | None,
     resolver: LifecycleResolver,
 ) -> dict[str, str]:
-    if (auth or "none").lower() != "api_key":
+    """Build the auth-header dict for an HTTP probe.
+
+    Supported ``auth`` values:
+
+      * ``none``         — no headers (default)
+      * ``api_key``      — read ``api_key_env`` from contract YAML +
+                           env/secrets, set the contract's
+                           ``auth_mode`` header (default
+                           ``X-Api-Key``)
+      * ``jellyfin_key`` — same as ``api_key`` for jellyfin
+                           specifically. Promises authored with this
+                           explicit auth type predate the lifecycle
+                           Protocol; alias preserved for back-compat
+                           so the meta-ratchet's existing
+                           ``ensured_by`` strings continue to point
+                           at probes that resolve.
+      * ``controller_basic`` / ``qbit_basic`` — not yet implemented
+                           in the orchestrator. Phase 4d / 5+ will
+                           add these once enough cross-service
+                           promises depend on them.
+    """
+    auth_l = (auth or "none").lower()
+    if auth_l == "none":
         return {}
+    if auth_l == "jellyfin_key":
+        # Jellyfin's auth header is X-Emby-Token; resolve via the
+        # service's contract (which sets auth_mode=X-Emby-Token).
+        # The api_key_env there is JELLYFIN_API_KEY.
+        return _api_key_headers("jellyfin", secrets, resolver)
+    if auth_l == "api_key":
+        return _api_key_headers(service_id, secrets, resolver)
+    # controller_basic / qbit_basic / others — not yet implemented;
+    # let the probe go through unauthenticated so we can see the
+    # resulting 401/403 in run-history. Phase 4d / 5+ will wire
+    # these up once we know which promises actually rely on them.
+    return {}
+
+
+def _api_key_headers(
+    service_id: str,
+    secrets: Mapping[str, str] | None,
+    resolver: LifecycleResolver,
+) -> dict[str, str]:
     cfg = resolver.read_service_config(service_id)
     env_var = (cfg.get("api_key_env") or "").strip()
     if not env_var:
@@ -622,11 +707,14 @@ def _http_get(url: str, headers: Mapping[str, str]) -> tuple[str, int]:
 
 
 def _resolve_file_path(rel: str) -> Path:
+    """Resolve a file probe's ``path`` against the controller's
+    config root. Falls back to ``/srv-config`` when ``CONFIG_ROOT``
+    env is unset — matching ``resolve_run_history_path``'s fallback
+    so file probes work in containers that don't explicitly set the
+    env (the typical case)."""
     import os as _os
-    config_root = (_os.environ.get("CONFIG_ROOT") or "").strip()
-    if config_root:
-        return Path(config_root) / rel
-    return Path(rel)
+    config_root = (_os.environ.get("CONFIG_ROOT") or "/srv-config").strip()
+    return Path(config_root) / rel
 
 
 def _classify_assert(

@@ -394,3 +394,152 @@ def test_infra_ensurer_returns_externally_ensured() -> None:
     )
     assert outcome.ok
     assert outcome.evidence["operator"] == "kubectl-apply"
+
+
+# --- Synthetic service-id resolution (Phase 4d) ----------------------
+
+
+class TestSyntheticServiceUrls:
+    """Promises like ``adaptive-search-scheduled`` (service:
+    ``controller``) and ``gateway-https-listener-up`` (service:
+    ``gateway_https``) reference services that don't have a
+    contracts/services YAML — those names are synthetic. The legacy
+    probe_promises CLI hardcodes their URLs; the orchestrator must
+    too, otherwise these promises always fail with "can't build url"
+    even though the legacy CLI handles them fine."""
+
+    @patch("urllib.request.urlopen")
+    def test_controller_resolves_to_localhost_9100(
+        self, mock_open: MagicMock,
+    ) -> None:
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b'{"ok": true}'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = lambda *_: None
+        mock_open.return_value = resp
+
+        # Resolver returns no service config for "controller" —
+        # synthetic resolution must fire.
+        r = _StubResolver(configs={})
+        result = dispatch_probe(
+            HttpJsonProbe(
+                service="controller", path="/api/jobs", auth="none",
+                assert_expr="response['ok']",
+            ),
+            resolver=r, now=0.0,
+        )
+        assert result.is_ok
+        # Caller hit localhost:9100, not "" (which produced the bug).
+        called_url = mock_open.call_args[0][0]
+        called_url = called_url.full_url if hasattr(called_url, "full_url") else called_url
+        assert "localhost:9100" in str(called_url)
+
+    @patch("urllib.request.urlopen")
+    def test_gateway_https_resolves_compose_to_localhost_443(
+        self, mock_open: MagicMock, monkeypatch,
+    ) -> None:
+        # KUBERNETES_SERVICE_HOST absent → compose layout.
+        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b'{}'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = lambda *_: None
+        mock_open.return_value = resp
+
+        r = _StubResolver(configs={})
+        result = dispatch_probe(
+            HttpJsonProbe(
+                service="gateway_https", path="/health", auth="none",
+                assert_expr="True",
+            ),
+            resolver=r, now=0.0,
+        )
+        assert result.is_ok
+        called_url = mock_open.call_args[0][0]
+        called_url = called_url.full_url if hasattr(called_url, "full_url") else called_url
+        assert "https://localhost:443/health" in str(called_url)
+
+    @patch("urllib.request.urlopen")
+    def test_gateway_https_resolves_k8s_to_envoy(
+        self, mock_open: MagicMock, monkeypatch,
+    ) -> None:
+        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b'{}'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = lambda *_: None
+        mock_open.return_value = resp
+
+        r = _StubResolver(configs={})
+        dispatch_probe(
+            HttpJsonProbe(
+                service="gateway_https", path="/", auth="none",
+                assert_expr="True",
+            ),
+            resolver=r, now=0.0,
+        )
+        called_url = mock_open.call_args[0][0]
+        called_url = called_url.full_url if hasattr(called_url, "full_url") else called_url
+        assert "envoy:80" in str(called_url)
+
+    def test_unknown_synthetic_service_fails_clean(self) -> None:
+        # A service id that's neither in contracts/services NOR in
+        # the synthetic list should produce a clean "can't build url"
+        # failure, not a crash.
+        r = _StubResolver(configs={})
+        result = dispatch_probe(
+            HttpJsonProbe(
+                service="not-a-real-service", path="/", auth="none",
+                assert_expr="True",
+            ),
+            resolver=r, now=0.0,
+        )
+        assert result.status == "failed"
+        assert "url" in result.detail.lower()
+
+
+# --- jellyfin_key auth alias (Phase 4d) ------------------------------
+
+
+class TestJellyfinKeyAuth:
+    """``auth: jellyfin_key`` is a promise-author shorthand for
+    "use Jellyfin's API key with its custom X-Emby-Token header".
+    The dispatcher resolves it identically to ``auth: api_key``
+    against the jellyfin contract."""
+
+    @patch("urllib.request.urlopen")
+    def test_jellyfin_key_sets_x_emby_token_header(
+        self, mock_open: MagicMock, monkeypatch,
+    ) -> None:
+        monkeypatch.setenv("JELLYFIN_API_KEY", "the-key")
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b'[]'
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = lambda *_: None
+        mock_open.return_value = resp
+
+        r = _StubResolver(configs={
+            "jellyfin": {
+                "host": "jellyfin", "port": 8096,
+                "api_key_env": "JELLYFIN_API_KEY",
+                "auth_mode": "X-Emby-Token",
+            },
+        })
+        dispatch_probe(
+            HttpJsonProbe(
+                service="jellyfin",
+                path="/Library/VirtualFolders",
+                auth="jellyfin_key",
+                assert_expr="isinstance(response, list)",
+            ),
+            resolver=r, now=0.0,
+        )
+        # The Request object's headers dict carries the auth.
+        req = mock_open.call_args[0][0]
+        # urllib normalizes header names to title case.
+        headers = {k.lower(): v for k, v in req.headers.items()}
+        assert headers.get("x-emby-token") == "the-key"
