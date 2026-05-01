@@ -121,6 +121,20 @@ plugin:
   call_handlers:
     activate_media_server_plugins: media_stack.services.apps.jellyfin.cli.controller_hooks:activate_media_server_plugins
   compose_preflight_handler: media_stack.services.apps.jellyfin.compose_preflight:ensure_compose_jellyfin_bootstrap_access
+
+  # Phase 0 of ADR-0003: a self-healing ensurer that runs on the
+  # auto-heal cycle (every 60s) and mints the Jellyfin API key if
+  # ``discover_api_keys()`` doesn't already include it. Idempotent —
+  # once minted, the probe short-circuits the mint flow on every
+  # subsequent tick. This is the first concrete promise-style
+  # ensurer; ServiceLifecycle will subsume it in ADR-0003 Phase 2.
+  jobs:
+    "jellyfin:ensure-api-key":
+      handler: "media_stack.application.jellyfin.ensure_api_key:ensure_jellyfin_api_key"
+      label: "Ensure Jellyfin API key is discoverable"
+      phase: post
+      priority: 80
+      requires: []
 defaults:
   libraries:
     enabled: true
