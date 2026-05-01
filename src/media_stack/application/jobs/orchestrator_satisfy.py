@@ -36,39 +36,54 @@ logger = logging.getLogger(__name__)
 
 
 def satisfy_shadow(_ctx: JobContext) -> dict[str, Any]:
-    """One ``satisfy_promises`` tick in dry-run shadow mode.
+    """One ``satisfy_promises`` tick in shadow mode.
 
     Returns the framework-expected result dict. JobRunner records
     a terminal status from ``status``/``skipped``; the summary fields
     end up in the run-history record so operators can chart "ok vs
     failed over time" without parsing logs.
+
+    Phase 5 staged-rollout knob: ``ORCHESTRATOR_LIVE_SERVICES`` env
+    is a comma-separated list of service ids whose ensurers should
+    run for real (instead of dry-run-shadow). Empty/unset = full
+    shadow (Phase 4c default). Phase 5a deploy sets
+    ``ORCHESTRATOR_LIVE_SERVICES=jellyfin``; 5b adds servarr family;
+    etc. Operators can flip this without rebuilding the image —
+    intentional, so a regression in 5a can revert with a single
+    env-var change.
     """
     from media_stack.application.services.orchestrator import (
         satisfy_promises,
     )
 
     platform = _detect_platform()
+    live_services = _live_services_from_env()
     summary = satisfy_promises(
         platform=platform,
         dry_run=True,
+        live_services=live_services,
         history_emit=_no_op_emit,
     )
 
+    live_services_str = ",".join(sorted(live_services)) if live_services else ""
     if summary.has_failures:
         logger.info(
-            "[orchestrator:satisfy-shadow] %s (%.2fs); platform=%s",
+            "[orchestrator:satisfy-shadow] %s (%.2fs); platform=%s; live=%s",
             summary.summary_line(), summary.elapsed_seconds, platform,
+            live_services_str or "(none)",
         )
     else:
         logger.debug(
-            "[orchestrator:satisfy-shadow] %s (%.2fs); platform=%s",
+            "[orchestrator:satisfy-shadow] %s (%.2fs); platform=%s; live=%s",
             summary.summary_line(), summary.elapsed_seconds, platform,
+            live_services_str or "(none)",
         )
 
     return {
         "status": "ok",
         "platform": platform,
         "elapsed": round(summary.elapsed_seconds, 3),
+        "live_services": live_services_str,
         "total": summary.total,
         "ok_count": summary.ok,
         "failed_transient_count": summary.failed_transient,
@@ -78,6 +93,21 @@ def satisfy_shadow(_ctx: JobContext) -> dict[str, Any]:
         "skipped_platform_count": summary.skipped_platform,
         "unknown_count": summary.unknown,
     }
+
+
+def _live_services_from_env() -> "frozenset[str] | None":
+    """Read ``ORCHESTRATOR_LIVE_SERVICES`` env (comma-separated). Empty
+    or unset → ``None`` (full dry-run shadow, Phase 4c default).
+
+    Examples:
+      ORCHESTRATOR_LIVE_SERVICES=jellyfin               → 5a
+      ORCHESTRATOR_LIVE_SERVICES=jellyfin,sonarr,radarr → mid-5b
+    """
+    raw = (os.environ.get("ORCHESTRATOR_LIVE_SERVICES") or "").strip()
+    if not raw:
+        return None
+    parts = frozenset(s.strip().lower() for s in raw.split(",") if s.strip())
+    return parts or None
 
 
 def _detect_platform() -> str:

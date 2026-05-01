@@ -2,6 +2,41 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.306] — 2026-05-01
+
+### Architecture
+- **ADR-0003 Phase 5a — Jellyfin promoted from shadow to primary.**
+  First service-family to graduate out of dry-run-shadow.
+  - New `live_services` parameter on `satisfy_promises(...)` —
+    a frozenset of service ids whose ensurers run for real (vs
+    dry-run-shadow). Other promises continue to dry-run.
+    Promises with no service id (file probes, infra ensurers)
+    always honor the global `dry_run` flag, so an operator
+    flipping jellyfin live can't accidentally promote unrelated
+    file-based promises.
+  - Handler reads `ORCHESTRATOR_LIVE_SERVICES` env (comma-separated,
+    case-insensitive) and passes it through. Operators can flip
+    the rollout family by family without re-deploying the image —
+    `kubectl set env` or compose env override.
+  - 5a deploy sets `ORCHESTRATOR_LIVE_SERVICES=jellyfin` on both
+    compose and k8s. Legacy `jellyfin:ensure-api-key` Phase 0
+    ensurer continues to run in parallel during the soak — both
+    are idempotent, so double-mint is a no-op.
+- 7 new unit tests (live_services allowlist behavior on various
+  shapes + env-var parsing edge cases).
+
+### Operational
+- `deploy/compose/docker-compose.yml` controller env adds
+  `ORCHESTRATOR_LIVE_SERVICES` (default `jellyfin`, overridable via
+  outer env).
+- `deploy/k8s/base/controller/controller.yaml` controller env adds
+  `ORCHESTRATOR_LIVE_SERVICES: jellyfin`. Pin bumped to v1.0.306.
+
+### Rollback
+If 5a regresses: `kubectl -n media-stack set env deployment/media-
+stack-controller ORCHESTRATOR_LIVE_SERVICES=` (or remove from compose
+env) reverts to full Phase-4c shadow without touching the image.
+
 ## [v1.0.305] — 2026-05-01
 
 ### Architecture
