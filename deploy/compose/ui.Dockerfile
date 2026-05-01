@@ -65,6 +65,14 @@ ENV MEDIA_STACK_UI_VERSION=${VERSION} \
 # template overwrites it on entrypoint via envsubst.
 COPY deploy/compose/ui-nginx.conf /etc/nginx/templates/default.conf.template
 
+# Sourced before the base image's 20-envsubst-on-templates.sh so the
+# RESOLVER it exports is available for substitution. Reads the actual
+# DNS server from /etc/resolv.conf — works on compose (Docker DNS)
+# AND k8s (CoreDNS) without per-platform config divergence. Required
+# for the ``resolver ${RESOLVER} ...`` directive in the nginx template
+# to receive a valid value at startup.
+COPY --chmod=755 deploy/compose/15-set-resolver.envsh /docker-entrypoint.d/15-set-resolver.envsh
+
 # Bake the Vite-built static bundle. Nothing else is shipped — the
 # legacy dashboard.html and api/static/ are owned by the build stage
 # only and don't reach this image.

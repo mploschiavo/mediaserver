@@ -1,0 +1,49 @@
+#!/bin/sh
+# Runtime-extracted DNS resolver for the UI nginx — fixes the
+# nginx-in-Docker stale-DNS bug class on both compose AND k8s
+# without per-platform config divergence.
+#
+# Background: nginx caches the result of resolving an upstream
+# hostname (like ``media-stack-controller``) at config-load time
+# unless the proxy_pass directive uses a runtime VARIABLE plus a
+# ``resolver`` directive. Without that, every ``docker compose up
+# -d --force-recreate`` of an upstream gives the container a new
+# IP, and the UI nginx keeps trying the old one — every /api/*
+# request returns 502 Bad Gateway until the UI container itself
+# is restarted.
+#
+# Fix: combine
+#   - This hook (extracts the actual DNS server from
+#     ``/etc/resolv.conf`` and exports ``RESOLVER``)
+#   - ``resolver ${RESOLVER} valid=10s ipv6=off;`` in the nginx
+#     template
+#   - ``set $controller_upstream "${API_UPSTREAM}"; proxy_pass
+#     http://$controller_upstream;`` in each location block
+#
+# The ``set`` + variable in proxy_pass defers DNS resolution to
+# request time. The resolver directive controls the cache TTL.
+# After every controller recreate, the next /api/* request
+# re-resolves within 10s automatically. No human action required.
+#
+# Why this works on both compose and k8s:
+#   - On compose, ``/etc/resolv.conf`` points at Docker's embedded
+#     DNS (typically 127.0.0.11), which always resolves the
+#     correct container.
+#   - On k8s, ``/etc/resolv.conf`` is injected by the kubelet and
+#     points at CoreDNS (typically 10.96.0.10), which resolves
+#     Service hostnames to stable ClusterIPs. Same hook reads the
+#     correct value either way.
+#
+# Sourced (not executed) by the base image's docker-entrypoint
+# because of the ``.envsh`` extension. Runs at priority 15 so the
+# RESOLVER export is visible to ``20-envsubst-on-templates.sh``.
+
+set -e
+
+RESOLVER=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
+if [ -z "$RESOLVER" ]; then
+    echo "[15-set-resolver.envsh] WARN: no nameserver in /etc/resolv.conf — falling back to 127.0.0.11 (Docker default)" >&2
+    RESOLVER="127.0.0.11"
+fi
+echo "[15-set-resolver.envsh] RESOLVER=${RESOLVER}"
+export RESOLVER
