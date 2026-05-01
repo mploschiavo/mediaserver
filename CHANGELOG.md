@@ -2,6 +2,26 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.303] — 2026-05-01
+
+### Fixed
+- **Phase 4c container path resolution.** The first 4c deploy
+  (v1.0.302) loaded a registry of zero promises in the container —
+  `default_registry_path()` used `Path(__file__).parents[4]` which
+  pointed at the site-packages root inside the container, not the
+  repo root. Walks a candidate list now (env override
+  `MEDIA_STACK_CONTRACTS_ROOT`, then dev path, then standard
+  container paths `/app/contracts/`, `/contracts/`,
+  `/usr/local/share/media-stack/contracts/`, `/opt/media-stack/contracts/`)
+  and returns the first that exists. Same fix for
+  `dispatcher._default_contracts_dir()` and the matching
+  `default_contracts_root()` helper. `cooldown.default_state_path()`
+  now falls back to `/srv-config` (matching `resolve_run_history_path`)
+  instead of relative `config/`.
+- 34 existing tests cover the path resolution; live verified that
+  v1.0.303 loads the full 52-entry registry and writes
+  `promise_state.json` to the same dir as `run-history.jsonl`.
+
 ## [v1.0.302] — 2026-05-01
 
 ### Architecture

@@ -554,7 +554,12 @@ def _ensure_job(spec: JobEnsurer, now: float) -> Outcome[Any]:
 
 
 def _default_contracts_dir() -> Path:
-    return Path(__file__).resolve().parents[4] / "contracts" / "services"
+    """Use the shared root resolver so dev + container layouts both
+    work. Returns the ``services/`` subdirectory."""
+    from media_stack.infrastructure.promises.registry import (
+        default_contracts_root,
+    )
+    return default_contracts_root() / "services"
 
 
 def _instantiate(dotted: str, service_id: str) -> Any:
