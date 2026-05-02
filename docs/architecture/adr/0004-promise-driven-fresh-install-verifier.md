@@ -1,7 +1,19 @@
 # ADR-0004 — Promise-driven fresh-install verifier
 
-**Status:** Draft (2026-05-02). Builds on ADR-0003. ~1 week of focused
-work, or ~2 as a side stream.
+**Status:** Mostly shipped (v1.0.310, 2026-05-02). Builds on ADR-0003.
+
+- **Phase 6.1**: shipped — `GET /api/orchestrator/promises/state`
+  endpoint (`api/services/orchestrator_state.py`).
+- **Phase 6.2**: shipped — `FreshInstallVerifier` class
+  (`application/verifier/fresh_install.py`), external-client mode
+  with `verify()` + `wait_for_steady_state()`.
+- **Phase 6.3**: shipped — `media-stack-verify` console-script CLI
+  (`cli/commands/verify_fresh_install.py`).
+- **Phase 6.4**: shipped — `bin/test/verify-fresh-install.sh` switched
+  from `media-stack-probe-promises` to `media-stack-verify --wait 90`.
+- **Phase 6.5**: pending — delete legacy
+  `media-stack-probe-promises` CLI after one stable release of
+  soak. Closes ADR-0003 Phase 5e.2.
 
 ## Context
 
