@@ -322,17 +322,26 @@ class TestStorageBreakdown(unittest.TestCase):
 
 class TestScheduler(unittest.TestCase):
     def setUp(self):
-        self._tmpfile = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
-        self._tmpfile.close()
-        os.unlink(self._tmpfile.name)
-        sched_mod._SCHEDULES_FILE = Path(self._tmpfile.name)
+        # The module no longer carries a ``_SCHEDULES_FILE`` constant
+        # — ``_schedules_path()`` resolves
+        # ``$CONFIG_ROOT/.controller/schedules.json`` on every call so
+        # tests that flip CONFIG_ROOT see the override immediately.
+        # Point CONFIG_ROOT at a per-test tmp dir so the file lands
+        # inside it instead of in the prod ``/srv-config`` mount.
+        self._tmpdir = tempfile.mkdtemp(prefix="sched_test_")
+        self._old_config_root = os.environ.get("CONFIG_ROOT")
+        os.environ["CONFIG_ROOT"] = self._tmpdir
+        # Path the module will compute when it next resolves; tests
+        # that read the persisted JSON directly use this.
+        self._schedules_file = Path(self._tmpdir) / ".controller" / "schedules.json"
 
     def tearDown(self):
-        sched_mod._SCHEDULES_FILE = None
-        try:
-            os.unlink(self._tmpfile.name)
-        except FileNotFoundError:
-            pass
+        if self._old_config_root is None:
+            os.environ.pop("CONFIG_ROOT", None)
+        else:
+            os.environ["CONFIG_ROOT"] = self._old_config_root
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_empty_schedules(self):
         result = sched_mod.get_schedules()
@@ -378,7 +387,7 @@ class TestScheduler(unittest.TestCase):
 
     def test_persists_to_file(self):
         sched_mod.add_schedule("test", 120)
-        data = json.loads(Path(self._tmpfile.name).read_text())
+        data = json.loads(self._schedules_file.read_text())
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["action"], "test")
 

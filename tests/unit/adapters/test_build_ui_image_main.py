@@ -165,8 +165,10 @@ def test_parse_config_uses_defaults(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("DOCKERFILE", raising=False)
     monkeypatch.delenv("CONTAINER_ENGINE", raising=False)
     (tmp_path / "VERSION-UI").write_text("1.0.0\n")
-    docker_dir = tmp_path / "docker"
-    docker_dir.mkdir()
+    # Prod resolves DOCKERFILE to ``deploy/compose/ui.Dockerfile`` —
+    # the old ``docker/`` location was retired in the deploy/ reorg.
+    docker_dir = tmp_path / "deploy" / "compose"
+    docker_dir.mkdir(parents=True)
     (docker_dir / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
 
     cfg = ui_build.parse_config([])
@@ -180,8 +182,8 @@ def test_parse_config_no_push_flag(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ui_build, "repo_root_from_script_file", lambda _: tmp_path)
     monkeypatch.setattr(ui_build.shutil, "which", lambda n: "/usr/bin/docker")
     (tmp_path / "VERSION-UI").write_text("1.0.0\n")
-    (tmp_path / "docker").mkdir()
-    (tmp_path / "docker" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
+    (tmp_path / "deploy" / "compose").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "deploy" / "compose" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
     cfg = ui_build.parse_config(["--no-push"])
     assert cfg.push_image is False
 
@@ -189,8 +191,8 @@ def test_parse_config_no_push_flag(monkeypatch, tmp_path: Path) -> None:
 def test_parse_config_explicit_image(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ui_build, "repo_root_from_script_file", lambda _: tmp_path)
     monkeypatch.setattr(ui_build.shutil, "which", lambda n: "/usr/bin/docker")
-    (tmp_path / "docker").mkdir()
-    (tmp_path / "docker" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
+    (tmp_path / "deploy" / "compose").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "deploy" / "compose" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
     cfg = ui_build.parse_config(["--image", "ghcr.io/me/ui:1.2.3"])
     assert cfg.image == "ghcr.io/me/ui:1.2.3"
 
@@ -198,8 +200,8 @@ def test_parse_config_explicit_image(monkeypatch, tmp_path: Path) -> None:
 def test_parse_config_rejects_empty_image(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ui_build, "repo_root_from_script_file", lambda _: tmp_path)
     monkeypatch.setattr(ui_build.shutil, "which", lambda n: "/usr/bin/docker")
-    (tmp_path / "docker").mkdir()
-    (tmp_path / "docker" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
+    (tmp_path / "deploy" / "compose").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "deploy" / "compose" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
     with pytest.raises(ConfigError, match="cannot be empty"):
         ui_build.parse_config(["--image", "  "])
 
@@ -305,8 +307,8 @@ def test_main_returns_zero_on_success(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ui_build, "repo_root_from_script_file", lambda _: tmp_path)
     monkeypatch.setattr(ui_build.shutil, "which", lambda n: "/usr/bin/docker")
     (tmp_path / "VERSION-UI").write_text("1.0.0\n")
-    (tmp_path / "docker").mkdir()
-    (tmp_path / "docker" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
+    (tmp_path / "deploy" / "compose").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "deploy" / "compose" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
     _make_lockfile(tmp_path)
     monkeypatch.setattr(ui_build, "run_command", lambda args: None)
     rc = ui_build.main(["--no-push"])
