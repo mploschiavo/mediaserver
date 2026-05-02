@@ -2,6 +2,40 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.312] — 2026-05-02
+
+### Architecture
+- **Orchestrator now implements k8s_resource + k8s_exec probe types.**
+  Previously stubbed as `unknown` with detail "k8s_resource probe
+  not implemented in orchestrator (Phase 5+)" — that string was a
+  TODO in production code. The legacy `media-stack-probe-promises`
+  CLI handled these via kubectl shell-out from the operator's host;
+  the orchestrator runs INSIDE the controller pod and now uses the
+  kubernetes Python client + the controller's service account RBAC
+  (no kubectl binary dependency).
+  - `k8s_resource`: lists pvc / pv / pod / deployment / service /
+    ingress / secret via the appropriate `list_*` API. Cluster-scoped
+    PV ignores any namespace field. ApiException → `unknown` (cooldown
+    applies); assert-failure → `failed`.
+  - `k8s_exec`: finds the first Running pod matching `pod_label`
+    via `field_selector="status.phase=Running"`, exec's the command
+    via `kubernetes.stream.stream`, evaluates the assert against
+    stdout. Routing-var `${var}` substitution works on both the
+    command and the assert expression. `skip_if_unset` lets a
+    promise be N/A for deployments that haven't configured the
+    referenced routing var.
+  - 16 new dispatcher tests pin both probes' contracts (k8s
+    available + happy path, label_selector pass-through, cluster-
+    scoped kind, unsupported kind, k8s unavailable → unknown,
+    ApiException → unknown, no-Running-pod → failed, skip_if_unset
+    pass, var substitution).
+
+### Impact
+- K8s `media-stack-verify` should drop from ~14 unknown to near-zero
+  for `k8s_resource`/`k8s_exec` probes (real failures stay flagged
+  honestly; the verifier was reporting them as unknown only because
+  the dispatcher was a stub).
+
 ## [v1.0.311] — 2026-05-02
 
 ### Architecture

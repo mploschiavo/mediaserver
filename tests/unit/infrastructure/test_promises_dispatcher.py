@@ -299,25 +299,330 @@ def test_file_text_probe(tmp_path: Path) -> None:
     assert result.is_ok
 
 
-# --- K8s probes (Phase 5+ stubs) --------------------------------------
+# --- K8s resource probes ----------------------------------------------
 
 
-def test_k8s_probes_return_unknown_with_phase5_message() -> None:
-    # Until the kubectl-shellout integration lands, the orchestrator
-    # records these as unknown. The legacy probe_promises CLI still
-    # handles them; the orchestrator just doesn't re-implement.
-    r = dispatch_probe(
-        K8sResourceProbe(resource_kind="pvc", namespace="x", assert_expr="True"),
-        resolver=_StubResolver(), now=0.0,
+class _FakeK8sItem:
+    """Mimics a kubernetes client list-response item — supports the
+    ``.to_dict()`` accessor the dispatcher uses + the
+    ``.metadata.name`` accessor used by the pod-exec probe."""
+
+    def __init__(self, payload: dict, name: str = "") -> None:
+        self._payload = payload
+        meta = MagicMock()
+        meta.name = name or payload.get("metadata", {}).get("name", "")
+        self.metadata = meta
+
+    def to_dict(self) -> dict:
+        return self._payload
+
+
+class _FakeK8sListResp:
+    def __init__(self, items: list) -> None:
+        self.items = items
+
+
+def _patch_k8s_clients(*, core=None, apps=None, net=None):
+    """Patch the dispatcher's k8s loader to return given API stubs.
+
+    Each arg is a MagicMock (or None to use a fresh MagicMock). The
+    ``_load_k8s_clients`` helper is patched to return the triple."""
+    core = core or MagicMock()
+    apps = apps or MagicMock()
+    net = net or MagicMock()
+    return patch(
+        "media_stack.infrastructure.promises.dispatcher._load_k8s_clients",
+        return_value=(core, apps, net),
     )
-    assert r.status == "unknown"
-    assert "Phase 5" in r.detail
 
-    r2 = dispatch_probe(
-        K8sExecProbe(namespace="x", pod_label="app=y", assert_expr="True"),
-        resolver=_StubResolver(), now=0.0,
-    )
-    assert r2.status == "unknown"
+
+class TestK8sResourceProbe:
+    def test_pvc_list_namespaced_passes_when_assert_holds(self) -> None:
+        items = [
+            _FakeK8sItem({"status": {"phase": "Bound"}, "metadata": {"name": "pvc-1"}}),
+            _FakeK8sItem({"status": {"phase": "Bound"}, "metadata": {"name": "pvc-2"}}),
+        ]
+        core = MagicMock()
+        core.list_namespaced_persistent_volume_claim.return_value = (
+            _FakeK8sListResp(items)
+        )
+        with _patch_k8s_clients(core=core):
+            result = dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="pvc",
+                    namespace="media-stack",
+                    assert_expr=(
+                        "len(resources) > 0 and "
+                        "all(p['status']['phase'] == 'Bound' for p in resources)"
+                    ),
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok, result.detail
+        core.list_namespaced_persistent_volume_claim.assert_called_once_with(
+            namespace="media-stack",
+        )
+
+    def test_pvc_assert_failure_is_failed_not_unknown(self) -> None:
+        # One PVC in Pending — assert wants all Bound. The dispatcher
+        # MUST report this as failed, not unknown (the API call worked,
+        # the world just doesn't satisfy the invariant).
+        items = [
+            _FakeK8sItem({"status": {"phase": "Bound"}}),
+            _FakeK8sItem({"status": {"phase": "Pending"}}),
+        ]
+        core = MagicMock()
+        core.list_namespaced_persistent_volume_claim.return_value = (
+            _FakeK8sListResp(items)
+        )
+        with _patch_k8s_clients(core=core):
+            result = dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="pvc", namespace="x",
+                    assert_expr="all(p['status']['phase'] == 'Bound' for p in resources)",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.status == "failed"
+
+    def test_pv_is_cluster_scoped_ignores_namespace(self) -> None:
+        # PV is cluster-scoped — the dispatcher must call
+        # list_persistent_volume, NOT a namespaced variant, even
+        # if the YAML happens to set a namespace.
+        items = [
+            _FakeK8sItem({
+                "spec": {
+                    "claimRef": {"name": "media-stack-media"},
+                    "persistentVolumeReclaimPolicy": "Retain",
+                },
+            }),
+        ]
+        core = MagicMock()
+        core.list_persistent_volume.return_value = _FakeK8sListResp(items)
+        with _patch_k8s_clients(core=core):
+            result = dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="pv",
+                    namespace="ignored-because-cluster-scoped",
+                    assert_expr=(
+                        "any('media-stack-media' in p['spec']['claimRef']['name'] "
+                        "and p['spec']['persistentVolumeReclaimPolicy'] == 'Retain' "
+                        "for p in resources)"
+                    ),
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok
+        core.list_persistent_volume.assert_called_once_with()
+        core.list_namespaced_persistent_volume_claim.assert_not_called()
+
+    def test_label_selector_passed_through(self) -> None:
+        items = [_FakeK8sItem({"status": {"phase": "Running",
+                                         "containerStatuses": [{"ready": True}]}})]
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _FakeK8sListResp(items)
+        with _patch_k8s_clients(core=core):
+            dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="pod", namespace="media-stack",
+                    label_selector="app=authelia",
+                    assert_expr="any(c.get('ready') for p in resources for c in p['status']['containerStatuses'])",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        kwargs = core.list_namespaced_pod.call_args.kwargs
+        assert kwargs["label_selector"] == "app=authelia"
+        assert kwargs["namespace"] == "media-stack"
+
+    def test_unsupported_resource_kind_is_failed(self) -> None:
+        with _patch_k8s_clients():
+            result = dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="customresource", namespace="x",
+                    assert_expr="True",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.status == "failed"
+        assert "unsupported kind" in result.detail
+
+    def test_empty_resource_kind_is_failed(self) -> None:
+        result = dispatch_probe(
+            K8sResourceProbe(resource_kind="", assert_expr="True"),
+            resolver=_StubResolver(), now=0.0,
+        )
+        assert result.status == "failed"
+        assert "missing 'kind'" in result.detail
+
+    def test_k8s_unavailable_returns_unknown(self) -> None:
+        # When the dispatcher can't load the k8s client (running on
+        # compose, kubeconfig absent, etc.) it returns unknown so the
+        # orchestrator's cooldown applies — not failed (which would
+        # imply we KNOW the world doesn't satisfy the promise).
+        with patch(
+            "media_stack.infrastructure.promises.dispatcher._load_k8s_clients",
+            return_value=None,
+        ):
+            result = dispatch_probe(
+                K8sResourceProbe(resource_kind="pvc", namespace="x",
+                                 assert_expr="True"),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.status == "unknown"
+        assert "k8s client unavailable" in result.detail
+
+    def test_api_exception_becomes_unknown(self) -> None:
+        # ApiException / RBAC failure / network blip → unknown,
+        # NOT failed. The cooldown tracker re-tries on transient
+        # backoff; a "failed" status would imply the cluster is
+        # answering with "no, it's not bound" which is false here.
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = RuntimeError("403 Forbidden")
+        with _patch_k8s_clients(core=core):
+            result = dispatch_probe(
+                K8sResourceProbe(resource_kind="pod", namespace="x",
+                                 assert_expr="True"),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.status == "unknown"
+        assert "list failed" in result.detail
+
+
+# --- K8s pod-command probes -------------------------------------------
+
+
+class TestK8sPodCommandProbe:
+    def test_running_pod_command_passes_when_stdout_satisfies_assert(self) -> None:
+        pods = _FakeK8sListResp([_FakeK8sItem({}, name="envoy-abc123")])
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = pods
+        with _patch_k8s_clients(core=core), \
+                patch("kubernetes.stream.stream", return_value="my.host.example.com\n") as patched_stream:
+            result = dispatch_probe(
+                K8sExecProbe(
+                    namespace="media-stack", pod_label="app=envoy",
+                    container="envoy",
+                    command=("sh", "-c", "grep my.host /etc/envoy/envoy.yaml"),
+                    assert_expr="len(data.strip()) > 0",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok
+        # Pod lookup uses field selector for status.phase=Running so
+        # only ready-to-run pods get picked.
+        core.list_namespaced_pod.assert_called_once()
+        kw = core.list_namespaced_pod.call_args.kwargs
+        assert kw["field_selector"] == "status.phase=Running"
+        assert kw["label_selector"] == "app=envoy"
+        # Stream call carried the container kwarg (we explicitly chose envoy).
+        stream_kwargs = patched_stream.call_args.kwargs
+        assert stream_kwargs["container"] == "envoy"
+
+    def test_no_running_pod_is_failed(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _FakeK8sListResp([])
+        with _patch_k8s_clients(core=core):
+            result = dispatch_probe(
+                K8sExecProbe(
+                    namespace="media-stack", pod_label="app=missing",
+                    command=("echo", "x"), assert_expr="data == 'x\\n'",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.status == "failed"
+        assert "no Running pod" in result.detail
+
+    def test_skip_if_unset_passes_with_skipped_message(self) -> None:
+        # The probe references gateway_host but the deployment hasn't
+        # configured it — promise is N/A; pass with a "skipped" detail
+        # so it doesn't poison acceptance.
+        with patch(
+            "media_stack.infrastructure.promises.dispatcher."
+            "_resolve_routing_vars_for_substitution",
+            return_value={},
+        ):
+            result = dispatch_probe(
+                K8sExecProbe(
+                    namespace="media-stack", pod_label="app=envoy",
+                    command=("sh", "-c", "grep ${gateway_host} /etc/envoy/envoy.yaml"),
+                    assert_expr="len(data) > 0",
+                    skip_if_unset="gateway_host",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok
+        assert "skipped" in result.detail
+
+    def test_routing_var_substitution_in_command_and_assert(self) -> None:
+        # Assert references ${gateway_host}; both the command's grep
+        # arg and the assert literal must get the substituted value.
+        pods = _FakeK8sListResp([_FakeK8sItem({}, name="hp-pod")])
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = pods
+
+        captured_cmd: list = []
+
+        def _fake_stream(_func, _pod, _ns, **kw):
+            captured_cmd.extend(kw["command"])
+            return "0\n"
+
+        with _patch_k8s_clients(core=core), \
+                patch(
+                    "media_stack.infrastructure.promises.dispatcher."
+                    "_resolve_routing_vars_for_substitution",
+                    return_value={"gateway_host": "real.example.com"},
+                ), patch("kubernetes.stream.stream", side_effect=_fake_stream):
+            result = dispatch_probe(
+                K8sExecProbe(
+                    namespace="media-stack", pod_label="app=homepage",
+                    command=(
+                        "sh", "-c",
+                        "grep -F 'apps.media-stack.local' /app/cfg | wc -l",
+                    ),
+                    assert_expr=(
+                        "data.strip() == '0' or "
+                        "'${gateway_host}' == 'apps.media-stack.local'"
+                    ),
+                    skip_if_unset="gateway_host",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok, result.detail
+        # The command in this promise has no ${gateway_host} placeholder,
+        # so the literal apps.media-stack.local stays unchanged. The
+        # assert IS substituted: 'real.example.com' != 'apps.media-stack.local'
+        # leaves data.strip() == '0' as the satisfying branch.
+        assert "apps.media-stack.local" in " ".join(captured_cmd)
+
+    def test_missing_namespace_is_failed(self) -> None:
+        result = dispatch_probe(
+            K8sExecProbe(namespace="", pod_label="app=x",
+                         command=("echo",), assert_expr="True"),
+            resolver=_StubResolver(), now=0.0,
+        )
+        assert result.status == "failed"
+        assert "missing namespace" in result.detail
+
+    def test_missing_command_is_failed(self) -> None:
+        result = dispatch_probe(
+            K8sExecProbe(namespace="x", pod_label="app=x",
+                         command=(), assert_expr="True"),
+            resolver=_StubResolver(), now=0.0,
+        )
+        assert result.status == "failed"
+
+    def test_k8s_unavailable_returns_unknown(self) -> None:
+        with patch(
+            "media_stack.infrastructure.promises.dispatcher._load_k8s_clients",
+            return_value=None,
+        ):
+            result = dispatch_probe(
+                K8sExecProbe(namespace="x", pod_label="app=x",
+                             command=("echo",), assert_expr="True"),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.status == "unknown"
+        assert "k8s client unavailable" in result.detail
 
 
 # --- Job ensurer ------------------------------------------------------
