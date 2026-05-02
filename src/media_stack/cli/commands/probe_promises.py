@@ -541,38 +541,14 @@ def _probe_file_text(probe: dict) -> tuple[bool, str]:
     return _evaluate(probe.get("assert", ""), {"data": data})
 
 
-_SAFE_BUILTINS = {
-    "isinstance": isinstance, "any": any, "all": all, "len": len,
-    "set": set, "dict": dict, "list": list, "tuple": tuple,
-    "bool": bool, "str": str, "int": int, "float": float,
-    "sorted": sorted, "min": min, "max": max,
-}
-
-
-def _evaluate(expr: str, scope: dict) -> tuple[bool, str]:
-    """Evaluate the assert expression in a controlled scope.
-
-    YAML ``|`` block scalars in promises.yaml produce multi-line
-    strings — Python's ``eval`` only accepts a single expression,
-    so we collapse newlines to spaces.
-
-    Subtle Python gotcha: generator/comprehension expressions
-    (``all(... for x in ...)``) use their OWN scope and can't see
-    names passed via ``eval``'s ``locals`` dict — only ``globals``.
-    So the response/data name has to live in the globals dict, not
-    locals. Without this, every probe using ``all()``/``any()`` over
-    the response fails with ``name 'data' is not defined``."""
-    expr = (expr or "").strip().replace("\n", " ")
-    if not expr:
-        return (False, "empty assert expression")
-    globals_dict = {"__builtins__": _SAFE_BUILTINS, **scope}
-    try:
-        ok = bool(eval(expr, globals_dict))  # noqa: S307
-    except Exception as exc:
-        return (False, f"assert eval error: {exc}")
-    if not ok:
-        return (False, "assert returned False")
-    return (True, "ok")
+# ADR-0003 Phase 5e.1: the assert-expression evaluator was lifted to
+# ``media_stack.infrastructure.promises.assert_eval`` so the
+# orchestrator dispatcher and this CLI go through one auditable site.
+# Kept as a module-level alias for back-compat with any in-repo
+# callers that still import ``_evaluate`` from here.
+from media_stack.infrastructure.promises.assert_eval import (
+    evaluate as _evaluate,
+)
 
 
 def _resolve_routing_vars() -> dict[str, str]:

@@ -62,10 +62,13 @@ logger = logging.getLogger(__name__)
 _PROBE_TIMEOUT_SECONDS = 5.0
 
 
-# Reused YAML-assert evaluator — single auditable eval site.
-def _eval_assert(expr: str, scope: Mapping[str, Any]) -> tuple[bool, str]:
-    from media_stack.cli.commands.probe_promises import _evaluate
-    return _evaluate(expr, dict(scope))
+# Reused YAML-assert evaluator — single auditable eval site at
+# ``infrastructure.promises.assert_eval`` (extracted out of the
+# probe_promises CLI in Phase 5e.1 so the CLI can be retired
+# independently of the orchestrator).
+from media_stack.infrastructure.promises.assert_eval import (
+    evaluate as _eval_assert,
+)
 
 
 # ============================================================================
