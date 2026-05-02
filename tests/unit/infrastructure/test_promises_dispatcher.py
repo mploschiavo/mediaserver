@@ -336,7 +336,74 @@ def _patch_k8s_clients(*, core=None, apps=None, net=None):
     )
 
 
+def _patch_serialize_via_to_dict():
+    """Patch the dispatcher's k8s serializer to read ``_FakeK8sItem._payload``
+    directly. The real serializer calls ``ApiClient.sanitize_for_serialization``
+    which returns the camelCase JSON shape — our test fixtures store the
+    target shape in ``_payload`` so we just hand it back unchanged."""
+    return patch(
+        "media_stack.infrastructure.promises.dispatcher._serialize_k8s_item",
+        side_effect=lambda item: item._payload if hasattr(item, "_payload") else item,
+    )
+
+
 class TestK8sResourceProbe:
+    def test_resources_use_api_json_shape_not_snake_case(self) -> None:
+        # Regression for the post-Phase-A bug: the kubernetes Python
+        # client's ``.to_dict()`` produces snake_case keys
+        # (``image_pull_secrets``, ``persistent_volume_reclaim_policy``)
+        # while every k8s_resource promise's assert is written against
+        # the API JSON shape (``imagePullSecrets``,
+        # ``persistentVolumeReclaimPolicy``) that ``kubectl -o json``
+        # emits. Pin the dispatcher's serialization so a future
+        # refactor doesn't reintroduce the silent-False bug.
+        api_shape_pv = {
+            "spec": {
+                "claimRef": {"name": "media-stack-media"},
+                "persistentVolumeReclaimPolicy": "Retain",
+            },
+        }
+
+        class _RealishItem:
+            def to_dict(self):
+                # Return snake_case to model what the kubernetes
+                # client's models do — the dispatcher MUST not use
+                # this shape directly.
+                return {"spec": {
+                    "claim_ref": {"name": "media-stack-media"},
+                    "persistent_volume_reclaim_policy": "Retain",
+                }}
+
+        item = _RealishItem()
+        core = MagicMock()
+        core.list_persistent_volume.return_value = _FakeK8sListResp([item])
+
+        # Patch sanitize_for_serialization to confirm it's the path
+        # being taken and to inject the camelCase shape.
+        from kubernetes import client as _k8s
+        with _patch_k8s_clients(core=core), \
+                patch.object(
+                    _k8s.ApiClient, "sanitize_for_serialization",
+                    return_value=api_shape_pv,
+                ):
+            result = dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="pv", namespace="",
+                    assert_expr=(
+                        "any('media-stack-media' in p['spec']['claimRef']['name'] "
+                        "and p['spec']['persistentVolumeReclaimPolicy'] == 'Retain' "
+                        "for p in resources)"
+                    ),
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok, (
+            f"k8s_resource probe used wrong shape: {result.detail}. "
+            f"to_dict() produces snake_case keys; the dispatcher must "
+            f"call ApiClient.sanitize_for_serialization to get the "
+            f"camelCase shape the asserts expect."
+        )
+
     def test_pvc_list_namespaced_passes_when_assert_holds(self) -> None:
         items = [
             _FakeK8sItem({"status": {"phase": "Bound"}, "metadata": {"name": "pvc-1"}}),

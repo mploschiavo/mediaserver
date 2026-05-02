@@ -2,6 +2,27 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.314] — 2026-05-02
+
+### Fixed
+- **k8s_resource probe was using snake_case dict keys.** The
+  kubernetes Python client's ``.to_dict()`` returns Python-friendly
+  snake_case keys (``image_pull_secrets``,
+  ``persistent_volume_reclaim_policy``, ``claim_ref``). Every
+  k8s_resource promise's assert is written against the API JSON
+  shape (camelCase: ``imagePullSecrets``,
+  ``persistentVolumeReclaimPolicy``, ``claimRef``) — the shape
+  ``kubectl -o json`` emits and that the legacy
+  ``media-stack-probe-promises`` CLI saw natively.
+  - Net effect on live data: 3 false-positive ``failed_transient``
+    statuses on k8s (pull-secret, two PV reclaim-policy probes)
+    silently flipped to that state because the asserts couldn't
+    find the keys, not because the world was broken.
+  - Switched to ``client.ApiClient().sanitize_for_serialization()``,
+    which returns the camelCase API JSON shape.
+  - One regression test pins the shape so future refactors don't
+    reintroduce the bug.
+
 ## [v1.0.313] — 2026-05-02
 
 ### Fixed

@@ -487,6 +487,27 @@ def _load_k8s_clients() -> tuple[Any, Any, Any] | None:
         return None
 
 
+def _serialize_k8s_item(item: Any) -> dict[str, Any]:
+    """Convert a kubernetes client model to the API JSON shape
+    (camelCase keys: ``imagePullSecrets``, ``persistentVolumeReclaimPolicy``,
+    ``claimRef``...) that ``kubectl -o json`` produces and that every
+    k8s_resource promise's assert expression was authored against.
+
+    Note: ``item.to_dict()`` returns Python snake_case (e.g.
+    ``image_pull_secrets``). Using that shape silently fails every
+    assert that references a camelCase key, even when the world
+    actually satisfies the invariant.
+    """
+    try:
+        from kubernetes import client as _k8s
+        return _k8s.ApiClient().sanitize_for_serialization(item)
+    except Exception:  # noqa: BLE001
+        # Fallback: hand-roll the dict but keep the snake_case keys
+        # so at least probes don't crash if sanitize fails for some
+        # exotic resource type.
+        return item.to_dict() if hasattr(item, "to_dict") else dict(item)
+
+
 def _probe_k8s_resource(spec: K8sResourceProbe, now: float) -> ProbeResult:
     """List a Kubernetes resource via the in-cluster API and evaluate
     the assertion against ``resources`` (a list of dicts).
@@ -545,10 +566,7 @@ def _probe_k8s_resource(spec: K8sResourceProbe, now: float) -> ProbeResult:
         )
 
     items = getattr(response, "items", None) or []
-    resources = [
-        item.to_dict() if hasattr(item, "to_dict") else dict(item)
-        for item in items
-    ]
+    resources = [_serialize_k8s_item(item) for item in items]
     label = f"k8s://{kind}" + (f"/{namespace}" if namespace else "")
     return _classify_assert(
         spec.assert_expr, {"resources": resources},
