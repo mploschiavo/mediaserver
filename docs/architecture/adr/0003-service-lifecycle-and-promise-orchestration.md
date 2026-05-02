@@ -246,11 +246,27 @@ limits blast radius:
   `jellyfin:ensure-api-key`, `jobs:close-stale-runs`, etc.). The
   orchestrator covers the same ground via its own ensurer cycle.
 
-- **Phase 5e (`~3 days`):** delete `_run_preflights`,
-  `_try_satisfy_prereqs`, `phase_scripts.media_server_bootstrap`
-  field, `compose_preflight_handler` field, the `max_attempts`
-  retry loop in `JobRunner.run()`, and `media-stack-probe-promises`
-  CLI (same code path as the orchestrator now).
+- **Phase 5e** (revised 2026-05-02 from original "~3 days delete
+  six legacy paths"): see `docs/architecture/phase-5e-deletion-audit.md`.
+  Audit finds 5 of 6 originally-listed deletions are still
+  load-bearing for non-orchestrator flows (bootstrap pre-controller
+  hooks, JobRunner-driven jobs, manual/cron invocations). Honest
+  scope:
+  - **5e.1** (shipped, `53da33e`): extract `_evaluate` from
+    probe_promises CLI to `infrastructure/promises/assert_eval.py`
+    so the CLI can be retired independently.
+  - **5e.2** (blocked on ADR-0004 Phase 6.4): delete
+    `media-stack-probe-promises` CLI once `verify-fresh-install.sh`
+    swaps to the new promise-driven verifier.
+  - **5e.3+** (separate future phase, "bootstrap consumes
+    orchestrator state"): retire `_run_preflights`,
+    `phase_scripts.media_server_bootstrap`, and the bootstrap-phase
+    `jellyfin:ensure-api-key` job by making the orchestrator's
+    first tick part of the bootstrap critical path. Real design
+    work; warrants its own ADR amendment.
+  - **NOT deletable** without first reshaping JobRunner callers:
+    `compose_preflight_handler` (pre-controller), `_try_satisfy_prereqs`
+    (JobRunner internals), `max_attempts` retry loop (same).
 
 Rollback: at any phase, revert the allowlist to the previous size.
 The orchestrator's ensurers are idempotent, so a regression
