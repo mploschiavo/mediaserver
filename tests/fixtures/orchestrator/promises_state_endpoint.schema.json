@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GET /api/orchestrator/promises/state",
+  "description": "Snapshot of the orchestrator's most recent promise-evaluation tick. Sourced from .controller/promise_state.json plus runtime metadata. Read by FreshInstallVerifier.",
+  "type": "object",
+  "required": [
+    "version",
+    "saved_at",
+    "last_tick_age_seconds",
+    "platform",
+    "live_services",
+    "totals",
+    "attempts"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Schema version of the persisted promise_state.json. Currently 1.",
+      "const": 1
+    },
+    "saved_at": {
+      "type": "number",
+      "description": "Epoch seconds when the orchestrator last persisted the state file."
+    },
+    "last_tick_age_seconds": {
+      "type": "number",
+      "description": "now() - saved_at, computed at request time. Verifier treats >120s as 'controller not steady yet, retry' (see ADR-0004 open question 2)."
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["compose", "k8s"],
+      "description": "Runtime platform the orchestrator is evaluating against. Verifier uses this to filter platform-specific promises in its summary."
+    },
+    "live_services": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Services in primary mode (ORCHESTRATOR_LIVE_SERVICES). Empty list = full dry-run shadow."
+    },
+    "totals": {
+      "type": "object",
+      "required": ["total", "ok", "failed_transient", "failed_permanent", "skipped_cooldown", "skipped_platform", "unknown"],
+      "properties": {
+        "total": {"type": "integer"},
+        "ok": {"type": "integer"},
+        "failed_transient": {"type": "integer"},
+        "failed_permanent": {"type": "integer"},
+        "dep_failed": {"type": "integer"},
+        "skipped_cooldown": {"type": "integer"},
+        "skipped_platform": {"type": "integer"},
+        "unknown": {"type": "integer"}
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "description": "Per-promise PromiseAttempt records, one per known promise.",
+      "items": {
+        "type": "object",
+        "required": ["promise_id", "status", "started_at", "elapsed_seconds", "detail", "ensurer_fired", "ensurer_attempts", "consecutive_failures"],
+        "properties": {
+          "promise_id": {"type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["ok", "failed_transient", "failed_permanent", "dep_failed", "skipped_cooldown", "skipped_platform", "unknown"]
+          },
+          "started_at": {"type": "number"},
+          "elapsed_seconds": {"type": "number"},
+          "detail": {"type": "string"},
+          "probe_evidence": {
+            "type": "object",
+            "description": "Free-form per-probe evidence (URL, http_status, error, etc.). Schema is per-probe-kind; verifier surfaces it raw.",
+            "additionalProperties": true
+          },
+          "ensurer_fired": {"type": "boolean"},
+          "ensurer_attempts": {"type": "integer"},
+          "consecutive_failures": {"type": "integer"}
+        }
+      }
+    }
+  }
+}
