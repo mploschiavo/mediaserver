@@ -6,7 +6,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.core.platforms.compose.services.edge_route_graph import (  # noqa: E402
+# Underscore-prefixed helpers aren't re-exported through the
+# core/platforms star-shim; import from the canonical adapter
+# module directly.
+from media_stack.adapters.compose.services.edge_route_graph import (  # noqa: E402
     ComposeEdgeRouteGraphRender,
     ComposeEdgeRouteGraphService,
     _coerce_scalar,

@@ -18,11 +18,15 @@ from unittest.mock import patch
 
 import yaml
 
+# Phase 16-B (gateway_policy moved core/auth -> domain/auth) collapsed
+# the parallel _CONTRACT_PATH_REPO and _CONTRACT_PATH_CONTAINER
+# constants into a single _resolve_contract_path() candidate-list walk.
+# Only the resolved _CONTRACT_PATH survives; the repo-vs-container
+# distinction is now expressed inside the resolver, not as separate
+# module-level constants.
 from media_stack.core.auth.gateway_policy import (
     AuthContractService,
     _CONTRACT_PATH,
-    _CONTRACT_PATH_CONTAINER,
-    _CONTRACT_PATH_REPO,
 )
 from media_stack.services.apps.homepage.service import HomepageService
 from media_stack.services.apps.homepage.adapters import (
@@ -46,9 +50,10 @@ class TestAuthContractPathResolution(unittest.TestCase):
     def test_resolved_path_points_to_existing_file(self) -> None:
         """The resolved _CONTRACT_PATH must point to an existing file."""
         self.assertTrue(_CONTRACT_PATH.exists(),
-            f"Resolved _CONTRACT_PATH {_CONTRACT_PATH} does not exist. "
-            f"Repo path: {_CONTRACT_PATH_REPO} (exists={_CONTRACT_PATH_REPO.exists()}), "
-            f"Container path: {_CONTRACT_PATH_CONTAINER}")
+            f"Resolved _CONTRACT_PATH {_CONTRACT_PATH} does not exist; "
+            f"_resolve_contract_path() walked the candidate list "
+            f"(repo / /opt/media-stack / /contracts) and none matched.",
+        )
 
     def test_contract_loads_from_resolved_path(self) -> None:
         """AuthContractService must load successfully from the resolved path."""
@@ -57,9 +62,16 @@ class TestAuthContractPathResolution(unittest.TestCase):
         self.assertIn("none", modes)
         self.assertIn("authelia", modes)
 
-    def test_fallback_path_is_container_standard(self) -> None:
-        """The container fallback path must be /contracts/auth.yaml."""
-        self.assertEqual(str(_CONTRACT_PATH_CONTAINER), "/contracts/auth.yaml")
+    def test_container_fallback_path_in_resolver_candidates(self) -> None:
+        """The /contracts/auth.yaml container-standard path must be in
+        the resolver's candidate list (so a stripped image without the
+        repo or /opt/media-stack tree still finds the contract)."""
+        from media_stack.domain.auth import gateway_policy as gp
+        import inspect
+        source = inspect.getsource(gp._resolve_contract_path)
+        self.assertIn("/contracts/auth.yaml", source,
+            "Container-fallback path /contracts/auth.yaml must appear "
+            "in _resolve_contract_path()'s candidate list.")
 
     def test_contract_service_handles_missing_file_gracefully(self) -> None:
         """AuthContractService must not crash on missing contract file."""

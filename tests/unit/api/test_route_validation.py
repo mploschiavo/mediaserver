@@ -26,17 +26,21 @@ from typing import Any
 
 import yaml
 
-from media_stack.core.platforms.compose.edge.providers.envoy.helpers import (
+# Phase 16-C moved envoy provider modules core/platforms ->
+# adapters/. Underscore-prefixed helpers don't survive the
+# core/platforms star-shim; import from the canonical adapter
+# modules directly.
+from media_stack.adapters.compose.edge.providers.envoy.helpers import (
     _cluster_name,
     _path_prefix_app_slug,
     _rule_hosts,
     _rule_path_prefix,
 )
-from media_stack.core.platforms.compose.edge.providers.envoy.routes import (
+from media_stack.adapters.compose.edge.providers.envoy.routes import (
     html_accept_header_match,
     primary_route_cfg,
 )
-from media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts import (
+from media_stack.adapters.compose.edge.providers.envoy.virtual_hosts import (
     build_virtual_hosts,
 )
 from media_stack.core.auth.envoy_ext_authz import EXT_AUTHZ_FILTER_NAME

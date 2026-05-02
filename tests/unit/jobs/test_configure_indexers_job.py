@@ -11,7 +11,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.apps.prowlarr.configure_indexers_job import (  # noqa: E402
+from media_stack.application.prowlarr.configure_indexers_job import (  # noqa: E402
     configure_indexers,
     _build_arr_apps,
 )
@@ -52,7 +52,7 @@ class ConfigureIndexersJobTests(unittest.TestCase):
             urls={"sonarr": "http://sonarr:8989"},
         )
         with patch(
-            "media_stack.services.apps.prowlarr.configure_indexers_job._build_arr_apps",
+            "media_stack.application.prowlarr.configure_indexers_job._build_arr_apps",
             return_value=[{"name": "Sonarr", "api_key": "k1", "url": "http://sonarr:8989",
                            "implementation": "Sonarr", "app_name": "Sonarr"}],
         ), patch(
@@ -67,7 +67,7 @@ class ConfigureIndexersJobTests(unittest.TestCase):
     def test_error_wrapped(self):
         ctx = _ctx()
         with patch(
-            "media_stack.services.apps.prowlarr.configure_indexers_job._build_arr_apps",
+            "media_stack.application.prowlarr.configure_indexers_job._build_arr_apps",
             return_value=[],
         ), patch(
             "media_stack.services.apps.prowlarr.runtime_ops.run_prowlarr_indexer_pipeline",
