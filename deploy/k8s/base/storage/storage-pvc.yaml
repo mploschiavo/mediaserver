@@ -184,6 +184,23 @@ spec:
     requests:
       storage: 2Gi
 ---
+# Envoy static + dynamic config (envoy.yaml, profile.yaml, dynamic
+# routing CDS/RDS bundles). The controller writes these on every
+# routing reconcile and Envoy hot-reloads via the filesystem watch,
+# so the volume must be a real PVC the controller can rw and Envoy
+# can ro on the same node. Without this PVC the controller pod
+# fails with "pod has unbound immediate PersistentVolumeClaims".
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-stack-config-envoy
+  namespace: media-stack
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

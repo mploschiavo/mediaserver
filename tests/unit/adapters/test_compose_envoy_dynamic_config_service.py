@@ -797,7 +797,11 @@ class EnvoyVirtualHostRoutingPatternTests(unittest.TestCase):
             f"Duplicate domains found: {[d for d in non_wildcard if non_wildcard.count(d) > 1]}",
         )
 
-    @mock.patch("media_stack.core.platforms.compose.edge.providers.envoy.virtual_hosts._extra_domain_aliases")
+    # core/platforms/.../virtual_hosts is a star-import shim — star imports
+    # drop underscore-prefixed names, so the shim never re-exports
+    # ``_extra_domain_aliases``. Patch the canonical adapter module
+    # where ``build_virtual_hosts`` looks up the helper.
+    @mock.patch("media_stack.adapters.compose.edge.providers.envoy.virtual_hosts._extra_domain_aliases")
     def test_direct_host_with_runtime_domain_alias(self, mock_aliases):
         """curl http://controller.media-stack.my/api/keys
 

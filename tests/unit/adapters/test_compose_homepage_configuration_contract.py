@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -37,9 +38,13 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         homepage = services.get("homepage") or {}
         volumes = [str(item).strip() for item in (homepage.get("volumes") or [])]
 
+        # The CONFIG_ROOT default was retargeted from ``./config`` to
+        # ``../../config`` after the deploy/compose/ reorg — compose now
+        # lives two levels deeper than the repo-root ``config/`` tree.
         self.assertTrue(
             "${CONFIG_ROOT}/homepage:/app/config" in volumes
             or "${CONFIG_ROOT:-./config}/homepage:/app/config" in volumes
+            or "${CONFIG_ROOT:-../../config}/homepage:/app/config" in volumes
         )
         self.assertFalse(
             any("/app/config/services.yaml" in entry for entry in volumes),
@@ -100,12 +105,13 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
         )
         # Policy doesn't propagate app_gateway_host into cfg['routing'] — inject
         # it here so the homepage tile renderer uses the policy's gateway host.
-        cfg.setdefault("routing", {}).update({
+        routing_override = {
             "gateway_host": "apps.media-dev.local",
             "gateway_port": "80",
             "app_path_prefix": "/app",
             "scheme": "http",
-        })
+        }
+        cfg.setdefault("routing", {}).update(routing_override)
         service = HomepageService(
             bool_cfg=lambda obj, key, default=False: bool((obj or {}).get(key, default)),
             coerce_list=lambda value: (
@@ -117,7 +123,13 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             render_services_yaml=render_services_yaml,
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
+        # Since v1.0.165 HomepageService reads ``api.services.config.get_routing()``
+        # as source-of-truth (profile YAML + runtime overrides) before falling
+        # back to cfg['routing']. Patch it to return the dev override.
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "media_stack.api.services.config.get_routing",
+            return_value=dict(routing_override),
+        ):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
@@ -143,12 +155,13 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             app_path_prefix="/app",
             media_server_direct_host="jellyfin.media-dev.local",
         )
-        cfg.setdefault("routing", {}).update({
+        routing_override = {
             "gateway_host": "apps.media-dev.local",
             "gateway_port": "18080",
             "app_path_prefix": "/app",
             "scheme": "http",
-        })
+        }
+        cfg.setdefault("routing", {}).update(routing_override)
         service = HomepageService(
             bool_cfg=lambda obj, key, default=False: bool((obj or {}).get(key, default)),
             coerce_list=lambda value: (
@@ -160,7 +173,11 @@ class ComposeHomepageConfigurationContractTests(unittest.TestCase):
             render_services_yaml=render_services_yaml,
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
+        # See sibling test for the get_routing() patch rationale.
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "media_stack.api.services.config.get_routing",
+            return_value=dict(routing_override),
+        ):
             service.ensure_services_config(cfg, tmp)
             rendered = (Path(tmp) / "homepage" / "services.yaml").read_text("utf-8")
 
