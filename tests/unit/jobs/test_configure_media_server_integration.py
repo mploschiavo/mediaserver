@@ -213,28 +213,18 @@ class TestAllMediaServerJobsRun(unittest.TestCase):
             "media_server_id": lambda ctx: True,
         }):
             with patch.dict(os.environ, {"JELLYFIN_API_KEY": "test-api-key"}):
-                with patch.multiple(
-                    "media_stack.services.apps.jellyfin.runtime_ops",
-                    **handler_patches,
-                ), patch(
-                    "media_stack.services.apps.jellyseerr.configure_jellyseerr_job.configure_jellyseerr",
-                    return_value={"skipped": "test"},
-                ), patch(
-                    "media_stack.services.apps.prowlarr.configure_indexers_job.configure_indexers",
-                    return_value={"skipped": "test"},
-                ), patch(
-                    "media_stack.services.apps.servarr.configure_arr_clients_job.configure_arr_clients",
-                    return_value={"skipped": "test"},
-                ), patch(
-                    "media_stack.core.auth.configure_auth_job.configure_auth",
-                    return_value={"skipped": "test"},
-                ), patch(
-                    "media_stack.services.apps.qbittorrent.configure_categories_job.configure_categories",
-                    return_value={"skipped": "test"},
-                ), patch(
-                    "media_stack.services.apps.servarr.configure_auto_scan_job.configure_auto_scan",
-                    return_value={"skipped": "test"},
-                ):
+                # The job framework resolves contract handlers via
+                # ``importlib.import_module(...).handler_fn``. The
+                # legacy per-handler ``patch(...)`` calls below targeted
+                # services-shim paths whose attribute writes don't
+                # propagate to the canonical application/* modules the
+                # contracts now reference, so the real handlers ran
+                # (notably ``discover_api_keys`` triggers a 120s
+                # jellyfin preflight). Mocking importlib short-circuits
+                # the dispatch — every job records as run, which is
+                # exactly what the test wants to verify.
+                with patch("importlib.import_module") as mock_mod:
+                    mock_mod.return_value = MagicMock()
                     result = run_all_media_server_jobs(max_wait=1)
 
         # Check that the runner dispatched jobs

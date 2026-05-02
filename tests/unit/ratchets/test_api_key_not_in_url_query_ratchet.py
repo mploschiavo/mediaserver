@@ -48,6 +48,9 @@ _URL_QUERY_KEY_RE = re.compile(r"[?&]api[_-]?key=", re.IGNORECASE)
 _SCANNER_OR_REDACTOR_FILES: frozenset[str] = frozenset({
     # Pattern is used to REDACT api_key from logged URLs.
     "secret_redaction.py",
+    # Structural exception scrubber — references the query-string
+    # shape to strip it, not to send it.
+    "secret_scrub.py",
     # This ratchet itself is one long regex comment.
     "test_api_key_not_in_url_query_ratchet.py",
 })
@@ -61,27 +64,28 @@ _ALLOWED_VIOLATIONS: frozenset[str] = frozenset({
     # consistency check and forces the author to refresh the
     # entry or remove it.
     #
+    # Paths reflect ADR-0002 Phase 16 layout: callers in
+    # ``services/apps/*/cli/`` moved to ``infrastructure/<svc>/`` /
+    # ``application/<svc>/``; ``core/platforms/compose/services/``
+    # moved to ``adapters/compose/services/``.
+    #
     # ---- Jellyfin callers (use X-Emby-Token in follow-up) ----
-    "src/media_stack/services/apps/jellyfin/cli/"
-    "jellyfin_plugin_activation_service.py:54",
-    "src/media_stack/services/apps/jellyfin/cli/"
-    "jellyfin_controller_api_key_service.py:64",
-    "src/media_stack/services/apps/jellyfin/cli/"
-    "jellyfin_controller_api_key_service.py:74",
-    "src/media_stack/api/services/content.py:96",
-    "src/media_stack/api/services/content.py:104",
+    "src/media_stack/application/jellyfin/plugin_activation_service.py:54",
+    "src/media_stack/infrastructure/jellyfin/controller_api_key_service.py:64",
+    "src/media_stack/infrastructure/jellyfin/controller_api_key_service.py:74",
     "src/media_stack/api/services/admin.py:140",
-    "src/media_stack/api/services/content_download_settings_mixin.py:63",
-    "src/media_stack/api/services/content_download_settings_mixin.py:152",
+    "src/media_stack/api/services/content.py:106",
+    "src/media_stack/api/services/content.py:114",
+    "src/media_stack/api/services/content_download_settings_mixin.py:65",
+    "src/media_stack/api/services/content_download_settings_mixin.py:157",
     # ---- Servarr callers (use X-Api-Key in follow-up) ----
-    "src/media_stack/core/platforms/compose/services/"
-    "edge_http_smoke.py:389",
+    "src/media_stack/adapters/compose/services/edge_http_smoke.py:389",
     # ---- SABnzbd (accepts ?apikey= natively; header variant not
     #      supported by the SAB API, legitimate outlier) ----
-    "src/media_stack/api/services/content.py:636",
+    "src/media_stack/api/services/content.py:778",
     # ---- Redactor function docstring — the pattern is cited here
     #      to describe what's being stripped, not a call site. ----
-    "src/media_stack/services/apps/core/job_adapters.py:145",
+    "src/media_stack/services/apps/core/job_adapters.py:161",
 })
 
 
