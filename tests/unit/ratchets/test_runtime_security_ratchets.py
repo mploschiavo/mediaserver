@@ -332,7 +332,16 @@ class ContainerVsHostSemantics(unittest.TestCase):
         "src/media_stack/services/apps/download_clients/registry_helpers.py",
         # `kubectl exec` into the jellyfin pod and curl localhost:8096
         # from INSIDE the pod — this is correctly container-internal.
-        "src/media_stack/services/apps/jellyfin/cli/jellyfin_plugin_activation_service.py",
+        # Phase 16-D moved the file out of the cli/ shim into the
+        # canonical application/ home; the kubectl-exec semantics
+        # didn't change.
+        "src/media_stack/application/jellyfin/plugin_activation_service.py",
+        # Same-process controller API — the controller always reaches
+        # itself at localhost:9100 regardless of compose vs k8s; this
+        # constant is the in-process fallback used by both the CLI
+        # smoke verifier and the promise dispatcher.
+        "src/media_stack/cli/commands/verify_fresh_install.py",
+        "src/media_stack/infrastructure/promises/dispatcher.py",
     }
 
     def test_localhost_url_construction_count_below_cap(self) -> None:

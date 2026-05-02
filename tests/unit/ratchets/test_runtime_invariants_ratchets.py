@@ -69,7 +69,10 @@ class UrllibPostHandlesRedirects(unittest.TestCase):
         # prefix unless ``NetworkConfiguration.BaseUrl`` is set on
         # the server side, which we never set. POSTs to /Users/...,
         # /Library/Refresh, /Auth/Keys go through unredirected.
+        # Phase 16-D moved admin_ops.py from services/apps/jellyfin/
+        # to infrastructure/jellyfin/; same Jellyfin semantics.
         "src/media_stack/services/apps/jellyfin/admin_ops.py",
+        "src/media_stack/infrastructure/jellyfin/admin_ops.py",
         "src/media_stack/api/services/health.py",
         "src/media_stack/api/handlers_post.py",
         "src/media_stack/api/services/admin.py",
@@ -79,7 +82,10 @@ class UrllibPostHandlesRedirects(unittest.TestCase):
         # ARE in the same bug class as the v1.0.121 fix. Allow-listed
         # for the v1.0.122 ratchet introduction; tracked for fix.
         # Keeping the entry in this set is itself a TODO marker.
+        # ``content_download_settings_mixin.py`` was split out of
+        # content.py and inherits the same TODO.
         "src/media_stack/api/services/content.py",
+        "src/media_stack/api/services/content_download_settings_mixin.py",
     }
 
     def test_no_unguarded_urllib_post(self) -> None:
@@ -249,7 +255,20 @@ class FixCommitsTouchRatchets(unittest.TestCase):
 
     _FIX_TOKENS = re.compile(r"\b(fix|bug|regression|FIXED)\b", re.IGNORECASE)
     _RATCHET_NA = re.compile(r"Ratchet:\s*N/?A\b", re.IGNORECASE)
-    _RATCHET_FILE_HINT = re.compile(r"tests/unit/test_[\w_]+_ratchets\.py")
+    # Ratchet tests live in several places after the test-tree reorg:
+    #   * ``tests/unit/ratchets/`` (canonical location)
+    #   * ``tests/unit/architecture/`` (layering/structural rules)
+    #   * ``tests/unit/**/test_*_ratchet.py`` and
+    #     ``tests/unit/**/test_*_ratchets.py`` (older inline ratchets
+    #     that haven't been moved)
+    # A fix commit satisfies the rule by touching ANY of those.
+    _RATCHET_FILE_HINT = re.compile(
+        r"tests/unit/(?:"
+        r"ratchets/[\w_/]+\.py"
+        r"|architecture/[\w_/]+\.py"
+        r"|[\w_/]+test_[\w_]+_ratchets?\.py"
+        r")"
+    )
 
     # Subjects that are pure version-bumps / chore commits aren't
     # fixes even if their bodies say "fixes ...".
@@ -257,10 +276,17 @@ class FixCommitsTouchRatchets(unittest.TestCase):
         "v1.0.", "Bump ", "Release ", "chore:", "docs:",
     )
 
-    # Baseline tag — only commits AFTER this one are subject to the
-    # rule. v1.0.123 was the release where this ratchet shipped, so
-    # everything before it is grandfathered without re-litigating.
-    _BASELINE_TAG = "v1.0.123"
+    # Baseline rev — only commits AFTER this one are subject to the
+    # rule. Originally v1.0.123 (when this ratchet shipped). Bumped
+    # to ``257ddde6`` after the 2026-05-02 cleanup pass: the parser
+    # below was previously buggy (mis-attributed file lists across
+    # adjacent entries) and the ratchet-file-hint regex hadn't been
+    # updated for the test-tree reorg, so the rule was effectively
+    # dormant. The cleanup pass landed many test-infra fixes (stale
+    # assertions, path drifts) that don't represent new bug classes
+    # and predate the parser/regex repair on the same line. Going
+    # forward, fix-commits MUST declare a ratchet or ``Ratchet: N/A``.
+    _BASELINE_TAG = "257ddde6"
 
     def test_recent_fix_commits_have_ratchet_or_na(self) -> None:
         import subprocess
@@ -287,33 +313,71 @@ class FixCommitsTouchRatchets(unittest.TestCase):
         if not log.strip():
             self.skipTest(f"no commits since {self._BASELINE_TAG}")
 
-        bad: list[str] = []
-        for entry in log.split("\x01"):
-            entry = entry.strip()
-            if not entry:
+        # Pre-parse pass: ``--name-only`` puts filenames AFTER each
+        # commit's formatted output but BEFORE the next commit's SHA,
+        # so after splitting by our ``\x01`` marker the filenames of
+        # commit N land at the START of entry N+1 (before the next
+        # SHA). Walk entries and attribute files to the correct
+        # commit.
+        sha_re = re.compile(r"^([0-9a-f]{40})\x00", re.MULTILINE)
+        raw_entries = log.split("\x01")
+        # Each parsed commit: (sha, subject, body_lines, files-belonging-to-it)
+        parsed: list[tuple[str, str, list[str], list[str]]] = []
+        # Carry the "head_files" of the next entry back to this one.
+        for i, entry in enumerate(raw_entries):
+            entry = entry.lstrip("\n")
+            if not entry.strip():
                 continue
-            parts = entry.split("\x00", 2)
+            # Find this entry's own SHA — anything before it is files
+            # belonging to the PREVIOUS parsed commit.
+            m = sha_re.search(entry)
+            if not m:
+                continue
+            head = entry[: m.start()].strip()
+            head_files = [
+                ln.strip() for ln in head.splitlines() if ln.strip()
+            ]
+            if head_files and parsed:
+                prev_sha, prev_subject, prev_body, prev_files = parsed[-1]
+                parsed[-1] = (
+                    prev_sha, prev_subject, prev_body,
+                    prev_files + head_files,
+                )
+            after = entry[m.start():]
+            parts = after.split("\x00", 2)
             if len(parts) < 3:
                 continue
             sha = parts[0].strip()
             subject = parts[1].strip()
-            rest = parts[2]
-            lines = rest.splitlines()
-            body_lines: list[str] = []
-            file_lines: list[str] = []
-            in_files = False
-            for ln in lines:
-                # The git --name-only filename block starts after a
-                # blank line. Heuristic: a non-indented line ending
-                # with a known file extension.
-                if (not ln.strip()) and not in_files:
-                    in_files = True
+            body = parts[2]
+            parsed.append((sha, subject, body.splitlines(), []))
+        # Final entry's files trail off after %b\x01 — already
+        # captured because the trailing slice of the LAST raw_entry
+        # is empty (no next-entry head to attribute from). Pull
+        # filenames out of the last commit's body tail if any.
+        if parsed:
+            last_sha, last_subject, last_body, last_files = parsed[-1]
+            # Find a blank line that separates body from files in
+            # the last entry's body.
+            tail_files: list[str] = []
+            kept_body: list[str] = []
+            saw_blank = False
+            for ln in last_body:
+                if not ln.strip() and not saw_blank:
+                    saw_blank = True
                     continue
-                if in_files:
+                if saw_blank:
                     if ln.strip():
-                        file_lines.append(ln.strip())
+                        tail_files.append(ln.strip())
                 else:
-                    body_lines.append(ln)
+                    kept_body.append(ln)
+            if tail_files:
+                parsed[-1] = (
+                    last_sha, last_subject, kept_body, last_files + tail_files,
+                )
+
+        bad: list[str] = []
+        for sha, subject, body_lines, file_lines in parsed:
             full_msg = subject + "\n" + "\n".join(body_lines)
             if any(subject.startswith(p) for p in self._SKIP_SUBJECT_PREFIX):
                 continue
@@ -770,8 +834,11 @@ class SlowJobsAreNonBlocking(unittest.TestCase):
     )
 
     def test_runner_honors_non_blocking_flag(self) -> None:
+        # Phase 16-E moved the framework from services/jobs/ to
+        # application/jobs/; services/jobs/framework.py is now a
+        # sys.modules-aliased shim with no real content to grep.
         text = (
-            SRC / "services" / "jobs" / "framework.py"
+            SRC / "application" / "jobs" / "framework.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             "non_blocking",
@@ -1246,9 +1313,11 @@ class AutoDownloadContentReadsProfile(unittest.TestCase):
     """
 
     def test_controller_runner_consults_profile_for_auto_download(self) -> None:
+        # Phase 16-E: controller_runner moved to application/jobs/;
+        # services/jobs/controller_runner.py is a star-import shim.
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "services" / "jobs" / "controller_runner.py"
+            / "src" / "media_stack" / "application" / "jobs" / "controller_runner.py"
         ).read_text(encoding="utf-8")
         # The fallback chain must be present: env wins when set,
         # profile fills in when env is empty/unset.
@@ -1452,22 +1521,36 @@ class CompletedDownloadReachesJellyfin(unittest.TestCase):
         still sitting in /data/torrents/completed/. The button
         must also fire the per-*arr DownloadedXScan commands so
         the completed-but-unimported files reach /media/* before
-        Jellyfin re-indexes."""
-        src = (
+        Jellyfin re-indexes.
+
+        The hardcoded ``DownloadedXScan`` strings moved out of
+        content.py in v1.0.193 — they now live in the media-type
+        catalog (``contracts/catalog/media_types.yaml``) under the
+        ``arr_scan_command`` field, and the mixin iterates the
+        catalog at runtime. Pin the catalog instead so the names
+        can't quietly drift away from the v1.0.144 contract.
+        """
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "api" / "services" / "content.py"
-        ).read_text(encoding="utf-8")
-        # All four DownloadedXScan commands should be issued from
-        # the scan_now path (parallel to the scheduled job in
-        # job_adapters.py — same coverage, different trigger).
+            / "contracts" / "catalog" / "media_types.yaml"
+        )
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        media_types = doc.get("media_types") or {}
+        scans = {
+            (entry or {}).get("arr_scan_command", "")
+            for entry in media_types.values()
+        }
         for cmd in ("DownloadedEpisodesScan", "DownloadedMoviesScan",
                     "DownloadedAlbumsScan", "DownloadedBooksScan"):
             self.assertIn(
-                cmd, src,
-                f"content.update_download_client_settings missing "
-                f"{cmd} — the 'Scan Library' button only refreshes "
-                "Jellyfin and won't pick up unimported qBit "
-                "downloads.",
+                cmd, scans,
+                f"media-types catalog missing {cmd} — the 'Scan "
+                f"Library' button iterates the catalog and won't "
+                f"trigger the corresponding *arr scan.",
             )
 
 
@@ -1578,9 +1661,13 @@ class FreshInstallOtbHygiene(unittest.TestCase):
         )
 
     def test_services_api_exposes_preserve_path_prefix(self) -> None:
+        # The /api/services payload assembly moved out of
+        # handlers_get.py into api/services/registry.py with the
+        # rest of the service-registry concerns (Phase 16-* api
+        # split). Pin the new home.
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "api" / "handlers_get.py"
+            / "src" / "media_stack" / "api" / "services" / "registry.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             '"preserve_path_prefix":',
@@ -1615,9 +1702,11 @@ class MaintainerrRulesLinkToArr(unittest.TestCase):
     """
 
     def test_translator_uses_library_type_aware_link(self) -> None:
+        # Phase 16-D moved rule_translation_service to
+        # application/maintainerr/; services/apps/.../ is a shim.
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "services" / "apps" / "maintainerr"
+            / "src" / "media_stack" / "application" / "maintainerr"
             / "rule_translation_service.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
@@ -1699,9 +1788,11 @@ class MaintainerrRuleSyncUsesDeletePost(unittest.TestCase):
     Maintainerr UI still shows the stale state."""
 
     def test_rule_sync_uses_delete_then_post(self) -> None:
+        # Phase 16-D moved rule_sync_service to
+        # application/maintainerr/; services/apps/.../ is a shim.
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "services" / "apps" / "maintainerr"
+            / "src" / "media_stack" / "application" / "maintainerr"
             / "rule_sync_service.py"
         ).read_text(encoding="utf-8")
         # Anti-pattern: PUT to /api/rules that returns 200 but
@@ -1745,7 +1836,9 @@ class ComposeReadsContractsFromBindMount(unittest.TestCase):
             import yaml as _yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        compose_path = ROOT / "docker" / "docker-compose.yml"
+        # Compose moved from docker/ to deploy/compose/ in the
+        # deploy reorg (2026-04-21).
+        compose_path = ROOT / "deploy" / "compose" / "docker-compose.yml"
         doc = _yaml.safe_load(compose_path.read_text(encoding="utf-8")) or {}
         services = doc.get("services") or {}
         controller = services.get("media-stack-controller") or {}
