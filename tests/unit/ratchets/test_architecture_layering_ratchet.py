@@ -335,7 +335,28 @@ class HelperSanityTest(unittest.TestCase):
 # violate. As 16-B/C/D/E migrations land, any unavoidable temporary
 # violation lands here with an inline TODO referencing the cleanup
 # phase.
-KNOWN_DOMAIN_VIOLATIONS: dict[str, set[str]] = {}
+# ADR-0002 Phase 16 — domain/ leaks. Each entry tracks a layer
+# boundary that should be inverted via a port in ``interfaces/``.
+# TODO(phase-16-F): replace with port + adapter wiring.
+KNOWN_DOMAIN_VIOLATIONS: dict[str, set[str]] = {
+    # JobContext type lives in application; domain/jobs/types.py
+    # imports it as a forward-typing alias for protocol shapes.
+    # Phase 16-F either moves JobContext into domain or replaces
+    # the typing dep with a Protocol.
+    "domain/jobs/types.py": {
+        "media_stack.application.jobs.framework",
+    },
+    # Servarr technology factory + base wire AdapterDependencies /
+    # HookFn from adapters because the technology classes are still
+    # the composition root for Servarr-shaped adapters. Phase 16-F
+    # introduces a TechnologyAdapter port and inverts.
+    "domain/servarr/technologies/factory.py": {
+        "media_stack.adapters.servarr.servarr_adapters",
+    },
+    "domain/servarr/technologies/base.py": {
+        "media_stack.adapters.servarr.servarr_adapters",
+    },
+}
 KNOWN_APPLICATION_VIOLATIONS: dict[str, set[str]] = {
     # ADR-0002 Phase 16-D batch 1 (jellyfin) — TODO(phase-16-F): the
     # Jellyfin home-rails use case still reaches into a legacy
@@ -355,9 +376,95 @@ KNOWN_APPLICATION_VIOLATIONS: dict[str, set[str]] = {
     "application/jellyfin/runtime_ops.py": {
         "media_stack.infrastructure.jellyfin.api_key_db",
     },
+    # The orchestrator service composes the promises framework
+    # (cooldown, dispatcher, registry) directly. Phase 16-F: extract
+    # promise ports under ``interfaces/promises/``.
+    "application/services/orchestrator.py": {
+        "media_stack.infrastructure.promises.cooldown",
+        "media_stack.infrastructure.promises.dispatcher",
+        "media_stack.infrastructure.promises.registry",
+    },
+    # Prowlarr application services pull ops modules and the
+    # FlareSolverr proxy helper straight from infrastructure.
+    # Phase 16-F: define ProwlarrIndexerPort / ProwlarrAppPort etc.
+    "application/prowlarr/runtime_ops.py": {
+        "media_stack.infrastructure.prowlarr.flaresolverr_service",
+    },
+    "application/prowlarr/service.py": {
+        "media_stack.infrastructure.prowlarr.application_ops",
+        "media_stack.infrastructure.prowlarr.indexer_ops",
+        "media_stack.infrastructure.prowlarr.proxy_ops",
+        "media_stack.infrastructure.prowlarr.reputation_ops",
+    },
+    # Jellyfin prewarm reads the media-type catalog directly from
+    # infrastructure; Phase 16-F: invert via a MediaTypeCatalog port.
+    "application/jellyfin/prewarm_service.py": {
+        "media_stack.infrastructure.media",
+    },
+    # ensure_api_key drives the HTTP preflight directly. Phase 16-F:
+    # define a JellyfinPreflightPort in interfaces/.
+    "application/jellyfin/ensure_api_key.py": {
+        "media_stack.infrastructure.jellyfin.http_preflight",
+    },
+    # Bazarr runtime ops still consume the legacy adapters helpers.
+    "application/bazarr/runtime_ops.py": {
+        "media_stack.adapters.bazarr.adapters",
+    },
+    # Jellyseerr use cases reach into infrastructure ops + the flat
+    # ``adapters.http_client``. Phase 16-F: JellyseerrApiPort etc.
+    "application/jellyseerr/configure_jellyseerr_job.py": {
+        "media_stack.adapters.http_client",
+        "media_stack.infrastructure.jellyseerr.local_admin_ops",
+        "media_stack.infrastructure.media",
+    },
+    "application/jellyseerr/operations.py": {
+        "media_stack.infrastructure.jellyseerr.api_ops",
+        "media_stack.infrastructure.jellyseerr.file_ops",
+    },
+    "application/jellyseerr/orchestrator_ops.py": {
+        "media_stack.infrastructure.jellyseerr.api_ops",
+        "media_stack.infrastructure.jellyseerr.file_ops",
+        "media_stack.infrastructure.jellyseerr.local_admin_ops",
+    },
+    # Servarr application layer composes the Servarr adapters and
+    # the runtime arr ops; Phase 16-F extracts the runtime ports.
+    "application/servarr/runtime_ops.py": {
+        "media_stack.adapters.servarr.servarr_adapters",
+        "media_stack.infrastructure.servarr.runtime.arr_ops",
+        "media_stack.infrastructure.servarr.runtime.common",
+        "media_stack.infrastructure.servarr.runtime.factory",
+    },
+    "application/servarr/pipeline_service.py": {
+        "media_stack.adapters.servarr.servarr_adapters",
+    },
 }
-KNOWN_ADAPTERS_UPWARD_VIOLATIONS: dict[str, set[str]] = {}
-KNOWN_INFRASTRUCTURE_UPWARD_VIOLATIONS: dict[str, set[str]] = {}
+# ADR-0002 Phase 16 — adapters reaching back up into application/
+# is the classic "factory has a dependency on its consumer" smell.
+# Phase 16-F: extract a planned-adapter port into interfaces/.
+KNOWN_ADAPTERS_UPWARD_VIOLATIONS: dict[str, set[str]] = {
+    # Stub media-server adapters (mythtv/emby) inherit a "planned"
+    # marker class that lives in application/ for now. The marker
+    # belongs in interfaces/media_server_adapters/ once defined.
+    "adapters/media_server_adapters/mythtv.py": {
+        "media_stack.application.media_server_adapters.planned",
+    },
+    "adapters/media_server_adapters/emby.py": {
+        "media_stack.application.media_server_adapters.planned",
+    },
+}
+# ADR-0002 Phase 16 — infrastructure reaching back up. The promises
+# dispatcher hooks into the application's job framework (run_job)
+# and the Servarr factory wires application services into the
+# runtime registry. Both should be inverted via interfaces/.
+KNOWN_INFRASTRUCTURE_UPWARD_VIOLATIONS: dict[str, set[str]] = {
+    "infrastructure/promises/dispatcher.py": {
+        "media_stack.application.jobs.framework",
+    },
+    "infrastructure/servarr/runtime/factory.py": {
+        "media_stack.application.servarr.arr_queue_cleanup_service",
+        "media_stack.application.servarr.arr_service",
+    },
+}
 KNOWN_INTERFACES_VIOLATIONS: dict[str, set[str]] = {}
 
 
@@ -550,12 +657,16 @@ class HexagonRatchetTest(unittest.TestCase):
     entries, but the totals must shrink toward zero again before
     Phase 16-F flips the ratchet to STRICT mode."""
 
-    EXPECTED_DOMAIN_TOTAL = 0
-    # ADR-0002 Phase 16-D batch 1 (jellyfin): two TODO(phase-16-F)
-    # entries — see KNOWN_APPLICATION_VIOLATIONS above.
-    EXPECTED_APPLICATION_TOTAL = 2
-    EXPECTED_ADAPTERS_UPWARD_TOTAL = 0
-    EXPECTED_INFRASTRUCTURE_UPWARD_TOTAL = 0
+    # ADR-0002 Phase 16-D landed batches (servarr/jellyfin/prowlarr/
+    # jellyseerr/bazarr) split modules across the hexagon but left
+    # several layer leaks where Phase 16-A's port scaffolding hasn't
+    # been filled in yet. Each entry has a TODO(phase-16-F) reason
+    # in the KNOWN_* dicts above. Totals MUST shrink as Phase 16-F
+    # extracts ports — they're snapshots of debt, not budgets.
+    EXPECTED_DOMAIN_TOTAL = 3
+    EXPECTED_APPLICATION_TOTAL = 26
+    EXPECTED_ADAPTERS_UPWARD_TOTAL = 2
+    EXPECTED_INFRASTRUCTURE_UPWARD_TOTAL = 3
     EXPECTED_INTERFACES_TOTAL = 0
 
     def _count(self, allowlist: dict[str, set[str]]) -> int:
