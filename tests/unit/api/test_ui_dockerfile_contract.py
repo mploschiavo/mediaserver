@@ -1,10 +1,11 @@
 """Static-analysis contract tests for the UI container Dockerfile.
 
-Verifies ``docker/ui.Dockerfile`` will produce a build artifact that meets
-the production hardening contract: multi-stage build (node build + alpine
-nginx runtime), non-root, port 8080 only, healthcheck wired to /healthz,
-Vite-built ``dist/`` baked into the image, OCI version label, and no
-Python/pip pollution (UI is a static asset container, not the API).
+Verifies ``deploy/compose/ui.Dockerfile`` will produce a build artifact
+that meets the production hardening contract: multi-stage build (node
+build + alpine nginx runtime), non-root, port 8080 only, healthcheck
+wired to /healthz, Vite-built ``dist/`` baked into the image, OCI
+version label, and no Python/pip pollution (UI is a static asset
+container, not the API).
 
 No docker build, no network — pure file-content / regex checks so the
 suite stays fast and runnable in CI without a docker daemon.
@@ -19,7 +20,7 @@ from pathlib import Path
 import pytest
 
 ROOT: Path = Path(__file__).resolve().parents[3]
-DOCKERFILE_PATH: Path = ROOT / "docker" / "ui.Dockerfile"
+DOCKERFILE_PATH: Path = ROOT / "deploy" / "compose" / "ui.Dockerfile"
 
 
 def _read_dockerfile() -> str:

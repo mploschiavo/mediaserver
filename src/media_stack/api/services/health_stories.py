@@ -471,7 +471,10 @@ def job_flapping_stories(history: list[dict]) -> list[dict]:
             if not name or status != "error":
                 continue
             counts[name] = counts.get(name, 0) + 1
-            if err_text:
+            # ``recent`` is newest-first (``_load_history`` reverses
+            # the on-disk list), so the FIRST error text we see in
+            # iteration order is the most recent one. Set-once.
+            if err_text and name not in last_errors:
                 last_errors[name] = err_text
 
     out: list[dict] = []

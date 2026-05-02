@@ -243,8 +243,14 @@ class FixB_PerAppIndexerTagging(unittest.TestCase):
         from pathlib import Path as _P
         import json, time
         cache_file = _P("/tmp/test-iam-cache3.json")
+        # Cache version was bumped to 3 in v1.0.140 (probe switched
+        # from an empty query to a real one). Match the current version
+        # constant so _load_cache doesn't discard the seeded entry.
+        from media_stack.services.apps.prowlarr.indexer_app_match import (
+            _CACHE_VERSION,
+        )
         cache_file.write_text(json.dumps({
-            "version": 1,
+            "version": _CACHE_VERSION,
             "indexers": {
                 "10:X:Cached": {
                     "id": 10, "implementation": "X", "name": "Cached",

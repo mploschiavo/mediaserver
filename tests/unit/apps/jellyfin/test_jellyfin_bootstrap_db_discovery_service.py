@@ -1,8 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from media_stack.services.apps.jellyfin.cli import (
-    jellyfin_controller_db_discovery_service as svc,
+# Import from the canonical infrastructure module — the
+# services/apps/jellyfin/cli path is a star-import shim that doesn't
+# reflect attribute patches back to the canonical function bodies.
+# Without this, ``patch.object(svc, "run_cmd", ...)`` is a no-op and
+# the function shells out to live kubectl.
+from media_stack.infrastructure.jellyfin import (
+    controller_db_discovery_service as svc,
 )
 
 
