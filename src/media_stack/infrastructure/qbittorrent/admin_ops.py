@@ -26,7 +26,12 @@ class QbittorrentAdminOps:
 
         Returns (success, error_message).
         """
-        passwords_to_try = [old_password, "adminadmin", ""]
+        from media_stack.infrastructure.qbittorrent import (
+            QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
+        )
+        passwords_to_try = [
+            old_password, QBITTORRENT_FACTORY_DEFAULT_PASSWORD, "",
+        ]
 
         # Extract temp password from container logs (linuxserver images)
         try:
