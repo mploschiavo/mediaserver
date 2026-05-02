@@ -78,7 +78,10 @@ MIN_REGISTRATION_REQUIREMENTS = {
 }
 
 SHARED_RUNTIME_ENTRY_MODULES = [
-    ROOT / "bin" / "controller.py",
+    # ``bin/controller.py`` was retired in favor of the
+    # ``media-stack-controller`` console-script (registered in
+    # pyproject.toml at media_stack.cli.commands.controller_main:main).
+    ROOT / "src" / "media_stack" / "cli" / "commands" / "controller_main.py",
     ROOT / "src" / "media_stack" / "services" / "runtime_platform.py",
     ROOT / "src" / "media_stack" / "services" / "runtime_secrets.py",
     ROOT / "src" / "media_stack" / "services" / "controller_service.py",
@@ -213,9 +216,15 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
                     _assert_import_spec_resolves(spec)
 
     def test_bootstrap_entrypoint_uses_manifest_bound_handlers_for_tech_operations(self):
-        wrapper = (ROOT / "bin" / "controller.py").read_text(encoding="utf-8")
+        # bin/controller.py was retired in favor of the
+        # media-stack-controller console-script. The check that
+        # used to grep the wrapper for an import line is now
+        # satisfied by the wheel's pyproject.toml declaring the
+        # console-script entry-point.
+        # services/jobs/controller_runner.py is now a sys.modules-alias
+        # shim; the implementation moved to application/jobs/.
         runner = (
-            ROOT / "src" / "media_stack" / "services" / "jobs" / "controller_runner.py"
+            ROOT / "src" / "media_stack" / "application" / "jobs" / "controller_runner.py"
         ).read_text(encoding="utf-8")
         operation_names: set[str] = set()
         for tech in TECHNOLOGIES:
@@ -224,7 +233,12 @@ class TechnologyPluggabilityContractTests(unittest.TestCase):
 
         operation_names = {name for name in operation_names if name}
         self.assertTrue(operation_names, "No event handlers discovered from manifests.")
-        self.assertIn("from media_stack.cli.commands.controller_main import main", wrapper)
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn(
+            'media-stack-controller = "media_stack.cli.commands.controller_main:main"',
+            pyproject,
+            "media-stack-controller console-script entry-point removed from pyproject.toml",
+        )
         self.assertIn("build_runner_event_registry(", runner)
         self.assertNotIn("_missing_op_handler(", runner)
 
