@@ -36,7 +36,7 @@ def _make_ctx(guides, tuners=None):
 class TestMergedGuidePreservesEnrichmentFlags(unittest.TestCase):
     """The merged guide entry must carry forward flags from source guides."""
 
-    @patch("media_stack.services.apps.jellyfin.configure_livetv_job.importlib")
+    @patch("media_stack.application.jellyfin.configure_livetv_job.importlib")
     def _run_configure_with_guides(self, guides, mock_importlib):
         """Run configure_livetv with mocked merge and capture the guide dict."""
         # Mock the merge function to return a successful result
@@ -67,7 +67,7 @@ class TestMergedGuidePreservesEnrichmentFlags(unittest.TestCase):
         ctx = _make_ctx(guides)
         # Ensure the M3U file "exists" for the merge path check
         with patch.object(Path, "is_file", return_value=True):
-            from media_stack.services.apps.jellyfin.configure_livetv_job import configure_livetv
+            from media_stack.application.jellyfin.configure_livetv_job import configure_livetv
             # Patch os.environ for API key and registry
             with patch.dict("os.environ", {"JELLYFIN_API_KEY": "test-key"}):
                 configure_livetv(ctx)
@@ -166,7 +166,7 @@ class TestMergedGuidePreservesEnrichmentFlags(unittest.TestCase):
 class TestMergedGuideStructure(unittest.TestCase):
     """The merged guide dict must have required fields for Jellyfin."""
 
-    @patch("media_stack.services.apps.jellyfin.configure_livetv_job.importlib")
+    @patch("media_stack.application.jellyfin.configure_livetv_job.importlib")
     def test_merged_guide_has_required_fields(self, mock_importlib):
         mock_merge = MagicMock(return_value={
             "channels_with_programmes": 50,
@@ -193,7 +193,7 @@ class TestMergedGuideStructure(unittest.TestCase):
         }])
         with patch.object(Path, "is_file", return_value=True), \
              patch.dict("os.environ", {"JELLYFIN_API_KEY": "test-key"}):
-            from media_stack.services.apps.jellyfin.configure_livetv_job import configure_livetv
+            from media_stack.application.jellyfin.configure_livetv_job import configure_livetv
             configure_livetv(ctx)
 
         guides = ctx.cfg["jellyfin_livetv"]["guides"]
