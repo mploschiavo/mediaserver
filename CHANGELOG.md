@@ -2,6 +2,48 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.310] — 2026-05-02
+
+### Architecture
+- **ADR-0004 — promise-driven fresh-install verifier.** Replaces
+  `media-stack-probe-promises` (parallel probe loop running in the
+  operator's host shell) with a thin client of the controller's
+  orchestrator state. Operator and orchestrator now agree on "is
+  the stack healthy?" by construction — same data, one runtime.
+  - **Phase 6.1**: `GET /api/orchestrator/promises/state` endpoint
+    serves the most recent persisted tick. 503 + `last_tick_age_seconds`
+    when missing/stale so the verifier can retry vs fail.
+  - **Phase 6.2**: `FreshInstallVerifier` class
+    (`src/media_stack/application/verifier/fresh_install.py`).
+    External-client mode (HTTP), structured `VerificationResult`
+    dataclass, `verify()` (one-shot) and `wait_for_steady_state()`
+    (poll until pass / deadline / fail-fast on `failed_permanent`).
+    Honest-failure semantics: `unknown` counts as a failure (not
+    silently green); empty attempts list is not acceptance.
+  - **Phase 6.3**: `media-stack-verify` CLI registered as a
+    console-script. Flag shape matches the legacy CLI for one-line
+    wrapper-script swap. Exit codes 0/1/2 (pass / failed / unreachable
+    or state-not-yet).
+  - **Phase 6.4**: `bin/test/verify-fresh-install.sh` switched from
+    `media-stack-probe-promises` to `media-stack-verify --wait 90`.
+    Legacy CLI stays registered for one release of soak; Phase 6.5
+    will delete it (unblocks ADR-0003 Phase 5e.2).
+
+### Tests
+- 33 new tests for verifier + CLI (acceptance buckets, exit codes,
+  stale-recheck, env fallbacks, --filter narrowing, --wait dispatch,
+  legacy flag compat).
+- 12 new tests for the endpoint + dispatch wiring (200/503/missing/
+  malformed/threshold boundaries; live-snapshot replay).
+- Live `promise_state.json` snapshot captured at
+  `tests/fixtures/orchestrator/` so a registry drift surfaces in
+  the parser test, not in production.
+
+### Rollback
+Single-commit revert restores `verify-fresh-install.sh`'s call to
+`media-stack-probe-promises`. Both CLIs still registered as console-
+scripts; revert path is a one-line shell swap.
+
 ## [v1.0.309] — 2026-05-02
 
 ### Architecture
