@@ -1,0 +1,154 @@
+{
+    "sources": [
+        {
+            "id": "controller",
+            "label": "Controller",
+            "kind": "platform"
+        },
+        {
+            "id": "ui",
+            "label": "Ui",
+            "kind": "platform"
+        },
+        {
+            "id": "authelia",
+            "label": "Authelia",
+            "kind": "service"
+        },
+        {
+            "id": "authentik",
+            "label": "Authentik",
+            "kind": "service"
+        },
+        {
+            "id": "bazarr",
+            "label": "Bazarr",
+            "kind": "service"
+        },
+        {
+            "id": "core",
+            "label": "Core",
+            "kind": "service"
+        },
+        {
+            "id": "emby",
+            "label": "Emby",
+            "kind": "service"
+        },
+        {
+            "id": "envoy",
+            "label": "Envoy",
+            "kind": "service"
+        },
+        {
+            "id": "flaresolverr",
+            "label": "Flaresolverr",
+            "kind": "service"
+        },
+        {
+            "id": "grabit",
+            "label": "Grabit",
+            "kind": "service"
+        },
+        {
+            "id": "guardrails",
+            "label": "Guardrails",
+            "kind": "service"
+        },
+        {
+            "id": "homepage",
+            "label": "Homepage",
+            "kind": "service"
+        },
+        {
+            "id": "jdownloader",
+            "label": "Jdownloader",
+            "kind": "service"
+        },
+        {
+            "id": "jellyfin",
+            "label": "Jellyfin",
+            "kind": "service"
+        },
+        {
+            "id": "jellyseerr",
+            "label": "Jellyseerr",
+            "kind": "service"
+        },
+        {
+            "id": "lidarr",
+            "label": "Lidarr",
+            "kind": "service"
+        },
+        {
+            "id": "maintainerr",
+            "label": "Maintainerr",
+            "kind": "service"
+        },
+        {
+            "id": "media_integrity",
+            "label": "Media_Integrity",
+            "kind": "service"
+        },
+        {
+            "id": "mythtv",
+            "label": "Mythtv",
+            "kind": "service"
+        },
+        {
+            "id": "nzbget",
+            "label": "Nzbget",
+            "kind": "service"
+        },
+        {
+            "id": "plex",
+            "label": "Plex",
+            "kind": "service"
+        },
+        {
+            "id": "prowlarr",
+            "label": "Prowlarr",
+            "kind": "service"
+        },
+        {
+            "id": "qbittorrent",
+            "label": "Qbittorrent",
+            "kind": "service"
+        },
+        {
+            "id": "radarr",
+            "label": "Radarr",
+            "kind": "service"
+        },
+        {
+            "id": "readarr",
+            "label": "Readarr",
+            "kind": "service"
+        },
+        {
+            "id": "sabnzbd",
+            "label": "Sabnzbd",
+            "kind": "service"
+        },
+        {
+            "id": "sonarr",
+            "label": "Sonarr",
+            "kind": "service"
+        },
+        {
+            "id": "tautulli",
+            "label": "Tautulli",
+            "kind": "service"
+        },
+        {
+            "id": "traefik",
+            "label": "Traefik",
+            "kind": "service"
+        },
+        {
+            "id": "unpackerr",
+            "label": "Unpackerr",
+            "kind": "service"
+        }
+    ]
+}
