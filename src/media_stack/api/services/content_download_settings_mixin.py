@@ -22,6 +22,8 @@ from typing import Any
 from .health import discover_api_keys
 from .registry import SERVICE_MAP
 
+from media_stack.infrastructure.media import load_media_types
+
 
 class _ContentDownloadSettingsMixin:
     """qBittorrent + Jellyfin scan control for ``ContentService``."""
@@ -120,10 +122,13 @@ class _ContentDownloadSettingsMixin:
         if settings.get("scan_now"):
             keys = discover_api_keys()
             arr_specs = [
-                ("sonarr",  "v3", "DownloadedEpisodesScan", "/data/torrents/completed/tv"),
-                ("radarr",  "v3", "DownloadedMoviesScan",   "/data/torrents/completed/movies"),
-                ("lidarr",  "v1", "DownloadedAlbumsScan",   "/data/torrents/completed/music"),
-                ("readarr", "v1", "DownloadedBooksScan",    "/data/torrents/completed/books"),
+                (
+                    mt.arr_lower,
+                    mt.arr_api_version,
+                    mt.arr_scan_command,
+                    mt.torrents_completed_path,
+                )
+                for mt in load_media_types().values()
             ]
             arr_results: dict[str, str] = {}
             for app, ver, cmd, path in arr_specs:

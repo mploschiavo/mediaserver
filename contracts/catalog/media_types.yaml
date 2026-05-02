@@ -1,0 +1,85 @@
+# Catalog of media types the stack manages end-to-end.
+#
+# Each entry is the canonical 1:N relationship for a single media type:
+# what the *arr is called, what API version it speaks, where the
+# library lives in each container's view, where downloads land, what
+# the controller pod sees, etc.
+#
+# This file is the source-of-truth for those relationships. Code in
+# src/ reads via media_stack.infrastructure.media.catalog.load_media_types()
+# instead of inlining literals. Adding a new media type (podcasts,
+# audiobooks-distinct-from-books, etc.) is a single entry here that
+# every consumer picks up automatically.
+#
+# Path overlap with other defaults:
+#   * arr.yaml's ``arr_apps[].root_folder`` and downloads.yaml's
+#     ``download_clients.<client>.completed_paths`` currently duplicate
+#     the same values per their respective consumers. A follow-up PR
+#     will collapse those to read from this catalog instead.
+#   * paths.yaml's substrate-level non-per-type roots (torrents_root,
+#     hygiene_*) live separately because they're not 4-way per type.
+
+media_types:
+  tv:
+    name: tv
+    arr_name: Sonarr
+    arr_lower: sonarr
+    arr_api_version: v3
+    arr_scan_command: DownloadedEpisodesScan
+    qbit_category: tv
+    sab_category: tv
+    library_path: /media/tv
+    controller_library_path: /srv-stack/media/tv
+    controller_library_path_compose: /media/tv
+    torrents_completed_path: /data/torrents/completed/tv
+    usenet_completed_path: /data/usenet/completed/tv
+    controller_torrents_completed: /srv-stack/data/torrents/completed/tv
+    controller_usenet_completed: /srv-stack/data/usenet/completed/tv
+
+  movies:
+    name: movies
+    arr_name: Radarr
+    arr_lower: radarr
+    arr_api_version: v3
+    arr_scan_command: DownloadedMoviesScan
+    qbit_category: movies
+    sab_category: movies
+    library_path: /media/movies
+    controller_library_path: /srv-stack/media/movies
+    controller_library_path_compose: /media/movies
+    torrents_completed_path: /data/torrents/completed/movies
+    usenet_completed_path: /data/usenet/completed/movies
+    controller_torrents_completed: /srv-stack/data/torrents/completed/movies
+    controller_usenet_completed: /srv-stack/data/usenet/completed/movies
+
+  music:
+    name: music
+    arr_name: Lidarr
+    arr_lower: lidarr
+    arr_api_version: v1
+    arr_scan_command: DownloadedAlbumsScan
+    qbit_category: music
+    sab_category: music
+    library_path: /media/music
+    controller_library_path: /srv-stack/media/music
+    controller_library_path_compose: /media/music
+    torrents_completed_path: /data/torrents/completed/music
+    usenet_completed_path: /data/usenet/completed/music
+    controller_torrents_completed: /srv-stack/data/torrents/completed/music
+    controller_usenet_completed: /srv-stack/data/usenet/completed/music
+
+  books:
+    name: books
+    arr_name: Readarr
+    arr_lower: readarr
+    arr_api_version: v1
+    arr_scan_command: DownloadedBooksScan
+    qbit_category: books
+    sab_category: books
+    library_path: /media/books
+    controller_library_path: /srv-stack/media/books
+    controller_library_path_compose: /media/books
+    torrents_completed_path: /data/torrents/completed/books
+    usenet_completed_path: /data/usenet/completed/books
+    controller_torrents_completed: /srv-stack/data/torrents/completed/books
+    controller_usenet_completed: /srv-stack/data/usenet/completed/books

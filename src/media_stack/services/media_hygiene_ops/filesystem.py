@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 import logging
 
+from media_stack.infrastructure.paths import load_controller_paths
+
 
 
 class FilesystemHygieneService:
@@ -34,12 +36,8 @@ class FilesystemHygieneService:
                 "removed_empty_dirs": 0,
             }
     
-        default_roots = [
-            "/srv-stack/data/torrents/incomplete",
-            "/srv-stack/data/torrents/completed",
-            "/srv-stack/data/usenet/incomplete",
-            "/srv-stack/data/usenet/completed",
-        ]
+        controller_paths = load_controller_paths()
+        default_roots = list(controller_paths.get("hygiene_default_roots") or [])
         raw_roots = ops.coerce_list(fs_cfg.get("roots")) or default_roots
         roots = [Path(str(p)).resolve() for p in raw_roots if str(p).strip()]
         min_age_hours = ops.to_float(fs_cfg.get("min_file_age_hours"), 24.0)
@@ -54,18 +52,9 @@ class FilesystemHygieneService:
             if str(x).strip()
         } or {".part", ".tmp", ".temp", ".nzb", ".!qb"}
         remove_empty_dirs = ops.bool_cfg(fs_cfg, "remove_empty_dirs", True)
-        default_preserve_empty_dirs = [
-            "/srv-stack/data/torrents/incomplete",
-            "/srv-stack/data/torrents/completed/tv",
-            "/srv-stack/data/torrents/completed/movies",
-            "/srv-stack/data/torrents/completed/music",
-            "/srv-stack/data/torrents/completed/books",
-            "/srv-stack/data/usenet/incomplete",
-            "/srv-stack/data/usenet/completed/tv",
-            "/srv-stack/data/usenet/completed/movies",
-            "/srv-stack/data/usenet/completed/music",
-            "/srv-stack/data/usenet/completed/books",
-        ]
+        default_preserve_empty_dirs = list(
+            controller_paths.get("hygiene_preserve_empty_dirs") or []
+        )
         raw_preserve_empty_dirs = (
             ops.coerce_list(fs_cfg.get("preserve_empty_dirs")) or default_preserve_empty_dirs
         )

@@ -16,6 +16,7 @@ from media_stack.infrastructure.jellyseerr.local_admin_ops import ensure_local_a
 from media_stack.application.jellyseerr.orchestrator_ops import configure
 from media_stack.application.jellyseerr.runtime_ops import _jellyseerr_service
 from media_stack.api.services.registry import service_internal_url
+from media_stack.infrastructure.media import load_media_types
 
 
 class JellyseerrConfigureJob:
@@ -88,10 +89,17 @@ class JellyseerrConfigureJob:
         arr_apps: list[dict[str, Any]] = []
         app_keys: dict[str, str] = {}
 
-        for app_name, svc_id, root_folder in [
-            ("Sonarr", "sonarr", "/media/tv"),
-            ("Radarr", "radarr", "/media/movies"),
-        ]:
+        # Jellyseerr only registers Sonarr + Radarr (it requests
+        # movies/TV; music + books are out of scope for the
+        # Jellyseerr UX). Pull from the catalog so paths stay aligned
+        # with the rest of the stack.
+        _JELLYSEERR_ARR_NAMES = {"Sonarr", "Radarr"}
+        for mt in load_media_types().values():
+            if mt.arr_name not in _JELLYSEERR_ARR_NAMES:
+                continue
+            app_name = mt.arr_name
+            svc_id = mt.arr_lower
+            root_folder = mt.library_path
             key = ctx.api_key(svc_id)
             url = ctx.service_url(svc_id)
             if not key or not url:
