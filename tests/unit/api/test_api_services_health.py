@@ -2,6 +2,7 @@
 
 import json
 import os
+import pytest
 import sqlite3
 import sys
 import tempfile
@@ -36,6 +37,22 @@ def _svc(id: str, api_key_env: str = "", api_key_config: str = "",
 # ---------------------------------------------------------------------------
 # discover_api_keys
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_runtime_keys_cache():
+    """``discover_api_keys`` reads env vars through ``runtime_keys``'s
+    30-second per-process cache. Tests in this file set env vars
+    per-case via ``@patch.dict``; without clearing the cache, the
+    value from one test leaks into the next (e.g. blank env from one
+    test breaks a positive assertion in the next, or vice versa).
+
+    Auto-applied to every test in this module so we don't have to
+    sprinkle ``invalidate_cache()`` calls into every setUp."""
+    from media_stack.api.services.runtime_keys import invalidate_cache
+    invalidate_cache()
+    yield
+    invalidate_cache()
 
 
 class TestDiscoverApiKeysEnvVars(unittest.TestCase):
