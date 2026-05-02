@@ -53,7 +53,16 @@ class TestConfigDrift(unittest.TestCase):
         result = config_mod.get_config_drift()
         key_drifts = [d for d in result["drifts"] if d["area"] == "api_key"]
         self.assertTrue(len(key_drifts) > 0)
-        self.assertEqual(key_drifts[0]["key"], "sonarr")
+        # Assert sonarr's drift is present rather than first — other
+        # ``*_API_KEY`` env vars (set by the host or leaked by an
+        # earlier test) can also produce drift entries since the
+        # ``read_api_key_from_file`` mock returns the same value for
+        # every service id.
+        self.assertTrue(
+            any(d["key"] == "sonarr" for d in key_drifts),
+            f"sonarr drift not detected; saw: "
+            f"{[d['key'] for d in key_drifts]}",
+        )
 
     @patch.dict(os.environ, {"K8S_NAMESPACE": "", "CONFIG_ROOT": "/nonexistent"})
     @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)

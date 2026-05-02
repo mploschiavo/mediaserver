@@ -157,14 +157,21 @@ class TestHomepageServicesGeneration(unittest.TestCase):
         """Gateway URLs must include port when not 80 or 443."""
         svc = self._make_service()
         with tempfile.TemporaryDirectory() as tmpdir:
-            cfg: dict[str, Any] = {
-                "routing": {
-                    "gateway_host": "apps.media-stack.local",
-                    "gateway_port": "8880",
-                    "app_path_prefix": "/app",
-                },
+            routing_override = {
+                "gateway_host": "apps.media-stack.local",
+                "gateway_port": "8880",
+                "app_path_prefix": "/app",
             }
-            svc.ensure_services_config(cfg, tmpdir)
+            cfg: dict[str, Any] = {"routing": routing_override}
+            # Since v1.0.165 HomepageService reads
+            # ``api.services.config.get_routing()`` as SoT before falling
+            # back to cfg['routing']; patch it so the per-test override
+            # is honoured.
+            with patch(
+                "media_stack.api.services.config.get_routing",
+                return_value=dict(routing_override),
+            ):
+                svc.ensure_services_config(cfg, tmpdir)
             content = (Path(tmpdir) / "homepage" / "services.yaml").read_text()
             self.assertIn("apps.media-stack.local:8880/app/jellyfin", content)
 
@@ -231,9 +238,11 @@ class TestHomepageDefaultHosts(unittest.TestCase):
 
     def test_includes_all_key_services(self) -> None:
         hosts_str = " ".join(DEFAULT_HOSTS)
+        # The controller dashboard moved to its own SPA in v1.0.193 and
+        # is no longer surfaced as a homepage tile (operators reach it
+        # via the gateway path-prefix URL or controller.local directly).
         for svc in ["jellyfin", "sonarr", "radarr", "prowlarr",
-                     "qbittorrent", "jellyseerr", "homepage",
-                     "media-stack-controller"]:
+                     "qbittorrent", "jellyseerr", "homepage"]:
             self.assertIn(svc, hosts_str,
                 f"DEFAULT_HOSTS missing {svc}")
 
