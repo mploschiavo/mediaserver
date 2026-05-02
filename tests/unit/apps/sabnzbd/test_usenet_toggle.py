@@ -171,7 +171,11 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
                          "link from the dashboard.")
 
     def test_services_api_surfaces_published_port(self) -> None:
-        text = (ROOT / "src/media_stack/api/handlers_get.py").read_text(encoding="utf-8")
+        # The /api/services payload was assembled in handlers_get.py
+        # before; the projection moved into
+        # ``api/services/registry.py`` along with the other service-
+        # registry concerns (Phase 16-* api split).
+        text = (ROOT / "src/media_stack/api/services/registry.py").read_text(encoding="utf-8")
         self.assertIn(
             '"published_port":', text,
             "/api/services no longer surfaces published_port — "

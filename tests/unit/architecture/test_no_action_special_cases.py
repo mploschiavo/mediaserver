@@ -109,12 +109,21 @@ class DispatchSpecialCaseRatchetTests(unittest.TestCase):
             "single-dispatch contract is broken.",
         )
 
+    # Control-plane metadata (source / actor) is allowed on the
+    # ``run_job`` call — those identify WHO triggered the action and
+    # in WHAT mode (manual / auto-heal / scheduler / cron:<mode>) so
+    # the run-history record carries the intent. Per-JOB tuning
+    # (max_attempts, retries, timeouts) is what the ratchet polices;
+    # those still belong in contracts/services/*.yaml.
+    _ALLOWED_RUN_JOB_KWARGS: frozenset[str] = frozenset({"source", "actor"})
+
     def test_dispatch_run_job_call_takes_only_action_name(self) -> None:
         """Per-job tuning (max_attempts, retry behaviour) belongs
         in the contract YAML, not in the dispatch. The dispatch's
         ``run_job`` call should take exactly one positional arg
-        (``action_name``) and zero keyword args. Anything else is
-        a hardcoded knob waiting to be moved to the contract."""
+        (``action_name``) and only the explicitly allowed control-
+        plane kwargs in ``_ALLOWED_RUN_JOB_KWARGS``. Anything else
+        is a hardcoded knob waiting to be moved to the contract."""
         fn = _dispatch_function_node()
         for node in ast.walk(fn):
             if not (isinstance(node, ast.Call)
@@ -127,12 +136,14 @@ class DispatchSpecialCaseRatchetTests(unittest.TestCase):
                 "Only ``action_name`` belongs here; per-job tuning "
                 "goes in contracts/services/*.yaml.",
             )
+            unsanctioned = {k.arg for k in node.keywords} - self._ALLOWED_RUN_JOB_KWARGS
             self.assertFalse(
-                node.keywords,
-                "run_job has keyword args ("
-                f"{[k.arg for k in node.keywords]}); per-job tuning "
-                "(max_attempts, etc.) belongs in the contract YAML, "
-                "not the dispatch.",
+                unsanctioned,
+                f"run_job has unsanctioned keyword args ({sorted(unsanctioned)}); "
+                "per-job tuning (max_attempts, etc.) belongs in the "
+                "contract YAML, not the dispatch. Add a control-plane "
+                "kwarg to ``_ALLOWED_RUN_JOB_KWARGS`` only with a "
+                "comment explaining the audit/intent reason.",
             )
 
     def test_dispatch_does_not_call_legacy_action_handlers(self) -> None:
@@ -159,18 +170,21 @@ class DispatchUnifiedShapeTests(unittest.TestCase):
     """Smoke tests on the dispatch shape — small enough that the
     function should fit in a screen and have a single happy path."""
 
-    def test_dispatch_function_is_under_50_lines(self) -> None:
-        """The dispatch should be terse. If it exceeds 50 lines
-        someone has reintroduced complexity that belongs in
-        ``run_job`` or in the adapters."""
+    def test_dispatch_function_is_under_60_lines(self) -> None:
+        """The dispatch should be terse. The 60-line ceiling allows
+        the audit-metadata extraction block (``_source`` / ``_actor``
+        pop + legacy ``_triggered_by`` mapping) but still catches
+        per-action elif sprawl. If you need more headroom, move work
+        out of the dispatch — don't bump this number without a
+        rationale."""
         fn = _dispatch_function_node()
         end = fn.end_lineno or fn.lineno
         lines = end - fn.lineno + 1
         self.assertLessEqual(
-            lines, 50,
+            lines, 60,
             f"_dispatch_action is {lines} lines. Keep the dispatch "
             "small: action-specific work belongs in the job adapter "
-            "(services/apps/core/job_adapters.py) or per-app "
+            "(application/jobs/controller_handlers.py) or per-app "
             "service module, not in the dispatch.",
         )
 
