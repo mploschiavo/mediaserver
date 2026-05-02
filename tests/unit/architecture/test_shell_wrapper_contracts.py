@@ -33,6 +33,16 @@ def run_wrapper(
         raise FileNotFoundError(f"Script not found: {script_name}")
     env = dict(os.environ)
     env["PYTHON_BIN"] = sys.executable
+    # The bin/ wrappers exec console-scripts (``media-stack-bootstrap-all``
+    # etc.) installed by the wheel + ``pip install -e .``. When pytest is
+    # invoked as ``./.venv/bin/python -m pytest`` (without sourcing
+    # ``activate``), the venv's bin directory isn't on PATH — the wrappers
+    # then exit 127 with "command not found" and every wrapper-contract
+    # test fails on that alone instead of on its actual assertion.
+    # Prepending the running interpreter's bin dir keeps the subprocess
+    # consistent with the test runner regardless of activation state.
+    interp_bin = str(Path(sys.executable).parent)
+    env["PATH"] = interp_bin + os.pathsep + env.get("PATH", "")
     if env_overrides:
         env.update(env_overrides)
     return subprocess.run(
