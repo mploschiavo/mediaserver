@@ -303,6 +303,30 @@ class TestAutoHealCycleRecordsHistory(_HistoryDirMixin, unittest.TestCase):
     A no-op tick (which fires every minute) does NOT record so
     the 20-entry ring buffer doesn't get crowded out."""
 
+    # AutoHeal's run_cycle dispatches three child jobs every tick
+    # (guardrails:evaluate, jobs:close-stale-runs,
+    # orchestrator:satisfy-shadow). Each child writes its own history
+    # entry with source="auto-heal" + that child's job_name in the
+    # ``jobs`` dict. The auto-heal cycle's own record is the entry
+    # whose ``jobs`` keys are empty or all auto-heal:* — never one
+    # of the child job names below.
+    _AUTO_HEAL_CHILD_JOB_NAMES = frozenset({
+        "guardrails:evaluate",
+        "jobs:close-stale-runs",
+        "orchestrator:satisfy-shadow",
+    })
+
+    def _auto_heal_cycle_entries(self, history: list[dict]) -> list[dict]:
+        out: list[dict] = []
+        for entry in history:
+            if entry.get("source") != "auto-heal":
+                continue
+            job_keys = set((entry.get("jobs") or {}).keys())
+            if job_keys & self._AUTO_HEAL_CHILD_JOB_NAMES:
+                continue  # one of the dispatched child-job entries
+            out.append(entry)
+        return out
+
     def test_run_cycle_records_when_snapshot_taken(self):
         from media_stack.api.services import auto_heal as autoheal_mod
         svc = autoheal_mod.AutoHealService(
@@ -315,9 +339,8 @@ class TestAutoHealCycleRecordsHistory(_HistoryDirMixin, unittest.TestCase):
         svc.snapshot_healthy = lambda: 1  # type: ignore[assignment]
         svc.heal_corrupt = lambda: []  # type: ignore[assignment]
         svc.run_cycle()
-        history = get_job_history()
-        self.assertEqual(len(history), 1)
-        self.assertEqual(history[0]["source"], "auto-heal")
+        cycle_entries = self._auto_heal_cycle_entries(get_job_history())
+        self.assertEqual(len(cycle_entries), 1)
 
     def test_run_cycle_no_action_does_not_record(self):
         from media_stack.api.services import auto_heal as autoheal_mod
@@ -328,8 +351,12 @@ class TestAutoHealCycleRecordsHistory(_HistoryDirMixin, unittest.TestCase):
         svc.snapshot_healthy = lambda: 0  # type: ignore[assignment]
         svc.heal_corrupt = lambda: []  # type: ignore[assignment]
         svc.run_cycle()
-        history = get_job_history()
-        self.assertEqual(len(history), 0)
+        # The dispatched child-job entries (orchestrator:satisfy-shadow
+        # etc.) DO appear under source="auto-heal" — but the cycle's
+        # own snapshot/heal entry MUST NOT, since this tick took no
+        # action.
+        cycle_entries = self._auto_heal_cycle_entries(get_job_history())
+        self.assertEqual(len(cycle_entries), 0)
 
 
 class TestOpenAPISchemaTightened(unittest.TestCase):
