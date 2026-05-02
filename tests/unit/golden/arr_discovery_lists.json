@@ -11,7 +11,7 @@
       "monitor_new_items": "all",
       "name": "Last.fm Top Rock Artists (Top 10)",
       "should_monitor": "all",
-      "should_search": true
+      "should_search": false
     },
     {
       "enable_automatic_add": true,
@@ -24,7 +24,7 @@
       "monitor_new_items": "all",
       "name": "Last.fm Top Pop Artists (Top 10)",
       "should_monitor": "all",
-      "should_search": true
+      "should_search": false
     },
     {
       "enable_automatic_add": true,
@@ -37,7 +37,7 @@
       "monitor_new_items": "all",
       "name": "Last.fm Top Hip-Hop Artists (Top 10)",
       "should_monitor": "all",
-      "should_search": true
+      "should_search": false
     },
     {
       "enable_automatic_add": true,
@@ -50,7 +50,7 @@
       "monitor_new_items": "all",
       "name": "Last.fm Top Electronic Artists (Top 10)",
       "should_monitor": "all",
-      "should_search": true
+      "should_search": false
     }
   ],
   "Radarr": [
@@ -64,7 +64,7 @@
       "minimum_availability": "released",
       "monitor": "movieOnly",
       "name": "TMDb Trending Movies",
-      "search_on_add": true
+      "search_on_add": false
     },
     {
       "enable_auto": true,
@@ -76,7 +76,7 @@
       "minimum_availability": "released",
       "monitor": "movieOnly",
       "name": "TMDb Popular Movies",
-      "search_on_add": true
+      "search_on_add": false
     },
     {
       "enable_auto": true,
@@ -88,7 +88,7 @@
       "minimum_availability": "released",
       "monitor": "movieOnly",
       "name": "TMDb Top Rated Movies",
-      "search_on_add": true
+      "search_on_add": false
     },
     {
       "enable_auto": true,
@@ -100,7 +100,7 @@
       "minimum_availability": "released",
       "monitor": "movieOnly",
       "name": "TMDb Upcoming Movies",
-      "search_on_add": true
+      "search_on_add": false
     }
   ],
   "Readarr": [
@@ -115,7 +115,7 @@
       "monitor_new_items": "all",
       "name": "Goodreads Popular Science Fiction",
       "should_monitor": "all",
-      "should_search": true
+      "should_search": false
     },
     {
       "enable_automatic_add": true,
@@ -128,10 +128,25 @@
       "monitor_new_items": "all",
       "name": "Goodreads Readarr Top 100",
       "should_monitor": "all",
-      "should_search": true
+      "should_search": false
     }
   ],
-  "Sonarr": [],
+  "Sonarr": [
+    {
+      "enable_auto": true,
+      "enabled": true,
+      "field_overrides": {
+        "baseUrl": "http://media-stack-controller:9100/api/discovery/popular-tv"
+      },
+      "implementation": "CustomImport",
+      "monitor_new_items": "all",
+      "name": "Popular TV (TVMaze)",
+      "search_on_add": false,
+      "season_folder": true,
+      "series_type": "standard",
+      "should_monitor": "firstSeason"
+    }
+  ],
   "enabled": true,
   "prune_unmanaged": true,
   "required": false,

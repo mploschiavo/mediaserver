@@ -145,7 +145,7 @@
       "music": "/data/usenet/completed/music",
       "tv": "/data/usenet/completed/tv"
     },
-    "configure_arr_clients": true,
+    "configure_arr_clients": false,
     "host": "sabnzbd",
     "implementation": "Sabnzbd",
     "incomplete_dir": "/data/usenet/incomplete",
