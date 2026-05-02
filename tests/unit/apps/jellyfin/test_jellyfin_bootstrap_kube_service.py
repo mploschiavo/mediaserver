@@ -3,7 +3,13 @@ import json
 import unittest
 from unittest.mock import patch
 
-from media_stack.services.apps.jellyfin.cli import jellyfin_controller_kube_service as svc
+# Patches must target the namespace the function actually resolves
+# names from. The services/apps/jellyfin/cli path is a star-shim;
+# patching ``svc.run_cmd`` there doesn't affect the canonical
+# ``get_secret`` function, which looks up ``run_cmd`` in its own
+# (canonical) module globals — so ``get_secret`` silently shells out
+# to live kubectl. Import from the canonical infrastructure module.
+from media_stack.infrastructure.jellyfin import controller_kube_service as svc
 
 
 class _Proc:
