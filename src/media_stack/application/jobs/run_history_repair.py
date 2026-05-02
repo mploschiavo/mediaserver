@@ -7,12 +7,10 @@ This is the canonical home of the repair logic. Two consumers:
      project's "operator tools live under bin/" convention.
   2. ``application.jobs.close_stale_runs.close_stale_runs`` — the
      auto-heal cycle's promise-style ensurer. Imports
-     ``run_repair`` directly. Phase 0 of ADR-0003.
+     ``run_repair`` directly.
 
-Moved from ``bin/ops/repair_run_history.py`` in v1.0.293 because
-the auto-heal handler couldn't reach a script that lives outside
-the installed package. Single source of truth, importable from
-both consumers without importlib spec dancing.
+Single source of truth, importable from both consumers without
+importlib spec dancing.
 
 Original module docstring follows.
 

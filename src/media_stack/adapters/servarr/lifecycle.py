@@ -1,4 +1,4 @@
-"""Servarr-family implementation of ``ServiceLifecycle`` — ADR-0003 Phase 2.
+"""Servarr-family implementation of ``ServiceLifecycle``.
 
 One class parameterized by ``service_id`` covers sonarr, radarr,
 lidarr, readarr, and prowlarr. They share an identical lifecycle
@@ -11,8 +11,8 @@ shape:
     ``api.services.key_formats``
 
 Bazarr is intentionally NOT covered here — it uses YAML config and a
-REST settings flow, not the auto-generated config.xml pattern. Phase
-3 will land a separate ``BazarrLifecycle``.
+REST settings flow, not the auto-generated config.xml pattern, and
+has its own ``BazarrLifecycle``.
 
 "Mint" semantics for Servarr: there is no mint endpoint. The *arr
 process generates a random key on first start and writes it to

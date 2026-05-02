@@ -135,12 +135,12 @@ class RunRecord:
     # stats.py``). ``None`` until enough history exists; the UI
     # tints the row red when ``> 2`` and amber when ``> 1``.
     anomaly_score: Optional[float] = None
-    # ADR-0003 Phase 4b: when the orchestrator emits a record (probe
-    # call, ensurer call, or full satisfy_promises tick), this carries
-    # the promise id so operators can query "every evaluation of
-    # promise X" via the existing run-history API. Optional + None by
-    # default — legacy job records don't have a promise id, and that
-    # stays additive: missing field on disk maps to None on read.
+    # When the orchestrator emits a record (probe call, ensurer call,
+    # or full satisfy_promises tick), this carries the promise id so
+    # operators can query "every evaluation of promise X" via the
+    # existing run-history API. Optional + None by default — non-
+    # promise-driven job records don't have one, and that stays
+    # additive: missing field on disk maps to None on read.
     promise_id: Optional[str] = None
 
     def __post_init__(self) -> None:

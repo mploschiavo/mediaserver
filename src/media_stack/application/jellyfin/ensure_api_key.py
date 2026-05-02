@@ -1,10 +1,9 @@
 """Job handler: ensure Jellyfin's API key is discoverable.
 
-Phase 0 of ADR-0003. Closes the gap where Jellyfin's API key never
-lands in ``discover_api_keys()`` after a fresh bootstrap because the
-existing preflight handlers ran early (during the
-``container_preflight_handlers`` phase) when Jellyfin wasn't yet
-ready, all timed out at ``_wait_ready``, and were never retried.
+Bootstrap-phase ensurer. The preflight handlers that run during
+``container_preflight_handlers`` may execute before Jellyfin is
+ready and time out at ``_wait_ready`` without retrying; this
+handler retries until the key actually lands.
 
 Design (idempotent + self-healing, ~50 LOC):
 
@@ -21,15 +20,11 @@ Design (idempotent + self-healing, ~50 LOC):
      the K8s secret via ``_persist_preflight_keys_to_secret_safe``
      (no-op on compose).
 
-Wired into the auto-heal cycle in ``api/services/auto_heal.py`` so
-every 60s tick re-evaluates this. Once the key is minted the probe
-short-circuits the whole flow — the long-tail cost is one
-``discover_api_keys()`` call per minute. Acceptable.
-
-This is the first concrete promise-style ensurer in the codebase.
-The ``ServiceLifecycle`` Protocol from ADR-0003 will subsume it
-once Phase 2 lands; until then this is the pattern to mimic when a
-service needs the same self-healing behavior.
+In continuous mode this invariant is owned by the orchestrator's
+``jellyfin-api-key-discoverable`` promise (which dispatches
+``JellyfinLifecycle.mint_api_key`` — same underlying preflight).
+This handler stays registered as the bootstrap-phase entry point;
+see ADR-0003 for the orchestrator design.
 """
 
 from __future__ import annotations

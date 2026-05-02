@@ -1,4 +1,4 @@
-"""Service-lifecycle types — ADR-0003 Phase 1.
+"""Service-lifecycle types (see ADR-0003).
 
 Public surface lives in ``lifecycle``. Re-exported here so callers can
 ``from media_stack.domain.services import ServiceLifecycle, ProbeResult,

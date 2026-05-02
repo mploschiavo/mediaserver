@@ -1,5 +1,4 @@
-"""Registry loader for ``contracts/promises/promises.yaml`` —
-ADR-0003 Phase 4a.
+"""Registry loader for ``contracts/promises/promises.yaml``.
 
 Reads the YAML file and produces a list of typed ``Promise`` values
 the orchestrator can dispatch against. Errors are reported with the

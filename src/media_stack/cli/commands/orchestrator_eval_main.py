@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Operator CLI for ``satisfy_promises`` — ADR-0003 Phase 4b.
+"""Operator CLI for ``satisfy_promises``.
 
 Run one orchestration tick and print a per-promise table. Useful for:
 
-  * Manual testing during 4b/4c development
-  * Debugging the discrepancy logger's outputs in 4d
   * Operators eyeballing what the orchestrator sees right now without
     waiting for the next 60s auto-heal tick
+  * Reproducing a probe failure interactively when triaging
 
 Usage:
 

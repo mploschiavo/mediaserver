@@ -1,4 +1,4 @@
-"""SABnzbd implementation of ``ServiceLifecycle`` — ADR-0003 Phase 3.
+"""SABnzbd implementation of ``ServiceLifecycle``.
 
 SABnzbd's lifecycle is structurally close to the *arr family: the
 SAB process generates an API key in ``sabnzbd.ini`` on first start

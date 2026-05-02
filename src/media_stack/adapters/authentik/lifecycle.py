@@ -1,11 +1,10 @@
-"""Authentik ``ServiceLifecycle`` — ADR-0003 Phase 3c.
+"""Authentik ``ServiceLifecycle``.
 
 Authentik does have API tokens, but the controller doesn't mint or
-manage them today — operators provision tokens out-of-band. So for
-this Phase, Authentik is a no-API-key service from the lifecycle's
-perspective. Phase 5 may add a ``probe_has_api_key`` that reads a
-controller-side env (``AUTHENTIK_TOKEN``) once the token-management
-flow is designed.
+manage them — operators provision tokens out-of-band. So Authentik
+is a no-API-key service from the lifecycle's perspective. A future
+``probe_has_api_key`` could read a controller-side env
+(``AUTHENTIK_TOKEN``) once a token-management flow is designed.
 """
 
 from __future__ import annotations

@@ -18,11 +18,12 @@ records:
      can save you here. Self-heals on the next auto-heal tick after
      restart via this handler.
 
-Same Phase 0 pattern as ``jellyfin:ensure-api-key`` — promise probes
-the invariant, ensurer makes it true, auto-heal re-evaluates every
-60s. Same shape, no new code path. Reuses ``run_history_repair``
-which already had the logic factored out as a pure function with
-``apply``/``dry_run`` modes, atomic rewrite, and idempotent behavior.
+Promise-probe + ensurer pair, same shape as
+``jellyfin:ensure-api-key``: the probe checks the invariant, the
+ensurer makes it true, the auto-heal cycle re-evaluates every 60s.
+Reuses ``run_history_repair`` which already had the logic factored
+out as a pure function with ``apply``/``dry_run`` modes, atomic
+rewrite, and idempotent behavior.
 """
 
 from __future__ import annotations

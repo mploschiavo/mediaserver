@@ -1,4 +1,4 @@
-"""Probe + ensurer dispatch tables — ADR-0003 Phase 4b.
+"""Probe + ensurer dispatch tables for the promise orchestrator.
 
 The orchestrator pattern-matches on ``ProbeSpec.kind`` /
 ``EnsurerSpec.kind`` to invoke the right handler. This module hosts

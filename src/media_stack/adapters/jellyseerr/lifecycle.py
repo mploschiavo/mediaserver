@@ -1,4 +1,4 @@
-"""Jellyseerr implementation of ``ServiceLifecycle`` — ADR-0003 Phase 3.
+"""Jellyseerr implementation of ``ServiceLifecycle``.
 
 Jellyseerr stores its API key in ``settings.json`` under
 ``main.apiKey``. Same "wait for the file" mint shape as the *arr /

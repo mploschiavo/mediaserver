@@ -1,27 +1,30 @@
 # Orchestrator coverage matrix
 
-Cross-reference of legacy auto-heal cycle hooks vs ADR-0003
-orchestrator coverage. Used to scope Phase 5d (retiring legacy hooks)
-safely. Updated 2026-05-02 from live shadow + live primary data.
+Cross-reference of the auto-heal cycle's hooks vs the orchestrator's
+promise-driven coverage (ADR-0003). The audit that produced this
+matrix scoped which legacy hooks could safely be retired in favor
+of orchestrator coverage, and which still cover responsibilities
+the orchestrator doesn't. Live data: 2026-05-02.
 
-## Legacy auto-heal hooks (current state)
+## Auto-heal hooks
 
 The 60s tick in `api/services/auto_heal.py` runs four `run_job(...)`
 calls:
 
-| Legacy hook | Orchestrator coverage | 5d action |
-|-------------|----------------------|-----------|
+| Auto-heal hook | Orchestrator coverage | Disposition |
+|----------------|----------------------|-------------|
 | `guardrails:evaluate` | None — guardrails are a separate evaluation pipeline (state-snapshot + threshold rules), not promise-driven | **Keep** |
-| `jellyfin:ensure-api-key` | `jellyfin-api-key-discoverable` promise → `JellyfinLifecycle.mint_api_key` → calls `http_preflight.run_preflight` (same impl) | **Retire candidate** — equivalence verified |
+| `jellyfin:ensure-api-key` | `jellyfin-api-key-discoverable` promise → `JellyfinLifecycle.mint_api_key` → calls `http_preflight.run_preflight` (same impl) | **Retired** — orchestrator now owns this; equivalence verified by construction + live negative test |
 | `jobs:close-stale-runs` | None — framework maintenance (closing zombie `status=running` records); not a service lifecycle | **Keep** |
-| `orchestrator:satisfy-shadow` | This IS the orchestrator | Keep (rename when out of shadow) |
+| `orchestrator:satisfy-shadow` | This IS the orchestrator | Keep |
 
-So Phase 5d only retires **one** hook: `jellyfin:ensure-api-key`.
+The audit identified exactly one retire-able hook: `jellyfin:ensure-api-key`.
 
-## Orchestrator-driven primary mode (Phase 5c live)
+## Orchestrator-driven primary mode
 
-`ORCHESTRATOR_LIVE_SERVICES` includes all 16 services with a
-`ServiceLifecycle` implementation. Per-service ensurer dispatch:
+All 16 services with a `ServiceLifecycle` implementation are live
+in primary mode (set via the `ORCHESTRATOR_LIVE_SERVICES` allowlist).
+Per-service ensurer dispatch:
 
 ### LifecycleEnsurer (orchestrator calls a Protocol method)
 
@@ -44,9 +47,9 @@ legacy bootstrap pipeline runs.
 
 | Promise | Job dispatched | Verified live |
 |---------|---------------|---------------|
-| `radarr-import-lists-auto` | `apply-arr-runtime-defaults` | ✓ TEST 1 (this commit) |
-| `qbittorrent-categories` | `ensure-qbittorrent-categories` | ✓ TEST 2 (this commit) |
-| `jellyfin-libraries` | `ensure-jellyfin-libraries` | ✓ TEST 3 (indirect) |
+| `radarr-import-lists-auto` | `apply-arr-runtime-defaults` | ✓ TEST 1 below |
+| `qbittorrent-categories` | `ensure-qbittorrent-categories` | ✓ TEST 2 below |
+| `jellyfin-libraries` | `ensure-jellyfin-libraries` | ✓ TEST 3 below (indirect) |
 | `bazarr-language-profile` | `ensure-bazarr-language-profile` | not tested |
 | `jellyseerr-arr-servers` | `configure-jellyseerr` | not tested |
 | `prowlarr-indexers-discovered` | `discover-indexers` | not tested |
@@ -137,16 +140,17 @@ contract. The risk of a class-wide bug is low; the risk of
 per-handler bugs is service-by-service.
 
 If a per-handler bug exists, the orchestrator would surface it
-the same way it surfaced the silent-error-as-ok shapes during
-Phase 4d (`ensure-qbittorrent-categories` returning ok with
-`err=login failed`, `ensure-bazarr-language-profile` returning ok
-with `settings POST 500`). Those are tracked in
-`bug_class_silent_error_as_ok.md` memory.
+the same way it surfaced two silent-error-as-ok shapes during
+shadow-mode evaluation: `ensure-qbittorrent-categories` returning
+ok with `err=login failed`, and `ensure-bazarr-language-profile`
+returning ok with `settings POST 500`.
 
-## Recommendation
+## Conclusions
 
-Phase 5d is safe to do for `jellyfin:ensure-api-key`. It's NOT
-safe to retire `guardrails:evaluate` or `jobs:close-stale-runs`
-(no orchestrator coverage). Phase 5e (deleting the legacy
-preflight code paths) needs a separate audit per service-family,
-not a blanket pass.
+- `jellyfin:ensure-api-key` is safe to retire from auto-heal
+  (orchestrator covers it).
+- `guardrails:evaluate` and `jobs:close-stale-runs` MUST stay —
+  the orchestrator has no equivalent.
+- Deleting legacy preflight code paths (the original Phase 5e
+  scope) needs per-service audit, not a blanket pass — see
+  `phase-5e-deletion-audit.md`.

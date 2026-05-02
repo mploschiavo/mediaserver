@@ -1,14 +1,10 @@
-"""Service-lifecycle Protocol + value types — ADR-0003 Phase 1.
+"""Service-lifecycle Protocol + value types (see ADR-0003).
 
 A single Protocol every service implements, so the orchestrator can
 ask uniform questions ("is this service running?", "does it have an
 API key?", "mint one if missing") regardless of the underlying
-technology. ADR-0003 Context section covers the motivation: 29
-services today each answer those questions with bespoke code (5
-``*HttpPreflight`` classes, 4 ``*ComposePreflight`` classes, 4 SQLite
-readers for Jellyfin alone). The Protocol here lets the per-service
-adapters collapse into one shape; Phase 2 lands ``JellyfinLifecycle``
-and ``ServarrLifecycle`` as the proofs.
+technology. Concrete implementations live under ``adapters/<service>/
+lifecycle.py``.
 
 Why a Protocol and not a base class? Same rationale as
 ``domain/guardrails/protocols.py::Guardrail`` — every service has

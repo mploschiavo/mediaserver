@@ -426,28 +426,20 @@ class AutoHealService:
         except Exception as exc:  # noqa: BLE001
             _log.debug("[DEBUG] auto-heal: guardrail run_job failed: %s", exc)
 
-        # ADR-0003 Phase 5d (v1.0.309): retired the Phase-0
-        # ``jellyfin:ensure-api-key`` direct hook. The orchestrator's
+        # Note: Jellyfin API-key minting is no longer invoked
+        # directly here. The orchestrator's
         # ``jellyfin-api-key-discoverable`` promise dispatches the
-        # equivalent ``JellyfinLifecycle.mint_api_key`` (which itself
-        # wraps the same ``infrastructure.jellyfin.http_preflight.
-        # run_preflight`` the legacy hook called) on the
-        # ``orchestrator:satisfy-shadow`` tick below. Equivalence
-        # verified by:
-        #   - construction (same ``run_preflight`` invocation site)
-        #   - live negative test: deleting the key from jellyfin's
-        #     SQLite DB triggered re-mint via the same code path
-        #     within ~60s on compose 2026-05-02
-        # Coverage matrix: ``docs/architecture/orchestrator-coverage-
-        # matrix.md``.
+        # equivalent ``JellyfinLifecycle.mint_api_key`` on the
+        # ``orchestrator:satisfy-shadow`` tick below — same
+        # ``http_preflight.run_preflight`` invocation site.
+        # See ``docs/architecture/orchestrator-coverage-matrix.md``.
 
-        # Same Phase 0 pattern: close any run-history records that
-        # got stuck at status=running because a controller process
-        # died mid-run before the v1.0.293 try/finally fix could
-        # close them. Companion to that fix — try/finally prevents
-        # NEW zombies from being created; this catches OLD ones
-        # left behind by SIGKILL / OOM / force-recreate. Idempotent;
-        # short-circuits in <10ms when no stale records exist.
+        # Close any run-history records stuck at status=running
+        # because a controller process died mid-run before the
+        # try/finally in JobRunner could close them. Companion to
+        # that fix — try/finally prevents NEW zombies; this catches
+        # OLD ones left behind by SIGKILL / OOM / force-recreate.
+        # Idempotent; short-circuits in <10ms when none are stale.
         try:
             from media_stack.application.jobs.framework import run_job
             run_job(
@@ -461,11 +453,12 @@ class AutoHealService:
                 exc,
             )
 
-        # ADR-0003 Phase 4c — orchestrator shadow-mode evaluation.
-        # Calls satisfy_promises in dry_run=True so probes fire but
-        # ensurers DO NOT (avoids conflict with the legacy bootstrap
-        # pipeline still driving real mutations). Tick-level record
-        # lands in run-history under triggered_by=auto-heal; per-
+        # Orchestrator tick (see ADR-0003). Calls satisfy_promises
+        # with dry_run=True at the job level; per-service "live vs
+        # shadow" is decided by ORCHESTRATOR_LIVE_SERVICES env so
+        # operators can flip individual services to primary without
+        # rebuilding the image. Tick-level record lands in run-
+        # history under triggered_by=auto-heal; per-
         # promise outcomes live in cooldown state file. Phase 5 will
         # flip dry_run off and retire the legacy ensurers.
         try:

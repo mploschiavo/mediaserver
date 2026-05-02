@@ -1,4 +1,4 @@
-"""Homepage ``ServiceLifecycle`` — ADR-0003 Phase 3c.
+"""Homepage ``ServiceLifecycle``.
 
 Homepage is a static dashboard rendering YAML config — no API key,
 no auth surface from the controller's perspective.

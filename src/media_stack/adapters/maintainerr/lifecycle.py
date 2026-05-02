@@ -1,8 +1,8 @@
-"""Maintainerr ``ServiceLifecycle`` — ADR-0003 Phase 3.
+"""Maintainerr ``ServiceLifecycle``.
 
 Maintainerr is a downstream consumer of upstream services' API keys
 (Jellyfin, Sonarr, Radarr, Jellyseerr, Tautulli) — no key of its own.
-Uses the shared ``NoApiKeyLifecycleBase`` (Phase 3c).
+Uses the shared ``NoApiKeyLifecycleBase``.
 """
 
 from __future__ import annotations
