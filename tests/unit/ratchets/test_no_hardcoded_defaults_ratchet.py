@@ -103,15 +103,7 @@ FILTER_LITERAL_PATTERNS: list[tuple[str, re.Pattern]] = [
 #       deploy with that suffix exists), or
 #   (b) wrapped in a feature flag (``if _K8S_UNIFIED:``) so it can't
 #       short-circuit a production hostname filter.
-FILTER_LITERAL_ALLOWLIST: set[str] = {
-    # CLI promise-prober translates compose-default SNI ("apps.media-stack.local")
-    # to whatever the operator actually configured (m.iomio.io, etc.).
-    # The "media-stack.local" literal here is the *source* of the
-    # rewrite, not the filter that gates real-deployment hostnames —
-    # the function explicitly bails out if K8s unified mode isn't set.
-    # See _rewrite_sni_for_k8s in probe_promises.py.
-    "cli/commands/probe_promises.py",
-}
+FILTER_LITERAL_ALLOWLIST: set[str] = set()
 
 # Ratchet: filter-literal violations currently tolerated. This number
 # may only DECREASE. Update after migrating the call site to read the

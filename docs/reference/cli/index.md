@@ -22,7 +22,6 @@ Every operator-facing console-script declared in [`pyproject.toml`](../../../pyp
 | `media-stack-install` | `media_stack.services.apps.stack.cli.install_main:main` |
 | `media-stack-microk8s-reconcile` | `media_stack.cli.commands.microk8s_reconcile_main:main` |
 | `media-stack-microk8s-smoke` | `media_stack.cli.commands.microk8s_smoke_test_main:main` |
-| `media-stack-probe-promises` | `media_stack.cli.commands.probe_promises:main` |
 | `media-stack-render-arch-diagrams` | `media_stack.cli.commands.render_architecture_diagrams_main:main` |
 | `media-stack-render-promises` | `media_stack.cli.commands.render_promises_reference:main` |
 | `media-stack-reset-admin` | `media_stack.cli.commands.reset_admin_main:main` |
@@ -34,4 +33,5 @@ Every operator-facing console-script declared in [`pyproject.toml`](../../../pyp
 | `media-stack-setup-lan-tls` | `media_stack.cli.commands.setup_lan_tls_main:main` |
 | `media-stack-validate-config` | `media_stack.cli.commands.validate_controller_config_main:main` |
 | `media-stack-validate-profile` | `media_stack.cli.commands.validate_controller_profile_main:main` |
+| `media-stack-verify` | `media_stack.cli.commands.verify_fresh_install:main` |
 | `media-stack-watch-install` | `media_stack.cli.commands.watch_install_main:main` |

@@ -6,7 +6,7 @@
 Every claim like "after a fresh install, Bazarr has English subtitles enabled" lives in [`contracts/promises/promises.yaml`](../../contracts/promises/promises.yaml) as a single declarative entry. Three things consume that file:
 
 1. The meta-ratchet (`tests/unit/test_promises_registry.py`) — verifies every promise is well-formed, platform-tagged, and points at a real handler (compose) or the infrastructure vocab (k8s).
-2. The fresh-install verifier (`bin/verify-fresh-install.sh` and `media-stack-probe-promises [--k8s]`) — runs each probe against a live stack.
+2. The fresh-install verifier (`bin/test/verify-fresh-install.sh` and `media-stack-verify`) — reads the orchestrator's persisted promise state and reports pass/fail. See ADR-0004.
 3. This page — the human-readable index.
 
 ## Platforms
@@ -16,7 +16,7 @@ Every promise declares which runtime(s) it applies to via the `platforms:` field
 - **compose** — failure modes unique to the docker-compose stack.
 - **k8s** — PVC, image-pull, ingress, and other Kubernetes-only failure modes.
 
-There are **50 promises** at this commit — 35 agnostic, 1 compose-only, 14 k8s-only.
+There are **52 promises** at this commit — 37 agnostic, 1 compose-only, 14 k8s-only.
 
 ## How to read the tables
 
@@ -54,7 +54,7 @@ Run on both runtimes. On k8s the HTTP/file probes are routed through `kubectl ex
 | **jellyseerr-arr-servers** &mdash; Jellyseerr has Sonarr+Radarr+Jellyfin connections with API keys | `configure-jellyseerr` | `file_json` &rarr; jellyseerr/settings.json |
 | **sonarr-quality-profiles** &mdash; Sonarr has at least one quality profile available | `apply-arr-runtime-defaults` | `http_json` &rarr; sonarr/app/sonarr/api/v3/qualityprofile |
 | **radarr-quality-profiles** &mdash; Radarr has at least one quality profile available | `apply-arr-runtime-defaults` | `http_json` &rarr; radarr/app/radarr/api/v3/qualityprofile |
-| **gateway-https-listener-up** &mdash; Envoy's HTTPS listener accepts TLS handshakes on host:443 | `envoy-config` | `http_text` &rarr; gateway_https/.well-known/openid-configuration |
+| **gateway-https-listener-up** &mdash; Envoy's HTTPS listener accepts TLS handshakes on host:443 | `envoy-config` | `http_status` &rarr; gateway_https/ |
 | **gateway-jellyfin-route** &mdash; Jellyfin reachable via subdomain through Envoy gateway | `envoy-config` | `http_text` &rarr; gateway_https/System/Info/Public |
 | **gateway-app-prefix-route** &mdash; Path-prefix routing works through Envoy (apps.media-stack.local/app/<svc>/) | `envoy-config` | `http_text` &rarr; gateway_https/app/authelia/ |
 | **stuck-imports-scheduled** &mdash; recover-stuck-imports runs every 30min to catch qBit-completed-but-not-imported files | `scan-completed-downloads` | `http_json` &rarr; controller/api/schedules |
@@ -64,6 +64,8 @@ Run on both runtimes. On k8s the HTTP/file probes are routed through `kubectl ex
 | **dns-readiness-banner-data** &mdash; Routing-probe endpoint returns enough data for the dashboard's DNS banner to render | `envoy-config` | `http_json` &rarr; controller/api/routing |
 | **internet-exposed-stack-must-have-auth** &mdash; Stack with routing.internet_exposed=true must NOT have auth.mode=none (else cluster is wide open) | `configure-auth` | `http_json` &rarr; controller/api/auth/config |
 | **auth-overrides-is-valid-yaml-when-present** &mdash; auth-overrides.yaml on the controller PVC is parseable + has a provider field (when present) | `configure-auth` | `file_text` &rarr; .controller/auth-overrides.yaml |
+| **jellyfin-running** &mdash; Jellyfin HTTP endpoint is responsive (probe via lifecycle) | `{'type': 'deploy', 'target': 'jellyfin'}` | `lifecycle` |
+| **jellyfin-api-key-discoverable** &mdash; Jellyfin api key discoverable in env or controller-readable SQLite | `{'type': 'lifecycle', 'service': 'jellyfin', 'method': 'mint_api_key'}` | `lifecycle` |
 | **overrides-seeded-at-bootstrap** &mdash; routing-overrides.yaml exists on the controller PVC after bootstrap (seeded from profile) | `seed-runtime-overrides` | `file_text` &rarr; .controller/routing-overrides.yaml |
 
 ## Compose-only promises
@@ -98,12 +100,13 @@ PVC phases, image-pull state, pod readiness, ingress rules, and other failure mo
 ## Running the probes
 
 ```bash
-media-stack-probe-promises          # compose-side probes against localhost
-media-stack-probe-promises --k8s    # every applicable promise against the cluster
-media-stack-probe-promises --filter auth   # narrow by substring
+media-stack-verify                          # read latest orchestrator tick
+media-stack-verify --wait 90                # poll until convergence (or fail-fast)
+media-stack-verify --filter auth            # narrow by substring on promise id
+media-stack-verify --json                   # machine-readable output
 ```
 
-The runner fails-fast on any promise that returns false. `skipped` entries are counted as pass (wrong platform, file-missing with `skip_if_missing: true`, etc.).
+Exits 0 on acceptance pass, 1 on any failed/unknown probe, 2 if the controller is unreachable or its state isn't yet persisted. `skipped` entries (wrong platform, cooldown) don't fail acceptance.
 
 ## Adding a new promise
 

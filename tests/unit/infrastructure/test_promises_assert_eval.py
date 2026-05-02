@@ -122,9 +122,3 @@ class TestMultilineExpression:
         assert ok is True
 
 
-class TestProbePromisesAlias:
-    def test_legacy_alias_still_resolves(self) -> None:
-        # Phase 5e.1 lifted ``_evaluate`` out of the CLI module but
-        # left a same-named alias for back-compat. Pin that alias.
-        from media_stack.cli.commands.probe_promises import _evaluate
-        assert _evaluate is evaluate

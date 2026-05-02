@@ -1,19 +1,20 @@
 # ADR-0004 — Promise-driven fresh-install verifier
 
-**Status:** Mostly shipped (v1.0.310, 2026-05-02). Builds on ADR-0003.
+**Status:** Shipped (v1.0.310 / v1.0.311, 2026-05-02). Builds on ADR-0003.
 
-- **Phase 6.1**: shipped — `GET /api/orchestrator/promises/state`
+- **Phase 6.1** (v1.0.310): `GET /api/orchestrator/promises/state`
   endpoint (`api/services/orchestrator_state.py`).
-- **Phase 6.2**: shipped — `FreshInstallVerifier` class
+- **Phase 6.2** (v1.0.310): `FreshInstallVerifier` class
   (`application/verifier/fresh_install.py`), external-client mode
   with `verify()` + `wait_for_steady_state()`.
-- **Phase 6.3**: shipped — `media-stack-verify` console-script CLI
+- **Phase 6.3** (v1.0.310): `media-stack-verify` console-script CLI
   (`cli/commands/verify_fresh_install.py`).
-- **Phase 6.4**: shipped — `bin/test/verify-fresh-install.sh` switched
+- **Phase 6.4** (v1.0.310): `bin/test/verify-fresh-install.sh` switched
   from `media-stack-probe-promises` to `media-stack-verify --wait 90`.
-- **Phase 6.5**: pending — delete legacy
-  `media-stack-probe-promises` CLI after one stable release of
-  soak. Closes ADR-0003 Phase 5e.2.
+- **Phase 6.5** (v1.0.311): legacy `media-stack-probe-promises` CLI
+  deleted. Closes ADR-0003 Phase 5e.2. Soak-period of one release
+  was honored (v1.0.310 ran cleanly through `verify-fresh-install.sh`
+  before this deletion landed).
 
 ## Context
 

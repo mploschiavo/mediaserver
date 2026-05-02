@@ -66,7 +66,7 @@ The `assert` field is a Python expression evaluated in the scope shown above. If
 
 ### Probe expression scope
 
-Generator expressions in `any()` / `all()` use their own scope — names need to be in globals, not locals. The probe runner in `media-stack-probe-promises` already handles this; just write expressions naturally.
+Generator expressions in `any()` / `all()` use their own scope — names need to be in globals, not locals. The shared evaluator at `infrastructure/promises/assert_eval.py` (used by the orchestrator's dispatcher) already handles this; just write expressions naturally.
 
 ## Adding a new promise
 
