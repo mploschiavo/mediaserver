@@ -173,7 +173,7 @@ class TestJellyseerrLibrarySync(unittest.TestCase):
                 {"id": "def456", "name": "TV Shows", "enabled": False, "type": "show"},
             ]
 
-            from media_stack.services.apps.jellyseerr.configure_jellyseerr_job import (
+            from media_stack.application.jellyseerr.configure_jellyseerr_job import (
                 _sync_jellyfin_libraries,
             )
 
@@ -192,7 +192,7 @@ class TestJellyseerrLibrarySync(unittest.TestCase):
         """No crash when Jellyfin returns no libraries."""
         with tempfile.TemporaryDirectory() as config_root:
             _make_settings_json(config_root)
-            from media_stack.services.apps.jellyseerr.configure_jellyseerr_job import (
+            from media_stack.application.jellyseerr.configure_jellyseerr_job import (
                 _sync_jellyfin_libraries,
             )
             with mock.patch("media_stack.adapters.http_client.http_request") as mock_http:
