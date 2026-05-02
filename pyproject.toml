@@ -146,6 +146,7 @@ media-stack-teardown = "media_stack.cli.commands.teardown_stack_main:main"
 media-stack-probe-promises = "media_stack.cli.commands.probe_promises:main"
 media-stack-render-promises = "media_stack.cli.commands.render_promises_reference:main"
 media-stack-scaffold-job-test = "media_stack.cli.commands.scaffold_job_test:main"
+media-stack-verify = "media_stack.cli.commands.verify_fresh_install:main"
 
 # ---------------------------------------------------------------------------
 # Plugin discovery — out-of-tree adapters

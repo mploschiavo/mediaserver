@@ -90,6 +90,7 @@ class VerificationResult:
     failed: tuple[VerifierAttempt, ...] = field(default_factory=tuple)
     skipped: tuple[VerifierAttempt, ...] = field(default_factory=tuple)
     unknown: tuple[VerifierAttempt, ...] = field(default_factory=tuple)
+    passed_attempts: tuple[VerifierAttempt, ...] = field(default_factory=tuple)
     is_acceptance_pass: bool = False
     detail_lines: tuple[str, ...] = field(default_factory=tuple)
     saved_at: Optional[float] = None
@@ -348,6 +349,7 @@ class FreshInstallVerifier:
             failed=failed,
             skipped=skipped,
             unknown=unknown,
+            passed_attempts=passed,
             is_acceptance_pass=is_pass,
             saved_at=float(saved_at) if isinstance(saved_at, (int, float)) else None,
             last_tick_age_seconds=float(age) if isinstance(age, (int, float)) else None,
