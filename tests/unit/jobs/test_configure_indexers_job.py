@@ -56,7 +56,7 @@ class ConfigureIndexersJobTests(unittest.TestCase):
             return_value=[{"name": "Sonarr", "api_key": "k1", "url": "http://sonarr:8989",
                            "implementation": "Sonarr", "app_name": "Sonarr"}],
         ), patch(
-            "media_stack.services.apps.prowlarr.runtime_ops.run_prowlarr_indexer_pipeline",
+            "media_stack.application.prowlarr.runtime_ops.run_prowlarr_indexer_pipeline",
             return_value={"added": 2},
         ):
             result = configure_indexers(ctx)
@@ -70,7 +70,7 @@ class ConfigureIndexersJobTests(unittest.TestCase):
             "media_stack.application.prowlarr.configure_indexers_job._build_arr_apps",
             return_value=[],
         ), patch(
-            "media_stack.services.apps.prowlarr.runtime_ops.run_prowlarr_indexer_pipeline",
+            "media_stack.application.prowlarr.runtime_ops.run_prowlarr_indexer_pipeline",
             side_effect=RuntimeError("pipeline exploded"),
         ):
             result = configure_indexers(ctx)

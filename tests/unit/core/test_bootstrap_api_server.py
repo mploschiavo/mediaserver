@@ -8,12 +8,21 @@ from media_stack.api.server import start_api_server
 from media_stack.api.state import ControllerState as BootstrapState
 
 
+def _start(state, **kwargs):
+    """Bind to an OS-assigned ephemeral port. Hardcoded ports in the
+    19101-19108 band collided on full-sweep runs (TIME_WAIT held the
+    socket between tests), so let the kernel pick a free port and
+    read it back from ``server.server_address``."""
+    server = start_api_server(state, port=0, **kwargs)
+    return server, server.server_address[1]
+
+
 class TestBootstrapAPIServerHealthz(unittest.TestCase):
     def test_healthz(self):
         state = BootstrapState()
-        server = start_api_server(state, port=19101)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19101, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("GET", "/healthz")
             resp = conn.getresponse()
             body = json.loads(resp.read())
@@ -27,9 +36,9 @@ class TestBootstrapAPIServerHealthz(unittest.TestCase):
 class TestBootstrapAPIServerStatus(unittest.TestCase):
     def test_status_idle(self):
         state = BootstrapState()
-        server = start_api_server(state, port=19102)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19102, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("GET", "/status")
             resp = conn.getresponse()
             body = json.loads(resp.read())
@@ -41,9 +50,9 @@ class TestBootstrapAPIServerStatus(unittest.TestCase):
     def test_readyz_200_when_idle(self):
         """Service is ready as soon as it's listening (Deployment model)."""
         state = BootstrapState()
-        server = start_api_server(state, port=19103)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19103, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("GET", "/readyz")
             resp = conn.getresponse()
             self.assertEqual(resp.status, 200)
@@ -57,9 +66,9 @@ class TestBootstrapAPIServerStatus(unittest.TestCase):
         state = BootstrapState()
         state.start()
         state.finish()
-        server = start_api_server(state, port=19104)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19104, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("GET", "/readyz")
             resp = conn.getresponse()
             self.assertEqual(resp.status, 200)
@@ -71,9 +80,9 @@ class TestBootstrapAPIServerStatus(unittest.TestCase):
 class TestBootstrapAPIServerRouting(unittest.TestCase):
     def test_404_on_unknown_get(self):
         state = BootstrapState()
-        server = start_api_server(state, port=19105)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19105, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("GET", "/nonexistent")
             resp = conn.getresponse()
             self.assertEqual(resp.status, 404)
@@ -83,9 +92,9 @@ class TestBootstrapAPIServerRouting(unittest.TestCase):
 
     def test_404_on_unknown_post(self):
         state = BootstrapState()
-        server = start_api_server(state, port=19106)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19106, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("POST", "/nonexistent")
             resp = conn.getresponse()
             self.assertEqual(resp.status, 404)
@@ -96,9 +105,9 @@ class TestBootstrapAPIServerRouting(unittest.TestCase):
     def test_run_200_without_trigger(self):
         """POST /run returns 200 accepted even without action trigger."""
         state = BootstrapState()
-        server = start_api_server(state, port=19107)
+        server, port = _start(state)
         try:
-            conn = HTTPConnection("127.0.0.1", 19107, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("POST", "/run")
             resp = conn.getresponse()
             self.assertEqual(resp.status, 200)
@@ -110,12 +119,12 @@ class TestBootstrapAPIServerRouting(unittest.TestCase):
         """POST /run accepts bootstrap action when trigger is bound."""
         state = BootstrapState()
         triggered = []
-        server = start_api_server(
-            state, port=19108,
+        server, port = _start(
+            state,
             action_trigger=lambda name, overrides: triggered.append((name, overrides)),
         )
         try:
-            conn = HTTPConnection("127.0.0.1", 19108, timeout=5)
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
             conn.request("POST", "/run")
             resp = conn.getresponse()
             self.assertEqual(resp.status, 200)
