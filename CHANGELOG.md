@@ -2,6 +2,33 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.311] — 2026-05-02
+
+### Architecture
+- **ADR-0004 Phase 6.5 — delete legacy `media-stack-probe-promises`
+  CLI.** Closes ADR-0003 Phase 5e.2. The CLI was the parallel
+  probe-loop implementation that ran from the operator's host shell
+  and re-implemented every probe outside the controller. With v1.0.310
+  in production using `media-stack-verify` (the orchestrator-state
+  HTTP client) for the same job, this CLI was orphan.
+- Removed: `src/media_stack/cli/commands/probe_promises.py` (~800 LOC)
+  and its console-script registration in `pyproject.toml`. The
+  back-compat `_evaluate` alias and the test pinning it
+  (`TestProbePromisesAlias`) come out with it — both were 5e.1
+  transitional scaffolding.
+- Updated: `render_promises_reference.py` (the doc generator) +
+  regenerated `docs/reference/promises.md` to point operators at
+  `media-stack-verify`. CLI index, promises-registry doc, and the
+  ADR-0003 Phase 5e deletion audit refreshed to reflect shipped
+  state.
+
+### Rollback
+The CLI is gone but the verifier path it replaces (`media-stack-verify`
++ `bin/test/verify-fresh-install.sh`) is the same code path it was
+in v1.0.310. Roll back to v1.0.310 if a fresh-install regression
+surfaces; the legacy CLI can be cherry-picked back from git history
+(`git log --diff-filter=D -- src/media_stack/cli/commands/probe_promises.py`).
+
 ## [v1.0.310] — 2026-05-02
 
 ### Architecture

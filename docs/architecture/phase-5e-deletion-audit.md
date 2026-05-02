@@ -144,10 +144,11 @@ every 60s and persists state. But the orchestrator runs INSIDE the
 controller, and the verifier CLI runs OUTSIDE — different network
 context (host:port mappings vs internal DNS).
 
-**Verdict: DELETABLE AFTER ADR-0004.** The proposed
-`FreshInstallVerifier` (Phase 6) reads the orchestrator's persisted
-state via API and reports the same way. Once 6.4 lands and the
-shell script swaps to the new CLI, this CLI is truly orphan.
+**Verdict: DELETED in v1.0.311.** ADR-0004's `FreshInstallVerifier`
++ `media-stack-verify` CLI shipped in v1.0.310; the shell script
+swapped to the new CLI; this CLI was truly orphan and was deleted
+in v1.0.311 along with its entry-point registration and back-compat
+alias.
 
 ## Revised Phase 5e scope
 
@@ -161,23 +162,24 @@ doesn't survive contact with reality. Honest reframing:
 | `_run_preflights` | **Defer** — same as above |
 | `_try_satisfy_prereqs` | **Keep** — JobRunner needs it for non-promise flows |
 | `max_attempts` retry loop | **Keep** — same reason |
-| `media-stack-probe-promises` CLI | **Delete after ADR-0004 ships** |
+| `media-stack-probe-promises` CLI | **Deleted in v1.0.311** (after ADR-0004 6.1-6.4 shipped in v1.0.310) |
 
 Already done in 5e.1: `_evaluate` extracted out of the CLI module
 to `infrastructure/promises/assert_eval.py`. That work stands.
 
 ## What 5e looks like going forward
 
-**5e.2 (after ADR-0004 Phase 6.4):** delete the CLI. One-commit
-cleanup once the verifier is on the new path.
+**5e.2 — shipped in v1.0.311.** The CLI was deleted; entry-point,
+back-compat alias, and the test that pinned the alias all came
+out together. The other five originally-scoped paths remain
+load-bearing per the per-path verdicts above.
 
-**5e.3+ (deferred to a separate phase):** "bootstrap consumes
+**5e.3+ (deferred to ADR-0005):** "bootstrap consumes
 orchestrator state". Goal: make the orchestrator's first tick part
 of the bootstrap critical path so `_run_preflights` /
 `phase_scripts.media_server_bootstrap` /
 `jellyfin:ensure-api-key` (the bootstrap-phase job) can be retired.
-That's a multi-week design + implementation, properly its own ADR
-amendment.
+Multi-week design + implementation, scoped in ADR-0005.
 
 ## What this audit changes about ADR-0003
 
