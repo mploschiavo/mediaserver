@@ -1,34 +1,38 @@
 # Media Stack — Documentation
 
-Pick the doc that matches what you're trying to do. If you're new, [Quickstart](quickstart.md) is the right starting point on every platform.
+Pick the doc that matches what you're trying to do. If you're new, [Quickstart](tutorials/quickstart.md) is the right starting point on every platform.
 
 ## Decision tree
 
-- **Want to deploy and use the stack?** → [Quickstart](quickstart.md), then [Deployment](deployment.md).
-- **Want to maintain it day-to-day?** → [Operations](operations.md), [Troubleshooting](troubleshooting.md), [Upgrades](upgrades.md).
-- **Want to understand or extend the code?** → [internals/principles.md](internals/principles.md), then [internals/architecture.md](internals/architecture.md).
+- **Want to deploy and use the stack?** → [Quickstart](tutorials/quickstart.md), then [Deployment](how-to/deployment.md).
+- **Want to maintain it day-to-day?** → [Operations](how-to/operations.md), [Troubleshooting](how-to/troubleshooting.md), [Upgrades](how-to/upgrades.md).
+- **Want to understand or extend the code?** → [architecture/principles.md](architecture/principles.md), then [architecture/overview.md](architecture/overview.md).
 - **Just looking something up?** → [reference/](reference/).
 - **Reporting a bug?** → [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Top-level docs
+## Tutorials & how-to guides
 
-Action-oriented. Each one is short — if you need depth, links into [`internals/`](internals/) are inline.
+Action-oriented. Each one is short — if you need depth, links into [`architecture/`](architecture/) are inline.
 
 | Doc | Use when |
 |---|---|
-| [quickstart.md](quickstart.md) | Bringing the stack up the first time |
-| [deployment.md](deployment.md) | Compose or Kubernetes install in detail |
-| [auth.md](auth.md) | Setting up Authelia / Authentik / Google IdP |
-| [networking.md](networking.md) | DNS, ingress, edge routing |
-| [storage.md](storage.md) | PVCs, bind mounts, storage classes |
-| [operations.md](operations.md) | Backup, restore, status, diagnostics |
-| [security.md](security.md) | What ships hardened today (with the live baseline) |
-| [upgrades.md](upgrades.md) | Routine upgrade flow + rollback |
-| [troubleshooting.md](troubleshooting.md) | Things to try when something is broken |
-| [teardown.md](teardown.md) | Wiping a stack safely |
-| [connecting-devices.md](connecting-devices.md) | Smart TV / Roku / Apple TV / mobile setup |
-| [user-management.md](user-management.md) | Creating users, roles, permissions |
-| [intel-transcoding.md](intel-transcoding.md) | Hardware transcoding on Intel iGPUs |
+| [tutorials/quickstart.md](tutorials/quickstart.md) | Bringing the stack up the first time |
+| [how-to/deployment.md](how-to/deployment.md) | Compose or Kubernetes install in detail |
+| [how-to/auth.md](how-to/auth.md) | Setting up Authelia / Authentik / Google IdP |
+| [how-to/networking.md](how-to/networking.md) | DNS, ingress, edge routing |
+| [how-to/storage.md](how-to/storage.md) | PVCs, bind mounts, storage classes |
+| [how-to/operations.md](how-to/operations.md) | Backup, restore, status, diagnostics |
+| [how-to/security.md](how-to/security.md) | What ships hardened today (with the live baseline) |
+| [how-to/upgrades.md](how-to/upgrades.md) | Routine upgrade flow + rollback |
+| [how-to/troubleshooting.md](how-to/troubleshooting.md) | Things to try when something is broken |
+| [how-to/teardown.md](how-to/teardown.md) | Wiping a stack safely |
+| [how-to/connecting-devices.md](how-to/connecting-devices.md) | Smart TV / Roku / Apple TV / mobile setup |
+| [how-to/user-management.md](how-to/user-management.md) | Creating users, roles, permissions |
+| [how-to/intel-transcoding.md](how-to/intel-transcoding.md) | Hardware transcoding on Intel iGPUs |
+| [how-to/media-integrity.md](how-to/media-integrity.md) | Library scrubs + hygiene checks |
+| [how-to/deploy-parity.md](how-to/deploy-parity.md) | Compose ↔ K8s parity verification |
+| [how-to/openapi-regen.md](how-to/openapi-regen.md) | Regenerating the OpenAPI spec |
+| [how-to/ui-container.md](how-to/ui-container.md) | UI image + dashboard operations |
 
 ## Reference
 
@@ -38,39 +42,46 @@ Look-up material — generated from code where possible.
 |---|---|
 | [reference/configuration.md](reference/configuration.md) | All configurable knobs |
 | [reference/service-catalog.md](reference/service-catalog.md) | Per-service metadata + endpoints |
-| [reference/promises.md](reference/promises.md) | Generated from `contracts/promises/promises.yaml` (cross-platform OTB guarantees) |
-| [reference/promises-k8s.md](reference/promises-k8s.md) | Generated from `contracts/promises-k8s.yaml` (K8s-only guarantees) |
+| [reference/services.md](reference/services.md) | Service-contract listing |
+| [reference/promises.md](reference/promises.md) | Generated from `contracts/promises/promises.yaml` (every OTB guarantee — agnostic, compose-only, k8s-only) |
 | [reference/maintainerr-rules.md](reference/maintainerr-rules.md) | Maintainerr collection-rule schema |
+| [reference/security-a11y-contract.md](reference/security-a11y-contract.md) | UI security + accessibility contract |
+| [reference/ui-design-system.md](reference/ui-design-system.md) | UI design tokens + component conventions |
+| [reference/api/](reference/api/) | OpenAPI-derived endpoint reference |
+| [reference/cli/](reference/cli/) | Console-script catalog |
 
-## Internals
+## Architecture
 
 For people working on the stack. If you only want to *use* it, you can skip this directory.
 
 | Doc | About |
 |---|---|
-| [internals/principles.md](internals/principles.md) | Why the project exists + the 11 operational principles |
-| [internals/architecture.md](internals/architecture.md) | Control plane / data plane, plugin isolation, source-of-truth, design models |
-| [internals/bootstrap-runtime.md](internals/bootstrap-runtime.md) | Bootstrap profile schema + execution flow |
-| [internals/promises-registry.md](internals/promises-registry.md) | The promise system + meta-ratchet |
-| [internals/adding-a-service.md](internals/adding-a-service.md) | How to add a new service |
-| [internals/technology-swaps.md](internals/technology-swaps.md) | Swapping a technology binding (e.g. Plex → Jellyfin) |
-| [internals/service-registry.md](internals/service-registry.md) | Service contract format |
-| [internals/repo-layout.md](internals/repo-layout.md) | Where things live |
-| [internals/indexer-pipeline.md](internals/indexer-pipeline.md) | How Prowlarr discovery / tagging / push-sync works |
-| [internals/k8s-deploy-pipeline.md](internals/k8s-deploy-pipeline.md) | K8s deploy phase ordering |
-| [internals/premium-ux.md](internals/premium-ux.md) | Metadata, artwork, rails tuning |
-| [internals/gitops.md](internals/gitops.md) | GitOps promotion workflow |
-| [internals/security-roadmap.md](internals/security-roadmap.md) | Open security work + planned checks |
-| [internals/sdlc.md](internals/sdlc.md) | Branch strategy, CI pipeline, release flow |
-| [internals/testing.md](internals/testing.md) | Unit, Playwright, API E2E, verification suites |
-| [internals/supply-chain.md](internals/supply-chain.md) | Image signing, SBOM, dependency hygiene |
+| [architecture/principles.md](architecture/principles.md) | Why the project exists + the operational principles |
+| [architecture/overview.md](architecture/overview.md) | Control plane / data plane, plugin isolation, source-of-truth, design models |
+| [architecture/bootstrap-runtime.md](architecture/bootstrap-runtime.md) | Bootstrap profile schema + execution flow |
+| [architecture/promises-registry.md](architecture/promises-registry.md) | The promise system + meta-ratchet |
+| [architecture/adding-a-service.md](architecture/adding-a-service.md) | How to add a new service |
+| [architecture/technology-swaps.md](architecture/technology-swaps.md) | Swapping a technology binding (e.g. Plex → Jellyfin) |
+| [architecture/service-registry.md](architecture/service-registry.md) | Service contract format |
+| [architecture/repo-layout.md](architecture/repo-layout.md) | Where things live |
+| [architecture/indexer-pipeline.md](architecture/indexer-pipeline.md) | How Prowlarr discovery / tagging / push-sync works |
+| [architecture/k8s-deploy-pipeline.md](architecture/k8s-deploy-pipeline.md) | K8s deploy phase ordering |
+| [architecture/premium-ux.md](architecture/premium-ux.md) | Metadata, artwork, rails tuning |
+| [architecture/gitops.md](architecture/gitops.md) | GitOps promotion workflow |
+| [architecture/security-roadmap.md](architecture/security-roadmap.md) | Open security work + planned checks |
+| [architecture/sdlc.md](architecture/sdlc.md) | Branch strategy, CI pipeline, release flow |
+| [architecture/testing.md](architecture/testing.md) | Unit, Playwright, API E2E, verification suites |
+| [architecture/supply-chain.md](architecture/supply-chain.md) | Image signing, SBOM, dependency hygiene |
+| [architecture/api-keys.md](architecture/api-keys.md) | API-key minting, discovery, persistence |
+| [architecture/orchestrator-coverage-matrix.md](architecture/orchestrator-coverage-matrix.md) | What the orchestrator covers vs. legacy paths |
+| [architecture/adr/](architecture/adr/) | Architecture Decision Records |
 
 ## Diagrams
 
 Rendered architecture and topology diagrams live in [diagrams/](diagrams/). Regenerate them all:
 
 ```bash
-bash bin/render-architecture-diagrams.sh
+media-stack-render-arch-diagrams
 ```
 
 ## Conventions used in these docs
@@ -78,4 +89,4 @@ bash bin/render-architecture-diagrams.sh
 - Snippets that touch live state include the exact command to verify the change worked.
 - Examples use `media-stack` as the namespace / project name; substitute your own where appropriate.
 - "OTB" = out-of-the-box. Anything labeled OTB is wired automatically by the bootstrap and re-asserted by reconcile.
-- Anything aspirational lives in [internals/security-roadmap.md](internals/security-roadmap.md) or is explicitly marked "(forthcoming)" in this index.
+- Anything aspirational lives in [architecture/security-roadmap.md](architecture/security-roadmap.md) or is explicitly marked "(forthcoming)" in this index.
