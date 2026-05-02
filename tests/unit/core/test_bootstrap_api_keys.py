@@ -1,8 +1,10 @@
 """Unit tests for media_stack.api.preflight.api_keys discovery."""
 
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from media_stack.api.preflight.api_keys import (
     _read_bazarr_api_key,
@@ -78,7 +80,20 @@ class TestRunPreflight(unittest.TestCase):
             (root / "sabnzbd").mkdir()
             (root / "sabnzbd" / "sabnzbd.ini").write_text("[misc]\napi_key = sab_key_here\n")
 
-            result = run_preflight(config_root=str(root))
+            # ``run_preflight`` now runs container auto-discovery before
+            # falling back to file-based reads. On a host with the real
+            # stack running, that step finds live keys (e.g. the actual
+            # Sonarr API key from the running container) and shadows the
+            # test fixture. Stub it out so the file-based reader path is
+            # exercised.
+            empty_discovery = types.SimpleNamespace(
+                config_root="", source="", keys={},
+            )
+            with patch(
+                "media_stack.api.preflight.config_root_discovery.discover_config_root",
+                return_value=empty_discovery,
+            ):
+                result = run_preflight(config_root=str(root))
             self.assertIn("SONARR_API_KEY", result)
             self.assertEqual(result["SONARR_API_KEY"], "sonarr_key_32chars_padded_extra!")
             self.assertIn("SABNZBD_API_KEY", result)
