@@ -279,6 +279,38 @@ class TestGetOpenAPI(unittest.TestCase):
         self.assertEqual(body["info"]["title"], "Media Stack Controller API")
 
 
+class TestGetOrchestratorPromisesState(unittest.TestCase):
+    """The dispatch wiring for ``/api/orchestrator/promises/state`` —
+    the endpoint behavior is pinned in test_api_services_orchestrator_state.
+    This test just confirms the route in handlers_get reaches read_state
+    and emits its body (status + payload) verbatim."""
+
+    def test_route_invokes_read_state_and_writes_response(self):
+        h = make_handler("GET", "/api/orchestrator/promises/state")
+        sentinel = {"version": 1, "saved_at": 1.0, "attempts": []}
+        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}), \
+                mock.patch(
+                    "media_stack.api.services.orchestrator_state.read_state",
+                    return_value=(200, sentinel),
+                ) as patched:
+            h.do_GET()
+        patched.assert_called_once_with()
+        self.assertEqual(_get_response_code(h), 200)
+        self.assertEqual(_get_json_written(h), sentinel)
+
+    def test_route_propagates_503_status(self):
+        h = make_handler("GET", "/api/orchestrator/promises/state")
+        sentinel = {"error": "stale", "last_tick_age_seconds": 999.0}
+        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}), \
+                mock.patch(
+                    "media_stack.api.services.orchestrator_state.read_state",
+                    return_value=(503, sentinel),
+                ):
+            h.do_GET()
+        self.assertEqual(_get_response_code(h), 503)
+        self.assertEqual(_get_json_written(h), sentinel)
+
+
 class TestGetUnknownPath(unittest.TestCase):
     def test_unknown_get_returns_404(self):
         h = make_handler("GET", "/nonexistent/path")

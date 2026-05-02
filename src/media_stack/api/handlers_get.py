@@ -265,6 +265,10 @@ class GetRequestHandler:
         elif path == "/api/auto-heal":
             from .services import auto_heal as autoheal_svc
             handler._json_response(HTTPStatus.OK, autoheal_svc.status())
+        elif path == "/api/orchestrator/promises/state":
+            from .services import orchestrator_state as orch_state_svc
+            status_code, body = orch_state_svc.read_state()
+            handler._json_response(status_code, body)
         elif path == "/api/stack/update":
             from .services import stack_update as su_svc
             handler._json_response(HTTPStatus.OK, su_svc.check_for_update())
