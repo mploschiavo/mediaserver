@@ -489,7 +489,7 @@ class ComposeAutheliaDependsOnControllerTests(unittest.TestCase):
 
     def test_authelia_depends_on_controller_healthy(self):
         from pathlib import Path as _P
-        compose_path = _P(__file__).resolve().parents[3] / "docker" / "docker-compose.yml"
+        compose_path = _P(__file__).resolve().parents[3] / "deploy" / "compose" / "docker-compose.yml"
         data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
         auth = (data.get("services") or {}).get("authelia")
         self.assertIsNotNone(auth, "authelia service missing from compose")

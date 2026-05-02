@@ -31,6 +31,20 @@ from media_stack.domain.services import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_servarr_api_key_envs():
+    """``persist_api_key`` writes ``<SERVICE>_API_KEY`` into the live
+    ``os.environ`` of the test process. Without per-test cleanup the
+    value leaks into unrelated tests downstream (notably the bootstrap
+    secret-priming suite that seeds its own keys)."""
+    import os as _os
+    yield
+    for var in ("SONARR_API_KEY", "RADARR_API_KEY",
+                "LIDARR_API_KEY", "READARR_API_KEY",
+                "PROWLARR_API_KEY"):
+        _os.environ.pop(var, None)
+
+
 def _ctx(service_id: str = "sonarr", **overrides) -> OrchestrationContext:
     cfg = {
         "host": service_id,

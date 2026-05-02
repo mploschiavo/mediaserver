@@ -37,6 +37,19 @@ from media_stack.domain.services import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_jellyfin_api_key_env():
+    """Production ``persist_api_key`` writes ``JELLYFIN_API_KEY`` into
+    ``os.environ``. ``monkeypatch.delenv`` at the start of a test only
+    clears any pre-existing value; the post-call write would otherwise
+    leak into unrelated tests (e.g. test_bootstrap_secret_priming
+    seeds its own ``jellyfin-key`` and reads back ``new-key`` from
+    here). Always delete after each test so the slot is clean."""
+    import os as _os
+    yield
+    _os.environ.pop("JELLYFIN_API_KEY", None)
+
+
 def _ctx(**overrides) -> OrchestrationContext:
     cfg = {
         "host": "jellyfin",

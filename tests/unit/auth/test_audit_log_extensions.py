@@ -240,6 +240,7 @@ class AuditActionsGroupTests(unittest.TestCase):
             | audit_actions.PASSWORD_EVENTS
             | audit_actions.BAN_EVENTS
             | audit_actions.ANOMALY_EVENTS
+            | audit_actions.MEDIA_INTEGRITY_EVENTS
         )
         self.assertEqual(audit_actions.ALL, expected)
 
@@ -251,6 +252,7 @@ class AuditActionsGroupTests(unittest.TestCase):
             audit_actions.PASSWORD_EVENTS,
             audit_actions.BAN_EVENTS,
             audit_actions.ANOMALY_EVENTS,
+            audit_actions.MEDIA_INTEGRITY_EVENTS,
         ):
             self.assertIsInstance(group, frozenset)
 
@@ -264,6 +266,7 @@ class AuditActionsGroupTests(unittest.TestCase):
             audit_actions.PASSWORD_EVENTS,
             audit_actions.BAN_EVENTS,
             audit_actions.ANOMALY_EVENTS,
+            audit_actions.MEDIA_INTEGRITY_EVENTS,
         ]
         all_action_appearances: list[str] = []
         for group in groups:
