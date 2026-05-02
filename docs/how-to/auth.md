@@ -263,7 +263,7 @@ users:
 **4. Start the stack** — Authelia starts on port 9091 internally, Envoy proxies it:
 
 ```bash
-./deploy-compose.sh
+python deploy.py compose
 ```
 
 **5. Open the dashboard** — navigate to `https://apps.media-stack.local/` (accept the self-signed cert on first load)

@@ -261,7 +261,7 @@ kubectl -n media-stack get pods | grep envoy
 **Movies not downloading?**
 Open the controller dashboard, click "Discover Indexers", then check Prowlarr for working indexers.
 
-See [docs/how-to/troubleshooting.md](docs/how-to/troubleshooting.md) for more.
+See [troubleshooting.md](../how-to/troubleshooting.md) for more.
 
 ---
 
@@ -273,17 +273,17 @@ Want to modify the stack or add services? Clone the repo:
 git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
 ```
 
-- **Add a service:** see [internals/adding-a-service.md](internals/adding-a-service.md)
-- **Swap a technology:** Edit `contracts/media-stack.profile.yaml` → `technology_bindings` (details in [internals/technology-swaps.md](internals/technology-swaps.md))
-- **Full developer guide:** [internals/principles.md](internals/principles.md), [internals/architecture.md](internals/architecture.md), [reference/configuration.md](reference/configuration.md)
+- **Add a service:** see [architecture/adding-a-service.md](../architecture/adding-a-service.md)
+- **Swap a technology:** Edit `contracts/media-stack.profile.yaml` → `technology_bindings` (details in [architecture/technology-swaps.md](../architecture/technology-swaps.md))
+- **Full developer guide:** [architecture/principles.md](../architecture/principles.md), [architecture/overview.md](../architecture/overview.md), [reference/configuration.md](../reference/configuration.md)
 
 ---
 
 ## Next Steps
 
-- [Architecture overview](internals/architecture.md)
-- [Service catalog](reference/service-catalog.md)
-- [Operations runbook](operations.md)
+- [Architecture overview](../architecture/overview.md)
+- [Service catalog](../reference/service-catalog.md)
+- [Operations runbook](../how-to/operations.md)
 - [API documentation](http://localhost:9100/api/docs) (when running)
 
 ---

@@ -1,8 +1,8 @@
 # Security
 
-Media Stack ships with a security baseline that every HTTP service in the stack is measured against. The checks are codified as executable tests under [tests/security/](../tests/security/), so each service's state is reportable as a pass/fail matrix and enforceable as a CI gate.
+Media Stack ships with a security baseline that every HTTP service in the stack is measured against. The checks are codified as executable tests under [tests/security/](../../tests/security/), so each service's state is reportable as a pass/fail matrix and enforceable as a CI gate.
 
-Open items and future hardening live in [Security Roadmap](internals/security-roadmap.md).
+Open items and future hardening live in [Security Roadmap](../architecture/security-roadmap.md).
 
 ## Run the baseline
 
@@ -20,7 +20,7 @@ python -m pytest tests/security/test_jellyfin_security_baseline.py -v
 python -m pytest tests/security/ -v
 ```
 
-Each suite reuses [`SecurityAuditRunner`](../tests/security/security_audit.py) against an [`AuditTarget`](../tests/security/security_audit.py) pointing at the service. The runner is **pure HTTP** — it imports no stack code and can audit third-party apps (Jellyfin, Sonarr, Radarr, etc.) the same way.
+Each suite reuses [`SecurityAuditRunner`](../../tests/security/security_audit.py) against an [`AuditTarget`](../../tests/security/security_audit.py) pointing at the service. The runner is **pure HTTP** — it imports no stack code and can audit third-party apps (Jellyfin, Sonarr, Radarr, etc.) the same way.
 
 ## The 19 baseline checks
 
@@ -67,9 +67,9 @@ Every service is measured against these. A service declares which paths are publ
 
 ## Infrastructure hardening
 
-- **Edge TLS** — Envoy terminates TLS on 443 with a self-signed cert auto-minted on first boot (see `_resolve_or_mint_certs` in [compose/edge/providers/envoy/dynamic_config.py](../src/media_stack/core/platforms/compose/edge/providers/envoy/dynamic_config.py)). Port 80 redirects to 443. Authelia 4.38+ cookies require HTTPS.
+- **Edge TLS** — Envoy terminates TLS on 443 with a self-signed cert auto-minted on first boot (see `_resolve_or_mint_certs` in [compose/edge/providers/envoy/dynamic_config.py](../../src/media_stack/core/platforms/compose/edge/providers/envoy/dynamic_config.py)). Port 80 redirects to 443. Authelia 4.38+ cookies require HTTPS.
 - **Admin bootstrap is seed-only** — `STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD` are a one-time seed used to create the initial admin user. On first login the dashboard forces a rotation and the env value is never consulted again. Rotated credentials live in `${CONFIG_ROOT}/controller/users.json` on a dedicated PVC (K8s: `media-stack-config-controller`) so they survive pod restart.
-- **K8s NetworkPolicy** — [k8s/networkpolicy.yaml](../k8s/networkpolicy.yaml). 12 policies enforce a tier-isolated layout: default-deny-all + allow-DNS + Envoy-as-only-edge + controller-receives-only-from-Envoy + apps-only-from-Envoy-or-controller + per-service inter-app rules. Opt in by applying the `power-user` kustomize profile (or adding `networkpolicy.yaml` to your own kustomization). Requires a CNI with NetworkPolicy support (Calico / Cilium / microk8s-cilium).
+- **K8s NetworkPolicy** — [deploy/k8s/base/edge/networkpolicy.yaml](../../deploy/k8s/base/edge/networkpolicy.yaml). 12 policies enforce a tier-isolated layout: default-deny-all + allow-DNS + Envoy-as-only-edge + controller-receives-only-from-Envoy + apps-only-from-Envoy-or-controller + per-service inter-app rules. Opt in by applying the `power-user` kustomize profile (or adding `networkpolicy.yaml` to your own kustomization). Requires a CNI with NetworkPolicy support (Calico / Cilium / microk8s-cilium).
 
 ## Current pass/fail matrix
 
@@ -99,7 +99,7 @@ Each row renders from the test output once the per-service suites are filled in.
 
 ## CI gate
 
-The [`security-baseline-harness`](../.github/workflows/ci.yml) job runs two layers on every push:
+The [`security-baseline-harness`](../../.github/workflows/ci.yml) job runs two layers on every push:
 
 1. **Harness decision tests** — hard pass/fail. `test_security_audit_harness.py` stubs the HTTP client so the 15+ checks can be exercised against synthetic fixtures. If a check starts passing when it shouldn't (e.g. missing headers), these fail immediately.
 2. **Live per-service suites** — run against any reachable target found in the runner's network. Defaults to skipping when no service is reachable, so vanilla GHA runners don't fail. Set `CONTROLLER_URL=…`, `JELLYFIN_URL=…`, etc. on a post-deploy job pointing at a staging cluster to promote this to a hard gate.
@@ -108,8 +108,8 @@ The pattern: the harness-unit layer means the **quality of the checks themselves
 
 ## Session visibility & security reporting
 
-The session-visibility feature ([feature contract](security-a11y-contract.md),
-[resume doc](roadmap/session-visibility-resume.md)) adds a defense-in-depth
+The session-visibility feature ([feature contract](../reference/security-a11y-contract.md),
+[resume doc](../roadmap/session-visibility-resume.md)) adds a defense-in-depth
 layer on top of the baseline.
 
 ### What it delivers
@@ -143,7 +143,7 @@ layer on top of the baseline.
 
 ### Security posture (CIA + AAA)
 
-Pillars documented in [security-a11y-contract.md § 0](security-a11y-contract.md).
+Pillars documented in [security-a11y-contract.md § 0](../reference/security-a11y-contract.md).
 Highlights:
 
 - **Confidentiality** — `/api/keys` returns fingerprints

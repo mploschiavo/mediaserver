@@ -9,14 +9,11 @@ Nothing about the stack requires per-app clicks. The controller's promises regis
 ```bash
 git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver
 
-# Easiest — Docker Compose
-./deploy-compose.sh
-
-# Or Kubernetes (MicroK8s + ingress class "public" assumed)
-./deploy-k8s.sh
-
-# Cross-platform Python launcher
+# Easiest — cross-platform Python launcher (Linux / macOS / Windows)
 python deploy.py compose       # or: python deploy.py k8s
+
+# Kubernetes-only bash wrapper (MicroK8s + ingress class "public" assumed)
+./deploy-k8s.sh
 ```
 
 Bootstrap takes 3-5 minutes the first time. Open the controller dashboard at <http://localhost:9100> to watch progress, then point a browser at Jellyseerr to request your first show.
@@ -28,7 +25,7 @@ Bootstrap takes 3-5 minutes the first time. Open the controller dashboard at <ht
 | **Deploy and use the stack** | [Quickstart](docs/tutorials/quickstart.md) |
 | **Understand all deployment options** | [Deployment](docs/how-to/deployment.md) |
 | **Maintain a running stack** | [Operations](docs/how-to/operations.md) + [Troubleshooting](docs/how-to/troubleshooting.md) |
-| **Extend the code or add a service** | [internals/principles.md](docs/architecture/principles.md), then [internals/architecture.md](docs/architecture/overview.md) |
+| **Extend the code or add a service** | [architecture/principles.md](docs/architecture/principles.md), then [architecture/overview.md](docs/architecture/overview.md) |
 | **Look something up** | [reference/](docs/reference/) |
 | **Report a bug or contribute** | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
@@ -44,7 +41,7 @@ Things that work without any clicking after `up -d`:
 - Jellyseerr connected to all four Arr apps + Jellyfin (with Authelia SSO when auth is enabled).
 - Maintainerr collection rules linked to the right Arr apps.
 - Envoy gateway with self-signed TLS on `:443`, HTTP→HTTPS redirect on `:80`.
-- 33 OTB promises, each verified by a probe against the live stack — see [reference/promises.md](docs/reference/promises.md).
+- 52 OTB promises (37 agnostic, 14 k8s-only, 1 compose-only), each verified by a probe against the live stack — see [reference/promises.md](docs/reference/promises.md).
 
 ## Dashboard
 
@@ -54,7 +51,7 @@ Installable as a PWA — service worker is NetworkOnly for `/api/*`, CacheFirst 
 
 Quality ratchets enforced in CI: `pnpm size` (250 KB total JS gzip ceiling, currently 240.8 KB), `pnpm check:todos` (snapshot at `.ratchets/todos.json`), `pnpm lint` (flat ESLint locks `no-console` / `no-only-tests` / `no-explicit-any` at 0), `vitest-axe` a11y on AppShell / CommandPalette / UserMenu / MediaIntegrity (blocks serious + critical), a path-contract test that every `/api/*` literal in `src/` exists in the OpenAPI spec, and a manifest contract that every PNG referenced from `dist/manifest.webmanifest` exists at the declared dimensions.
 
-UI image: `harbor.iomio.io/library/media-stack-ui:v1.1.0` (see [CHANGELOG.md](CHANGELOG.md)).
+UI image: `harbor.iomio.io/library/media-stack-ui:v1.3.71` (see [CHANGELOG.md](CHANGELOG.md)).
 
 ## CI/CD (Python-first)
 

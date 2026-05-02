@@ -7,7 +7,7 @@ Media Stack supports two runtime targets, both driven by the same per-service co
 
 If you don't already have a preference, start with [Compose](#docker-compose-deployment). It's one command from a fresh host.
 
-![Deployment model](diagrams/deployment-model.png)
+![Deployment model](../diagrams/deployment-model.png)
 
 ## Profiles
 
@@ -34,7 +34,7 @@ The controller is a **persistent Deployment** on both platforms:
 - **Kubernetes** — `media-stack-controller` Deployment with ServiceAccount and RBAC.
 - **Compose** — `controller` container with `restart: unless-stopped`.
 
-It exposes an HTTP API on port 9100 with an interactive dashboard, action dispatch, SSE log streaming, webhook notifications, runtime config toggles, and action retry. See [Architecture → Controller HTTP API service](internals/architecture.md#controller-http-api-service) for the full endpoint reference.
+It exposes an HTTP API on port 9100 with an interactive dashboard, action dispatch, SSE log streaming, webhook notifications, runtime config toggles, and action retry. See [Architecture → Controller HTTP API service](../architecture/overview.md#controller-http-api-service) for the full endpoint reference.
 
 ---
 
@@ -67,13 +67,6 @@ Not part of the Compose target:
 - Optional but recommended: `contracts/media-stack.profile.yaml` for deployment / purpose / install / exposure / auth defaults.
 
 ### One-command deploy
-
-**Linux / macOS:**
-
-```bash
-./deploy-compose.sh
-./deploy-compose.sh --delete   # teardown + redeploy
-```
 
 **Any OS (cross-platform, requires Python 3.11+):**
 

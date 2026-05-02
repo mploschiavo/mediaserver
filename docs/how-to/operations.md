@@ -1,6 +1,6 @@
 # Operations Runbook
 
-![Operating loop](diagrams/operating-loop.png)
+![Operating loop](../diagrams/operating-loop.png)
 
 ## Day 0: Install
 
@@ -90,7 +90,7 @@ bash bin/run-bootstrap-job.sh
 bash bin/verify-flow.sh [NAMESPACE]
 ```
 
-![Bootstrap runtime model](diagrams/bootstrap-runtime-model.png)
+![Bootstrap runtime model](../diagrams/bootstrap-runtime-model.png)
 
 Checkpoint/resume controls:
 ```bash
@@ -172,11 +172,11 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 
 ## Related Docs
 
-- [internals/architecture.md](internals/architecture.md)
+- [architecture/overview.md](../architecture/overview.md)
 - [deployment.md](deployment.md)
 - [networking.md](networking.md)
 - [storage.md](storage.md)
-- [reference/maintainerr-rules.md](reference/maintainerr-rules.md)
+- [reference/maintainerr-rules.md](../reference/maintainerr-rules.md)
 - [troubleshooting.md](troubleshooting.md)
 
 ---
