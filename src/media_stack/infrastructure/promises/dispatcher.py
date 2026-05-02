@@ -205,15 +205,9 @@ def dispatch_probe(
     if isinstance(spec, FileTextProbe):
         return _probe_file_text(spec, now)
     if isinstance(spec, K8sResourceProbe):
-        return ProbeResult.unknown(
-            "k8s_resource probe not implemented in orchestrator (Phase 5+)",
-            evaluated_at=now,
-        )
+        return _probe_k8s_resource(spec, now)
     if isinstance(spec, K8sExecProbe):
-        return ProbeResult.unknown(
-            "k8s_exec probe not implemented in orchestrator (Phase 5+)",
-            evaluated_at=now,
-        )
+        return _probe_k8s_pod_command(spec, now)
     return ProbeResult.unknown(
         f"unknown probe kind {type(spec).__name__}",
         evaluated_at=now,
@@ -401,6 +395,254 @@ def _probe_file_json(spec: FileJsonProbe, now: float) -> ProbeResult:
         )
     return _classify_assert(
         spec.assert_expr, {"data": data}, str(path), 0, now,
+    )
+
+
+_K8S_RESOURCE_KINDS = {
+    # Namespaced kinds — listed via list_namespaced_<kind> when a
+    # namespace is given; cluster-wide via list_<kind>_for_all_namespaces.
+    "pod": ("CoreV1Api", "list_namespaced_pod", "list_pod_for_all_namespaces"),
+    "service": ("CoreV1Api", "list_namespaced_service",
+                "list_service_for_all_namespaces"),
+    "pvc": ("CoreV1Api", "list_namespaced_persistent_volume_claim",
+            "list_persistent_volume_claim_for_all_namespaces"),
+    "secret": ("CoreV1Api", "list_namespaced_secret",
+               "list_secret_for_all_namespaces"),
+    "deployment": ("AppsV1Api", "list_namespaced_deployment",
+                   "list_deployment_for_all_namespaces"),
+    "ingress": ("NetworkingV1Api", "list_namespaced_ingress",
+                "list_ingress_for_all_namespaces"),
+    # Cluster-scoped kind — only the cluster-wide call applies.
+    "pv": ("CoreV1Api", None, "list_persistent_volume"),
+}
+
+
+_K8S_ROUTING_VAR_NAMES = (
+    "gateway_host", "stack_subdomain", "base_domain", "app_path_prefix",
+)
+
+
+def _resolve_routing_vars_for_substitution() -> dict[str, str]:
+    """Read the live merged routing config so probe commands can
+    substitute ``${gateway_host}`` etc. Cached per-process — routing
+    config changes are operator-driven and rare. Failure-tolerant: if
+    the config service is unavailable for any reason, returns an
+    empty dict and the substitution becomes a no-op."""
+    cached = getattr(_resolve_routing_vars_for_substitution, "_cached", None)
+    if cached is not None:
+        return cached
+    out: dict[str, str] = {}
+    try:
+        from media_stack.api.services.config import get_routing
+        routing = get_routing() or {}
+    except Exception as exc:  # noqa: BLE001 - probes never raise
+        logger.debug("routing-var resolution skipped: %s", exc)
+        _resolve_routing_vars_for_substitution._cached = out
+        return out
+    for key in _K8S_ROUTING_VAR_NAMES:
+        val = str(routing.get(key) or "").strip()
+        if val:
+            out[key] = val
+    _resolve_routing_vars_for_substitution._cached = out
+    return out
+
+
+def _substitute_routing_vars(text: str, routing_vars: Mapping[str, str]) -> str:
+    """Replace ``${var}`` placeholders. Bypassed when the var is
+    missing from ``routing_vars`` — the caller's ``skip_if_unset``
+    machinery has already decided what to do with that case."""
+    out = text
+    for key, val in routing_vars.items():
+        out = out.replace("${" + key + "}", val)
+    return out
+
+
+def _load_k8s_clients() -> tuple[Any, Any, Any] | None:
+    """Return ``(CoreV1Api, AppsV1Api, NetworkingV1Api)`` instances or
+    ``None`` if k8s isn't available. Logs at DEBUG on failure — callers
+    surface ``unknown`` to the orchestrator so cooldown applies."""
+    try:
+        from kubernetes import client as _k8s
+        from kubernetes import config as _kconfig
+    except ImportError as exc:
+        logger.debug("kubernetes client unavailable: %s", exc)
+        return None
+    try:
+        _kconfig.load_incluster_config()
+    except Exception as exc:  # noqa: BLE001 - covers ConfigException too
+        try:
+            _kconfig.load_kube_config()
+        except Exception as exc2:  # noqa: BLE001
+            logger.debug(
+                "k8s config load failed (incluster: %s; kubeconfig: %s)",
+                exc, exc2,
+            )
+            return None
+    try:
+        return _k8s.CoreV1Api(), _k8s.AppsV1Api(), _k8s.NetworkingV1Api()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("k8s client construction failed: %s", exc)
+        return None
+
+
+def _probe_k8s_resource(spec: K8sResourceProbe, now: float) -> ProbeResult:
+    """List a Kubernetes resource via the in-cluster API and evaluate
+    the assertion against ``resources`` (a list of dicts).
+
+    Mirrors the legacy CLI's contract: same ``resources`` scope name,
+    same assertion language, same kind vocabulary. Source-of-truth
+    differences from the legacy:
+
+      * Uses the kubernetes Python client + the controller's service
+        account (no kubectl shell-out, no kubeconfig).
+      * Cluster-scoped kinds (``pv``) ignore ``namespace`` instead
+        of failing with "namespace must be empty".
+    """
+    kind = (spec.resource_kind or "").lower().strip()
+    if not kind:
+        return ProbeResult.failed(
+            "k8s_resource probe missing 'kind'", evaluated_at=now,
+        )
+    mapping = _K8S_RESOURCE_KINDS.get(kind)
+    if mapping is None:
+        return ProbeResult.failed(
+            f"k8s_resource: unsupported kind {kind!r}",
+            evaluated_at=now,
+        )
+    api_attr, ns_method, allns_method = mapping
+
+    apis = _load_k8s_clients()
+    if apis is None:
+        return ProbeResult.unknown(
+            "k8s client unavailable (running outside cluster?)",
+            evaluated_at=now,
+        )
+    core_api, apps_api, net_api = apis
+    api = {"CoreV1Api": core_api, "AppsV1Api": apps_api,
+           "NetworkingV1Api": net_api}[api_attr]
+
+    label_selector = (spec.label_selector or "").strip()
+    namespace = (spec.namespace or "").strip()
+    kwargs: dict[str, Any] = {}
+    if label_selector:
+        kwargs["label_selector"] = label_selector
+    try:
+        if namespace and ns_method:
+            method = getattr(api, ns_method)
+            response = method(namespace=namespace, **kwargs)
+        else:
+            method = getattr(api, allns_method)
+            response = method(**kwargs)
+    except Exception as exc:  # noqa: BLE001 - probes never raise
+        return ProbeResult.unknown(
+            f"k8s_resource list failed: {exc.__class__.__name__}",
+            evidence={"kind": kind, "namespace": namespace,
+                      "label_selector": label_selector,
+                      "error": str(exc)[:200]},
+            evaluated_at=now,
+        )
+
+    items = getattr(response, "items", None) or []
+    resources = [
+        item.to_dict() if hasattr(item, "to_dict") else dict(item)
+        for item in items
+    ]
+    label = f"k8s://{kind}" + (f"/{namespace}" if namespace else "")
+    return _classify_assert(
+        spec.assert_expr, {"resources": resources},
+        label, 0, now,
+    )
+
+
+def _probe_k8s_pod_command(spec: K8sExecProbe, now: float) -> ProbeResult:
+    """Run a command inside a Running pod and evaluate the assertion
+    against its stdout (exposed as ``data``).
+
+    Same contract as the legacy CLI: ``${var}`` substitution from
+    routing config in both the command and the assert expression;
+    ``skip_if_unset`` skips with a pass when the named routing var
+    isn't configured (treated as "this promise is moot for this
+    deployment", not failure).
+    """
+    namespace = (spec.namespace or "").strip()
+    pod_label = (spec.pod_label or "").strip()
+    container = (spec.container or "").strip()
+    command = list(spec.command or ())
+    skip_if_unset = (spec.skip_if_unset or "").strip()
+
+    if not namespace or not pod_label or not command:
+        return ProbeResult.failed(
+            "k8s_exec missing namespace/pod_label/command",
+            evaluated_at=now,
+        )
+
+    routing_vars = _resolve_routing_vars_for_substitution()
+    if skip_if_unset and not routing_vars.get(skip_if_unset):
+        # Promise is N/A for this deployment — treat as ok per the
+        # legacy contract (operator hasn't configured the relevant
+        # routing var so the assert can't possibly hold or matter).
+        return ProbeResult.ok(
+            f"skipped ({skip_if_unset} not configured)",
+            evidence={"skipped": True, "reason": skip_if_unset},
+            evaluated_at=now,
+        )
+
+    resolved_cmd = [_substitute_routing_vars(str(p), routing_vars)
+                    for p in command]
+    resolved_assert = _substitute_routing_vars(
+        str(spec.assert_expr or ""), routing_vars,
+    )
+
+    apis = _load_k8s_clients()
+    if apis is None:
+        return ProbeResult.unknown(
+            "k8s client unavailable (running outside cluster?)",
+            evaluated_at=now,
+        )
+    core_api, _, _ = apis
+
+    try:
+        pods = core_api.list_namespaced_pod(
+            namespace=namespace, label_selector=pod_label,
+            field_selector="status.phase=Running",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ProbeResult.unknown(
+            f"pod lookup failed: {exc.__class__.__name__}",
+            evidence={"pod_label": pod_label, "error": str(exc)[:200]},
+            evaluated_at=now,
+        )
+    pod_items = getattr(pods, "items", None) or []
+    if not pod_items:
+        return ProbeResult.failed(
+            f"no Running pod matches {pod_label!r}",
+            evidence={"pod_label": pod_label, "namespace": namespace},
+            evaluated_at=now,
+        )
+    pod_name = pod_items[0].metadata.name
+
+    try:
+        from kubernetes.stream import stream as _k8s_stream
+        kwargs: dict[str, Any] = {
+            "command": resolved_cmd, "stdout": True, "stderr": True,
+            "stdin": False, "tty": False,
+        }
+        if container:
+            kwargs["container"] = container
+        stdout = _k8s_stream(
+            core_api.connect_get_namespaced_pod_exec,
+            pod_name, namespace, **kwargs,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ProbeResult.unknown(
+            f"pod exec failed: {exc.__class__.__name__}",
+            evidence={"pod": pod_name, "error": str(exc)[:200]},
+            evaluated_at=now,
+        )
+    label = f"k8s://{namespace}/{pod_name}"
+    return _classify_assert(
+        resolved_assert, {"data": stdout or ""},
+        label, 0, now,
     )
 
 
