@@ -256,7 +256,11 @@ class TestRunAllWithRetry(unittest.TestCase):
         }):
             with patch(
                 "media_stack.services.jobs.framework.JobRunner._try_satisfy_prereqs"
-            ):
+            ), patch("importlib.import_module") as mock_mod:
+                # Mock handler imports so unrelated prereq-free jobs (e.g.
+                # discover-api-keys, which now runs real jellyfin preflight)
+                # don't reach the network.
+                mock_mod.return_value = MagicMock()
                 result = run_all_media_server_jobs(max_wait=1)
         # Jobs with unmet prereqs should be skipped
         jobs = result.get("jobs", {})

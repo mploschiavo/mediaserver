@@ -49,7 +49,10 @@ _MIGRATED_JOBS = {
                               "requires": []},
     "run-legacy-pipeline":   {"phase": "pre_bootstrap",
                               "requires": []},
-    "envoy-config":          {"phase": "default",          "requires": []},
+    # envoy-config was promoted from ``default`` → ``infrastructure``
+    # so gateway routing exists BEFORE media_server + download_clients
+    # come up. See contracts/services/core.yaml for the rationale.
+    "envoy-config":          {"phase": "infrastructure",   "requires": []},
     "discover-indexers":     {"phase": "download_clients", "requires": []},
     "push-indexers":         {"phase": "download_clients", "requires": []},
     "validate-credentials":  {"phase": "post",

@@ -121,7 +121,14 @@ class UserManagementApiTests(unittest.TestCase):
         from media_stack.api.handlers_post import PostRequestHandler
         svc = PostRequestHandler()
         h, captured = _post_handler("/api/users/u1/unknown-thing", {})
-        svc.handle(h)
+        # _handle_user_mgmt builds the user service before dispatching
+        # the action — patch it so the unknown-action 400 path doesn't
+        # trip on /srv-config write attempts in the test sandbox.
+        with patch(
+            "media_stack.api.handlers_post.build_default_service",
+            return_value=MagicMock(),
+        ):
+            svc.handle(h)
         self.assertEqual(captured["status"], 400)
 
     def test_post_users_service_error_returns_400(self):

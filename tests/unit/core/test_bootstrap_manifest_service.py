@@ -83,8 +83,8 @@ spec: {}
     def test_ensure_bootstrap_pvc_prereqs_uses_discovered_manifest_pvcs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root_dir = Path(tmpdir)
-            (root_dir / "k8s").mkdir(parents=True, exist_ok=True)
-            (root_dir / "k8s" / "storage-pvc.yaml").write_text(
+            (root_dir / "deploy" / "k8s").mkdir(parents=True, exist_ok=True)
+            (root_dir / "deploy" / "k8s" / "storage-pvc.yaml").write_text(
                 """
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -120,8 +120,8 @@ spec: {}
     def test_ensure_bootstrap_pvc_prereqs_raises_for_missing_discovered_pvc(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root_dir = Path(tmpdir)
-            (root_dir / "k8s").mkdir(parents=True, exist_ok=True)
-            (root_dir / "k8s" / "storage-pvc.yaml").write_text(
+            (root_dir / "deploy" / "k8s").mkdir(parents=True, exist_ok=True)
+            (root_dir / "deploy" / "k8s" / "storage-pvc.yaml").write_text(
                 """
 apiVersion: v1
 kind: PersistentVolumeClaim

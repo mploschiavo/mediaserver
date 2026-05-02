@@ -91,7 +91,16 @@ class TestHardResetService(unittest.TestCase):
         svc = next((s for s in SERVICES if s.api_key_env), None)
         if not svc:
             self.skipTest("No service with api_key_env")
-        result = admin_mod.hard_reset_service(svc.id, {})
+        # _restart_and_wait_healthy polls the service's health endpoint
+        # with ``time.sleep(2)`` between tries, blocking the test for
+        # up to 30s. Short-circuit it: we're testing key discovery, not
+        # the health-poll loop (covered separately).
+        with patch.object(
+            admin_mod._instance,
+            "_restart_and_wait_healthy",
+            return_value=True,
+        ):
+            result = admin_mod.hard_reset_service(svc.id, {})
         self.assertIn("status", result)
 
     def test_unknown_service_returns_error(self):
