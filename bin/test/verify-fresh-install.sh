@@ -110,9 +110,15 @@ if [ "$WIPE" -eq 1 ]; then
   sleep 15
 fi
 
-log "running promise probes"
-exec media-stack-probe-promises \
-  --compose-file "$COMPOSE_FILE" \
+log "running promise probes (via orchestrator state)"
+# media-stack-verify reads the controller's persisted promise-evaluation
+# tick and reports pass/fail. Replaces the legacy media-stack-probe-
+# promises which re-implemented the probe loop from outside the
+# controller — see ADR-0004 for the rationale. After a fresh deploy
+# we wait up to 90s for the orchestrator to converge before reporting.
+exec media-stack-verify \
   --controller-url "$CONTROLLER_URL" \
   --admin-user "$ADMIN_USER" \
-  --admin-pass "$ADMIN_PASS"
+  --admin-pass "$ADMIN_PASS" \
+  --wait 90 \
+  --poll-interval 5
