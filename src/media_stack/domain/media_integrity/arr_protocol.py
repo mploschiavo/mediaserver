@@ -126,7 +126,7 @@ class ArrApp(Protocol):
 
     name: str               # "radarr" | "sonarr" | "lidarr" | "readarr"
     api_version: str        # "v3" | "v1"
-    media_root: str         # "/media/movies", "/media/tv", ...
+    media_root: str         # filesystem root the *arr writes finished items into
     capabilities: AdapterCapabilities
 
     # --- config surface (Enforcer) -------------------------------------

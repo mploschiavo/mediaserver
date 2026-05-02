@@ -20,6 +20,10 @@ import requests
 import logging
 
 from media_stack.api.services.registry import service_internal_url
+from media_stack.infrastructure.qbittorrent import (
+    QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
+    QBITTORRENT_FACTORY_DEFAULT_USERNAME,
+)
 
 
 class QbittorrentHttpPreflight:
@@ -283,7 +287,11 @@ class QbittorrentHttpPreflight:
             return {}
 
         # Try with default credentials.
-        sid = _login(qbit_url, "admin", "adminadmin")
+        sid = _login(
+            qbit_url,
+            QBITTORRENT_FACTORY_DEFAULT_USERNAME,
+            QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
+        )
         if sid is None:
             # Try reading the temporary password from container logs.
             temp_pass = _read_temp_password_from_logs(container_name)
@@ -311,7 +319,11 @@ class QbittorrentHttpPreflight:
                     info(f"qBittorrent: found new temp password after restart")
                     sid = _login(qbit_url, "admin", temp_pass)
                 if sid is None:
-                    sid = _login(qbit_url, "admin", "adminadmin")
+                    sid = _login(
+            qbit_url,
+            QBITTORRENT_FACTORY_DEFAULT_USERNAME,
+            QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
+        )
 
         if sid is None:
             raise RuntimeError("qBittorrent: unable to authenticate with any known credentials")
