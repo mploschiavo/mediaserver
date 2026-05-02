@@ -2,6 +2,31 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.309] — 2026-05-02
+
+### Architecture
+- **ADR-0003 Phase 5d — retire Phase-0 `jellyfin:ensure-api-key`
+  auto-heal hook.** The orchestrator's
+  `jellyfin-api-key-discoverable` promise (Phase 5a primary mode)
+  now drives this, dispatching `JellyfinLifecycle.mint_api_key` —
+  which itself wraps the SAME
+  `infrastructure.jellyfin.http_preflight.run_preflight` the legacy
+  hook called. Equivalence is by construction; live-verified by the
+  Phase 4d negative test on compose 2026-05-02 (deleting the key
+  from jellyfin's SQLite DB triggered re-mint through the same code
+  path within ~60s).
+  - Coverage matrix: `docs/architecture/orchestrator-coverage-matrix.md`
+  - The `jellyfin:ensure-api-key` job + handler stay registered
+    (bootstrap may still invoke them); only the per-tick auto-heal
+    invocation is removed. Phase 5e cleanup will dedupe.
+- The other 3 auto-heal hooks (`guardrails:evaluate`,
+  `jobs:close-stale-runs`, `orchestrator:satisfy-shadow`) stay —
+  they have no orchestrator coverage / IS the orchestrator.
+
+### Rollback
+Single-commit revert restores the legacy hook. Both pipelines are
+idempotent so the revert is safe at any time.
+
 ## [v1.0.308] — 2026-05-01
 
 ### Fixed

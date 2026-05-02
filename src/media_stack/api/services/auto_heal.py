@@ -426,26 +426,20 @@ class AutoHealService:
         except Exception as exc:  # noqa: BLE001
             _log.debug("[DEBUG] auto-heal: guardrail run_job failed: %s", exc)
 
-        # Phase 0 of ADR-0003: re-evaluate the Jellyfin API-key
-        # ensurer on every auto-heal tick. Idempotent — once the key
-        # is minted the handler returns ``skipped: already_minted``
-        # and short-circuits in <10ms. Self-healing — if Jellyfin
-        # was slow to start during bootstrap, this catches up
-        # within 60s of it becoming reachable. Failure is logged,
-        # not raised, so a wedged Jellyfin doesn't break the
-        # auto-heal cycle for everything else.
-        try:
-            from media_stack.application.jobs.framework import run_job
-            run_job(
-                "jellyfin:ensure-api-key",
-                source="auto-heal",
-                actor="auto-heal",
-            )
-        except Exception as exc:  # noqa: BLE001
-            _log.debug(
-                "[DEBUG] auto-heal: jellyfin:ensure-api-key run_job failed: %s",
-                exc,
-            )
+        # ADR-0003 Phase 5d (v1.0.309): retired the Phase-0
+        # ``jellyfin:ensure-api-key`` direct hook. The orchestrator's
+        # ``jellyfin-api-key-discoverable`` promise dispatches the
+        # equivalent ``JellyfinLifecycle.mint_api_key`` (which itself
+        # wraps the same ``infrastructure.jellyfin.http_preflight.
+        # run_preflight`` the legacy hook called) on the
+        # ``orchestrator:satisfy-shadow`` tick below. Equivalence
+        # verified by:
+        #   - construction (same ``run_preflight`` invocation site)
+        #   - live negative test: deleting the key from jellyfin's
+        #     SQLite DB triggered re-mint via the same code path
+        #     within ~60s on compose 2026-05-02
+        # Coverage matrix: ``docs/architecture/orchestrator-coverage-
+        # matrix.md``.
 
         # Same Phase 0 pattern: close any run-history records that
         # got stuck at status=running because a controller process
