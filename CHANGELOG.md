@@ -2,6 +2,26 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [unreleased] — 2026-05-02
+
+### Architecture
+- **ADR-0003 Phase 5e.1 — extract assert-evaluator from
+  probe_promises CLI.** The orchestrator dispatcher previously
+  imported `_evaluate` from `cli/commands/probe_promises.py`,
+  coupling the runtime path to the legacy CLI module. Lifted to
+  `infrastructure/promises/assert_eval.py` so the CLI can be
+  retired in 5e.2 without breaking the orchestrator.
+  - Both consumers (dispatcher + the legacy CLI) now go through
+    one auditable evaluation site.
+  - Module-level `_evaluate` alias preserved in
+    `probe_promises.py` for any in-repo callers that hadn't moved
+    yet.
+  - 20 new unit tests covering allowlist-builtins, generator-
+    expression scope handling, multi-line YAML block scalars,
+    error surfacing, and the legacy-alias contract.
+- Pure refactor — runtime behavior unchanged from v1.0.309. No
+  image bump needed.
+
 ## [v1.0.309] — 2026-05-02
 
 ### Architecture
