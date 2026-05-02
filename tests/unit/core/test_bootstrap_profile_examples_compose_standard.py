@@ -26,14 +26,18 @@ class ComposeStandardProfileExampleTests(unittest.TestCase):
             "hybrid profile must declare a direct media-server host for native device clients",
         )
 
-    def test_compose_standard_profile_bootstrap_flags_enable_preconfig_only(self):
+    def test_compose_standard_profile_bootstrap_flags_enable_otb_experience(self):
         profile_path = ROOT / "deploy" / "examples" / "bootstrap-profiles" / "media-compose-standard.yaml"
         payload = yaml.safe_load(profile_path.read_text(encoding="utf-8")) or {}
         bootstrap_cfg = payload.get("bootstrap") or {}
         self.assertTrue(bool(bootstrap_cfg.get("preconfigure_apps")))
         self.assertTrue(bool(bootstrap_cfg.get("preconfigure_api_keys")))
         self.assertTrue(bool(bootstrap_cfg.get("apply_initial_preferences")))
-        self.assertFalse(bool(bootstrap_cfg.get("auto_download_content")))
+        # Since v1.0.141 the standard profile defaults
+        # ``auto_download_content`` to true so a fresh bootstrap matches
+        # the OTB experience users expect; dry-run / test-only deploys
+        # flip the flag.
+        self.assertTrue(bool(bootstrap_cfg.get("auto_download_content")))
 
 
 if __name__ == "__main__":
