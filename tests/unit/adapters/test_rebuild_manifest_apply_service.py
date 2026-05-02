@@ -55,7 +55,11 @@ class RebuildManifestApplyServiceTests(unittest.TestCase):
     def test_profile_kustomize_success_applies_rendered_text(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            profile_dir = root / "k8s" / "profiles" / "full"
+            # Service looks under deploy/k8s/profiles/<profile> after the
+            # deploy/ reorg; without the new path the profile dir is
+            # missing, kustomize never runs, and the test sees the direct-
+            # apply fallback instead of the kustomize-success branch.
+            profile_dir = root / "deploy" / "k8s" / "profiles" / "full"
             profile_dir.mkdir(parents=True, exist_ok=True)
             applied_text: list[str] = []
             applied_files: list[Path] = []
@@ -87,7 +91,7 @@ class RebuildManifestApplyServiceTests(unittest.TestCase):
     def test_empty_kustomize_cmd_defaults_to_kubectl_kustomize(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            profile_dir = root / "k8s" / "profiles" / "full"
+            profile_dir = root / "deploy" / "k8s" / "profiles" / "full"
             profile_dir.mkdir(parents=True, exist_ok=True)
             observed_cmds: list[list[str]] = []
 

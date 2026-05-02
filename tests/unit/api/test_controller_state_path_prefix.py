@@ -74,11 +74,18 @@ _PATH_RE = re.compile(
 _ALLOWED = {
     # user_service_factory._state_path reads this path as the LEGACY
     # source, migrates to .controller, returns the new location.
-    "core/auth/users/user_service_factory.py:_state_path-legacy-read",
+    # Module moved core/auth/users/ → application/auth/users/ in
+    # ADR-0002 Phase 16-D; the legacy-read line moved with it.
+    "application/auth/users/user_service_factory.py:_state_path-legacy-read",
     # server._load_plugins falls back to the legacy path so compose
     # operators mid-upgrade don't lose their plugins on the day the
     # image bumps to v1.0.169.
     "api/server.py:_load_plugins-legacy-fallback",
+    # known_usernames_from_user_store falls back to the legacy
+    # ``controller/users.json`` location so older deployments can
+    # still feed the aggregator's user fan-out during the rollout
+    # window.
+    "api/session_aggregator_singletons.py:known_usernames-legacy-fallback",
 }
 
 
