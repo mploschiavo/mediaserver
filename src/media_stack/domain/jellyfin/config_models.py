@@ -208,7 +208,11 @@ class JellyfinBookSidecarArtworkConfig:
             ]
         return cls(
             enabled=bool(src.get("enabled", True)),
-            books_root_path=str(src.get("books_root_path", "/srv-stack/media/books")).strip(),
+            # Empty when neither operator config nor contracts/services/jellyfin.yaml
+            # nor contracts/defaults/paths.yaml supplied a value. Caller is
+            # expected to skip the sidecar feature when this is empty (consistent
+            # with the existing prewarm behavior — no books root, no prewarm).
+            books_root_path=str(src.get("books_root_path", "")).strip(),
             books_root_paths=root_list,
             output_filename=str(src.get("output_filename", "folder.jpg")).strip() or "folder.jpg",
             replace_existing=bool(src.get("replace_existing", False)),
@@ -253,7 +257,8 @@ class JellyfinMusicSidecarArtworkConfig:
             ]
         return cls(
             enabled=bool(src.get("enabled", True)),
-            music_root_path=str(src.get("music_root_path", "/srv-stack/media/music")).strip(),
+            # Empty-by-default; see books_root_path note above.
+            music_root_path=str(src.get("music_root_path", "")).strip(),
             music_root_paths=root_list,
             output_filename=str(src.get("output_filename", "folder.jpg")).strip() or "folder.jpg",
             replace_existing=bool(src.get("replace_existing", False)),

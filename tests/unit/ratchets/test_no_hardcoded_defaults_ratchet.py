@@ -60,6 +60,12 @@ CONFIGURABLE_DEFAULTS_ALLOWLIST: set[str] = {
     # below), the compose file's path literals are the convention every
     # service is built around.
     "deploy/compose/docker-compose.yml",
+    # Catalog dataclass for the per-media-type relationships the stack
+    # manages. Field docstrings contain example paths (``e.g. /media/tv``)
+    # to document each field's role; the actual values are loaded from
+    # contracts/defaults/media_types.yaml at runtime, not baked into this
+    # file. This is the single SoT every consumer reads from.
+    "domain/media/catalog.py",
 }
 
 
@@ -73,22 +79,26 @@ CONFIGURABLE_DEFAULTS_ALLOWLIST: set[str] = {
 #     default-credential literals scattered across servarr media-integrity
 #     factories, hygiene ops, preflight checks, content download settings,
 #     and qBit's factory password. Pinned at 23 going forward.
-#   * 2026-05-02: allowlist mechanism added.
+#   * 2026-05-02 (early): allowlist mechanism added.
 #       - infrastructure/qbittorrent/__init__.py: upstream-given factory pw
-#         (3 violations removed by callsite migration to named constant +
-#         allowlist for the declaration site)
-#       - deploy/compose/docker-compose.yml: deploy-substrate file (5
-#         violations removed by allowlist; the values ARE the SoT this stack
-#         uses)
-#       - One stray "/media/X" comment in arr_protocol.py:129 rewritten to
-#         not show example paths (1 violation removed).
-#     Net: 35 -> 26. The remaining 26 are the genuine MediaPaths SoT
-#     refactor that needs its own PR (unify "/data/torrents/completed/X"
-#     and "/media/X" / "/srv-stack/media/X" defaults across unpackerr.py,
-#     content_download_settings_mixin.py, configure_jellyseerr_job.py,
-#     jellyfin/config_models.py, jellyfin/prewarm/sidecar_ops.py,
-#     media_integrity/factory.py, and media_hygiene_ops/filesystem.py).
-HARDCODED_DEFAULTS_RATCHET = 26
+#       - deploy/compose/docker-compose.yml: deploy-substrate file
+#       - arr_protocol.py:129 doc comment rewritten
+#     Net: 35 -> 26.
+#   * 2026-05-02 (afternoon): MediaPaths SoT refactor.
+#       - Introduced MediaType catalog (domain/media/catalog.py) +
+#         contracts/defaults/media_types.yaml as the single SoT for the
+#         per-type relationships (arr_name, library_path, completed_paths,
+#         controller_view, etc).
+#       - Refactored 26 violating callsites across factory.py, unpackerr.py,
+#         content_download_settings_mixin.py, configure_jellyseerr_job.py,
+#         jellyfin/config_models.py, jellyfin/prewarm/sidecar_ops.py to read
+#         from the catalog. Application-layer prewarm_service.py populates
+#         sidecar_cfg with catalog values before invoking domain.
+#       - Added contracts/defaults/paths.yaml + infrastructure/paths/ for
+#         the substrate-only non-per-type paths used by hygiene ops.
+#     Net: 26 -> 0. Catalog dataclass docstrings (which reference example
+#     paths in field docs) live in the allowlist.
+HARDCODED_DEFAULTS_RATCHET = 0
 
 # Bug class E (filter-literal hardcoded defaults). The crash that surfaced
 # this: ``GATEWAY_DOMAIN_SUFFIX`` defaulted to ".media-stack.local" and

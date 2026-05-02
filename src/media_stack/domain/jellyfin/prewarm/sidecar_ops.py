@@ -175,21 +175,32 @@ class JellyfinSidecarOps:
         return deduped
 
     def iter_sidecar_books_root_candidates(self, sidecar_cfg: dict[str, Any]) -> list[Path]:
+        """Build the deduped candidate-path list for the books library.
+
+        Reads paths from ``sidecar_cfg`` only — ``books_root_path``
+        (singular preferred) plus any ``books_root_paths`` (list of
+        additional candidates). The application caller populates
+        these from the media-type catalog
+        (``contracts/defaults/media_types.yaml``) before invoking the
+        prewarm pipeline; domain-layer code handles the candidate-list
+        logic, not the substrate-specific defaults themselves.
+        """
         return self._iter_sidecar_root_candidates(
             sidecar_cfg,
             plural_key="books_root_paths",
             singular_key="books_root_path",
-            default_path="/srv-stack/media/books",
-            fallback_path="/media/books",
+            default_path="",
+            fallback_path="",
         )
 
     def iter_sidecar_music_root_candidates(self, sidecar_cfg: dict[str, Any]) -> list[Path]:
+        """See ``iter_sidecar_books_root_candidates``."""
         return self._iter_sidecar_root_candidates(
             sidecar_cfg,
             plural_key="music_root_paths",
             singular_key="music_root_path",
-            default_path="/srv-stack/media/music",
-            fallback_path="/media/music",
+            default_path="",
+            fallback_path="",
         )
 
     def path_has_epub(self, path: Path) -> bool:
@@ -254,7 +265,14 @@ class JellyfinSidecarOps:
             # the common case. Was [WARN] which read like an error
             # on every fresh install without books content.
             return
-        preferred_root = str(sidecar_cfg.get("books_root_path") or "/srv-stack/media/books").strip()
+        # Diagnostic log when the resolved books root differs from the
+        # operator's preferred path. If no preferred path is set in cfg,
+        # the log simply doesn't fire — empty preferred_root short-circuits
+        # the comparison. The substrate default lives in
+        # contracts/defaults/paths.yaml + jellyfin.yaml's prewarm
+        # defaults; the application caller supplies it via sidecar_cfg
+        # before this domain function runs.
+        preferred_root = str(sidecar_cfg.get("books_root_path") or "").strip()
         if preferred_root and str(books_root) != preferred_root:
             d.log(
                 "[INFO] Jellyfin prewarm: using fallback books root for sidecar artwork "
@@ -369,7 +387,8 @@ class JellyfinSidecarOps:
             # as books above: opt-in feature, missing root just means
             # the user doesn't have a music library.
             return
-        preferred_root = str(sidecar_cfg.get("music_root_path") or "/srv-stack/media/music").strip()
+        # See ensure_book_sidecar_artwork — same shape.
+        preferred_root = str(sidecar_cfg.get("music_root_path") or "").strip()
         if preferred_root and str(music_root) != preferred_root:
             d.log(
                 "[INFO] Jellyfin prewarm: using fallback music root for sidecar artwork "

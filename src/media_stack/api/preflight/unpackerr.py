@@ -12,6 +12,7 @@ from media_stack.core.logging_utils import log_swallowed
 from pathlib import Path
 from typing import Any
 from media_stack.api.services.registry import service_internal_url
+from media_stack.infrastructure.media import load_media_types
 import logging
 
 
@@ -69,39 +70,21 @@ class UnpackerrPreflightService:
         # error: "expected value but found 'service' instead") and
         # the container went into a CrashLoop. Resolve to the real
         # URL and write it as a quoted TOML string. (v1.0.150 fix.)
-        if sonarr_key:
+        keys_by_arr_lower = {
+            "sonarr": sonarr_key,
+            "radarr": radarr_key,
+            "lidarr": lidarr_key,
+            "readarr": readarr_key,
+        }
+        for mt in load_media_types().values():
+            api_key = keys_by_arr_lower.get(mt.arr_lower, "")
+            if not api_key:
+                continue
             lines.extend([
-                "[[sonarr]]",
-                f'  url = "{service_internal_url("sonarr")}"',
-                f'  api_key = "{sonarr_key}"',
-                '  paths = ["/data/torrents/completed/tv", "/data/usenet/completed/tv"]',
-                "",
-            ])
-
-        if radarr_key:
-            lines.extend([
-                "[[radarr]]",
-                f'  url = "{service_internal_url("radarr")}"',
-                f'  api_key = "{radarr_key}"',
-                '  paths = ["/data/torrents/completed/movies", "/data/usenet/completed/movies"]',
-                "",
-            ])
-
-        if lidarr_key:
-            lines.extend([
-                "[[lidarr]]",
-                f'  url = "{service_internal_url("lidarr")}"',
-                f'  api_key = "{lidarr_key}"',
-                '  paths = ["/data/torrents/completed/music", "/data/usenet/completed/music"]',
-                "",
-            ])
-
-        if readarr_key:
-            lines.extend([
-                "[[readarr]]",
-                f'  url = "{service_internal_url("readarr")}"',
-                f'  api_key = "{readarr_key}"',
-                '  paths = ["/data/torrents/completed/books", "/data/usenet/completed/books"]',
+                f"[[{mt.arr_lower}]]",
+                f'  url = "{service_internal_url(mt.arr_lower)}"',
+                f'  api_key = "{api_key}"',
+                f'  paths = ["{mt.torrents_completed_path}", "{mt.usenet_completed_path}"]',
                 "",
             ])
 

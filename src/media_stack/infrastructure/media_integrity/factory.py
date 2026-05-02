@@ -30,6 +30,7 @@ from media_stack.adapters.media_integrity import (
     ReadarrAdapter,
     SonarrAdapter,
 )
+from media_stack.infrastructure.media import load_media_types
 from media_stack.adapters.media_integrity._servarr_base import (
     HttpClient,
     _ServarrBaseAdapter,
@@ -49,14 +50,29 @@ from media_stack.services.media_integrity.service import MediaIntegrityService
 logger = logging.getLogger(__name__)
 
 
-# Map service-registry id → (adapter class, default media_root). The
-# adapter class is a callable so tests can substitute in fakes.
-_SERVARR_ADAPTERS: dict[str, tuple[type, str]] = {
-    "radarr": (RadarrAdapter, "/media/movies"),
-    "sonarr": (SonarrAdapter, "/media/tv"),
-    "lidarr": (LidarrAdapter, "/media/music"),
-    "readarr": (ReadarrAdapter, "/media/books"),
+# Map service-registry id → adapter class. The adapter class is a
+# callable so tests can substitute in fakes. The default media_root
+# for each adapter comes from the media-type catalog
+# (``contracts/defaults/media_types.yaml``); look it up at construction
+# time below rather than baking the path into this dispatch table.
+_SERVARR_ADAPTER_CLASSES: dict[str, type] = {
+    "radarr": RadarrAdapter,
+    "sonarr": SonarrAdapter,
+    "lidarr": LidarrAdapter,
+    "readarr": ReadarrAdapter,
 }
+
+
+def _media_root_for(arr_lower: str) -> str:
+    """Resolve the *arr's library path from the media-type catalog.
+
+    Returns ``""`` if the catalog is unavailable (stripped image,
+    etc.) — adapter construction handles that case via its own
+    defaults rather than crashing here."""
+    for mt in load_media_types().values():
+        if mt.arr_lower == arr_lower:
+            return mt.library_path
+    return ""
 
 
 @dataclass(frozen=True)
@@ -81,7 +97,7 @@ def _default_servarr_lookup() -> list[_ServiceLookup]:
 
     out: list[_ServiceLookup] = []
     for svc in SERVICES:
-        if svc.id not in _SERVARR_ADAPTERS:
+        if svc.id not in _SERVARR_ADAPTER_CLASSES:
             continue
         if not svc.host or not svc.port or not svc.api_key_env:
             continue
@@ -155,7 +171,8 @@ def build_default_service(
             )
             missing_keys.append(lookup.id)
             continue
-        adapter_cls, default_root = _SERVARR_ADAPTERS[lookup.id]
+        adapter_cls = _SERVARR_ADAPTER_CLASSES[lookup.id]
+        default_root = _media_root_for(lookup.id)
         try:
             adapter = adapter_cls(
                 base_url=f"http://{lookup.host}:{lookup.port}",

@@ -23,6 +23,7 @@ from media_stack.domain.jellyfin.prewarm.sidecar_ops import (
     resolve_music_root_path,
 )
 from media_stack.api.services.registry import service_internal_url
+from media_stack.infrastructure.media import media_type as _catalog_media_type
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -66,21 +67,69 @@ class JellyfinPrewarmService:
     def _extract_epub_cover_bytes(epub_path: Path) -> bytes | None:
         return extract_epub_cover_bytes(epub_path)
 
+    @staticmethod
+    def _populate_sidecar_defaults(
+        sidecar_cfg: dict[str, Any], media_type_name: str,
+    ) -> dict[str, Any]:
+        """Inject substrate-default paths from the media-type catalog
+        when the operator config omitted them.
+
+        Domain-layer sidecar code reads root paths from
+        ``sidecar_cfg`` directly — the application layer is
+        responsible for filling in the controller-pod's view (k8s
+        primary + compose fallback) before handing the dict off.
+        Operator-supplied values still win because we only inject
+        when the key is missing or empty.
+        """
+        mt = _catalog_media_type(media_type_name)
+        if mt is None:
+            return sidecar_cfg
+        out = dict(sidecar_cfg or {})
+        singular_key = f"{media_type_name}_root_path"
+        plural_key = f"{media_type_name}_root_paths"
+        if not out.get(singular_key):
+            out[singular_key] = mt.controller_library_path
+        # Augment the candidate list with the compose fallback so the
+        # search works on both platforms regardless of which mount the
+        # operator's runtime supplies.
+        existing = list(out.get(plural_key) or [])
+        for path in (mt.controller_library_path, mt.controller_library_path_compose):
+            if path and path not in existing:
+                existing.append(path)
+        out[plural_key] = existing
+        return out
+
     def _resolve_books_root_path(
         self, sidecar_cfg: dict[str, Any]
     ) -> tuple[Path | None, list[Path]]:
-        return resolve_books_root_path(self, sidecar_cfg)
+        return resolve_books_root_path(
+            self, self._populate_sidecar_defaults(sidecar_cfg, "books"),
+        )
 
     def _resolve_music_root_path(
         self, sidecar_cfg: dict[str, Any]
     ) -> tuple[Path | None, list[Path]]:
-        return resolve_music_root_path(self, sidecar_cfg)
+        return resolve_music_root_path(
+            self, self._populate_sidecar_defaults(sidecar_cfg, "music"),
+        )
 
     def _ensure_book_sidecar_artwork(self, prewarm_cfg: dict[str, Any]) -> None:
-        ensure_book_sidecar_artwork(self, prewarm_cfg)
+        # Inject catalog defaults into book_sidecar_artwork before
+        # handing the prewarm cfg to domain.
+        cfg = dict(prewarm_cfg or {})
+        sidecar = self._populate_sidecar_defaults(
+            cfg.get("book_sidecar_artwork") or {}, "books",
+        )
+        cfg["book_sidecar_artwork"] = sidecar
+        ensure_book_sidecar_artwork(self, cfg)
 
     def _ensure_music_sidecar_artwork(self, prewarm_cfg: dict[str, Any]) -> None:
-        ensure_music_sidecar_artwork(self, prewarm_cfg)
+        cfg = dict(prewarm_cfg or {})
+        sidecar = self._populate_sidecar_defaults(
+            cfg.get("music_sidecar_artwork") or {}, "music",
+        )
+        cfg["music_sidecar_artwork"] = sidecar
+        ensure_music_sidecar_artwork(self, cfg)
 
     @staticmethod
     def _item_has_artwork(item: dict[str, Any]) -> bool:

@@ -1,0 +1,92 @@
+# Filesystem paths the controller-pod sees for media + downloads.
+#
+# These are the in-container paths inside the controller image — NOT
+# the host paths an operator chose for their bind mounts. They match
+# the volume mounts in:
+#   * deploy/k8s/base/controller/controller.yaml (volumeMounts:
+#     /srv-stack/{media,data/torrents,data/usenet})
+#   * deploy/k8s/base/storage/storage-pvc.yaml (the matching PVCs)
+# Compose currently mounts the controller at /media and /data/...
+# instead; the controller's filesystem-touching code paths here are
+# k8s-only today, so the /srv-stack/... shape matches both reality
+# and what the legacy hardcoded fallbacks already used.
+#
+# Operators CAN override per-key in their bootstrap profile or in a
+# per-app controller.yaml — the read sites in src/ all use
+# ``cfg.get(KEY, default-from-here)``. Doing so requires updating the
+# matching deploy mountPath in lockstep; a follow-up substrate-
+# consistency ratchet (TODO) will diff this YAML against the actual
+# volume mounts and fail fast on drift.
+#
+# Two other path sets exist elsewhere; do NOT duplicate them here:
+#   * /media/<lib> — the *arr / Jellyfin / Plex container's view of
+#     the media library. Lives in contracts/defaults/arr.yaml as
+#     ``arr_apps[].root_folder`` and is the SoT for those.
+#   * /data/torrents/completed/<cat>, /data/usenet/completed/<cat> —
+#     the qBittorrent / SABnzbd container's view of the download
+#     landing zone. Lives in contracts/defaults/downloads.yaml as
+#     ``download_clients.<client>.completed_paths`` and is the SoT
+#     for those.
+
+controller_paths:
+  # The controller's own filesystem view of the shared media library.
+  # Same physical files the *arr containers see at /media/<lib>; just
+  # mounted at a different path inside the controller pod (k8s convention).
+  media_root: /srv-stack/media
+  media:
+    tv: /srv-stack/media/tv
+    movies: /srv-stack/media/movies
+    music: /srv-stack/media/music
+    books: /srv-stack/media/books
+  # Cross-platform secondary search paths. Compose currently mounts the
+  # controller's media volume at /media (NOT /srv-stack/media); kept
+  # here so code paths that walk the library can fall back when the
+  # k8s-shape primary doesn't exist (e.g., the controller is running on
+  # compose). When compose is aligned with k8s on /srv-stack/media this
+  # block can collapse.
+  media_compose_fallback:
+    tv: /media/tv
+    movies: /media/movies
+    music: /media/music
+    books: /media/books
+
+  # Roots the controller scans for hygiene + integrity work
+  # (qbit-duplicate-prune, stuck-imports, zero-byte cleanup, etc).
+  # The /srv-stack/data/... paths match the same physical content
+  # the qBittorrent + SABnzbd containers write to via their own
+  # /data/torrents and /data/usenet mounts.
+  torrents_root: /srv-stack/data/torrents
+  torrents_completed_root: /srv-stack/data/torrents/completed
+  torrents_completed:
+    tv: /srv-stack/data/torrents/completed/tv
+    movies: /srv-stack/data/torrents/completed/movies
+    music: /srv-stack/data/torrents/completed/music
+    books: /srv-stack/data/torrents/completed/books
+  usenet_root: /srv-stack/data/usenet
+  usenet_completed_root: /srv-stack/data/usenet/completed
+  usenet_completed:
+    tv: /srv-stack/data/usenet/completed/tv
+    movies: /srv-stack/data/usenet/completed/movies
+    music: /srv-stack/data/usenet/completed/music
+    books: /srv-stack/data/usenet/completed/books
+
+  # Hygiene-ops scan defaults — used by media_hygiene_ops/filesystem.py
+  # when the operator hasn't configured ``media_hygiene.qbit_filesystem.
+  # roots`` / ``preserve_empty_dirs``. Derived from the lists above so
+  # the substrate-consistency ratchet can verify in one place.
+  hygiene_default_roots:
+    - /srv-stack/data/torrents/incomplete
+    - /srv-stack/data/torrents/completed
+    - /srv-stack/data/usenet/incomplete
+    - /srv-stack/data/usenet/completed
+  hygiene_preserve_empty_dirs:
+    - /srv-stack/data/torrents/incomplete
+    - /srv-stack/data/torrents/completed/tv
+    - /srv-stack/data/torrents/completed/movies
+    - /srv-stack/data/torrents/completed/music
+    - /srv-stack/data/torrents/completed/books
+    - /srv-stack/data/usenet/incomplete
+    - /srv-stack/data/usenet/completed/tv
+    - /srv-stack/data/usenet/completed/movies
+    - /srv-stack/data/usenet/completed/music
+    - /srv-stack/data/usenet/completed/books
