@@ -93,7 +93,9 @@ class FlaresolverrCfRetryWiring(unittest.TestCase):
         )
 
     def test_pipeline_passes_proxy_id_to_auto_add(self) -> None:
-        path = ROOT / "src/media_stack/services/apps/prowlarr/pipeline_service.py"
+        # ADR-0002 moved this module from services/apps/prowlarr to
+        # application/prowlarr; the services/ path is now a star-shim.
+        path = ROOT / "src/media_stack/application/prowlarr/pipeline_service.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn("flaresolverr_proxy_id", text)
         # The call has nested ``cfg.get(...)`` parens, so a "match
@@ -152,7 +154,10 @@ class ValidateCredentialsArrPrereqRatchet(unittest.TestCase):
         )
 
     def test_arr_apps_reachable_prereq_registered(self) -> None:
-        path = ROOT / "src/media_stack/services/jobs/framework.py"
+        # ADR-0002 Phase 16-E moved framework.py from services/jobs to
+        # application/jobs; services/jobs/framework.py is a sys.modules
+        # alias shim now.
+        path = ROOT / "src/media_stack/application/jobs/framework.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn(
             'register_prereq("arr_apps_reachable"', text,
@@ -164,7 +169,11 @@ class ValidateCredentialsArrPrereqRatchet(unittest.TestCase):
 class RecyclarrPlaceholderRemoved(unittest.TestCase):
 
     def test_no_recyclarr_http_echo_in_compose(self) -> None:
-        for name in ("docker/docker-compose.yml", "dist/docker-compose.yml"):
+        # Historical scope of this test included a generated
+        # ``dist/docker-compose.yml`` build artifact; that path is no
+        # longer produced. The canonical compose file is the only
+        # one this ratchet needs to gate.
+        for name in ("deploy/compose/docker-compose.yml",):
             text = (ROOT / name).read_text(encoding="utf-8")
             # The placeholder line was: image: hashicorp/http-echo
             # under a recyclarr: service. If both reappear we're back

@@ -684,12 +684,19 @@ class TestGetApiKeys(unittest.TestCase):
         "CONTROLLER_AUTH": "none",
     })
     def test_keys_returns_discovered_keys(self, mock_discover):
+        # /api/keys returns redacted descriptors
+        # ({has_key, fingerprint, source}) instead of raw key values —
+        # raw keys must never leave the controller process. Pin the
+        # redacted shape; the unit test for unredacted-key access
+        # (if any) lives elsewhere.
         h = make_handler("GET", "/api/keys")
         h.do_GET()
         body = _get_json_written(h)
         self.assertEqual(_get_response_code(h), 200)
-        self.assertEqual(body["keys"]["sonarr"], "abc123")
-        self.assertEqual(body["keys"]["radarr"], "def456")
+        self.assertEqual(body["keys"]["sonarr"]["has_key"], True)
+        self.assertEqual(body["keys"]["sonarr"]["source"], "discovered")
+        self.assertIn("fingerprint", body["keys"]["sonarr"])
+        self.assertEqual(body["keys"]["radarr"]["has_key"], True)
         self.assertEqual(body["count"], 2)
 
     @mock.patch("media_stack.api.services.health.discover_api_keys",
@@ -731,12 +738,15 @@ class TestGetApiKeys(unittest.TestCase):
 class TestApiDocsEndpoints(unittest.TestCase):
     """GET /api/docs and /api/openapi.yaml serve documentation."""
 
-    def test_api_docs_returns_html(self):
+    def test_api_docs_returns_410_with_ui_pointer(self):
+        # /api/docs no longer serves Swagger UI HTML — that moved to
+        # the dedicated UI container in v1.0.175. The Python
+        # controller answers 410 GONE plus a Location header pointing
+        # at the UI image's app root, so cached clients / bookmarks
+        # surface a clear "moved" response.
         h = make_handler("GET", "/api/docs")
         h.do_GET()
-        self.assertEqual(_get_response_code(h), 200)
-        body = h.wfile.getvalue()
-        self.assertIn(b"swagger", body.lower())
+        self.assertEqual(_get_response_code(h), 410)
 
     def test_openapi_yaml_returns_200(self):
         h = make_handler("GET", "/api/openapi.yaml")
@@ -852,14 +862,14 @@ class TestSwaggerUIBrowsingAndExecute(unittest.TestCase):
     that the 'Try It Out' / Execute flow returns proper responses.
     """
 
-    def test_api_docs_page_loads_swagger_ui_bundle(self):
-        """GET /api/docs serves HTML with Swagger UI bundle script."""
+    def test_api_docs_page_returns_410_pointing_at_ui_container(self):
+        # Swagger UI no longer lives in the Python controller (moved
+        # to the dedicated UI image in v1.0.175). /api/docs answers
+        # 410 GONE with a Location header to the app root so anyone
+        # following an old bookmark gets a clear "moved" response.
         h = make_handler("GET", "/api/docs")
         h.do_GET()
-        self.assertEqual(_get_response_code(h), 200)
-        body = h.wfile.getvalue().decode("utf-8", errors="replace")
-        self.assertIn("swagger-ui-bundle.js", body)
-        self.assertIn("/api/openapi.yaml", body)
+        self.assertEqual(_get_response_code(h), 410)
 
     def test_openapi_yaml_contains_keys_endpoint(self):
         """The served YAML spec must include the new /api/keys endpoint."""
@@ -899,7 +909,11 @@ class TestSwaggerUIBrowsingAndExecute(unittest.TestCase):
                 return_value={"sonarr": "test-key-123"})
     @mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""})
     def test_execute_keys_endpoint_returns_valid_json(self, mock_discover):
-        """Simulates the Swagger Execute button hitting GET /api/keys."""
+        """Simulates the Swagger Execute button hitting GET /api/keys.
+
+        /api/keys returns redacted descriptors — never the raw key
+        values. The Swagger flow uses these to display
+        ``has_key``/``fingerprint`` chips, not the underlying secret."""
         h = make_handler("GET", "/api/keys")
         h.do_GET()
         self.assertEqual(_get_response_code(h), 200)
@@ -908,7 +922,8 @@ class TestSwaggerUIBrowsingAndExecute(unittest.TestCase):
         self.assertIn("keys", body)
         self.assertIn("admin", body)
         self.assertIn("count", body)
-        self.assertEqual(body["keys"]["sonarr"], "test-key-123")
+        self.assertEqual(body["keys"]["sonarr"]["has_key"], True)
+        self.assertIn("fingerprint", body["keys"]["sonarr"])
 
 
 # ===========================================================================

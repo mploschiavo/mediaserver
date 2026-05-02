@@ -42,7 +42,7 @@ class RebuildCliConfigServiceTests(unittest.TestCase):
         self.assertEqual(cfg.auto_download_content, "1")
         self.assertEqual(cfg.config_file, Path("/tmp/media-stack-test/contracts/custom.json"))
         self.assertEqual(cfg.compose_project_name, "media-dev")
-        self.assertEqual(cfg.compose_file, root_dir / "docker" / "docker-compose.yml")
+        self.assertEqual(cfg.compose_file, root_dir / "deploy" / "compose" / "docker-compose.yml")
         self.assertEqual(cfg.compose_env_file, root_dir / "docker" / ".env")
 
     def test_delete_namespace_defaults_to_zero_when_env_unset(self):
