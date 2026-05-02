@@ -2,6 +2,17 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.313] — 2026-05-02
+
+### Fixed
+- **k8s_resource probe missing `configmap` kind.** Live data on
+  v1.0.312 surfaced `profile-configmap-mounted` reporting "k8s_resource:
+  unsupported kind 'configmap'" — the kind→API mapping table covered
+  pod/service/pvc/pv/secret/deployment/ingress but missed configmaps.
+  Added `CoreV1Api.list_namespaced_config_map` /
+  `list_config_map_for_all_namespaces`. One additional dispatcher
+  test pins the new kind specifically.
+
 ## [v1.0.312] — 2026-05-02
 
 ### Architecture

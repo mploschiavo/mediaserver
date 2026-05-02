@@ -434,6 +434,26 @@ class TestK8sResourceProbe:
         assert kwargs["label_selector"] == "app=authelia"
         assert kwargs["namespace"] == "media-stack"
 
+    def test_configmap_kind_dispatches_to_list_namespaced_config_map(self) -> None:
+        # ConfigMap is the kind the live k8s deploy needs for the
+        # ``profile-configmap-mounted`` promise. Pin it specifically
+        # so a future refactor doesn't drop the underscored API name.
+        items = [_FakeK8sItem({"metadata": {"name": "media-stack-controller-profile"}})]
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _FakeK8sListResp(items)
+        with _patch_k8s_clients(core=core):
+            result = dispatch_probe(
+                K8sResourceProbe(
+                    resource_kind="configmap", namespace="media-stack",
+                    assert_expr="any('profile' in r['metadata']['name'] for r in resources)",
+                ),
+                resolver=_StubResolver(), now=0.0,
+            )
+        assert result.is_ok
+        core.list_namespaced_config_map.assert_called_once_with(
+            namespace="media-stack",
+        )
+
     def test_unsupported_resource_kind_is_failed(self) -> None:
         with _patch_k8s_clients():
             result = dispatch_probe(
