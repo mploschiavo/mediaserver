@@ -402,9 +402,15 @@ class TestGetImportLists(unittest.TestCase):
 class TestGetJellyfinLibraries(unittest.TestCase):
     @staticmethod
     def _jellyfin_service():
+        # The registry's media-server category was renamed
+        # ``media-server`` -> ``media`` (see the inline comment at
+        # ``content.get_media_server_libraries``). The handler filters
+        # ``svc.category != "media"``; if this fixture lags behind the
+        # rename, the patched SERVICES list never matches and the
+        # function silently returns ``{libraries: []}``.
         from media_stack.api.services.registry import ServiceDef
         return ServiceDef(
-            id="jellyfin", name="Jellyfin", category="media-server",
+            id="jellyfin", name="Jellyfin", category="media",
             host="jellyfin", port=8096, auth_mode="X-Emby-Token",
             api_key_env="JELLYFIN_API_KEY",
         )
@@ -429,8 +435,10 @@ class TestGetJellyfinLibraries(unittest.TestCase):
             result = content_mod.get_jellyfin_libraries()
         self.assertEqual(len(result["libraries"]), 2)
         self.assertEqual(result["libraries"][0]["name"], "Movies")
-        self.assertEqual(result["libraries"][0]["type"], "movies")
-        self.assertEqual(result["libraries"][0]["count"], 500)
+        # Renamed: ``type`` -> ``collection_type``, ``count`` ->
+        # ``item_count``. Pin the new shape.
+        self.assertEqual(result["libraries"][0]["collection_type"], "movies")
+        self.assertEqual(result["libraries"][0]["item_count"], 0)
         self.assertEqual(result["libraries"][1]["paths"], ["/media/tv"])
 
     @patch.dict(os.environ, {"JELLYFIN_API_KEY": ""})
