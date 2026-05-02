@@ -43,13 +43,12 @@ _IMAGE_NAME = "harbor.iomio.io/library/media-stack-controller"
 
 # File patterns to scan. Anything outside these globs is ignored.
 _SCAN_GLOBS = (
-    "docker/docker-compose.yml",
-    "dist/docker-compose.yml",
-    "dist/k8s-deploy.yaml",
-    "k8s/**/*.yaml",
-    "k8s/**/*.yml",
-    "k8s/*.yaml",
-    "k8s/*.yml",
+    # Updated for the deploy/ reorg: compose lives in
+    # deploy/compose/ and k8s manifests in deploy/k8s/. The legacy
+    # docker/, dist/, and top-level k8s/ trees were retired.
+    "deploy/compose/docker-compose.yml",
+    "deploy/k8s/**/*.yaml",
+    "deploy/k8s/**/*.yml",
 )
 
 # Files that intentionally pin a non-current tag. Empty for now —
