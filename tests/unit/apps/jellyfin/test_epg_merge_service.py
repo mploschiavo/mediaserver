@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.apps.jellyfin.epg_merge_service import (
+from media_stack.infrastructure.jellyfin.epg_merge_service import (
     _extract_m3u_tvg_ids,
     _stream_extract_channels,
     _stream_extract_programmes_for_ids,
@@ -149,7 +149,7 @@ class TestBuildIdMapping(unittest.TestCase):
 class TestCache(unittest.TestCase):
     def test_caches_to_disk(self):
         with tempfile.TemporaryDirectory() as td:
-            with patch("media_stack.services.apps.jellyfin.epg_merge_service._download_xml",
+            with patch("media_stack.infrastructure.jellyfin.epg_merge_service._download_xml",
                        return_value="<tv></tv>"):
                 result = _get_cached_or_download("https://example.com/epg.xml", td)
             self.assertEqual(result, "<tv></tv>")
@@ -159,7 +159,7 @@ class TestCache(unittest.TestCase):
 
     def test_returns_cached(self):
         with tempfile.TemporaryDirectory() as td:
-            with patch("media_stack.services.apps.jellyfin.epg_merge_service._download_xml",
+            with patch("media_stack.infrastructure.jellyfin.epg_merge_service._download_xml",
                        return_value="<tv>first</tv>") as mock_dl:
                 r1 = _get_cached_or_download("https://example.com/epg.xml", td)
                 r2 = _get_cached_or_download("https://example.com/epg.xml", td)
@@ -179,7 +179,7 @@ class TestMergeEpgs(unittest.TestCase):
             epg_xml = '<tv><channel id="CNN.us"><display-name>CNN</display-name></channel>' \
                       '<programme channel="CNN.us" start="20260411">News</programme></tv>'
 
-            with patch("media_stack.services.apps.jellyfin.epg_merge_service._download_all_parallel",
+            with patch("media_stack.infrastructure.jellyfin.epg_merge_service._download_all_parallel",
                        return_value=[({"url": "http://epg", "name": "Test"}, epg_xml, None)]):
                 result = merge_epgs(
                     m3u_paths=[str(m3u_path)],
@@ -208,7 +208,7 @@ class TestMergeEpgs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             m3u_path = Path(td) / "test.m3u"
             m3u_path.write_text('#EXTINF:-1 tvg-id="A",ChA\nhttp://s\n')
-            with patch("media_stack.services.apps.jellyfin.epg_merge_service._download_all_parallel",
+            with patch("media_stack.infrastructure.jellyfin.epg_merge_service._download_all_parallel",
                        return_value=[({"url": "http://fail"}, None, "timeout")]):
                 result = merge_epgs(
                     m3u_paths=[str(m3u_path)],

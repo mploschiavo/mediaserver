@@ -7,7 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.core.platforms.compose.edge.providers.envoy.dynamic_config import (  # noqa: E402
+# Helpers were extracted to a sibling module
+# (adapters.compose.edge.providers.envoy.helpers) during the
+# Phase 16-C refactor. The old core/platforms shim does a star-import
+# from dynamic_config which drops underscore-prefixed names; import
+# from the canonical helpers module instead.
+from media_stack.adapters.compose.edge.providers.envoy.helpers import (  # noqa: E402
     _cluster_name,
     _extract_backtick_tokens,
     _path_prefix_app_slug,
