@@ -132,7 +132,7 @@ class SkipForcedRotationEnvVar(unittest.TestCase):
         )
 
     def test_compose_documents_the_env_var(self) -> None:
-        text = (ROOT / "docker/docker-compose.yml").read_text(encoding="utf-8")
+        text = (ROOT / "deploy" / "compose" / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("STACK_ADMIN_SKIP_FORCED_ROTATION", text)
         # Must include the safety warning so a copy-paster doesn't
         # ship it on an internet-exposed stack. The comment can

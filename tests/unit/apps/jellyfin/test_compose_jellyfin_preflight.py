@@ -6,7 +6,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.services.apps.jellyfin import compose_preflight as MODULE  # noqa: E402
+# services.apps.jellyfin.compose_preflight is a star-shim that drops
+# the underscore-prefixed module aliases (_http_request, etc.) — the
+# canonical home is infrastructure.jellyfin.compose_preflight where
+# those aliases are defined.
+from media_stack.infrastructure.jellyfin import compose_preflight as MODULE  # noqa: E402
 
 
 class ComposeJellyfinPreflightTests(unittest.TestCase):
