@@ -1,4 +1,4 @@
-"""Promise types — ADR-0003 Phase 4a.
+"""Promise types (see ADR-0003).
 
 A ``Promise`` is one declarative entry in
 ``contracts/promises/promises.yaml``: "after a fresh install, X is

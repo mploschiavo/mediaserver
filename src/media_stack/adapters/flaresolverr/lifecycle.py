@@ -1,4 +1,4 @@
-"""FlareSolverr ``ServiceLifecycle`` — ADR-0003 Phase 3c.
+"""FlareSolverr ``ServiceLifecycle``.
 
 FlareSolverr is a Cloudflare-bypass proxy. No API key — Prowlarr
 talks to it directly via HTTP and the controller doesn't authenticate

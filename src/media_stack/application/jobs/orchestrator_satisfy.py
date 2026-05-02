@@ -1,21 +1,16 @@
-"""Job handler: orchestrator:satisfy-shadow — ADR-0003 Phase 4c.
+"""Job handler: orchestrator:satisfy-shadow.
 
 Wraps ``application/services/orchestrator.py::satisfy_promises`` so
-the existing auto-heal cycle can call it like any other Phase 0
-ensurer. Runs in **dry-run mode** during shadow (Phase 4c-d) — probes
-fire, but ensurers do NOT, so the orchestrator can't conflict with
-the legacy bootstrap pipeline.
-
-Phase 5 will flip this to ``dry_run=False`` (orchestrator becomes
-primary; ensurers run; legacy paths get retired). Phase 4d uses the
-shadow-mode tick records to compare orchestrator vs legacy outcomes
-and chase discrepancies BEFORE flipping the switch.
+the auto-heal cycle invokes it once per tick. The job itself always
+runs ``dry_run=True``; per-service "is this service primary or
+shadow?" is decided by ``ORCHESTRATOR_LIVE_SERVICES`` (see helper
+below) which the dispatcher consults before running an ensurer.
 
 The handler emits exactly ONE ``RunRecord`` per tick (via JobRunner's
-normal lifecycle — ``run_job("orchestrator:satisfy-shadow")``). Per-
-promise outcomes live in the cooldown state file (queryable for
-"current state of promise X") and in the orchestrator's INFO logs
-(grep-able for "tick history"). No 50+ records-per-minute spam.
+normal lifecycle). Per-promise outcomes live in the cooldown state
+file (queryable for "current state of promise X") and in the
+orchestrator's INFO logs (grep-able for "tick history"). No 50+
+records-per-minute spam.
 
 Returning a result dict with summary fields keeps the run-history
 search rich without bloat: ``status=ok`` plus ``ok_count``,
@@ -36,21 +31,19 @@ logger = logging.getLogger(__name__)
 
 
 def satisfy_shadow(_ctx: JobContext) -> dict[str, Any]:
-    """One ``satisfy_promises`` tick in shadow mode.
+    """One ``satisfy_promises`` tick.
 
     Returns the framework-expected result dict. JobRunner records
     a terminal status from ``status``/``skipped``; the summary fields
     end up in the run-history record so operators can chart "ok vs
     failed over time" without parsing logs.
 
-    Phase 5 staged-rollout knob: ``ORCHESTRATOR_LIVE_SERVICES`` env
-    is a comma-separated list of service ids whose ensurers should
-    run for real (instead of dry-run-shadow). Empty/unset = full
-    shadow (Phase 4c default). Phase 5a deploy sets
-    ``ORCHESTRATOR_LIVE_SERVICES=jellyfin``; 5b adds servarr family;
-    etc. Operators can flip this without rebuilding the image —
-    intentional, so a regression in 5a can revert with a single
-    env-var change.
+    Staged-rollout knob: ``ORCHESTRATOR_LIVE_SERVICES`` env is a
+    comma-separated list of service ids whose ensurers should run
+    for real. Empty/unset = full dry-run shadow (probes fire, no
+    ensurer side-effects). Operators can flip this without
+    rebuilding the image — intentional, so a regression can revert
+    with a single env-var change.
     """
     from media_stack.application.services.orchestrator import (
         satisfy_promises,
@@ -97,11 +90,8 @@ def satisfy_shadow(_ctx: JobContext) -> dict[str, Any]:
 
 def _live_services_from_env() -> "frozenset[str] | None":
     """Read ``ORCHESTRATOR_LIVE_SERVICES`` env (comma-separated). Empty
-    or unset → ``None`` (full dry-run shadow, Phase 4c default).
-
-    Examples:
-      ORCHESTRATOR_LIVE_SERVICES=jellyfin               → 5a
-      ORCHESTRATOR_LIVE_SERVICES=jellyfin,sonarr,radarr → mid-5b
+    or unset → ``None`` (full dry-run shadow — probes fire, no
+    ensurers run).
     """
     raw = (os.environ.get("ORCHESTRATOR_LIVE_SERVICES") or "").strip()
     if not raw:
@@ -126,6 +116,6 @@ def _detect_platform() -> str:
 def _no_op_emit(promise, attempt, phase):  # noqa: ANN001
     """Discard per-promise records during shadow mode. The cooldown
     state file holds the current state; the tick-level record from
-    JobRunner holds the aggregate. Phase 5 may swap this for a real
-    emitter once we know operators want per-promise queryability."""
+    JobRunner holds the aggregate. Could be swapped for a real
+    emitter if operators want per-promise queryability."""
     return None

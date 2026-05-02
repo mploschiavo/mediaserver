@@ -1,4 +1,4 @@
-"""Promise orchestrator — ADR-0003 Phase 4b.
+"""Promise orchestrator (see ADR-0003).
 
 ``satisfy_promises(registry, ...)`` is one tick of:
 

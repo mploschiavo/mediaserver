@@ -2,46 +2,36 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
-## [unreleased] — 2026-05-02
-
-### Architecture
-- **ADR-0003 Phase 5e.1 — extract assert-evaluator from
-  probe_promises CLI.** The orchestrator dispatcher previously
-  imported `_evaluate` from `cli/commands/probe_promises.py`,
-  coupling the runtime path to the legacy CLI module. Lifted to
-  `infrastructure/promises/assert_eval.py` so the CLI can be
-  retired in 5e.2 without breaking the orchestrator.
-  - Both consumers (dispatcher + the legacy CLI) now go through
-    one auditable evaluation site.
-  - Module-level `_evaluate` alias preserved in
-    `probe_promises.py` for any in-repo callers that hadn't moved
-    yet.
-  - 20 new unit tests covering allowlist-builtins, generator-
-    expression scope handling, multi-line YAML block scalars,
-    error surfacing, and the legacy-alias contract.
-- Pure refactor — runtime behavior unchanged from v1.0.309. No
-  image bump needed.
-
 ## [v1.0.309] — 2026-05-02
 
 ### Architecture
-- **ADR-0003 Phase 5d — retire Phase-0 `jellyfin:ensure-api-key`
-  auto-heal hook.** The orchestrator's
-  `jellyfin-api-key-discoverable` promise (Phase 5a primary mode)
-  now drives this, dispatching `JellyfinLifecycle.mint_api_key` —
-  which itself wraps the SAME
+- **Retire the direct `jellyfin:ensure-api-key` auto-heal hook
+  (ADR-0003).** The orchestrator's `jellyfin-api-key-discoverable`
+  promise now drives this, dispatching
+  `JellyfinLifecycle.mint_api_key` — which itself wraps the SAME
   `infrastructure.jellyfin.http_preflight.run_preflight` the legacy
-  hook called. Equivalence is by construction; live-verified by the
-  Phase 4d negative test on compose 2026-05-02 (deleting the key
-  from jellyfin's SQLite DB triggered re-mint through the same code
-  path within ~60s).
+  hook called. Equivalence is by construction; live-verified by a
+  negative test on compose (deleting the key from jellyfin's SQLite
+  DB triggered re-mint through the same code path within ~60s).
   - Coverage matrix: `docs/architecture/orchestrator-coverage-matrix.md`
   - The `jellyfin:ensure-api-key` job + handler stay registered
     (bootstrap may still invoke them); only the per-tick auto-heal
-    invocation is removed. Phase 5e cleanup will dedupe.
+    invocation is removed.
 - The other 3 auto-heal hooks (`guardrails:evaluate`,
   `jobs:close-stale-runs`, `orchestrator:satisfy-shadow`) stay —
   they have no orchestrator coverage / IS the orchestrator.
+
+### Refactored
+- **Lift the assert-expression evaluator out of
+  `cli/commands/probe_promises.py` into
+  `infrastructure/promises/assert_eval.py`.** The orchestrator
+  dispatcher previously imported `_evaluate` from the CLI module,
+  coupling the runtime path to legacy code. Both consumers now go
+  through one auditable evaluation site; module-level `_evaluate`
+  alias preserved in `probe_promises.py` for back-compat.
+  - 20 new unit tests covering allowlist-builtins, generator-
+    expression scope handling, multi-line YAML block scalars,
+    error surfacing, and the legacy-alias contract.
 
 ### Rollback
 Single-commit revert restores the legacy hook. Both pipelines are

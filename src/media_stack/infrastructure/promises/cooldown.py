@@ -1,4 +1,4 @@
-"""Cooldown state for the orchestrator — ADR-0003 Phase 4b.
+"""Cooldown state for the promise orchestrator.
 
 Tracks per-promise backoff state across ticks. Persisted to JSON in
 ``.controller/promise_state.json`` (sibling to ``run-history.jsonl``)

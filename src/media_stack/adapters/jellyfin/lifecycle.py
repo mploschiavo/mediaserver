@@ -1,15 +1,15 @@
-"""Jellyfin implementation of ``ServiceLifecycle`` — ADR-0003 Phase 2.
+"""Jellyfin implementation of ``ServiceLifecycle``.
 
 The single Protocol-shaped surface the orchestrator calls. Internally
-delegates to the existing infrastructure code so the legacy paths
-keep working alongside this; Phase 4-6 will switch consumers over and
-prune the redundancy. Until then this is purely additive.
+delegates to ``infrastructure.jellyfin.*`` so the bootstrap-phase
+ensurers (which call the same underlying functions directly) and the
+orchestrator share one code path for minting / discovering the API
+key.
 
 Method-by-method delegation:
 
   * ``probe_running``    → ``GET /System/Info/Public`` (cheap, public,
-                            no auth needed). Same probe shape as the
-                            Phase 0 ensurer's ``_jellyfin_reachable``.
+                            no auth needed).
   * ``probe_has_api_key``→ env var first, then ``discover_api_key``.
                             Doesn't call into Jellyfin — pure
                             inspection of what the controller already
@@ -321,8 +321,7 @@ def _classify_source(ctx: OrchestrationContext, key: str) -> str:
 
 
 # Static type-check at import time: a structural mismatch fails here
-# instead of at the first orchestrator call, matching how the Phase 1
-# tests pin runtime_checkable behavior.
+# instead of at the first orchestrator call.
 _check: ServiceLifecycle = JellyfinLifecycle()
 del _check
 

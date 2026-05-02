@@ -1,4 +1,4 @@
-"""Authelia ``ServiceLifecycle`` — ADR-0003 Phase 3c.
+"""Authelia ``ServiceLifecycle``.
 
 Authelia uses session cookies for end-user auth and has no static
 API key for the controller to mint. Falls into the no-API-key shape.

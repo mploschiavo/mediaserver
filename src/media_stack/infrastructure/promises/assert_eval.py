@@ -5,8 +5,7 @@ Both the orchestrator's dispatcher and the legacy ``probe_promises``
 CLI go through this module so any future security review only has
 one place to inspect.
 
-Design notes (reproduced from the original CLI implementation; left
-intact during the ADR-0003 Phase 5e extraction):
+Design notes:
 
 * YAML ``|`` block scalars in promises.yaml produce multi-line
   strings — Python's expression evaluator only accepts a single

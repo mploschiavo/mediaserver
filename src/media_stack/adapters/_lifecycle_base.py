@@ -1,4 +1,4 @@
-"""Shared base for ``ServiceLifecycle`` impls — ADR-0003 Phase 3c.
+"""Shared base for ``ServiceLifecycle`` impls without an API key.
 
 Most no-API-key services (homepage, envoy, flaresolverr, authelia,
 authentik, maintainerr) share an identical lifecycle shape:
@@ -22,8 +22,7 @@ The contract YAML still names the concrete class (e.g.
 
 The probe is identical to the per-service probes in Jellyfin /
 Servarr / Sab / etc. — same tri-state semantics (200 = ok, other
-HTTP = failed, network/timeout = unknown). Phase 4 may extract the
-probe logic too once the orchestrator's needs are clearer.
+HTTP = failed, network/timeout = unknown).
 """
 
 from __future__ import annotations

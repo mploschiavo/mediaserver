@@ -1,4 +1,4 @@
-"""qBittorrent implementation of ``ServiceLifecycle`` — ADR-0003 Phase 3.
+"""qBittorrent implementation of ``ServiceLifecycle``.
 
 qBittorrent's authentication model is awkward to map onto the
 ServiceLifecycle Protocol: it doesn't issue a static API key. The
@@ -16,16 +16,13 @@ So in this adapter the "API key" IS the qBittorrent admin password:
   - ``mint_api_key`` is idempotent (returns existing if found) and
     fails loudly with ``transient=False`` if the credential is
     missing, because qBit can't generate one — an operator must set
-    the password env. This is intentional: ADR-0003 motivation #3
-    calls out the ``ensure-qbittorrent-categories`` silent-error-as-
-    ok pattern. The lifecycle MUST NOT replicate it.
+    the password env. The lifecycle MUST NOT silently log-and-OK
+    failures; that's the bug class ADR-0003 explicitly retires.
   - ``persist_api_key`` writes env + best-effort k8s secret.
 
-Phase 4 may evolve ``mint_api_key`` to call into
-``infrastructure.qbittorrent.http_preflight.run_preflight`` to sync
-qBit's WebUI password to a configured value. For now, the lifecycle
-just observes — the legacy ``compose_preflight`` / ``http_preflight``
-paths still drive the actual sync.
+The lifecycle observes only; the actual WebUI password sync runs in
+``infrastructure.qbittorrent.http_preflight.run_preflight`` from the
+bootstrap-phase ``compose_preflight`` / ``http_preflight`` paths.
 """
 
 from __future__ import annotations

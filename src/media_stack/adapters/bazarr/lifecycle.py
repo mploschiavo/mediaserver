@@ -1,4 +1,4 @@
-"""Bazarr implementation of ``ServiceLifecycle`` — ADR-0003 Phase 3.
+"""Bazarr implementation of ``ServiceLifecycle``.
 
 Bazarr's auto-generated API key lands in
 ``bazarr/config/config.yaml`` as a top-level ``apikey:`` line on
@@ -6,11 +6,10 @@ first start. Same "wait for the file" mint shape as Sab/*arr; the
 only difference is the YAML format. The canonical reader is
 ``api.services.key_formats.read_yaml``.
 
-Phase 3 motivation: ``ensure-bazarr-language-profile`` was logging
-``settings POST failed (HTTP 500)`` while returning ``status=ok`` —
-the silent-error-as-ok bug class. The lifecycle MUST NOT replicate
-that. Probe failures are reported as ``failed`` / ``unknown`` per
-the Protocol; mint failures are typed (``transient`` vs structural).
+Honest-failure rule: probe failures are reported as ``failed`` /
+``unknown`` per the Protocol; mint failures are typed (``transient``
+vs structural). The lifecycle MUST NOT silently log-and-OK like the
+legacy ``ensure-bazarr-language-profile`` did.
 """
 
 from __future__ import annotations

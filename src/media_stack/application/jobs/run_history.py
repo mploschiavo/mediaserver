@@ -169,9 +169,9 @@ def record_run_start(
     started. Returns the record (the caller wants the run_id for
     the eventual ``record_run_complete`` call).
 
-    ``promise_id`` is the ADR-0003 Phase 4b annotation — the
-    orchestrator passes it so operators can query "every evaluation
-    of promise X" through the existing run-history API."""
+    ``promise_id`` is set when the orchestrator emits the record so
+    operators can query "every evaluation of promise X" through the
+    existing run-history API."""
     record = RunRecord(
         run_id=make_run_id(),
         job_name=job_name,

@@ -541,7 +541,7 @@ def _probe_file_text(probe: dict) -> tuple[bool, str]:
     return _evaluate(probe.get("assert", ""), {"data": data})
 
 
-# ADR-0003 Phase 5e.1: the assert-expression evaluator was lifted to
+# The assert-expression evaluator lives in
 # ``media_stack.infrastructure.promises.assert_eval`` so the
 # orchestrator dispatcher and this CLI go through one auditable site.
 # Kept as a module-level alias for back-compat with any in-repo
