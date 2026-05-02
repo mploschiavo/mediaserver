@@ -117,18 +117,34 @@ LifecycleEnsurer alone would have required disabling both the
 legacy `jellyfin:ensure-api-key` auto-heal hook AND the
 `jellyfin-libraries` JobEnsurer first.
 
-## Phase 5d safety
+## Live state — k8s + compose
+
+After v1.0.314 (k8s_resource probe-shape fix) the orchestrator
+correctly evaluates every promise on both runtimes:
+
+| Runtime | total | ok | failed | unknown | skipped |
+|---------|-------|----|--------|---------|---------|
+| compose (38 promises) | 38 | 37 | 0 | 0 | 1 (cooldown) |
+| k8s (51 promises)     | 51 | 51 | 0 | 0 | 0 |
+
+The compose `1 skipped` is `gateway-http-redirects-to-https`, a
+pre-existing compose-only quirk where envoy's plain-HTTP listener
+on port 8080 returns `SSL: WRONG_VERSION_NUMBER` to the
+controller's internal probe (the listener is unencrypted but
+healthchecks the synthetic `https://envoy:8080`). Tracked
+separately; NOT a regression introduced by ADR-0003/0004.
+
+## Soundness of the heal cycle
 
 Based on TEST 1+2: the orchestrator's `JobEnsurer` dispatch is
 proven to fire and heal at the right time, on the right cadence,
 through the existing JobRunner infrastructure.
 
-For `jellyfin:ensure-api-key` specifically (the one Phase 5d
-retires): the orchestrator's `LifecycleEnsurer` invokes the SAME
-`run_preflight` function the legacy hook does. Equivalence is by
-construction, not by side-by-side measurement. Phase 5d retiring
-this hook therefore reduces redundant calls (one per minute
-instead of two) without changing functional coverage.
+For `jellyfin:ensure-api-key` (retired from auto-heal in v1.0.309):
+the orchestrator's `LifecycleEnsurer` invokes the SAME
+`run_preflight` function the legacy hook did. Equivalence is by
+construction. The retirement reduces redundant calls (one per
+minute instead of two) without changing functional coverage.
 
 ## Untested but likely-fine surface
 
