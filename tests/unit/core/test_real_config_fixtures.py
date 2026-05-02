@@ -36,7 +36,11 @@ from media_stack.api.services.config_integrity import (  # noqa: E402
 from media_stack.api.services.registry import ServiceDef  # noqa: E402
 
 
-_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "configs"
+# Fixtures live at tests/unit/fixtures/configs/ — sibling of the
+# test directory tree, not under tests/unit/core/. Resolve from
+# this file (tests/unit/core/test_real_config_fixtures.py) up two
+# levels to tests/unit/, then into fixtures/configs/.
+_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
 
 
 def _svc(sid: str, *, cfg: str, fmt: str) -> ServiceDef:
