@@ -408,6 +408,8 @@ _K8S_RESOURCE_KINDS = {
             "list_persistent_volume_claim_for_all_namespaces"),
     "secret": ("CoreV1Api", "list_namespaced_secret",
                "list_secret_for_all_namespaces"),
+    "configmap": ("CoreV1Api", "list_namespaced_config_map",
+                  "list_config_map_for_all_namespaces"),
     "deployment": ("AppsV1Api", "list_namespaced_deployment",
                    "list_deployment_for_all_namespaces"),
     "ingress": ("NetworkingV1Api", "list_namespaced_ingress",
