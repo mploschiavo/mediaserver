@@ -111,6 +111,27 @@ _JUSTIFIED_LITERALS = {
     "prowlarr_auto_indexers_runtime.py":
         "Prowlarr's auto-indexer skip list — services that don't "
         "consume indexers regardless of deployment shape.",
+    # Defensive fallback when ``api.services.registry`` import fails
+    # — the literal mirrors the ``category=='media'`` query the
+    # primary path runs against the registry.
+    "src/media_stack/services/edge/envoy_config_generator.py":
+        "Media-server fallback set used only when registry import "
+        "fails; matches the registry's category=='media' filter.",
+    # The *arr media-collection family (sonarr/radarr/lidarr/readarr)
+    # is a real domain concept — these are the apps that consume
+    # download-client API keys in the same shape and are paired
+    # together in every Servarr workflow. Prowlarr is intentionally
+    # excluded (it's an indexer, not a collection app).
+    "src/media_stack/services/apps/core/job_adapters.py":
+        "Servarr media-collection family — sonarr/radarr/lidarr/"
+        "readarr share API-key shape and download-client wiring; "
+        "prowlarr is an indexer and lives in its own loop.",
+    # Lifecycle module is the *arr-shaped lifecycle adapter; the
+    # frozenset declares the contract surface the module supports.
+    "src/media_stack/adapters/servarr/lifecycle.py":
+        "_SUPPORTED_SERVICE_IDS — the contract surface for the "
+        "Servarr lifecycle adapter (the apps that share the *arr "
+        "shape: sonarr/radarr/lidarr/readarr/prowlarr).",
 }
 
 
