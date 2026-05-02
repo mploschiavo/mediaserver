@@ -1,0 +1,352 @@
+# ADR-0005 — Bootstrap consumes orchestrator state
+
+**Status:** Draft (2026-05-02). Builds on ADR-0003 (orchestrator) and
+ADR-0004 (verifier). Multi-week migration. Unblocks ADR-0003 Phase
+5e.3+ deletions.
+
+## Context
+
+The Phase 5e deletion audit (`docs/architecture/phase-5e-deletion-
+audit.md`) found that ADR-0003's "delete legacy preflight code paths"
+goal is blocked by bootstrap's structural dependency on the legacy
+patterns:
+
+- `_run_preflights` is invoked synchronously inside specific
+  bootstrap-phase jobs to wait for upstream services
+- `phase_scripts.media_server_bootstrap` is run during the
+  media_server phase for jellyfin's initial controller setup
+- The bootstrap-phase `jellyfin:ensure-api-key` job (priority 80)
+  ensures the Jellyfin API key is minted BEFORE downstream jobs in
+  the same phase (`ensure-jellyfin-libraries`, etc.) need it
+
+The orchestrator (ADR-0003) handles continuous-mode self-heal but
+runs ASYNCHRONOUSLY every 60s. During bootstrap, downstream jobs
+can't wait 60s — they need the world synchronously satisfied before
+they fire. So bootstrap keeps its own per-job ensurer pattern, and
+the orchestrator's coverage overlaps redundantly during steady
+state.
+
+The architectural goal: **make the orchestrator's
+`satisfy_promises()` part of the bootstrap critical path**, so the
+per-job bootstrap-phase ensurers can be retired and the orchestrator
+becomes the single source of truth for both bootstrap and steady
+state.
+
+## Decision
+
+Reshape bootstrap into two distinct phases:
+
+### Phase A — Framework setup (sequential, NOT orchestrator-driven)
+
+Things only bootstrap can do because they preceed the orchestrator's
+ability to run:
+
+1. **Pre-controller / platform setup**: compose preflight handlers,
+   k8s manifest apply, image pulls. These run BEFORE the controller
+   container exists, by definition.
+2. **Controller boot**: process start, config load, migrations, run-
+   history file open.
+3. **State seeding**: `seed-runtime-overrides`, profile load,
+   contracts dir mount.
+4. **Auth bootstrap**: `configure-auth` + `envoy-config` run in the
+   `infrastructure` phase to establish the request-routing path the
+   orchestrator's probes will later use.
+
+These remain in the legacy bootstrap DAG. The orchestrator can't
+replace them because they're about getting the controller into a
+state where it CAN orchestrate.
+
+### Phase B — Service ensurance (orchestrator-driven)
+
+After Phase A completes, bootstrap invokes:
+
+```python
+summary = satisfy_promises(
+    platform=detect_platform(),
+    dry_run=False,
+    live_services=ALL_SERVICES,
+    timeout_seconds=BOOTSTRAP_PROMISE_TIMEOUT,  # default 240s
+    blocking=True,
+)
+```
+
+This:
+- Probes every applicable promise
+- Dispatches ensurers for any that fail
+- Re-probes
+- Repeats with cooldown until either:
+  - All applicable promises reach `ok` (success — bootstrap complete)
+  - Timeout reached (failure — bootstrap declares partial complete)
+  - A promise reaches `failed_permanent` (failure — operator action)
+
+The per-job bootstrap-phase ensurers (`jellyfin:ensure-api-key`,
+`ensure-jellyfin-libraries`, `apply-arr-runtime-defaults`, etc.) are
+**no longer scheduled by the bootstrap DAG**. They're invoked only
+through the orchestrator's promise→ensurer dispatch when the
+matching probe fails. Single code path.
+
+After Phase B, `initial_bootstrap_done = True` is set the same way
+it is today.
+
+## Phase ordering vs depends_on
+
+Bootstrap currently uses phases (`preflight`, `infrastructure`,
+`media_server`, `download_clients`, `default`, `post`) to order the
+job DAG. The orchestrator uses `depends_on` between promises. These
+need to map.
+
+**Mapping rule:** Phase A jobs stay in the phase-ordered DAG. Phase
+B promises declare `depends_on` on the relevant Phase A invariants
+(e.g., `jellyfin-running` depends on jellyfin's container being up,
+which Phase A guarantees by getting through `infrastructure` phase).
+
+The bootstrap loader (the thing that builds the job DAG today) gains
+a new step:
+
+1. Build Phase A DAG from contract YAMLs (only jobs not covered by
+   promises)
+2. Append a single synthetic "satisfy promises" job at the end of
+   Phase A's chain
+3. The synthetic job invokes `satisfy_promises(blocking=True)` and
+   blocks until success / timeout / permanent failure
+
+## Failure semantics
+
+Today bootstrap fails when any phase-marked-required job errors. The
+new architecture preserves that for Phase A. Phase B's failure
+semantics:
+
+- **Transient failures** (e.g., service warming up) are expected
+  during bootstrap; the orchestrator's cooldown + retry handles them
+  silently within the timeout
+- **Permanent failures** (operator config error) abort bootstrap
+  immediately — no point waiting 240s for something that's
+  structurally broken
+- **Timeout** (240s default) declares "bootstrap completed with
+  warnings"; sets `initial_bootstrap_done=True` so the UI doesn't
+  hang on the loading state, but flags the failed promises in
+  `/api/promises/state` for operator review
+
+## Per-promise blocking vs timeout-bound
+
+Some promises take longer than others. Sonarr's `mass-search-throttled`
+runs for 600+ seconds (saw this in earlier diagnosis). We can't
+block bootstrap on it.
+
+**Solution:** annotate each promise with a `bootstrap_blocking`
+field:
+
+```yaml
+- id: jellyfin-api-key-discoverable
+  bootstrap_blocking: true   # bootstrap waits for this
+  ...
+
+- id: mass-search-completed
+  bootstrap_blocking: false  # orchestrator handles in steady-state
+  ...
+```
+
+`satisfy_promises(blocking=True)` only waits on promises with
+`bootstrap_blocking=true`. Others get probed once during bootstrap
+to populate state, then the auto-heal cycle takes over.
+
+Default `bootstrap_blocking=true` for promises with `phase: post` or
+unspecified phase; `false` for long-running operational promises.
+
+## What gets retired in this ADR
+
+Once Phase B is the canonical service-ensurance path:
+
+| Legacy artifact | Replacement |
+|-----------------|-------------|
+| `_run_preflights` (per-job preflight in bootstrap) | Promise's `<service>-running` probe |
+| `phase_scripts.media_server_bootstrap` | `JellyfinLifecycle.mint_api_key` (already exists) |
+| Bootstrap-phase `jellyfin:ensure-api-key` job | Orchestrator's `LifecycleEnsurer` for `jellyfin-api-key-discoverable` |
+| Per-service `phase: post` ensurer jobs (~25) | Orchestrator's `JobEnsurer` invocation through promises |
+
+Once these are retired, the JobRunner's `_try_satisfy_prereqs` and
+`max_attempts` retry loop become dead-code candidates (since all
+non-promise JobRunner invocations also go through the orchestrator
+now).
+
+## Migration plan
+
+Same staged-rollout shape as ADR-0003: per-service-family
+promotions, idempotent overlap during transition, single-commit
+revert at every step.
+
+**Phase 1** (~1 week) — design + scaffolding:
+
+- Add `bootstrap_blocking` field to the `Promise` dataclass (default
+  True; False for operational promises). Loader update + ratchet.
+- Add `blocking` + `timeout_seconds` parameters to
+  `satisfy_promises()`. When `blocking=True`, the function loops
+  until steady-state or timeout.
+- Add a synthetic bootstrap job (`bootstrap:satisfy-promises`) that
+  invokes `satisfy_promises(blocking=True)` and reports the
+  TickSummary.
+- Wire it into the bootstrap DAG as a final-phase job.
+- Tests: synthetic registry with mixed blocking/non-blocking
+  promises, verify the right ones are awaited.
+
+**Phase 2** (~1 week) — Jellyfin family proof:
+
+- Annotate Jellyfin-family promises (`jellyfin-running`,
+  `jellyfin-api-key-discoverable`, `jellyfin-libraries`) with
+  `bootstrap_blocking: true`.
+- Remove `phase: post` from `jellyfin:ensure-api-key` job in
+  `contracts/services/jellyfin.yaml` (so bootstrap stops scheduling
+  it directly; orchestrator dispatches it via the promise).
+- Live test: fresh `compose down -v && up`. Verify bootstrap
+  completes within timeout, jellyfin is fully configured, no
+  duplicate ensurer fires.
+- Soak window: 24h on compose + k8s.
+
+**Phase 3** (~1-2 weeks) — Servarr family + remaining:
+
+- Same as Phase 2 for sonarr/radarr/lidarr/readarr/prowlarr +
+  qbit/sab/bazarr/jellyseerr/maintainerr.
+- Per-family soak (24h each).
+- Audit shows `phase_scripts.media_server_bootstrap` is no longer
+  invoked; remove the field from the contract YAMLs (compose
+  resolver gracefully handles missing field).
+
+**Phase 4** (~1 week) — `_run_preflights` retirement:
+
+- Audit which jobs still invoke `_run_preflights`.
+- For each, either:
+  - Remove the call (the orchestrator's promise probe now covers
+    the same wait)
+  - Reshape the job to gate on `<service>-running` promise being
+    `ok` via the orchestrator's state file
+- Once no callers remain, delete `_run_preflights` and its handler
+  registration.
+
+**Phase 5** (~1 week) — JobRunner internals retirement:
+
+- Audit remaining `_try_satisfy_prereqs` callers. Should be only
+  the orchestrator's own JobEnsurer dispatch + manual/cron
+  invocations.
+- Retire `max_attempts` retry loop in `JobRunner.run()` — the
+  orchestrator's cooldown tracker provides the equivalent for
+  promise-driven flows; manual/cron callers either don't need
+  retry (operator can re-invoke) or get a much simpler retry
+  in their wrapper.
+- Delete `_try_satisfy_prereqs` if call count reaches zero.
+
+## What this DOES NOT do
+
+- **Doesn't change pre-controller compose hooks.** The
+  `compose_preflight_handler` field stays — these run before the
+  controller container exists, can't be moved into the orchestrator
+  by definition.
+- **Doesn't change the auto-heal cycle.** The orchestrator's
+  per-60s tick continues; this ADR adds a synchronous bootstrap-
+  time invocation alongside it.
+- **Doesn't break manual job invocation.** The dashboard's
+  "run job" buttons keep working — they go through JobRunner
+  directly, same as today.
+
+## Honest cost-benefit
+
+**Cost:**
+
+- ~3-4 weeks of focused work, scattered across Phases 1-5
+- One real architectural primitive added (`blocking=True` mode in
+  `satisfy_promises`) — needs careful testing for timeout behavior,
+  cycle detection, partial-progress reporting
+- Per-promise `bootstrap_blocking` annotation across the registry
+  (~50 promises to triage)
+- Per-service per-family soak windows are necessary; can't rush
+- Risk: a bug in `satisfy_promises(blocking=True)` could hang
+  bootstrap. Mitigation: hard timeout + clear "completed with
+  warnings" failure mode
+
+**Benefit:**
+
+- **Single source of truth for service ensurance** — no more
+  duplicate paths between bootstrap and orchestrator
+- **ADR-0003 Phase 5e.3+ deletions become safe**:
+  `_run_preflights`, `phase_scripts.media_server_bootstrap`, the
+  bootstrap-phase ensurer jobs, eventually `_try_satisfy_prereqs`
+  and `max_attempts`
+- **Promise registry IS the bootstrap plan** — adding a new
+  service to the stack means writing its lifecycle + adding
+  promises; no separate bootstrap-job authoring needed
+- **Fresh-deploy verifier** (ADR-0004) becomes more meaningful —
+  it's checking the same code path bootstrap just ran
+- **Bug-class eliminated**: "bootstrap declares done but the
+  orchestrator's continuous mode finds the same invariant broken"
+  — the two pipelines used to be able to disagree; after this ADR
+  they're literally the same code
+
+### Why do it
+
+The orchestrator's value is "single source of truth for what should
+be true". As long as bootstrap has its own ensurer DAG, that value
+is half-realized. ADR-0003 got us to "orchestrator is THE
+continuous-mode pipeline"; this ADR finishes the job by making it
+THE bootstrap pipeline too.
+
+The longer this ADR is deferred, the more drift accumulates between
+the two paths. Each new service or fix has to be authored twice
+(once for bootstrap, once for orchestrator) until the
+consolidation lands.
+
+## Open questions
+
+1. **`bootstrap_blocking` defaults.** If we annotate every promise
+   manually it's ~50 entries. If we infer from `phase: post` /
+   `phase: media_server` etc. it's automatic but couples to the
+   legacy phase taxonomy. Lean toward inference + per-promise
+   override.
+
+2. **Retry semantics during blocking mode.** Today bootstrap retries
+   each job up to `max_attempts` (default 3). The orchestrator's
+   cooldown is time-based (30s transient / 300s permanent). For a
+   blocking 240s window, that's at most 8 transient retries, which
+   feels right. Confirm.
+
+3. **Where the synthetic job goes.** Append at end of `phase: post`?
+   Or new `phase: orchestrator_satisfy` after `post`? Lean toward
+   new phase to avoid intermixing.
+
+4. **Compatibility with existing bootstrap consumers.** The
+   `initial_bootstrap_done` flag is read by the dashboard banner +
+   onboarding flow. Verify the new pattern still flips it at the
+   right moment (after Phase B success or timeout).
+
+5. **Audit-log integration.** Bootstrap currently writes one entry
+   to the audit log per phase. Phase B writes per-promise events
+   too. Decide reporting shape: roll-up summary vs per-promise
+   detail.
+
+6. **Test infrastructure.** End-to-end test that proves
+   "fresh-deploy completes via promise-driven bootstrap" needs a
+   real container or strong stubs. Existing `verify-fresh-install.sh`
+   can be the test harness once ADR-0004 ships.
+
+## Stewardship
+
+Same shape as ADR-0003: directional commitment, phased rollout,
+explicit steward approval before each phase. The architectural goal
+is "single ensurance pipeline"; the timeline and exact phasing
+remain negotiable. Reversibility: at every phase, the previous
+state's bootstrap path still works (the legacy ensurer jobs aren't
+deleted, just unscheduled, until Phase 4's audit confirms zero
+callers).
+
+## Relationship to other ADRs
+
+- **ADR-0003** (service lifecycle + orchestrator): provides the
+  primitives this ADR builds on (Promise, ServiceLifecycle,
+  satisfy_promises). Phase 5e.3+ deletions become possible only
+  after this ADR lands.
+- **ADR-0004** (promise-driven verifier): orthogonal but
+  complementary. The verifier reads the orchestrator's persisted
+  state regardless of whether bootstrap drove it or auto-heal did.
+- **ADR-0001 / ADR-0002** (repo / hexagonal restructure): the
+  layering rules apply unchanged. The synthetic
+  `bootstrap:satisfy-promises` job lives in `application/jobs/`,
+  reads from `domain/services/promises.py`, dispatches through
+  `application/services/orchestrator.py`.
