@@ -320,7 +320,11 @@ class TestGetServiceLogsCompose(unittest.TestCase):
 
         self.assertEqual(result["lines"], [])
         self.assertIn("error", result)
-        self.assertIn("not found", result["error"])
+        # Error message reworded to spell out the diagnosis instead of
+        # leaking the docker SDK's terse "not found" — this is what the
+        # dashboard renders when a service isn't part of the active
+        # profile.
+        self.assertIn("not deployed", result["error"])
 
 
 if __name__ == "__main__":

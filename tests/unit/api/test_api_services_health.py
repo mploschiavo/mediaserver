@@ -791,37 +791,52 @@ class TestProbeLogin(unittest.TestCase):
 class TestProbeCredentials(unittest.TestCase):
     """probe_credentials should test login for all or specified services."""
 
+    # The 2026-04-24 incident split the API-key path out of _probe_login:
+    # services whose auth_mode is "X-Api-Key" / "X-Emby-Token" now route
+    # through ``_probe_api_key_health`` (read-only GET) and short-circuit
+    # to "no_key" when ``discover_api_keys`` returns no key for the
+    # service. The tests below patch both branches + populate the key
+    # cache so they exercise the orchestration, not the discovery gap.
+    @patch.object(health_mod._instance, "discover_api_keys",
+                  return_value={"sonarr": "k1", "jf": "k2"})
+    @patch.object(health_mod._instance, "_probe_api_key_health", return_value="ok")
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
         "jf": ("jf", 8096, "/Users/AuthenticateByName", "json_credentials"),
     })
     @patch.object(health_mod, "_probe_login", return_value="ok")
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test"})
-    def test_probe_all(self, mock_login):
+    def test_probe_all(self, mock_login, mock_api_key, mock_discover):
         result = health_mod.probe_credentials()
         self.assertEqual(result["total"], 2)
         self.assertEqual(result["ok"], 2)
         self.assertIn("sonarr", result["credentials"])
         self.assertIn("jf", result["credentials"])
 
+    @patch.object(health_mod._instance, "discover_api_keys",
+                  return_value={"sonarr": "k1", "jf": "k2"})
+    @patch.object(health_mod._instance, "_probe_api_key_health", return_value="ok")
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
         "jf": ("jf", 8096, "/Users/AuthenticateByName", "json_credentials"),
     })
     @patch.object(health_mod, "_probe_login", return_value="ok")
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test"})
-    def test_probe_specific_services(self, mock_login):
+    def test_probe_specific_services(self, mock_login, mock_api_key, mock_discover):
         result = health_mod.probe_credentials(services=["sonarr"])
         self.assertEqual(result["total"], 1)
         self.assertIn("sonarr", result["credentials"])
         self.assertNotIn("jf", result["credentials"])
 
+    @patch.object(health_mod._instance, "discover_api_keys",
+                  return_value={"sonarr": "k1"})
+    @patch.object(health_mod._instance, "_probe_api_key_health", return_value="fail")
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
     @patch.object(health_mod, "_probe_login", return_value="fail")
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "wrong"})
-    def test_probe_with_failures(self, mock_login):
+    def test_probe_with_failures(self, mock_login, mock_api_key, mock_discover):
         result = health_mod.probe_credentials()
         self.assertEqual(result["ok"], 0)
         self.assertEqual(result["total"], 1)

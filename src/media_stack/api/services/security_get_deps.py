@@ -47,7 +47,10 @@ class SecurityGetDeps:
         """Return the shared BanStore instance; path per
         ``docs/security-a11y-contract.md``."""
         config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
-        return BanStore(config_root / "controller" / "bans.json")
+        # ``.controller`` is the dot-prefixed PVC mount on k8s; the
+        # non-dotted ``controller`` directory is the pod's ephemeral
+        # overlay, so bans evaporate on restart there.
+        return BanStore(config_root / ".controller" / "bans.json")
 
     def default_audit_log(self) -> Any:
         """Return the audit log owned by the default user-service."""
