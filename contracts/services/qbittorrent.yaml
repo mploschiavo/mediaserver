@@ -44,3 +44,36 @@ plugin:
   phase_scripts:
     torrent_client_credentials: media_stack.services.apps.qbittorrent.cli.ensure_qbit_credentials_main
   compose_preflight_handler: media_stack.services.apps.qbittorrent.compose_preflight:ensure_compose_torrent_client_credentials
+
+  # ADR-0006 Phase 3 — qBittorrent family migration. The qBit-side
+  # promise lives HERE alongside the service's lifecycle_class /
+  # jobs / event_handlers declarations rather than in the monolithic
+  # ``contracts/promises/promises.yaml``. Co-locating means a "what
+  # does qBit guarantee at bootstrap?" audit is one file read;
+  # renaming ``ensure-qbittorrent-categories`` surfaces the promise's
+  # ``ensured_by`` reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # Only a single qBit promise migrates in this batch — the
+  # categories ensurer is the only registry-level guarantee qBit
+  # currently exposes (login / WebUI-up / category-create itself
+  # are covered by the lifecycle + ACQUIRE/ENSURE event handlers
+  # above, not by separate promises).
+  promises:
+    # --- Default-profile content -----------------------------------------------
+    - id: qbittorrent-categories
+      description: qBit has the four content categories (movies/tv/music/books)
+      ensured_by: ensure-qbittorrent-categories
+      platforms: [compose, k8s]
+      probe:
+        type: http_text
+        service: qbittorrent
+        path: /api/v2/torrents/categories
+        auth: qbit_basic
+        assert: |
+          all(c in data for c in ('"movies"', '"tv"', '"music"', '"books"'))

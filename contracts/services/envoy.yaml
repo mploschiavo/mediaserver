@@ -20,3 +20,79 @@ plugin:
   # perspective. /ready is the admin-port liveness endpoint.
   lifecycle_class: media_stack.adapters.envoy.lifecycle:EnvoyLifecycle
   technology: envoy
+
+  # Per-service registry split — these are the gateway-level
+  # promises that probe Envoy as the routing fabric: TLS-listener
+  # health, the Jellyfin subdomain route, the path-prefix route
+  # for /app/<svc>/ apps, and the plain-HTTP → HTTPS redirect on
+  # compose. Their ensurer (``envoy-config``) is the same one the
+  # gateway lives behind; co-locating the probes with the service
+  # they prove keeps "what does the gateway promise?" answerable
+  # by reading one file. (Cross-cutting promises that only
+  # incidentally touch Envoy — e.g. ``envoy-has-gateway-host-vhost``,
+  # which is a k8s-shape invariant — stay in the cross-cutting
+  # registry.)
+  promises:
+    - id: gateway-https-listener-up
+      description: Envoy's HTTPS listener accepts TLS handshakes on host:443
+      ensured_by: envoy-config
+      platforms: [compose, k8s]
+      # Earlier probes against ``/.well-known/openid-configuration``
+      # (with SNI=authelia.*) failed on stacks where OIDC isn't
+      # configured — the promise's intent is "TLS listener up", not
+      # "Authelia is OIDC-enabled". Switched to ``http_status`` against
+      # ``/`` and accept ANY HTTP response code as evidence that the
+      # TLS handshake succeeded and Envoy routed somewhere. Connection-
+      # refused / TLS-error / network-error continue to register as
+      # failures — that's what we actually care about.
+      probe:
+        type: http_status
+        service: gateway_https
+        path: /
+        auth: none
+        assert: "isinstance(status, int) and status >= 100"
+
+    - id: gateway-jellyfin-route
+      description: Jellyfin reachable via subdomain through Envoy gateway
+      ensured_by: envoy-config
+      platforms: [compose, k8s]
+      probe:
+        type: http_text
+        service: gateway_https
+        path: /System/Info/Public
+        auth: none
+        sni: jellyfin.media-stack.local
+        assert: "'Jellyfin' in data"
+
+    - id: gateway-app-prefix-route
+      description: Path-prefix routing works through Envoy (apps.media-stack.local/app/<svc>/)
+      ensured_by: envoy-config
+      platforms: [compose, k8s]
+      probe:
+        type: http_text
+        service: gateway_https
+        path: /app/authelia/
+        auth: none
+        sni: apps.media-stack.local
+        assert: "len(data) > 0"
+
+    - id: gateway-http-redirects-to-https
+      description: Plain http://<gateway-host>/ returns 301 to https://
+      ensured_by: envoy-config
+      # Compose-only: on K8s the Ingress controller terminates TLS
+      # before the request ever reaches Envoy, so Envoy can't see
+      # nor redirect plain-HTTP traffic — the HTTP→HTTPS guarantee
+      # is the Ingress's job there. Skipped under --k8s --unified.
+      platforms: [compose]
+      # Catches users who type the URL without a scheme (browsers
+      # default to http) or who have an old http://… bookmark — they
+      # land on the HTTPS version automatically. Without this, every
+      # OIDC-protected click silently 404s because Authelia rejects
+      # http redirect_uris.
+      probe:
+        type: http_status
+        service: gateway_http
+        path: /
+        auth: none
+        sni: apps.media-stack.local
+        assert: "status in (301, 302) and 'https://' in headers.get('location', '').lower()"

@@ -70,3 +70,54 @@ plugin:
     POST:
       trigger_prowlarr_sync: media_stack.services.apps.prowlarr.runtime_ops:trigger_prowlarr_sync
       sync_arr_indexers_from_prowlarr: media_stack.services.apps.prowlarr.runtime_ops:sync_arr_indexers_from_prowlarr
+
+  # Per-service split — Prowlarr family. The Prowlarr-side promises
+  # live HERE alongside the service's jobs / lifecycle_class
+  # declarations rather than in the monolithic
+  # ``contracts/promises/promises.yaml``. Co-locating means a "what
+  # does Prowlarr guarantee at bootstrap?" audit is one file read;
+  # renaming ``discover-indexers`` or ``tag-indexers-for-apps``
+  # surfaces the promise's ``ensured_by`` reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # Both Prowlarr promises preserve their original semantics
+  # verbatim (probe shape, ensured_by job-name strings, platform
+  # tags). Neither carries ``bootstrap_blocking`` — the loader
+  # default (True) applies, matching pre-split runtime behaviour.
+  promises:
+    # --- Indexer discovery (Prowlarr) -------------------------------------
+    - id: prowlarr-indexers-discovered
+      description: Prowlarr has at least one indexer from the curated allowlist
+      ensured_by: discover-indexers
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: prowlarr
+        path: /app/prowlarr/api/v1/indexer
+        auth: api_key
+        assert: "isinstance(response, list) and len(response) >= 1"
+
+    # --- Indexer tagging (Prowlarr) ---------------------------------------
+    - id: prowlarr-indexers-tagged
+      description: Tag-indexers ran and produced sync-* tags on at least one indexer
+      ensured_by: tag-indexers-for-apps
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: prowlarr
+        path: /app/prowlarr/api/v1/indexer
+        auth: api_key
+        # Some indexers legitimately can't be tagged (CF-blocked at
+        # probe time, content-type mismatch). The promise is "the
+        # tag pipeline ran successfully" — at least one tagged
+        # indexer is the proof. The downstream sonarr-has-indexers
+        # / radarr-has-indexers promises catch the case where ZERO
+        # indexers ended up reaching the *arrs.
+        assert: |
+          isinstance(response, list) and response
+          and any(len(i.get('tags') or []) >= 1 for i in response)
