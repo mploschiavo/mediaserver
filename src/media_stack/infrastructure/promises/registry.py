@@ -195,6 +195,17 @@ def _parse_promise(entry: Mapping[str, Any]) -> Promise:
         )
     depends_on = tuple(str(x).strip() for x in depends_on_raw if str(x).strip())
 
+    # ADR-0005 Phase 1: ``bootstrap_blocking`` defaults to True so
+    # promises authored before this field existed retain the
+    # bootstrap-must-wait semantics. Operational promises (long
+    # scans, etc.) opt out by setting it to false in the YAML.
+    bootstrap_blocking_raw = entry.get("bootstrap_blocking", True)
+    if not isinstance(bootstrap_blocking_raw, bool):
+        raise PromiseRegistryError(
+            f"{pid}: ``bootstrap_blocking`` must be a bool (got "
+            f"{type(bootstrap_blocking_raw).__name__})",
+        )
+
     probe = _parse_probe(pid, entry.get("probe"))
     ensurer = _parse_ensurer(pid, entry.get("ensured_by"))
 
@@ -205,6 +216,7 @@ def _parse_promise(entry: Mapping[str, Any]) -> Promise:
         probe=probe,
         ensurer=ensurer,
         depends_on=depends_on,
+        bootstrap_blocking=bootstrap_blocking_raw,
     )
 
 

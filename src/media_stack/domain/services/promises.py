@@ -31,8 +31,9 @@ which schema produced the entry.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping, Union
+from typing import Any, Iterable, Literal, Mapping, Optional, Union
 
 
 # ============================================================================
@@ -218,12 +219,53 @@ class Promise:
     probe: ProbeSpec
     ensurer: EnsurerSpec
     depends_on: tuple[str, ...] = ()
+    # ADR-0005 Phase 1: distinguishes promises bootstrap waits on
+    # from long-running operational ones the auto-heal cycle owns.
+    # Default ``True`` preserves the conservative "wait for it" shape
+    # that matches every promise authored before this field existed;
+    # operational promises (mass scans, big metadata refreshes) opt
+    # OUT explicitly so bootstrap doesn't block on them.
+    bootstrap_blocking: bool = True
 
     def applies_to(self, platform: str) -> bool:
         """Whether this promise applies on the given platform
         (``compose`` / ``k8s``). The orchestrator skips promises that
         don't apply on the current runtime."""
         return platform in self.platforms
+
+    @property
+    def service_id(self) -> str | None:
+        """The service id this promise pertains to, for staged-rollout
+        allowlist gating. Reads ``probe.service`` first (the most
+        direct signal), then falls back to ``ensurer.service`` for
+        ``LifecycleEnsurer``.
+
+        Returns ``None`` when the promise has no service-bound probe
+        (file probes, k8s_resource probes, infra ensurers) — those
+        always honor the global ``dry_run`` flag."""
+        probe_service = getattr(self.probe, "service", "")
+        if probe_service:
+            return str(probe_service).strip().lower() or None
+        ensurer_service = getattr(self.ensurer, "service", "")
+        if ensurer_service:
+            return str(ensurer_service).strip().lower() or None
+        return None
+
+    def first_failed_dep(
+        self, attempts: "Mapping[str, PromiseAttempt]",
+    ) -> "Optional[str]":
+        """Return the id of the first ``depends_on`` whose attempt this
+        tick is in a non-ok / non-skipped state, or ``None`` when all
+        deps resolved cleanly. The orchestrator uses this to short-
+        circuit a tick: if a dep failed, this promise gets recorded
+        as ``dep_failed`` without firing its probe."""
+        for dep in self.depends_on:
+            a = attempts.get(dep)
+            if a and a.status not in (
+                "ok", "skipped_cooldown", "skipped_platform",
+            ):
+                return dep
+        return None
 
 
 # ============================================================================
@@ -375,8 +417,149 @@ class TickSummary:
             parts.append(f"{self.unknown} unknown")
         return ", ".join(parts)
 
+    @classmethod
+    def from_attempts(
+        cls,
+        *,
+        started_at: float,
+        skipped_platform: int,
+        attempts: Mapping[str, "PromiseAttempt"],
+        elapsed_seconds: float | None = None,
+    ) -> "TickSummary":
+        """Aggregate per-promise attempts into a tick summary. Counts
+        each ``PromiseStatus`` value into its bucket; ``total`` is the
+        attempts-recorded count plus the platform-filtered set
+        (which never made it into ``attempts`` to begin with)."""
+        counts = {
+            "ok": 0,
+            "failed_transient": 0,
+            "failed_permanent": 0,
+            "dep_failed": 0,
+            "skipped_cooldown": 0,
+            "skipped_platform": skipped_platform,
+            "unknown": 0,
+        }
+        for a in attempts.values():
+            if a.status in counts:
+                counts[a.status] += 1
+        return cls(
+            started_at=started_at,
+            elapsed_seconds=(
+                elapsed_seconds
+                if elapsed_seconds is not None
+                else time.time() - started_at
+            ),
+            total=len(attempts) + skipped_platform,
+            ok=counts["ok"],
+            failed_transient=counts["failed_transient"],
+            failed_permanent=counts["failed_permanent"],
+            dep_failed=counts["dep_failed"],
+            skipped_cooldown=counts["skipped_cooldown"],
+            skipped_platform=counts["skipped_platform"],
+            unknown=counts["unknown"],
+            attempts=tuple(attempts.values()),
+        )
+
+    @classmethod
+    def empty(
+        cls,
+        *,
+        started_at: float,
+        skipped_platform: int = 0,
+    ) -> "TickSummary":
+        """Build a summary for a tick that produced no attempts (cycle
+        in the dep graph, empty registry, etc.)."""
+        return cls(
+            started_at=started_at,
+            elapsed_seconds=time.time() - started_at,
+            total=0,
+            ok=0,
+            failed_transient=0,
+            failed_permanent=0,
+            dep_failed=0,
+            skipped_cooldown=0,
+            skipped_platform=skipped_platform,
+            unknown=0,
+        )
+
+
+# ============================================================================
+# Blocking summary — what ``satisfy_promises_blocking`` returned (ADR-0005)
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class BlockingSummary:
+    """Aggregate result of a multi-tick ``satisfy_promises_blocking``
+    run. ADR-0005 Phase 1.
+
+    ``ticks``                — number of single-tick orchestrator
+                               passes executed before returning.
+    ``elapsed_seconds``      — wall-clock from the first tick's
+                               start to the final return.
+    ``final_summary``        — TickSummary of the LAST tick (so
+                               callers can render the same fields
+                               they'd get from a single call).
+    ``timed_out``            — True iff the timeout deadline elapsed
+                               before all blocking promises reached
+                               ``ok``.
+    ``blocking_promises_ok`` — True iff every promise with
+                               ``bootstrap_blocking=True`` (and
+                               applicable to the runtime) ended at
+                               ``ok``. False on timeout OR a
+                               ``failed_permanent`` abort.
+    ``permanent_failure_id`` — set when one of the blocking promises
+                               reached ``failed_permanent`` and the
+                               loop short-circuited.
+    """
+
+    ticks: int
+    elapsed_seconds: float
+    final_summary: "TickSummary"
+    timed_out: bool
+    blocking_promises_ok: bool
+    permanent_failure_id: str = ""
+
+    def summary_line(self) -> str:
+        outcome = (
+            "ok" if self.blocking_promises_ok
+            else f"permanent-fail:{self.permanent_failure_id}"
+            if self.permanent_failure_id
+            else "timeout" if self.timed_out
+            else "incomplete"
+        )
+        return (
+            f"{self.ticks} ticks in {self.elapsed_seconds:.1f}s → "
+            f"{outcome} ({self.final_summary.summary_line()})"
+        )
+
+    @classmethod
+    def at(
+        cls,
+        *,
+        started_monotonic: float,
+        now_monotonic: float,
+        ticks: int,
+        final_summary: "TickSummary",
+        timed_out: bool,
+        blocking_promises_ok: bool,
+        permanent_failure_id: str = "",
+    ) -> "BlockingSummary":
+        """Construct a summary clamped to a non-negative elapsed
+        window. Callers pass the monotonic timestamps so wall-clock
+        adjustments don't poison the duration."""
+        return cls(
+            ticks=ticks,
+            elapsed_seconds=max(0.0, now_monotonic - started_monotonic),
+            final_summary=final_summary,
+            timed_out=timed_out,
+            blocking_promises_ok=blocking_promises_ok,
+            permanent_failure_id=permanent_failure_id,
+        )
+
 
 __all__ = [
+    "BlockingSummary",
     "DeployEnsurer",
     "EnsurerSpec",
     "FileJsonProbe",
