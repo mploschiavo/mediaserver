@@ -159,6 +159,16 @@ class BootstrapBlockingCarriesForward(unittest.TestCase):
         # the loader's job; this test pins it post-migration.
         api_key = self.by_id["jellyfin-api-key-discoverable"]
         self.assertEqual(api_key.depends_on, ("jellyfin-running",))
+        # ``jellyfin-libraries`` depends on
+        # ``jellyfin-api-key-discoverable`` — without this edge the
+        # http_json probe fires before the Phase 0 mint-api-key
+        # ensurer populates JELLYFIN_API_KEY, surfacing as a probe
+        # error rather than an assertion failure (ADR-0003 Phase 4d
+        # shadow-mode regression on v1.0.305).
+        libraries = self.by_id["jellyfin-libraries"]
+        self.assertEqual(
+            libraries.depends_on, ("jellyfin-api-key-discoverable",),
+        )
 
 
 class RegistryCountUnchanged(unittest.TestCase):

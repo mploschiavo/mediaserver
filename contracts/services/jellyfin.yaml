@@ -181,6 +181,7 @@ plugin:
       ensured_by: ensure-jellyfin-libraries
       platforms: [compose, k8s]
       bootstrap_blocking: true
+      depends_on: [jellyfin-api-key-discoverable]
       probe:
         type: http_json
         service: jellyfin
