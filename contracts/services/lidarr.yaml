@@ -63,19 +63,19 @@ plugin:
   # only pins those for Sonarr + Radarr).
   promises:
     # --- Lidarr → Jellyfin notifier ---------------------------------------
+    # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
+    # ServarrLifecycle.probe_jellyfin_notifier /
+    # ensure_jellyfin_notifier. Reverting = restore the http_json
+    # probe + string ``ensured_by``.
     - id: lidarr-jellyfin-notifier
       description: Lidarr has the media-stack-jellyfin MediaBrowser notifier
-      ensured_by: ensure-arr-jellyfin-notifier
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: lidarr
-        path: /app/lidarr/api/v1/notification
-        auth: api_key
-        assert: |
-          any(
-            n.get('name') == 'media-stack-jellyfin'
-            and n.get('implementation') == 'MediaBrowser'
-            and n.get('onReleaseImport') is True
-            for n in (response or [])
-          )
+        method: probe_jellyfin_notifier
+      ensured_by:
+        type: lifecycle
+        service: lidarr
+        method: ensure_jellyfin_notifier
