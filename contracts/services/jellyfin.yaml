@@ -103,17 +103,26 @@ plugin:
       priority: 90
       requires: [media_server_reachable, media_server_api_key]
 
-    # Phase 0 of ADR-0003: a self-healing ensurer that runs on the
-    # auto-heal cycle (every 60s) and mints the Jellyfin API key if
-    # ``discover_api_keys()`` doesn't already include it. Idempotent —
-    # once minted, the probe short-circuits the mint flow on every
-    # subsequent tick. ServiceLifecycle subsumes this in ADR-0003
-    # Phase 5; until then the legacy ensurer is the readiness path.
+    # ADR-0005 Phase 2 cutover (2026-05-03): this job no longer has
+    # ``phase: post`` — the bootstrap DAG used to schedule it directly
+    # at priority 80. The orchestrator's Phase 1 ``bootstrap:satisfy-
+    # promises`` job (post / priority 100) is now the bootstrap-time
+    # path: it evaluates the ``jellyfin-api-key-discoverable`` promise
+    # and dispatches ``LifecycleEnsurer:jellyfin:mint_api_key`` (=
+    # this same handler under the hood) when the probe fails.
+    #
+    # The job is kept REGISTERED so the existing auto-heal cycle and
+    # ``run_job("jellyfin:ensure-api-key")`` operator invocations
+    # keep working. Without ``phase``, ``discover_jobs_from_contracts``
+    # reads ``phase=None`` and the bootstrap loader's ``phase_order``
+    # never picks it up — exactly what we want.
+    #
+    # Reverting Phase 2 = restore ``phase: post`` and ``priority: 80``;
+    # the orchestrator's promise dispatch becomes redundant but
+    # harmless (idempotent ensurer).
     "jellyfin:ensure-api-key":
       handler: "media_stack.application.jellyfin.ensure_api_key:ensure_jellyfin_api_key"
       label: "Ensure Jellyfin API key is discoverable"
-      phase: post
-      priority: 80
       requires: []
   event_handlers:
     ENSURE:

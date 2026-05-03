@@ -97,14 +97,27 @@ plugin:
       priority: 70
       requires: []
 
-    # ADR-0005 Phase 1 — blocking ``satisfy_promises_blocking`` cycle.
-    # Sibling of ``orchestrator:satisfy-shadow``: same orchestrator
-    # primitive, but loops until every ``bootstrap_blocking=True``
+    # ADR-0005 Phase 1+2 — blocking ``satisfy_promises_blocking``
+    # cycle, now wired as the FINAL post-phase job of the bootstrap
+    # DAG. After every other post-phase ensurer has fired, this job
+    # loops orchestrator ticks until every ``bootstrap_blocking=True``
     # promise reaches ``ok`` (or one fails permanently / the timeout
-    # elapses). The job is REGISTERED here so the dispatcher can
-    # resolve it and tests + manual ``run-controller-job`` calls
-    # find it, but it is NOT part of the bootstrap DAG yet — Phase 2
-    # of the migration is the first cutover that wires it in.
+    # elapses). The orchestrator is now part of the bootstrap critical
+    # path — services that flip their per-job ensurer to
+    # promise-driven (Phase 2: jellyfin family) are dispatched here
+    # via the promise registry instead of by their legacy job entry.
+    #
+    # Priority 100 places it AFTER all currently-existing post-phase
+    # ensurers (which top out at priority 90). As Phase 2+ removes
+    # legacy ensurer jobs, this stays where it is — the orchestrator
+    # still has to run last so the per-promise probes see the
+    # post-phase mutations the legacy jobs made on their way out.
+    #
+    # ``non_blocking: false`` because bootstrap WAITS for the
+    # orchestrator's verdict — the whole point of the blocking
+    # primitive. The job's own internal timeout (default 240s) bounds
+    # the wait; on timeout, JobRunner sees status=warn and bootstrap
+    # continues with the dashboard's "completed with warnings" banner.
     #
     # Knobs (env-var):
     #   BOOTSTRAP_PROMISE_TIMEOUT       — float seconds (default 240)
@@ -112,8 +125,8 @@ plugin:
     #   ORCHESTRATOR_LIVE_SERVICES      — same allowlist as shadow
     "bootstrap:satisfy-promises":
       handler: "media_stack.application.jobs.orchestrator_satisfy:satisfy_blocking"
-      label: "Bootstrap blocking promise satisfaction (ADR-0005 Phase 1)"
-      phase: orchestrator_satisfy
-      priority: 10
+      label: "Bootstrap blocking promise satisfaction (ADR-0005 Phase 1+2)"
+      phase: post
+      priority: 100
       requires: []
       non_blocking: false

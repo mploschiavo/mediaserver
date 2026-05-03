@@ -1,11 +1,54 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Phase 1 shipped (2026-05-03). Phase 2+ still in
-migration. Builds on ADR-0003 (orchestrator) and ADR-0004
-(verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
+**Status:** Phase 1 + Phase 2 cutover shipped (2026-05-03), awaiting
+live validation on compose + k8s. Phase 3+ pending. Builds on
+ADR-0003 (orchestrator) and ADR-0004 (verifier). Unblocks ADR-0003
+Phase 5e.3+ deletions.
 
-Phase 1 deliverables are landed (test-only — no behavior change in
-the bootstrap DAG yet):
+Phase 2 cutover landed — what changed:
+
+- ``bootstrap:satisfy-promises`` graduated from the Phase-1
+  ``orchestrator_satisfy`` holding-area phase into ``post`` priority
+  100 (the FINAL step of the bootstrap post phase). The orchestrator
+  is now part of the bootstrap critical path: every legacy post-phase
+  ensurer runs first, then the orchestrator's blocking loop verifies
+  the result and dispatches lifecycle ensurers for any promise that
+  isn't yet ``ok``. The holding-area phase was retired from the
+  ``_KNOWN_PHASES`` allowlist.
+- The three Jellyfin family promises (``jellyfin-running``,
+  ``jellyfin-api-key-discoverable``, ``jellyfin-libraries``) carry
+  explicit ``bootstrap_blocking: true`` annotations. Default is True
+  — the explicit annotation documents intent for future readers
+  (this family is the cutover proof).
+- ``jellyfin:ensure-api-key`` no longer carries ``phase: post``. It
+  is still REGISTERED so ``run_job(name)`` (auto-heal + operator)
+  resolves it, but the bootstrap DAG no longer schedules it directly.
+  The orchestrator dispatches the same handler via the
+  ``LifecycleEnsurer:jellyfin:mint_api_key`` ensurer attached to
+  ``jellyfin-api-key-discoverable``.
+- New contract-integration ratchet at
+  ``tests/unit/contracts/test_adr_0005_phase_2_cutover.py`` pins the
+  cutover wiring (synthetic job placement, family annotation,
+  ensure-api-key unscheduled but registered, DAG inclusion). 11
+  tests; reverting Phase 2 = revert this commit and the ratchet
+  flips back into the prior state cleanly.
+
+What's still TODO before Phase 3:
+
+- Live test on compose: fresh ``compose down -v && up``. Verify
+  bootstrap completes within timeout; ``JELLYFIN_API_KEY`` is set
+  by the orchestrator dispatch path; no duplicate ``mint_api_key``
+  invocations show up in the run-history.
+- Live test on k8s: same thing in a fresh namespace.
+- 24h soak on each platform.
+- If a promise reports ``failed_permanent`` during bootstrap (e.g.
+  Jellyfin pod stuck in CrashLoopBackOff), confirm the dashboard's
+  status banner surfaces the ``permanent_failure_id`` rather than
+  hanging on "loading".
+
+Phase 1 deliverables (carried forward — synthetic job moved phase in
+Phase 2, but the underlying primitive + class hierarchy + tests are
+the same):
 
 - ``Promise.bootstrap_blocking: bool = True`` field + YAML loader
   acceptance + strict bool validation. Default ``True`` preserves
