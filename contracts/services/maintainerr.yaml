@@ -26,6 +26,43 @@ plugin:
     ENSURE:
       ensure_maintainerr_policy: media_stack.services.apps.maintainerr.runtime_ops:ensure_maintainerr_policy
       ensure_maintainerr_integrations: media_stack.services.apps.maintainerr.runtime_ops:ensure_maintainerr_integrations
+
+  # ADR-0006 Phase 3 — Maintainerr family migration. The Maintainerr
+  # promise lives HERE alongside the service's lifecycle_class +
+  # event_handlers declarations rather than in the monolithic
+  # ``contracts/promises/promises.yaml``. Co-locating means a "what
+  # does Maintainerr guarantee at bootstrap?" audit is one file read;
+  # renaming ``configure-collections`` surfaces the promise's
+  # ``ensured_by`` reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # Only a single Maintainerr promise migrates — collections-link-to-arr
+  # is the bootstrap-time guarantee that the Radarr/Sonarr cross-wiring
+  # actually populated each collection's ``radarrSettingsId`` /
+  # ``sonarrSettingsId`` (Maintainerr is a pure downstream consumer of
+  # the *arrs and has no key of its own; see lifecycle_class above).
+  promises:
+    # --- Maintainerr → *arr cross-wiring ----------------------------------
+    - id: maintainerr-rules-linked-to-arr
+      description: Movie rules link to Radarr; TV rules link to Sonarr (not None)
+      ensured_by: configure-collections
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: maintainerr
+        path: /app/maintainerr/api/collections
+        auth: none
+        assert: |
+          any(
+            (c.get('type') == 'movie' and c.get('radarrSettingsId') is not None)
+            or (c.get('type') == 'show' and c.get('sonarrSettingsId') is not None)
+            for c in (response or [])
+          )
 defaults:
   enabled: true
   required: false

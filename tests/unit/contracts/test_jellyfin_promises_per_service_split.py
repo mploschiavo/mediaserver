@@ -1,10 +1,9 @@
-"""Pin the ADR-0006 Phase 2 Jellyfin family migration.
+"""Pin the per-service-registry shape of the three Jellyfin promises.
 
-Phase 2 moved the three Jellyfin promises out of the monolithic
-``contracts/promises/promises.yaml`` into
-``contracts/services/jellyfin.yaml::plugin.promises:``. This
-ratchet asserts the post-migration shape so a future contract
-edit can't silently undo it.
+The promises live in ``contracts/services/jellyfin.yaml::plugin.promises:``,
+not in the cross-cutting ``contracts/promises/promises.yaml``. This
+ratchet asserts the loaded shape so a future contract edit can't
+silently undo the split.
 
 Sections:
 
@@ -12,15 +11,16 @@ Sections:
     map points each Jellyfin promise at jellyfin.yaml.
   * LegacyMonolithDoesNotContainJellyfinPromises — the three ids
     are GONE from the cross-cutting / legacy promises.yaml.
-  * BootstrapBlockingCarriesForward — ADR-0005 Phase 2's
-    ``bootstrap_blocking: true`` annotation survived the move.
-  * RegistryCountUnchanged — Phase 2 was loss-free; the aggregate
+  * BootstrapBlockingCarriesForward — every Jellyfin promise is
+    explicitly ``bootstrap_blocking: true`` (orchestrator must
+    converge them before bootstrap declares success).
+  * RegistryCountUnchanged — the move was loss-free; the aggregate
     registry still has 52 promises.
 
 Implementation note: every assertion runs against the loaded
 registry (not raw YAML), so the ratchet verifies the loader
-contract end-to-end. A Phase-2 revert that puts the promises
-back in ``promises.yaml`` would flip every section here.
+contract end-to-end. A revert that puts the promises back in
+``promises.yaml`` would flip every section here.
 """
 
 from __future__ import annotations
@@ -71,9 +71,9 @@ class JellyfinPromisesLoadFromServiceYaml(unittest.TestCase):
         self.assertEqual(
             actual_suffix, self._EXPECTED_SOURCE_SUFFIX,
             f"{pid} loaded from {source}, expected "
-            f"…/{self._EXPECTED_SOURCE_SUFFIX}. Phase 2 moved this "
-            f"into the service contract; reverting means restoring "
-            f"the promise in promises.yaml.",
+            f"…/{self._EXPECTED_SOURCE_SUFFIX}. The promise lives "
+            f"in the service contract; reverting means restoring "
+            f"it in promises.yaml.",
         )
 
     def test_jellyfin_running_loads_from_service_yaml(self) -> None:
@@ -91,8 +91,8 @@ class JellyfinPromisesLoadFromServiceYaml(unittest.TestCase):
 
 
 class LegacyMonolithDoesNotContainJellyfinPromises(unittest.TestCase):
-    """The Phase-2 move is loss-free, not duplicate-friendly. The
-    three Jellyfin ids must NOT appear in the monolithic
+    """The split is loss-free, not duplicate-friendly. The three
+    Jellyfin ids must NOT appear in the monolithic
     ``promises.yaml`` (or the eventual ``cross_cutting.yaml``).
     The loader's id-uniqueness check would catch a duplicate
     fatally, but pinning the YAML shape here surfaces a botched
@@ -119,17 +119,18 @@ class LegacyMonolithDoesNotContainJellyfinPromises(unittest.TestCase):
         for pid in self._MIGRATED_IDS:
             self.assertNotIn(
                 f"id: {pid}", self.text,
-                f"{pid!r} reappeared in promises.yaml — Phase 2 "
-                f"moved it into services/jellyfin.yaml. Either "
+                f"{pid!r} reappeared in promises.yaml — its "
+                f"canonical home is services/jellyfin.yaml. Either "
                 f"complete the revert (restore in promises.yaml AND "
                 f"remove from jellyfin.yaml) or remove this entry.",
             )
 
 
 class BootstrapBlockingCarriesForward(unittest.TestCase):
-    """ADR-0005 Phase 2 set ``bootstrap_blocking: true`` on each
-    Jellyfin promise. Phase 2 of ADR-0006 moves the YAML location;
-    the annotation must survive."""
+    """Each Jellyfin promise carries ``bootstrap_blocking: true``
+    explicitly — the orchestrator must converge them before
+    bootstrap declares success. The annotation survives the
+    monolith → service-yaml move; this pins it."""
 
     _EXPECTED_FAMILY = (
         "jellyfin-running",
@@ -149,7 +150,7 @@ class BootstrapBlockingCarriesForward(unittest.TestCase):
             self.assertTrue(
                 promise.bootstrap_blocking,
                 f"{pid}: bootstrap_blocking flipped to False — "
-                f"ADR-0005 Phase 2 explicitly pins this True.",
+                f"orchestrator-driven bootstrap requires this True.",
             )
 
     def test_dependency_chain_preserved(self) -> None:
@@ -161,8 +162,8 @@ class BootstrapBlockingCarriesForward(unittest.TestCase):
 
 
 class RegistryCountUnchanged(unittest.TestCase):
-    """Phase 2 was a move, not an edit. The aggregate registry size
-    is unchanged at 52 promises. A drop = a botched move; an
+    """The split was a move, not an edit. The aggregate registry
+    size is unchanged at 52 promises. A drop = a botched move; an
     increase = an accidental duplicate the loader didn't catch
     (which would be a separate bug)."""
 
@@ -173,8 +174,8 @@ class RegistryCountUnchanged(unittest.TestCase):
         self.assertEqual(
             len(result.promises), self._EXPECTED_TOTAL,
             f"registry total drifted to {len(result.promises)} "
-            f"(expected {self._EXPECTED_TOTAL}). "
-            f"Phase 2 is a move-not-edit — count must stay constant.",
+            f"(expected {self._EXPECTED_TOTAL}). The split is a "
+            f"move-not-edit — count must stay constant.",
         )
 
 
