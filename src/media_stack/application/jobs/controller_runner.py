@@ -74,13 +74,16 @@ def _build_config_policy() -> object | None:
     # Resolve auto_download_content: env var wins (operator can flip
     # at runtime via the dashboard "Auto-Downloads" toggle, which sets
     # the env). Otherwise fall back to the profile's bootstrap section.
-    # Without the profile fallback, a fresh compose deploy with no env
-    # set would default the policy to False, which silently disabled
-    # enableAuto on every *arr import list — the lists existed but
-    # never auto-added new content. (v1.0.141 root-cause for the
-    # "we used to get more content" symptom on clean install.)
+    # Default is True: a fresh deploy with neither env nor profile set
+    # auto-adds content (TMDb popular, etc.) so the *arr stack is
+    # immediately useful. Operators who want manual-only set
+    # AUTO_DOWNLOAD_CONTENT=0 or ``profile.bootstrap.auto_download_content:
+    # false`` to opt out — both paths are still honored. The promise
+    # ``radarr-import-lists-auto`` (and its Sonarr sibling) asserts
+    # ``enableAuto=True`` on every enabled list; this default keeps
+    # them satisfied for unconfigured stacks.
     profile_bootstrap = profile.get("bootstrap") or {}
-    profile_auto_download = bool(profile_bootstrap.get("auto_download_content", False))
+    profile_auto_download = bool(profile_bootstrap.get("auto_download_content", True))
     env_auto_download_raw = os.environ.get("AUTO_DOWNLOAD_CONTENT", "").strip()
     if env_auto_download_raw:
         auto_download_content = env_auto_download_raw == "1"

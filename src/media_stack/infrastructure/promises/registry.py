@@ -204,6 +204,7 @@ class ProbeSpecParser:
             path=str(raw.get("path") or ""),
             auth=str(raw.get("auth") or "none"),
             assert_expr=str(raw.get("assert") or ""),
+            sni=str(raw.get("sni") or "").strip(),
         )
 
     def _build_http_text(self, pid: str, raw: Mapping[str, Any]) -> ProbeSpec:
@@ -212,6 +213,7 @@ class ProbeSpecParser:
             path=str(raw.get("path") or ""),
             auth=str(raw.get("auth") or "none"),
             assert_expr=str(raw.get("assert") or ""),
+            sni=str(raw.get("sni") or "").strip(),
         )
 
     def _build_http_status(self, pid: str, raw: Mapping[str, Any]) -> ProbeSpec:
@@ -220,6 +222,7 @@ class ProbeSpecParser:
             path=str(raw.get("path") or ""),
             auth=str(raw.get("auth") or "none"),
             assert_expr=str(raw.get("assert") or ""),
+            sni=str(raw.get("sni") or "").strip(),
         )
 
     def _build_file_json(self, pid: str, raw: Mapping[str, Any]) -> ProbeSpec:

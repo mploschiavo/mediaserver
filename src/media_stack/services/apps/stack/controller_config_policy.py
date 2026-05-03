@@ -648,7 +648,7 @@ class StackControllerConfigPolicy:
         *,
         selected_apps_csv: str = "",
         preconfigure_api_keys: bool = True,
-        auto_download_content: bool = False,
+        auto_download_content: bool = True,
         internet_exposed: bool = False,
         route_strategy: str = "subdomain",
         ingress_domain: str = "local",

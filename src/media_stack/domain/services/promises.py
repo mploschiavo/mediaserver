@@ -155,6 +155,7 @@ class HttpJsonProbe:
     path: str = ""
     auth: str = "none"  # api_key | none
     assert_expr: str = ""
+    sni: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return _spec_to_dict(self)
@@ -169,6 +170,7 @@ class HttpTextProbe:
     path: str = ""
     auth: str = "none"
     assert_expr: str = ""
+    sni: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return _spec_to_dict(self)
@@ -176,13 +178,25 @@ class HttpTextProbe:
 
 @dataclass(frozen=True)
 class HttpStatusProbe:
-    """Probe by GET'ing an endpoint and asserting against the status code."""
+    """Probe by GET'ing an endpoint and asserting against the status code.
+
+    ``sni`` overrides the Host header / TLS SNI for the request when
+    set — needed by gateway probes whose internal hostname (e.g.
+    ``envoy:8080``) differs from the public hostname Envoy issues
+    redirects against.
+
+    The dispatcher does NOT auto-follow 30x responses for this probe
+    type. The whole point is to assert AGAINST the status (and the
+    accompanying ``Location`` header via the assert scope's ``headers``
+    dict). Auto-following would mask the redirect being verified.
+    """
 
     kind: Literal["http_status"] = "http_status"
     service: str = ""
     path: str = ""
     auth: str = "none"
     assert_expr: str = ""
+    sni: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return _spec_to_dict(self)
