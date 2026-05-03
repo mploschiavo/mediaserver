@@ -554,9 +554,17 @@ def test_burndown_large_files_committed() -> None:
     storage instead."""
     count = 0
     SIZE_THRESHOLD = 1024 * 1024  # 1 MB
+    # Skip everything that lives outside the committed source tree:
+    # ``.git`` / ``.venv`` / ``node_modules`` are obvious; ``config``,
+    # ``media``, ``data`` are the runtime bind-mount locations a live
+    # stack populates on dev machines (NOT committed — see
+    # .gitignore). Without these entries, a dev who's run the stack
+    # locally sees 2900+ false hits from media files + service
+    # SQLite databases.
     skip_dirs = {
-        ".git", "node_modules", "dist", "build", ".venv", "__pycache__",
-        ".pytest_cache", "coverage",
+        ".git", "node_modules", "dist", "build", ".venv", ".venv-tools",
+        "__pycache__", ".pytest_cache", "coverage", ".mypy_cache",
+        "config", "media", "data",
     }
     for path in REPO_ROOT.rglob("*"):
         if not path.is_file():

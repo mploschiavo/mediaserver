@@ -17,7 +17,7 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 from media_stack.api.session_singletons import (
     session_cookie_reader, trusted_proxy_auth,
@@ -853,7 +853,6 @@ class GetRequestHandler:
             # Per-job-run history. Replaces the legacy "last 10
             # runs" view that pulled from the batch-level
             # job-history.json. Filters via querystring.
-            from urllib.parse import parse_qs, unquote
             from media_stack.application.jobs.run_history import (
                 get_runs, iter_records,
             )

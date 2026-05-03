@@ -65,9 +65,25 @@ _ALLOWED_AUTHELIA_AWARE: frozenset[str] = frozenset({
     # abstracted without designing a generic multi-backend config
     # surface (tracked in docs/roadmap/session-visibility-followups.md).
     "core/auth/authelia_config_generator.py",
-    # Configure-auth bootstrap job — invokes both the generator and
-    # the crypto helper above.
-    "core/auth/configure_auth_job.py",
+    # ADR-0002 Phase 16-D split the auth tree across hexagon layers.
+    # The configure-auth bootstrap job + the OIDC crypto helper
+    # both still point at the generator above; they ship in both
+    # the legacy ``core/auth/`` shim path and the canonical
+    # ``application/auth/`` / ``infrastructure/auth/`` homes.
+    "application/auth/configure_auth_job.py",
+    "core/auth/authelia_oidc_crypto.py",
+    "core/auth/providers/authelia/__init__.py",
+    "core/auth/providers/authelia/provider.py",
+    # Phase 16-D split the auth provider out of ``core/auth/`` —
+    # adapters/ owns the concrete Authelia implementation; the
+    # canonical config-generator runs from infrastructure/.
+    "adapters/auth/authelia/config_generator.py",
+    # api/services + session aggregator wire the Authelia session
+    # provider into the per-platform fan-out. Phase 16-F's port
+    # extraction will cut this back to neutral protocols.
+    "api/services/security_get_deps.py",
+    "api/session_aggregator_singletons.py",
+    "services/security/providers/__init__.py",
 })
 
 

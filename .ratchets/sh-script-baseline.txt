@@ -21,6 +21,7 @@ bin/k8s/microk8s-reconcile.sh
 bin/lib/run-python-cli.sh
 bin/ops/generate-reference-docs.sh
 bin/ops/lychee.sh
+bin/ops/orchestrator-eval.sh
 bin/ops/recapture-all-fixtures.sh
 bin/release/generate-sbom.sh
 bin/release/regen-dist.sh

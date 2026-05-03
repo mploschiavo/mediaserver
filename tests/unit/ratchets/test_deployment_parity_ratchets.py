@@ -47,6 +47,13 @@ class ComposeKubernetesDeploymentParity(unittest.TestCase):
         # Init containers — not standalone deployments.
         "envoy-config-init",
         "init-permissions",
+        # Compose runs envoy as a standalone service (the default
+        # gateway). On k8s the ingress layer is Traefik (Ingress
+        # resource) — envoy ships only as a ConfigMap template
+        # inside ``deploy/k8s/base/edge/envoy.yaml`` for callers
+        # that opt in. The compose ↔ k8s parity check should treat
+        # envoy as compose-only.
+        "envoy",
         # Profile-gated alternatives — operator opts in via
         # COMPOSE_PROFILES, not part of the default install.
         "jellyfin-nvidia",   # nvidia profile (skipped on Intel-only hosts)
@@ -58,13 +65,16 @@ class ComposeKubernetesDeploymentParity(unittest.TestCase):
             import yaml as _yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
+        # Compose moved from ``docker/`` to ``deploy/compose/`` and
+        # the k8s manifests moved from ``k8s/`` to ``deploy/k8s/``
+        # during the deploy reorg.
         compose = _yaml.safe_load(
-            (ROOT / "docker" / "docker-compose.yml").read_text(encoding="utf-8")
+            (ROOT / "deploy" / "compose" / "docker-compose.yml").read_text(encoding="utf-8")
         )
         compose_svcs = set((compose.get("services") or {}).keys())
 
         k8s_resources: set[str] = set()
-        for f in (ROOT / "k8s").rglob("*.yaml"):
+        for f in (ROOT / "deploy" / "k8s").rglob("*.yaml"):
             if "kustomization" in f.name:
                 continue
             try:

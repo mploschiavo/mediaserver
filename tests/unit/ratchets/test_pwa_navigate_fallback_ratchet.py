@@ -28,7 +28,15 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-VITE_CONFIG = REPO_ROOT / "ui" / "vite.config.ts"
+# Vite's PWA strategy switched from ``generateSW`` (workbox config
+# inline in vite.config.ts) to ``injectManifest`` — the SW source is
+# owned by the project at ``ui/src/sw.ts`` and the denylist defaults
+# live next to it in ``ui/src/sw-config.ts``. The runtime denylist is
+# pulled from ``GET /sw-config.json`` at install time, but the
+# baked-in defaults still need to assert the cross-app safety
+# invariant for offline / first-install scenarios.
+SW_SOURCE = REPO_ROOT / "ui" / "src" / "sw.ts"
+SW_CONFIG = REPO_ROOT / "ui" / "src" / "sw-config.ts"
 
 # What we want to see in the denylist. Must exclude /api/* AND
 # every /app/* path that isn't the dashboard.
@@ -39,32 +47,39 @@ RE_CROSS_APP_DENY = re.compile(
 )
 
 
-def _read_vite_config() -> str:
-    return VITE_CONFIG.read_text(encoding="utf-8")
+def _read_sw_source() -> str:
+    return SW_SOURCE.read_text(encoding="utf-8")
+
+
+def _read_sw_config() -> str:
+    return SW_CONFIG.read_text(encoding="utf-8")
 
 
 def test_navigate_fallback_denylist_excludes_api() -> None:
-    text = _read_vite_config()
-    assert "navigateFallback" in text, (
-        "ui/vite.config.ts must register a PWA navigateFallback for "
-        "deep-link routes inside the dashboard SPA."
+    sw = _read_sw_source()
+    cfg = _read_sw_config()
+    assert "navigationHandler" in sw or "createHandlerBoundToURL" in sw, (
+        "ui/src/sw.ts must register a navigation handler for deep-"
+        "link routes inside the dashboard SPA."
     )
-    assert RE_API_DENY.search(text), (
-        "navigateFallbackDenylist must exclude ``/api/*`` so the SW "
-        "doesn't substitute the SPA shell for JSON API responses."
+    assert RE_API_DENY.search(cfg), (
+        "navigateFallbackDenylist (in ui/src/sw-config.ts defaults) "
+        "must exclude ``/api/*`` so the SW doesn't substitute the "
+        "SPA shell for JSON API responses."
     )
 
 
 def test_navigate_fallback_denylist_excludes_cross_app() -> None:
     """The denylist must contain a /app/<not-media-stack-ui>/ rule."""
-    text = _read_vite_config()
-    assert RE_CROSS_APP_DENY.search(text), (
-        "navigateFallbackDenylist must exclude ``/app/<service>/`` "
-        "paths for every service that ISN'T media-stack-ui. Without "
-        "this, the dashboard's PWA service worker hijacks navigations "
-        "to sister apps (homepage, sonarr, jellyfin, qbittorrent, "
-        "etc.) and serves its own index.html — operators land on a "
-        "broken page with the wrong app loaded. Required regex form: "
+    cfg = _read_sw_config()
+    assert RE_CROSS_APP_DENY.search(cfg), (
+        "navigateFallbackDenylist (defaults in ui/src/sw-config.ts) "
+        "must exclude ``/app/<service>/`` paths for every service "
+        "that ISN'T media-stack-ui. Without this, the dashboard's "
+        "PWA service worker hijacks navigations to sister apps "
+        "(homepage, sonarr, jellyfin, qbittorrent, etc.) and serves "
+        "its own index.html — operators land on a broken page with "
+        "the wrong app loaded. Required regex form: "
         "``/^\\/app\\/(?!media-stack-ui(?:\\/|$))/`` or equivalent. "
         "See the ratchet docstring for the original incident."
     )
@@ -74,9 +89,9 @@ def test_navigate_fallback_target_is_index_html() -> None:
     """Make sure the fallback still points at ``/index.html`` — if
     someone replaces it with a different file the cross-app fix
     above might mask a different break."""
-    text = _read_vite_config()
-    assert 'navigateFallback: "/index.html"' in text, (
-        "navigateFallback must point at ``/index.html`` (the SPA "
+    sw = _read_sw_source()
+    assert 'createHandlerBoundToURL("/index.html")' in sw, (
+        "navigation handler must bind to ``/index.html`` (the SPA "
         "shell). Changing it without updating this ratchet hides "
         "regressions in offline routing."
     )
