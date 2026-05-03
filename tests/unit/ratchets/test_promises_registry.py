@@ -71,11 +71,60 @@ ALLOWED_K8S_KINDS = {
 
 
 def _load_promises() -> dict:
-    import yaml
-    path = ROOT / "contracts" / "promises" / "promises.yaml"
-    if not path.is_file():
-        return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    """Return the aggregate promise registry as a YAML-shaped dict.
+
+    ADR-0006 Phase 2 split per-service promises out of the monolithic
+    ``contracts/promises/promises.yaml`` into
+    ``contracts/services/<svc>.yaml::plugin.promises``. This loader
+    used to read only the legacy file — every Jellyfin family ratchet
+    started failing once those entries moved. Use the production
+    aggregator (which walks both sources + validates cross-file
+    invariants) and rebuild the legacy YAML shape from each
+    ``Promise.to_dict()`` so the test logic stays unchanged.
+    """
+    from media_stack.infrastructure.promises.registry import (
+        PromiseRegistryLoader,
+    )
+    result = PromiseRegistryLoader().aggregate()
+    return {
+        "promises": [_promise_to_yaml_entry(p) for p in result.promises],
+    }
+
+
+def _promise_to_yaml_entry(promise) -> dict:
+    """Reassemble a YAML-shaped promise entry from a typed
+    ``Promise``. Mirrors what the legacy ``yaml.safe_load`` produced
+    on the monolith, including the compact-string form for
+    Job/Infra ensurers (``ensured_by: ensure-foo`` rather than the
+    typed ``{type: job, job_name: ensure-foo}`` dict) — the legacy
+    consistency tests inspect that flat shape."""
+    out: dict = {
+        "id": promise.id,
+        "description": promise.description,
+        "platforms": list(promise.platforms),
+        "probe": promise.probe.to_dict(),
+        "ensured_by": _ensurer_to_legacy_yaml(promise.ensurer),
+        "bootstrap_blocking": promise.bootstrap_blocking,
+    }
+    if promise.depends_on:
+        out["depends_on"] = list(promise.depends_on)
+    return out
+
+
+def _ensurer_to_legacy_yaml(ensurer):
+    """Collapse Job/Infra ensurers back to bare strings (their pre-
+    Phase-4a shape) so the legacy ratchets — which special-case
+    string vs dict — see the same surface they did before the
+    typed-loader landed. Lifecycle/Deploy stay as dicts; they were
+    introduced as dict-typed in Phase 4a and the ratchets already
+    skip dict ensurers."""
+    payload = ensurer.to_dict()
+    kind = payload.get("type")
+    if kind == "job":
+        return payload.get("job_name") or payload
+    if kind == "infra":
+        return payload.get("target") or payload
+    return payload
 
 
 def _load_contract_jobs() -> dict[str, dict]:

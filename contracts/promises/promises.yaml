@@ -404,36 +404,11 @@ promises:
           for c in (response or [])
         )
 
-  # --- Jellyfin libraries -------------------------------------------------
-  # ADR-0005 Phase 2 — third member of the Jellyfin family proof.
-  # Annotated with explicit ``bootstrap_blocking: true`` so bootstrap
-  # waits for the four required user-media libraries to exist before
-  # declaring done. Ensurer is the legacy ``ensure-jellyfin-libraries``
-  # job, which is phase-driven today; the orchestrator's promise
-  # dispatch reaches the same handler when ``bootstrap:satisfy-promises``
-  # finds the library set incomplete.
-  - id: jellyfin-libraries
-    description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
-    ensured_by: ensure-jellyfin-libraries
-    platforms: [compose, k8s]
-    bootstrap_blocking: true
-    probe:
-      type: http_json
-      service: jellyfin
-      path: /Library/VirtualFolders
-      auth: jellyfin_key
-      # Only the 4 required user-media types must point at /media/*.
-      # Jellyfin auto-creates a boxsets/Collections library at
-      # /config/data/collections (system-managed, internal storage)
-      # which would fail an "all libraries" check.
-      assert: |
-        isinstance(response, list)
-        and {l.get('CollectionType') for l in response} >= {'movies', 'tvshows', 'music', 'books'}
-        and all(
-          any(p.startswith('/media/') for p in (l.get('Locations') or []))
-          for l in response
-          if l.get('CollectionType') in ('movies', 'tvshows', 'music', 'books')
-        )
+  # ADR-0006 Phase 2: Jellyfin family migrated to
+  # ``contracts/services/jellyfin.yaml::plugin.promises:``. Three
+  # promises moved (``jellyfin-running``,
+  # ``jellyfin-api-key-discoverable``, ``jellyfin-libraries``) — see
+  # that file for the canonical declarations.
 
   # --- Jellyseerr server connections --------------------------------------
   - id: jellyseerr-arr-servers
@@ -1007,44 +982,10 @@ promises:
   # is still primary. Phase 4c expands the set; Phase 5 flips the
   # switch.
 
-  # ADR-0005 Phase 2 — Jellyfin family proof. The three Jellyfin
-  # promises below carry an EXPLICIT ``bootstrap_blocking: true`` so
-  # the intent is visible to future readers (default is True; the
-  # annotation documents that bootstrap waits on these).
-  # ``jellyfin:ensure-api-key`` no longer has ``phase: post`` in
-  # ``contracts/services/jellyfin.yaml`` — the bootstrap-time path is
-  # now ``bootstrap:satisfy-promises`` evaluating
-  # ``jellyfin-api-key-discoverable`` and dispatching the
-  # ``LifecycleEnsurer:jellyfin:mint_api_key`` ensurer below.
-  - id: jellyfin-running
-    description: Jellyfin HTTP endpoint is responsive (probe via lifecycle)
-    platforms: [compose, k8s]
-    bootstrap_blocking: true
-    probe:
-      type: lifecycle
-      service: jellyfin
-      method: probe_running
-    ensured_by:
-      # Service-running ensurers are deploy-layer; the orchestrator
-      # can't run them in Phase 4 (Phase 5+ scope). Recorded as
-      # externally-ensured — deploy tooling brings the service up,
-      # the orchestrator just probes.
-      type: deploy
-      target: jellyfin
-
-  - id: jellyfin-api-key-discoverable
-    description: Jellyfin api key discoverable in env or controller-readable SQLite
-    platforms: [compose, k8s]
-    bootstrap_blocking: true
-    depends_on: [jellyfin-running]
-    probe:
-      type: lifecycle
-      service: jellyfin
-      method: probe_has_api_key
-    ensured_by:
-      type: lifecycle
-      service: jellyfin
-      method: mint_api_key
+  # ADR-0006 Phase 2: Jellyfin family (``jellyfin-running``,
+  # ``jellyfin-api-key-discoverable``) migrated to
+  # ``contracts/services/jellyfin.yaml::plugin.promises:``. See the
+  # ADR-0005 Phase 2 family-proof comment in that file.
 
   - id: overrides-seeded-at-bootstrap
     description: routing-overrides.yaml exists on the controller PVC after bootstrap (seeded from profile)

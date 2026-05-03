@@ -124,6 +124,81 @@ plugin:
       handler: "media_stack.application.jellyfin.ensure_api_key:ensure_jellyfin_api_key"
       label: "Ensure Jellyfin API key is discoverable"
       requires: []
+
+  # ADR-0006 Phase 2 — Jellyfin family migration. The three Jellyfin
+  # promises live HERE alongside the service's jobs / event_handlers
+  # / lifecycle_class declarations rather than in the monolithic
+  # ``contracts/promises/promises.yaml``. Co-locating means a "what
+  # does Jellyfin do at bootstrap?" audit is one file read; renaming
+  # ``ensure-jellyfin-libraries`` surfaces the promise's
+  # ``ensured_by`` reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # ADR-0005 Phase 2 still owns the bootstrap_blocking semantics on
+  # these three; the explicit ``bootstrap_blocking: true`` documents
+  # that bootstrap waits on each. The orchestrator's ensurer dispatch
+  # for ``jellyfin-api-key-discoverable`` reaches the same handler
+  # the legacy ``jellyfin:ensure-api-key`` job entry above resolves
+  # to (through ``LifecycleEnsurer:jellyfin:mint_api_key``).
+  promises:
+    - id: jellyfin-running
+      description: Jellyfin HTTP endpoint is responsive (probe via lifecycle)
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: lifecycle
+        service: jellyfin
+        method: probe_running
+      ensured_by:
+        # Service-running ensurers are deploy-layer; the orchestrator
+        # can't run them in Phase 4 (Phase 5+ scope). Recorded as
+        # externally-ensured — deploy tooling brings the service up,
+        # the orchestrator just probes.
+        type: deploy
+        target: jellyfin
+
+    - id: jellyfin-api-key-discoverable
+      description: Jellyfin api key discoverable in env or controller-readable SQLite
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      depends_on: [jellyfin-running]
+      probe:
+        type: lifecycle
+        service: jellyfin
+        method: probe_has_api_key
+      ensured_by:
+        type: lifecycle
+        service: jellyfin
+        method: mint_api_key
+
+    - id: jellyfin-libraries
+      description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
+      ensured_by: ensure-jellyfin-libraries
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: http_json
+        service: jellyfin
+        path: /Library/VirtualFolders
+        auth: jellyfin_key
+        # Only the 4 required user-media types must point at /media/*.
+        # Jellyfin auto-creates a boxsets/Collections library at
+        # /config/data/collections (system-managed, internal storage)
+        # which would fail an "all libraries" check.
+        assert: |
+          isinstance(response, list)
+          and {l.get('CollectionType') for l in response} >= {'movies', 'tvshows', 'music', 'books'}
+          and all(
+            any(p.startswith('/media/') for p in (l.get('Locations') or []))
+            for l in response
+            if l.get('CollectionType') in ('movies', 'tvshows', 'music', 'books')
+          )
+
   event_handlers:
     ENSURE:
       ensure_jellyfin_livetv: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_livetv
