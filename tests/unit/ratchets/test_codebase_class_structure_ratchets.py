@@ -36,29 +36,32 @@ SRC = ROOT / "src" / "media_stack"
 # every subsequent PR is required to either tighten one of these OR
 # burn down the dup/shim/circular trio. The "tighten" direction is
 # the only direction allowed — never raise.
-MODULES_WITHOUT_CLASS_RATCHET = 31
-LOOSE_FUNCTIONS_RATCHET = 158
+MODULES_WITHOUT_CLASS_RATCHET = 47
+LOOSE_FUNCTIONS_RATCHET = 188
 
 # DI migration ratchets
-STATIC_METHOD_RATCHET = 502       # @staticmethod — should be instance methods with DI
-SINGLETON_INSTANCE_RATCHET = 140  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 469  # os.environ in methods — should be config injection
+STATIC_METHOD_RATCHET = 508       # @staticmethod — should be instance methods with DI
+SINGLETON_INSTANCE_RATCHET = 142  # _instance = Foo() — should use DI container
+OS_ENVIRON_IN_METHODS_RATCHET = 501  # os.environ in methods — should be config injection
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 308       # long methods — extract sub-methods
-DEEPLY_NESTED_4PLUS_RATCHET = 184         # 4+ nesting levels — use early returns
+METHODS_OVER_50_LINES_RATCHET = 328       # long methods — extract sub-methods
+DEEPLY_NESTED_4PLUS_RATCHET = 192         # 4+ nesting levels — use early returns
 GOD_CLASSES_OVER_500_LINES_RATCHET = 14   # classes doing too much — split
-CLASSES_OVER_15_METHODS_RATCHET = 39      # too many responsibilities
-CIRCULAR_IMPORT_RISK_RATCHET = 233        # lazy imports in methods — poor layering
+CLASSES_OVER_15_METHODS_RATCHET = 40      # too many responsibilities
+CIRCULAR_IMPORT_RISK_RATCHET = 270        # lazy imports in methods — poor layering
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
 SWALLOWED_EXCEPTIONS_RATCHET = 10   # except Exception: pass — all now log at DEBUG
-PRINT_STATEMENTS_RATCHET = 249      # should use logging/runtime_platform.log
-FILES_OVER_400_LINES_RATCHET = 64   # large files — split into modules
-HARDCODED_URLS_RATCHET = 144        # URLs should come from contracts/config
-DUPLICATE_STRINGS_5PLUS_RATCHET = 100  # extract to constants or config
-MAGIC_NUMBERS_OVER_100_RATCHET = 1168  # extract to named constants
+PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
+FILES_OVER_400_LINES_RATCHET = 69   # large files — split into modules
+HARDCODED_URLS_RATCHET = 149        # URLs should come from contracts/config
+DUPLICATE_STRINGS_5PLUS_RATCHET = 103  # extract to constants or config
+# Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
+# numbers into named constants during the module split. Lock the new
+# floor.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1000
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

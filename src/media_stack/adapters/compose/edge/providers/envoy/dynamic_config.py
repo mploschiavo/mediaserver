@@ -124,8 +124,8 @@ class EnvoyDynamicConfigService:
 
         try:
             add(Path(__file__).resolve().parents[8])
-        except IndexError:
-            pass
+        except IndexError as exc:
+            log_swallowed(exc, "envoy-dynamic-config-repo-root-walk")
         add(Path("/opt/media-stack"))
         add(Path.cwd())
         return roots

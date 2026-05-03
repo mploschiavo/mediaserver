@@ -6,6 +6,7 @@ import shutil
 
 from media_stack.cli.workflows.teardown_models import TeardownAction, TeardownRequest
 from media_stack.cli.workflows.workflow_interfaces import CommandRunner
+from media_stack.core.logging_utils import log_swallowed
 
 
 class TeardownComposeStrategy:
@@ -50,8 +51,8 @@ class TeardownComposeStrategy:
             try:
                 self.command_runner.run_text(["docker", "compose", "version"])
                 return ("docker", "compose")
-            except Exception:
-                pass
+            except Exception as exc:
+                log_swallowed(exc, "docker-compose-v2-probe")
         if shutil.which("docker-compose") is not None:
             return ("docker-compose",)
         return ()

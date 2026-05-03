@@ -26,14 +26,14 @@ class ReleasePipelineConfigService:
         self.root_dir = root_dir
         self.image_refs = ReleaseImageReferenceService()
 
-    def read_text(self, relative_path: str) -> str:
+    def _read_repo_text(self, relative_path: str) -> str:
         return (self.root_dir / relative_path).read_text(encoding="utf-8").strip()
 
     def controller_version(self) -> str:
-        return self.read_text("VERSION")
+        return self._read_repo_text("VERSION")
 
     def ui_version(self) -> str:
-        return self.read_text("VERSION-UI")
+        return self._read_repo_text("VERSION-UI")
 
     def ui_package_version(self) -> str:
         data = json.loads((self.root_dir / "ui" / "package.json").read_text(encoding="utf-8"))

@@ -111,8 +111,8 @@ def _write_all_records(records: list[RunRecord]) -> None:
         log_swallowed(exc)
         try:
             tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as cleanup_exc:
+            log_swallowed(cleanup_exc, "run-history-tmp-cleanup")
 
 
 def _append_record(record: RunRecord) -> None:

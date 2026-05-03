@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from media_stack.core.logging_utils import log_swallowed
 from media_stack.domain.auth.users.models import AuditEntry
 
 _DEFAULT_RECENT_LIMIT = 100
@@ -272,8 +273,8 @@ class AuditLog:
                     archive_count += 1
                     try:
                         disk_bytes += sibling.stat().st_size
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        log_swallowed(exc, f"audit-archive-stat:{sibling.name}")
 
         return {
             "entry_count": entry_count,
