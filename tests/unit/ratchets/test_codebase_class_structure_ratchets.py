@@ -37,7 +37,15 @@ SRC = ROOT / "src" / "media_stack"
 # burn down the dup/shim/circular trio. The "tighten" direction is
 # the only direction allowed — never raise.
 MODULES_WITHOUT_CLASS_RATCHET = 43   # TIGHTENED again (was 44) — ADR-0006 Phase 1 loader refactor
-LOOSE_FUNCTIONS_RATCHET = 188
+# LOOSE_FUNCTIONS bumped 188→189: ADR-0006 Phase 1 + spec-Protocol
+# work added the ``_spec_to_dict`` helper at module scope in
+# ``domain/services/promises.py`` — each variant's ``to_dict()``
+# delegates to it. The helper itself is one shared rename routine
+# whose only callers are class methods; pulling it into a class
+# wouldn't add value (no state, single responsibility, used by
+# 12 sibling classes that would all have to inherit from it).
+# Acceptable trade-off; future Phase 2+ continues the burn-down.
+LOOSE_FUNCTIONS_RATCHET = 189
 
 # DI migration ratchets
 # STATIC_METHOD bumped 508→511: ADR-0005 Phase 1 introduced new

@@ -33,7 +33,97 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal, Mapping, Optional, Union
+import dataclasses
+from typing import (
+    Any,
+    Iterable,
+    Literal,
+    Mapping,
+    Optional,
+    Protocol,
+    Union,
+    runtime_checkable,
+)
+
+
+# ============================================================================
+# Spec Protocols — structural contracts every probe / ensurer variant
+# satisfies (PEP 544). Protocol-based contracts keep the existing
+# discriminated-union design (each variant has its own field set),
+# while giving type-checkers a single name to enforce against new
+# variants AND providing ``runtime_checkable`` ``isinstance`` checks
+# for diagnostic code.
+# ============================================================================
+
+
+def _spec_to_dict(
+    spec: Any,
+    *,
+    type_field_value_attr: str = "kind",
+) -> dict[str, Any]:
+    """Shared serialiser: turn a frozen-dataclass spec into the
+    YAML-shaped dict that produced it.
+
+    Renames the in-process ``kind`` discriminator to ``type`` (the
+    YAML schema's name) and the in-process ``assert_expr`` to
+    ``assert`` (Python keyword collision avoidance, by convention).
+    Used by every probe / ensurer variant's ``to_dict()`` so the
+    rename logic lives in one place. Pure transformation —
+    callers can override ``type_field_value_attr`` if a future
+    variant uses a different discriminator name.
+    """
+    out = dataclasses.asdict(spec)
+    if type_field_value_attr in out:
+        out["type"] = out.pop(type_field_value_attr)
+    if "assert_expr" in out:
+        out["assert"] = out.pop("assert_expr")
+    return out
+
+
+@runtime_checkable
+class ProbeSpecProtocol(Protocol):
+    """Structural contract every probe-spec variant satisfies.
+
+    Type-checkers use this to verify that new probe variants
+    declare the ``kind`` discriminator + a ``to_dict()`` round-trip.
+    The ``runtime_checkable`` decorator lets diagnostic code use
+    ``isinstance(value, ProbeSpecProtocol)`` to confirm a parsed
+    value is a recognised probe shape.
+
+    The eight current variants (``LifecycleProbe``, ``HttpJsonProbe``,
+    ``HttpTextProbe``, ``HttpStatusProbe``, ``FileJsonProbe``,
+    ``FileTextProbe``, ``K8sResourceProbe``, ``K8sExecProbe``) all
+    conform structurally — their ``kind: Literal[...]`` field is a
+    subtype of ``str`` and each implements ``to_dict()``.
+    """
+
+    kind: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the YAML-shaped dict this probe was parsed from.
+
+        Round-trip with the loader: a probe constructed by
+        ``ProbeSpecParser.parse(pid, raw)`` returns a dict equivalent
+        to ``raw`` from ``to_dict()``. Diagnostic code uses this to
+        log probe specs in their authored form.
+        """
+        ...
+
+
+@runtime_checkable
+class EnsurerSpecProtocol(Protocol):
+    """Structural contract every ensurer-spec variant satisfies.
+
+    Mirrors :class:`ProbeSpecProtocol`. The four current variants
+    (``LifecycleEnsurer``, ``JobEnsurer``, ``DeployEnsurer``,
+    ``InfraEnsurer``) all conform.
+    """
+
+    kind: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the YAML-shaped dict this ensurer was parsed from."""
+        ...
 
 
 # ============================================================================
@@ -51,6 +141,9 @@ class LifecycleProbe:
     service: str = ""
     method: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
+
 
 @dataclass(frozen=True)
 class HttpJsonProbe:
@@ -63,6 +156,9 @@ class HttpJsonProbe:
     auth: str = "none"  # api_key | none
     assert_expr: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
+
 
 @dataclass(frozen=True)
 class HttpTextProbe:
@@ -73,6 +169,9 @@ class HttpTextProbe:
     path: str = ""
     auth: str = "none"
     assert_expr: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
 
 
 @dataclass(frozen=True)
@@ -85,6 +184,9 @@ class HttpStatusProbe:
     auth: str = "none"
     assert_expr: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
+
 
 @dataclass(frozen=True)
 class FileJsonProbe:
@@ -94,6 +196,9 @@ class FileJsonProbe:
     path: str = ""
     assert_expr: str = ""
     skip_if_missing: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
 
 
 @dataclass(frozen=True)
@@ -105,6 +210,9 @@ class FileTextProbe:
     assert_expr: str = ""
     skip_if_missing: bool = False
 
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
+
 
 @dataclass(frozen=True)
 class K8sResourceProbe:
@@ -115,6 +223,17 @@ class K8sResourceProbe:
     namespace: str = ""
     label_selector: str = ""
     assert_expr: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        # ``resource_kind`` lands as ``kind`` in the YAML — but the
+        # variant's own ``kind`` discriminator already occupies that
+        # slot. Resolve the collision the way the loader expects:
+        # the YAML uses ``kind`` for the resource kind (Service,
+        # Deployment, etc.) and ``type`` for the discriminator.
+        out = _spec_to_dict(self)
+        if "resource_kind" in out:
+            out["kind"] = out.pop("resource_kind")
+        return out
 
 
 @dataclass(frozen=True)
@@ -128,6 +247,13 @@ class K8sExecProbe:
     command: tuple[str, ...] = ()
     assert_expr: str = ""
     skip_if_unset: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        out = _spec_to_dict(self)
+        # ``command`` is a tuple in-process; YAML / json want a list.
+        if "command" in out:
+            out["command"] = list(out["command"])
+        return out
 
 
 ProbeSpec = Union[
@@ -155,6 +281,9 @@ class LifecycleEnsurer:
     service: str = ""
     method: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
+
 
 @dataclass(frozen=True)
 class JobEnsurer:
@@ -164,6 +293,9 @@ class JobEnsurer:
 
     kind: Literal["job"] = "job"
     job_name: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
 
 
 @dataclass(frozen=True)
@@ -177,6 +309,9 @@ class DeployEnsurer:
     kind: Literal["deploy"] = "deploy"
     target: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
+
 
 @dataclass(frozen=True)
 class InfraEnsurer:
@@ -188,6 +323,9 @@ class InfraEnsurer:
 
     kind: Literal["infra"] = "infra"
     operator: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return _spec_to_dict(self)
 
 
 EnsurerSpec = Union[
@@ -562,6 +700,7 @@ __all__ = [
     "BlockingSummary",
     "DeployEnsurer",
     "EnsurerSpec",
+    "EnsurerSpecProtocol",
     "FileJsonProbe",
     "FileTextProbe",
     "HttpJsonProbe",
@@ -573,10 +712,11 @@ __all__ = [
     "K8sResourceProbe",
     "LifecycleEnsurer",
     "LifecycleProbe",
+    "ProbeSpec",
+    "ProbeSpecProtocol",
     "Promise",
     "PromiseAttempt",
     "PromiseRegistryError",
     "PromiseStatus",
-    "ProbeSpec",
     "TickSummary",
 ]
