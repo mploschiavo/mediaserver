@@ -1,8 +1,11 @@
 # ADR-0006 — Per-service promise registries
 
-**Status:** Phase 1 shipped (2026-05-03). Phase 2 (per-family
-migrations) + Phase 3 (cleanup) pending. Builds on ADR-0003
-(orchestrator primitives) and ADR-0005 (orchestrator-driven
+**Status:** Phases 1–4 shipped (2026-05-03). 30 of 52 promises
+moved to per-service yamls; 22 cross-cutting promises retained
+in a single `cross_cutting.yaml` (renamed from `promises.yaml`)
+with future themed-split deferred until growth past ~40 entries.
+Builds on ADR-0003 (orchestrator primitives) and ADR-0005
+(orchestrator-driven
 bootstrap). Doesn't unblock anything load-bearing — this is a
 locality / authoring-ergonomics improvement that compounds as new
 services ship.
@@ -401,3 +404,86 @@ file with a single commit).
   (cross-cutting persistence concern). The class refactor here
   follows the same hexagon-conformant shape ADR-0005 used —
   loader is a class, module-level function is a thin shim.
+
+## Phase 4 — cross-cutting layout (design recommendation)
+
+**Status:** design only (2026-05-03). After Phases 1–3 landed 30
+of 52 promises in their service yaml, 22 cross-cutting promises
+still live in the monolithic `contracts/promises/promises.yaml`.
+
+### Theme inventory
+
+Seven themes after the Phase 4 sweep:
+
+| Theme | Count |
+|-------|-------|
+| Scheduled jobs / job-graph | 4 |
+| DNS readiness | 1 |
+| Auth invariants | 3 |
+| K8s storage | 3 |
+| K8s pull-secrets | 3 |
+| K8s pod / network | 4 |
+| Gateway / homepage cross-cutting | 2 |
+| Bootstrap / profile config | 2 |
+
+Border cases at design time: `unpackerr-config-valid` was
+service-owned and re-homed to `services/unpackerr.yaml`. The two
+auth straddlers (`auth-overrides-is-valid-yaml-when-present`,
+`auth-actually-enforced-on-protected-services`) span Authelia /
+Authentik / controller — no single service yaml fits, so they
+stay in cross-cutting. `foundational-jobs-run-before-app-jobs`
+is a controller job-graph invariant; treated as scheduled-jobs.
+
+### Recommendation: leave as one `cross_cutting.yaml`
+
+22 promises is grep-able. Splitting into `auth.yaml` /
+`k8s.yaml` / `scheduled_jobs.yaml` would require (a) widening
+`PromiseRegistryLoader._iter_cross_cutting` to walk a glob, (b)
+rewriting every `LegacyMonolithDoesNotContain*` ratchet (they
+read raw YAML text via `cross_cutting.yaml.read_text()`), and (c)
+re-opening "where does this go?" for every border case. The
+locality win is weak — the per-service split already captured
+strong-locality for the 30 service-owned promises, and at 22
+entries the cross-cutting file fits in a single grep.
+
+### What Phase 4 actually does
+
+1. **Renames** `contracts/promises/promises.yaml` →
+   `contracts/promises/cross_cutting.yaml`. The loader's
+   `ContractsLocator.cross_cutting_yaml` already prefers the
+   new filename and falls back to the legacy one — runtime
+   no-op.
+2. **Re-homes** `unpackerr-config-valid` into
+   `services/unpackerr.yaml::plugin.promises` — it escaped
+   Phase 2 because the section header in the monolith was
+   "Unpackerr config integrity" and Phase 2's `id:` filter
+   missed it.
+3. **Drops the stale `ADR-0003 lifecycle-shaped promises (Phase
+   4a)`** divider — the lifecycle-shaped section has been
+   empty since the Jellyfin family migrated in Phase 2.
+4. **Section dividers stay platform-axis** in the YAML for now.
+   The agent investigation flagged them as potentially
+   misleading (themes don't perfectly align with platforms),
+   but rewriting them to theme-axis is a non-trivial 30+ LOC
+   re-shuffle that doesn't change runtime — it's polish. Defer
+   to a follow-up if a future regression surfaces it.
+
+### Deferred
+
+- **Themed splitting** — revisit if cross-cutting grows past
+  ~40 promises. The current 22 doesn't justify the loader +
+  ratchet churn.
+- **Eligibility ratchet** — encode "what belongs in
+  `cross_cutting.yaml`" as `tests/unit/contracts/test_cross_cutting_eligibility.py`:
+  a promise is cross-cutting iff `probe.service` is empty, OR
+  `ensured_by ∈ {kubectl-apply, operator, seed-runtime-overrides}`,
+  OR the probe references multiple services. Useful but not
+  load-bearing today; queue when a misclassification regression
+  appears.
+
+### Reversibility
+
+Trivial. Both file-rename (loader prefers new but reads old)
+and the unpackerr re-home (single-commit revert) are reversible.
+Future themed splitting layers on top by widening the glob in
+`_iter_cross_cutting`; the per-entry parser is unchanged.

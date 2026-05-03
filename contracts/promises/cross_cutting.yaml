@@ -165,30 +165,6 @@ promises:
         and any(j.get('name') == 'envoy-config' and j.get('phase') == 'infrastructure'
                 for j in (response.get('jobs') or []))
 
-  # --- Unpackerr config integrity ----------------------------------------
-  - id: unpackerr-config-valid
-    description: Unpackerr config has resolved arr URLs (not literal service_internal_url() text)
-    ensured_by: unpackerr-post
-    platforms: [compose, k8s]
-    # v1.0.150 shipped a bug where the config writer emitted
-    # ``url = service_internal_url("sonarr")`` as literal TOML text
-    # (forgot to CALL the function). Unpackerr's TOML parser choked
-    # and the container went CrashLoop. The fresh-install path ran
-    # preflight ONCE with the broken image, wrote a broken conf, and
-    # never re-wrote it — even after the image was upgraded. This
-    # probe catches both the original bug AND any future "the config
-    # on disk is stale and references a function name instead of a
-    # URL" regression.
-    probe:
-      type: file_text
-      path: unpackerr/unpackerr.conf
-      assert: |
-        'service_internal_url' not in data
-        and ('url = "http://sonarr:8989"' in data
-             or 'url = "http://radarr:7878"' in data
-             or 'url = "http://lidarr:8686"' in data
-             or 'url = "http://readarr:8787"' in data)
-
   - id: dns-readiness-banner-data
     description: Routing-probe endpoint returns enough data for the dashboard's DNS banner to render
     ensured_by: envoy-config
@@ -553,18 +529,6 @@ promises:
           c.get('metadata', {}).get('name') == 'media-stack-controller-profile'
           for c in resources
         )
-
-  # --- ADR-0003 lifecycle-shaped promises (Phase 4a) -----------------------
-  # First entries that consume the new ``lifecycle`` probe + ensurer
-  # types. The Phase 4b orchestrator dispatches against these; today
-  # they're loaded by the registry but the legacy bootstrap pipeline
-  # is still primary. Phase 4c expands the set; Phase 5 flips the
-  # switch.
-
-  # ADR-0006 Phase 2: Jellyfin family (``jellyfin-running``,
-  # ``jellyfin-api-key-discoverable``) migrated to
-  # ``contracts/services/jellyfin.yaml::plugin.promises:``. See the
-  # ADR-0005 Phase 2 family-proof comment in that file.
 
   - id: overrides-seeded-at-bootstrap
     description: routing-overrides.yaml exists on the controller PVC after bootstrap (seeded from profile)

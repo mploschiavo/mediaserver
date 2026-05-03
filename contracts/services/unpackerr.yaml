@@ -26,3 +26,32 @@ plugin:
       phase: post
       priority: 60
       requires: []
+
+  # Per-service registry split — Phase 2 missed unpackerr because
+  # the promise's id starts with ``unpackerr-`` and lives in the
+  # cross-cutting registry, but the probe (``unpackerr/unpackerr.conf``)
+  # and the ensurer (``unpackerr-post``) are both unpackerr-owned.
+  # Re-homing it here as part of ADR-0006 Phase 4.
+  promises:
+    - id: unpackerr-config-valid
+      description: Unpackerr config has resolved arr URLs (not literal service_internal_url() text)
+      ensured_by: unpackerr-post
+      platforms: [compose, k8s]
+      # v1.0.150 shipped a bug where the config writer emitted
+      # ``url = service_internal_url("sonarr")`` as literal TOML text
+      # (forgot to CALL the function). Unpackerr's TOML parser choked
+      # and the container went CrashLoop. The fresh-install path ran
+      # preflight ONCE with the broken image, wrote a broken conf, and
+      # never re-wrote it — even after the image was upgraded. This
+      # probe catches both the original bug AND any future "the config
+      # on disk is stale and references a function name instead of a
+      # URL" regression.
+      probe:
+        type: file_text
+        path: unpackerr/unpackerr.conf
+        assert: |
+          'service_internal_url' not in data
+          and ('url = "http://sonarr:8989"' in data
+               or 'url = "http://radarr:7878"' in data
+               or 'url = "http://lidarr:8686"' in data
+               or 'url = "http://readarr:8787"' in data)
