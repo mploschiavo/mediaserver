@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Operator CLI for ``satisfy_promises``.
+"""Operator CLI for ``PromiseOrchestrator.tick``.
 
 Run one orchestration tick and print a per-promise table. Useful for:
 
@@ -23,6 +23,13 @@ Output (table mode):
 
 Exit code: 0 when no promises are in failed/dep_failed/unknown
 states; 1 otherwise. Suitable for ``&& echo OK || echo FAIL``.
+
+Implementation note: the heavy lifting lives on
+:class:`OrchestratorEvalCommand` so the CLI's argument parsing,
+output rendering, and orchestrator wiring are all instance methods
+testable in isolation. The module-level :func:`main` is a thin entry
+point that constructs the command with the real ``sys.stdout`` /
+``sys.stderr`` and delegates.
 """
 
 from __future__ import annotations
@@ -31,106 +38,188 @@ import argparse
 import json
 import logging
 import sys
-from typing import Sequence
+from typing import Any, Sequence, TextIO
 
-from media_stack.application.services.orchestrator import satisfy_promises
+from media_stack.application.services.orchestrator import (
+    PromiseOrchestrator,
+    satisfy_promises,
+)
+from media_stack.domain.services.promises import TickSummary
 
 
-def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="bin/ops/orchestrator-eval.sh",
-        description="Run one orchestrator tick and print results.",
-    )
-    parser.add_argument(
-        "--platform", default="compose", choices=("compose", "k8s"),
-        help="Filter promises by platform (default: compose)",
-    )
-    parser.add_argument(
-        "--apply", action="store_true",
-        help="Actually run ensurers when probes fail. Default is dry-run.",
-    )
-    parser.add_argument(
-        "--json", dest="json_out", action="store_true",
-        help="Print one JSON object per promise + a summary line. "
-             "Default is a human-readable table.",
-    )
-    parser.add_argument(
-        "--workers", type=int, default=8,
-        help="ThreadPoolExecutor size for parallel probes (default: 8)",
-    )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true",
-        help="Set log level to DEBUG (default: INFO)",
-    )
-    return parser.parse_args(argv)
+_DEFAULT_WORKERS = 8
+
+
+class OrchestratorEvalCommand:
+    """One-tick orchestrator CLI.
+
+    Constructed with an output stream + a tick callable; the default
+    callable invokes :func:`satisfy_promises` (the module-level shim
+    around :class:`PromiseOrchestrator`). Tests inject a fake
+    callable + a ``StringIO`` stream so behavior is exercised without
+    touching the real orchestrator or stdout.
+    """
+
+    _PROG = "bin/ops/orchestrator-eval.sh"
+    _DESCRIPTION = "Run one orchestrator tick and print results."
+
+    def __init__(
+        self,
+        *,
+        out: TextIO | None = None,
+        err: TextIO | None = None,
+        tick_callable: Any = None,
+        configure_logging: bool = True,
+    ) -> None:
+        self._out: TextIO = out if out is not None else sys.stdout
+        self._err: TextIO = err if err is not None else sys.stderr
+        self._tick_callable = (
+            tick_callable if tick_callable is not None else satisfy_promises
+        )
+        self._configure_logging = configure_logging
+
+    # ------------------------------------------------------------------
+    # Entry point
+    # ------------------------------------------------------------------
+
+    def run(self, argv: Sequence[str] | None = None) -> int:
+        args = self._parse_args(argv)
+        if self._configure_logging:
+            self._setup_logging(verbose=args.verbose)
+
+        summary: TickSummary = self._tick_callable(
+            platform=args.platform,
+            dry_run=not args.apply,
+            workers=args.workers,
+        )
+
+        if args.json_out:
+            self._print_json(summary)
+        else:
+            self._print_table(summary)
+
+        return 0 if not summary.has_failures else 1
+
+    # ------------------------------------------------------------------
+    # Argparse + logging setup
+    # ------------------------------------------------------------------
+
+    def _parse_args(self, argv: Sequence[str] | None) -> argparse.Namespace:
+        parser = argparse.ArgumentParser(
+            prog=self._PROG,
+            description=self._DESCRIPTION,
+        )
+        parser.add_argument(
+            "--platform", default="compose", choices=("compose", "k8s"),
+            help="Filter promises by platform (default: compose)",
+        )
+        parser.add_argument(
+            "--apply", action="store_true",
+            help="Actually run ensurers when probes fail. Default is dry-run.",
+        )
+        parser.add_argument(
+            "--json", dest="json_out", action="store_true",
+            help="Print one JSON object per promise + a summary line. "
+                 "Default is a human-readable table.",
+        )
+        parser.add_argument(
+            "--workers", type=int, default=_DEFAULT_WORKERS,
+            help=f"ThreadPoolExecutor size for parallel probes "
+                 f"(default: {_DEFAULT_WORKERS})",
+        )
+        parser.add_argument(
+            "--verbose", "-v", action="store_true",
+            help="Set log level to DEBUG (default: INFO)",
+        )
+        return parser.parse_args(argv)
+
+    def _setup_logging(self, *, verbose: bool) -> None:
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format="%(levelname)s %(name)s: %(message)s",
+            stream=self._err,
+        )
+
+    # ------------------------------------------------------------------
+    # Output rendering
+    # ------------------------------------------------------------------
+
+    def _print_json(self, summary: TickSummary) -> None:
+        for attempt in summary.attempts:
+            print(json.dumps(attempt.to_dict()), file=self._out)
+        print(
+            json.dumps({"summary": self._summary_dict(summary)}),
+            file=self._out,
+        )
+
+    def _print_table(self, summary: TickSummary) -> None:
+        name_width = max(
+            (len(a.promise_id) for a in summary.attempts),
+            default=20,
+        )
+        name_width = min(max(name_width, 20), 50)
+        status_width = 18
+        elapsed_width = 8
+        header = (
+            f"{'PROMISE':<{name_width}}  "
+            f"{'STATUS':<{status_width}}  "
+            f"{'ELAPSED':>{elapsed_width}}  "
+            "DETAIL"
+        )
+        print(header, file=self._out)
+        print(
+            "-" * (name_width + status_width + elapsed_width + 30),
+            file=self._out,
+        )
+        for a in sorted(
+            summary.attempts,
+            key=lambda x: (x.status != "ok", x.promise_id),
+        ):
+            elapsed_str = f"{int(a.elapsed_seconds * 1000)}ms"
+            detail = (a.detail or "")[:80]
+            row = (
+                f"{a.promise_id:<{name_width}}  "
+                f"{a.status:<{status_width}}  "
+                f"{elapsed_str:>{elapsed_width}}  "
+                f"{detail}"
+            )
+            print(row, file=self._out)
+        print(file=self._out)
+        print(
+            f"summary: {summary.summary_line()} "
+            f"({summary.elapsed_seconds:.2f}s wall)",
+            file=self._out,
+        )
+
+    @staticmethod
+    def _summary_dict(summary: TickSummary) -> dict[str, Any]:
+        return {
+            "total": summary.total,
+            "ok": summary.ok,
+            "failed_transient": summary.failed_transient,
+            "failed_permanent": summary.failed_permanent,
+            "dep_failed": summary.dep_failed,
+            "skipped_cooldown": summary.skipped_cooldown,
+            "skipped_platform": summary.skipped_platform,
+            "unknown": summary.unknown,
+            "elapsed_seconds": summary.elapsed_seconds,
+        }
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
-
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(levelname)s %(name)s: %(message)s",
-        stream=sys.stderr,
-    )
-
-    summary = satisfy_promises(
-        platform=args.platform,
-        dry_run=not args.apply,
-        workers=args.workers,
-    )
-
-    if args.json_out:
-        for attempt in summary.attempts:
-            print(json.dumps(attempt.to_dict()))
-        print(json.dumps({
-            "summary": {
-                "total": summary.total,
-                "ok": summary.ok,
-                "failed_transient": summary.failed_transient,
-                "failed_permanent": summary.failed_permanent,
-                "dep_failed": summary.dep_failed,
-                "skipped_cooldown": summary.skipped_cooldown,
-                "skipped_platform": summary.skipped_platform,
-                "unknown": summary.unknown,
-                "elapsed_seconds": summary.elapsed_seconds,
-            },
-        }))
-    else:
-        _print_table(summary)
-
-    return 0 if not summary.has_failures else 1
+    """Module-level entry point. Constructs an
+    :class:`OrchestratorEvalCommand` against the real stdout/stderr
+    and delegates."""
+    return OrchestratorEvalCommand().run(argv)
 
 
-def _print_table(summary) -> None:  # noqa: ANN001
-    name_width = max(
-        (len(a.promise_id) for a in summary.attempts),
-        default=20,
-    )
-    name_width = min(max(name_width, 20), 50)
-    status_width = 18
-    elapsed_width = 8
-    print(
-        f"{'PROMISE':<{name_width}}  "
-        f"{'STATUS':<{status_width}}  "
-        f"{'ELAPSED':>{elapsed_width}}  "
-        "DETAIL",
-    )
-    print("-" * (name_width + status_width + elapsed_width + 30))
-    for a in sorted(summary.attempts, key=lambda x: (x.status != "ok", x.promise_id)):
-        elapsed_str = f"{int(a.elapsed_seconds * 1000)}ms"
-        detail = (a.detail or "")[:80]
-        print(
-            f"{a.promise_id:<{name_width}}  "
-            f"{a.status:<{status_width}}  "
-            f"{elapsed_str:>{elapsed_width}}  "
-            f"{detail}",
-        )
-    print()
-    print(
-        f"summary: {summary.summary_line()} "
-        f"({summary.elapsed_seconds:.2f}s wall)",
-    )
+# Re-export for callers that want to programmatically configure a
+# different orchestrator (test harnesses, CI smoke checks).
+__all__ = [
+    "OrchestratorEvalCommand",
+    "PromiseOrchestrator",
+    "main",
+]
 
 
 if __name__ == "__main__":

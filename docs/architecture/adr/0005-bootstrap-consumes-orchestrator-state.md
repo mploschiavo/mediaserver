@@ -1,8 +1,50 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Draft (2026-05-02). Builds on ADR-0003 (orchestrator) and
-ADR-0004 (verifier). Multi-week migration. Unblocks ADR-0003 Phase
-5e.3+ deletions.
+**Status:** Phase 1 shipped (2026-05-03). Phase 2+ still in
+migration. Builds on ADR-0003 (orchestrator) and ADR-0004
+(verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
+
+Phase 1 deliverables are landed (test-only — no behavior change in
+the bootstrap DAG yet):
+
+- ``Promise.bootstrap_blocking: bool = True`` field + YAML loader
+  acceptance + strict bool validation. Default ``True`` preserves
+  conservative wait-on-everything semantics until operators
+  explicitly opt promises OUT.
+- ``BlockingSummary`` domain dataclass + ``BlockingSummary.at``
+  classmethod factory.
+- ``PromiseOrchestrator`` class wraps ``tick()`` (single tick,
+  formerly the loose ``satisfy_promises`` function) and
+  ``tick_until_done()`` (multi-tick blocking loop with timeout +
+  permanent-failure abort + tick interval). Helper classes
+  ``PromiseGraph``, ``ProbeStatusInterpreter``, and
+  ``BlockingLoopGuard`` carry the topology / status-mapping /
+  termination-predicate concerns out of the orchestrator body.
+- ``OrchestratorJobHandler`` class hierarchy in
+  ``application/jobs/orchestrator_satisfy.py`` —
+  ``OrchestratorShadowJobHandler`` (the existing 60s auto-heal
+  tick) and ``OrchestratorBootstrapJobHandler`` (new, calls
+  ``tick_until_done``) share env-knob / live-services /
+  history-emit plumbing. Module-level ``satisfy_shadow`` /
+  ``satisfy_blocking`` functions are thin shims over singleton
+  instances so contract YAMLs that name a function path resolve
+  unchanged.
+- ``contracts/services/guardrails.yaml`` registers
+  ``bootstrap:satisfy-promises`` in a new ``orchestrator_satisfy``
+  phase that the bootstrap DAG loader's ``phase_order`` doesn't
+  know about. The job is discoverable via ``run_job(name)`` and
+  the contract registry, but is NOT scheduled as part of any
+  bootstrap or auto-heal cycle yet.
+- 59 unit tests covering Promise field validation, blocking-loop
+  guard predicates, all three ``tick_until_done`` termination
+  paths, env-knob parsing on the bootstrap handler, and CLI
+  smoke. The 26 pre-existing orchestrator tests continue to pass
+  against the class refactor with no behavioural change.
+
+Phase 1 is intentionally landing-zone-only: zero promises have
+been annotated with ``bootstrap_blocking: false`` yet, and the
+bootstrap DAG continues to schedule its existing per-job
+ensurers. Phase 2 (Jellyfin family proof) is the first cutover.
 
 ## Context
 

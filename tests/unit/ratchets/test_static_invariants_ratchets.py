@@ -88,6 +88,15 @@ class ContractJobPhaseValid(unittest.TestCase):
         "media_server",
         "default",
         "post",
+        # ADR-0005 Phase 1 (2026-05-03): a phase name the bootstrap
+        # DAG loader's ``phase_order`` deliberately doesn't know
+        # about. Jobs in this phase are discoverable by name (so
+        # ``run_job("bootstrap:satisfy-promises")`` works and tests
+        # find them) but never scheduled into a bootstrap or auto-
+        # heal cycle. Phase 2 of the migration is the first cutover
+        # that promotes the job out of this holding area into the
+        # real DAG.
+        "orchestrator_satisfy",
         None,  # absent ⇒ default phase
     }
 

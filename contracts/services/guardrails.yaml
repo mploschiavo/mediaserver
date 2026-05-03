@@ -96,3 +96,24 @@ plugin:
       phase: post
       priority: 70
       requires: []
+
+    # ADR-0005 Phase 1 — blocking ``satisfy_promises_blocking`` cycle.
+    # Sibling of ``orchestrator:satisfy-shadow``: same orchestrator
+    # primitive, but loops until every ``bootstrap_blocking=True``
+    # promise reaches ``ok`` (or one fails permanently / the timeout
+    # elapses). The job is REGISTERED here so the dispatcher can
+    # resolve it and tests + manual ``run-controller-job`` calls
+    # find it, but it is NOT part of the bootstrap DAG yet — Phase 2
+    # of the migration is the first cutover that wires it in.
+    #
+    # Knobs (env-var):
+    #   BOOTSTRAP_PROMISE_TIMEOUT       — float seconds (default 240)
+    #   BOOTSTRAP_PROMISE_TICK_INTERVAL — float seconds (default 5)
+    #   ORCHESTRATOR_LIVE_SERVICES      — same allowlist as shadow
+    "bootstrap:satisfy-promises":
+      handler: "media_stack.application.jobs.orchestrator_satisfy:satisfy_blocking"
+      label: "Bootstrap blocking promise satisfaction (ADR-0005 Phase 1)"
+      phase: orchestrator_satisfy
+      priority: 10
+      requires: []
+      non_blocking: false

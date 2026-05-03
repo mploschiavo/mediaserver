@@ -10,6 +10,13 @@ Pin the contract that the auto-heal cycle relies on:
   * Per-promise records are NOT emitted (the no-op default keeps
     run-history bounded).
   * Handler is registered in the guardrails contract YAML.
+
+ADR-0005 Phase 1 reshaped the module to a class-based handler
+hierarchy. The tests construct ``OrchestratorShadowJobHandler``
+directly with an injected ``env_provider`` mapping rather than
+monkey-patching ``os.environ``; the legacy module-level
+``satisfy_shadow`` function still resolves and is covered by a
+single delegation test.
 """
 
 from __future__ import annotations
@@ -24,31 +31,31 @@ class _StubCtx:
 
 
 class TestPlatformDetection:
-    def test_kubernetes_service_host_implies_k8s(self, monkeypatch) -> None:
-        monkeypatch.delenv("MEDIA_STACK_RUNTIME", raising=False)
-        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
-        from media_stack.application.jobs.orchestrator_satisfy import (
-            _detect_platform,
-        )
-        assert _detect_platform() == "k8s"
+    """Construct the handler with an explicit env_provider so the
+    test doesn't have to fight ``os.environ`` mutations."""
 
-    def test_no_env_defaults_to_compose(self, monkeypatch) -> None:
-        monkeypatch.delenv("MEDIA_STACK_RUNTIME", raising=False)
-        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+    def _handler(self, env: dict[str, str]):
         from media_stack.application.jobs.orchestrator_satisfy import (
-            _detect_platform,
+            OrchestratorShadowJobHandler,
         )
-        assert _detect_platform() == "compose"
+        return OrchestratorShadowJobHandler(env_provider=env)
 
-    def test_explicit_override_wins(self, monkeypatch) -> None:
+    def test_kubernetes_service_host_implies_k8s(self) -> None:
+        handler = self._handler({"KUBERNETES_SERVICE_HOST": "10.96.0.1"})
+        assert handler.detect_platform() == "k8s"
+
+    def test_no_env_defaults_to_compose(self) -> None:
+        handler = self._handler({})
+        assert handler.detect_platform() == "compose"
+
+    def test_explicit_override_wins(self) -> None:
         # Operator may set MEDIA_STACK_RUNTIME=compose on a host that
         # otherwise looks like k8s (sidecar deploys, CI runners, etc.).
-        monkeypatch.setenv("MEDIA_STACK_RUNTIME", "compose")
-        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
-        from media_stack.application.jobs.orchestrator_satisfy import (
-            _detect_platform,
-        )
-        assert _detect_platform() == "compose"
+        handler = self._handler({
+            "MEDIA_STACK_RUNTIME": "compose",
+            "KUBERNETES_SERVICE_HOST": "10.96.0.1",
+        })
+        assert handler.detect_platform() == "compose"
 
 
 class TestHandlerContract:
@@ -75,9 +82,10 @@ class TestHandlerContract:
             return_value=fake_summary,
         ) as mock_satisfy:
             from media_stack.application.jobs.orchestrator_satisfy import (
-                satisfy_shadow,
+                OrchestratorShadowJobHandler,
             )
-            result = satisfy_shadow(_StubCtx())
+            handler = OrchestratorShadowJobHandler(env_provider={})
+            result = handler.run(_StubCtx())
 
         kwargs = mock_satisfy.call_args.kwargs
         assert kwargs["dry_run"] is True, (
@@ -94,9 +102,11 @@ class TestHandlerContract:
         # records don't flood run-history. Cooldown state file holds
         # the per-promise current state; tick-level record holds the
         # aggregate.
-        from media_stack.application.jobs.orchestrator_satisfy import _no_op_emit
-        # Calling it should do nothing (return None) without raising.
-        assert _no_op_emit(None, None, "probe") is None
+        from media_stack.application.jobs.orchestrator_satisfy import (
+            OrchestratorJobHandler,
+        )
+        # Calling the static no-op should do nothing (return None) without raising.
+        assert OrchestratorJobHandler._no_op_emit(None, None, "probe") is None
 
     def test_returns_summary_fields_for_run_history(self) -> None:
         # JobRunner stores the result dict's fields verbatim — they
@@ -120,9 +130,10 @@ class TestHandlerContract:
             return_value=fake_summary,
         ):
             from media_stack.application.jobs.orchestrator_satisfy import (
-                satisfy_shadow,
+                OrchestratorShadowJobHandler,
             )
-            result = satisfy_shadow(_StubCtx())
+            handler = OrchestratorShadowJobHandler(env_provider={})
+            result = handler.run(_StubCtx())
 
         # Operator-visible bucket counts
         assert result["total"] == 10
@@ -131,46 +142,64 @@ class TestHandlerContract:
         assert result["failed_permanent_count"] == 0
         assert result["elapsed"] == pytest.approx(1.5)
 
+    def test_module_level_function_delegates_to_singleton(self) -> None:
+        # Contract YAMLs reference ``...orchestrator_satisfy:satisfy_shadow``
+        # as the handler path. Pin that the function still resolves and
+        # delegates to the singleton handler.
+        fake_summary = MagicMock()
+        fake_summary.has_failures = False
+        fake_summary.elapsed_seconds = 0.1
+        fake_summary.summary_line.return_value = "1 ok"
+        fake_summary.total = 1
+        fake_summary.ok = 1
+        fake_summary.failed_transient = 0
+        fake_summary.failed_permanent = 0
+        fake_summary.dep_failed = 0
+        fake_summary.skipped_cooldown = 0
+        fake_summary.skipped_platform = 0
+        fake_summary.unknown = 0
+
+        with patch(
+            "media_stack.application.services.orchestrator.satisfy_promises",
+            return_value=fake_summary,
+        ):
+            from media_stack.application.jobs.orchestrator_satisfy import (
+                satisfy_shadow,
+            )
+            result = satisfy_shadow(_StubCtx())
+        assert result["status"] == "ok"
+
 
 class TestLiveServicesEnv:
     """Phase 5a rollout knob: ``ORCHESTRATOR_LIVE_SERVICES`` env is
     parsed into the ``live_services`` allowlist. Operators flip this
     without rebuilding to expand the rollout family-by-family."""
 
-    def test_unset_env_yields_no_allowlist(self, monkeypatch) -> None:
-        monkeypatch.delenv("ORCHESTRATOR_LIVE_SERVICES", raising=False)
+    def _handler(self, env: dict[str, str]):
         from media_stack.application.jobs.orchestrator_satisfy import (
-            _live_services_from_env,
+            OrchestratorShadowJobHandler,
         )
-        assert _live_services_from_env() is None
+        return OrchestratorShadowJobHandler(env_provider=env)
 
-    def test_empty_string_yields_no_allowlist(self, monkeypatch) -> None:
-        monkeypatch.setenv("ORCHESTRATOR_LIVE_SERVICES", "")
-        from media_stack.application.jobs.orchestrator_satisfy import (
-            _live_services_from_env,
-        )
-        assert _live_services_from_env() is None
+    def test_unset_env_yields_no_allowlist(self) -> None:
+        assert self._handler({}).live_services_from_env() is None
 
-    def test_single_service(self, monkeypatch) -> None:
+    def test_empty_string_yields_no_allowlist(self) -> None:
+        handler = self._handler({"ORCHESTRATOR_LIVE_SERVICES": ""})
+        assert handler.live_services_from_env() is None
+
+    def test_single_service(self) -> None:
         # Phase 5a: jellyfin only.
-        monkeypatch.setenv("ORCHESTRATOR_LIVE_SERVICES", "jellyfin")
-        from media_stack.application.jobs.orchestrator_satisfy import (
-            _live_services_from_env,
-        )
-        assert _live_services_from_env() == frozenset({"jellyfin"})
+        handler = self._handler({"ORCHESTRATOR_LIVE_SERVICES": "jellyfin"})
+        assert handler.live_services_from_env() == frozenset({"jellyfin"})
 
-    def test_multiple_services_with_whitespace_normalize(
-        self, monkeypatch,
-    ) -> None:
+    def test_multiple_services_with_whitespace_normalize(self) -> None:
         # Operators may add whitespace; case is normalized to lower
         # so YAML-author conventions don't have to match.
-        monkeypatch.setenv(
-            "ORCHESTRATOR_LIVE_SERVICES", " Jellyfin , sonarr,RADARR ",
-        )
-        from media_stack.application.jobs.orchestrator_satisfy import (
-            _live_services_from_env,
-        )
-        assert _live_services_from_env() == frozenset(
+        handler = self._handler({
+            "ORCHESTRATOR_LIVE_SERVICES": " Jellyfin , sonarr,RADARR ",
+        })
+        assert handler.live_services_from_env() == frozenset(
             {"jellyfin", "sonarr", "radarr"},
         )
 
