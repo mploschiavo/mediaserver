@@ -405,10 +405,18 @@ promises:
         )
 
   # --- Jellyfin libraries -------------------------------------------------
+  # ADR-0005 Phase 2 — third member of the Jellyfin family proof.
+  # Annotated with explicit ``bootstrap_blocking: true`` so bootstrap
+  # waits for the four required user-media libraries to exist before
+  # declaring done. Ensurer is the legacy ``ensure-jellyfin-libraries``
+  # job, which is phase-driven today; the orchestrator's promise
+  # dispatch reaches the same handler when ``bootstrap:satisfy-promises``
+  # finds the library set incomplete.
   - id: jellyfin-libraries
     description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
     ensured_by: ensure-jellyfin-libraries
     platforms: [compose, k8s]
+    bootstrap_blocking: true
     probe:
       type: http_json
       service: jellyfin
@@ -999,9 +1007,19 @@ promises:
   # is still primary. Phase 4c expands the set; Phase 5 flips the
   # switch.
 
+  # ADR-0005 Phase 2 — Jellyfin family proof. The three Jellyfin
+  # promises below carry an EXPLICIT ``bootstrap_blocking: true`` so
+  # the intent is visible to future readers (default is True; the
+  # annotation documents that bootstrap waits on these).
+  # ``jellyfin:ensure-api-key`` no longer has ``phase: post`` in
+  # ``contracts/services/jellyfin.yaml`` — the bootstrap-time path is
+  # now ``bootstrap:satisfy-promises`` evaluating
+  # ``jellyfin-api-key-discoverable`` and dispatching the
+  # ``LifecycleEnsurer:jellyfin:mint_api_key`` ensurer below.
   - id: jellyfin-running
     description: Jellyfin HTTP endpoint is responsive (probe via lifecycle)
     platforms: [compose, k8s]
+    bootstrap_blocking: true
     probe:
       type: lifecycle
       service: jellyfin
@@ -1017,6 +1035,7 @@ promises:
   - id: jellyfin-api-key-discoverable
     description: Jellyfin api key discoverable in env or controller-readable SQLite
     platforms: [compose, k8s]
+    bootstrap_blocking: true
     depends_on: [jellyfin-running]
     probe:
       type: lifecycle

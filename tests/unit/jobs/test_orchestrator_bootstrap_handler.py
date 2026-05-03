@@ -245,14 +245,23 @@ class TestBootstrapHandlerRegistration:
         assert entry["handler"] == (
             "media_stack.application.jobs.orchestrator_satisfy:satisfy_blocking"
         )
-        # Phase 1 ships the primitive but DOES NOT wire into the
-        # bootstrap DAG — it lives in a phase the loader's
-        # phase_order doesn't know about, so it's discoverable by
-        # name but never scheduled.
-        assert entry["phase"] == "orchestrator_satisfy", (
-            "phase changed from orchestrator_satisfy — Phase 2 is the "
-            "first cutover that promotes this into the bootstrap DAG; "
-            "if you're updating phase, double-check the migration plan."
+        # Phase 2 (2026-05-03) graduated the synthetic job into
+        # ``post`` priority 100 — it now runs as the FINAL step of
+        # the post phase. The Phase-1 holding-area phase
+        # ``orchestrator_satisfy`` was retired; pin the new shape
+        # here so a Phase-2 revert is intentional. The richer
+        # placement ratchet lives at
+        # ``tests/unit/contracts/test_adr_0005_phase_2_cutover.py``.
+        assert entry["phase"] == "post", (
+            f"phase changed from 'post' to {entry['phase']!r} — "
+            "Phase 2 graduated the synthetic job into the post "
+            "phase. If you're moving it, update the placement "
+            "ratchet too."
+        )
+        assert entry["priority"] >= 100, (
+            "bootstrap:satisfy-promises must run AFTER all other "
+            "post-phase ensurers (priority 100+); see "
+            "test_adr_0005_phase_2_cutover.py for the full ratchet."
         )
 
     def test_discoverable_via_contract_loader(self) -> None:
