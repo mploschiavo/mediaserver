@@ -1,10 +1,59 @@
 # ADR-0006 — Per-service promise registries
 
-**Status:** Draft (2026-05-03). Builds on ADR-0003 (orchestrator
-primitives) and ADR-0005 (orchestrator-driven bootstrap). Multi-week
-migration. Doesn't unblock anything load-bearing — this is a
+**Status:** Phase 1 shipped (2026-05-03). Phase 2 (per-family
+migrations) + Phase 3 (cleanup) pending. Builds on ADR-0003
+(orchestrator primitives) and ADR-0005 (orchestrator-driven
+bootstrap). Doesn't unblock anything load-bearing — this is a
 locality / authoring-ergonomics improvement that compounds as new
 services ship.
+
+Phase 1 deliverables landed:
+
+- ``infrastructure/promises/registry.py`` refactored into a class
+  hierarchy: :class:`ContractsLocator` (dev/container path
+  resolution), :class:`ProbeSpecParser` + :class:`EnsurerSpecParser`
+  (Strategy + Dispatch Table over the discriminated unions),
+  :class:`PromiseEntryParser` (composition over the two parsers),
+  :class:`PromiseRegistryLoader` (Repository / Aggregator over
+  per-service + cross-cutting sources), :class:`PromiseRegistryResult`
+  (frozen result-bundle with promise list + source-path map +
+  warnings).
+- Module-level ``load_registry`` / ``default_registry_path`` /
+  ``default_contracts_root`` preserved as thin shims over default-
+  instantiated class instances. The ``load_registry(path=...)``
+  single-file form (used by ``test_promises_registry_loader.py``)
+  keeps working unchanged.
+- Loader walks BOTH sources: ``contracts/services/*.yaml::plugin.promises``
+  AND ``contracts/promises/cross_cutting.yaml`` (with fallback to
+  the legacy ``promises.yaml`` for the deprecation grace window).
+  Today the per-service walk reports zero entries — Phase 2 starts
+  filling them.
+- Cross-file validation runs at every ``aggregate()`` call:
+  * Duplicate id across files → :class:`PromiseRegistryError` with
+    BOTH source paths in the message.
+  * ``depends_on`` references unknown promise → error with the
+    parent promise id + the unresolvable dep id.
+  * Ensurer-reference cross-file warnings — placeholder; Phase 2
+    populates the warning messages once per-service migrations
+    establish the expected co-location pattern.
+- 21 new tests at
+  ``tests/unit/infrastructure/test_promise_registry_loader_aggregation.py``
+  pin the aggregation, validation, parser dispatch, and locator
+  behaviour. The 56 existing tests covering the orchestrator,
+  blocking loop, contract integration, and dispatch ratchets
+  continue to pass against the refactor with no behavioural change.
+
+What's still TODO before Phase 2:
+
+- Per-family migrations (one commit per service family). Order:
+  Jellyfin first (matches ADR-0005 Phase 2's family proof), then
+  Servarr (sonarr/radarr/lidarr/readarr/prowlarr together), then
+  qBit/SAB, Bazarr, Jellyseerr, Maintainerr, Authelia/Authentik,
+  Homepage/FlareSolverr, gateway/envoy.
+- After each family lands, re-run ``bin/ops/orchestrator-eval`` on
+  compose to confirm the promise set is unchanged byte-for-byte.
+- Add the cross-file ensurer-resolution warning logic (Phase 2 work
+  — needs the family-by-family expected pattern locked in first).
 
 ## Context
 
