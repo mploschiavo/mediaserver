@@ -61,6 +61,98 @@ plugin:
       phase: post
       priority: 80
       requires: []
+
+  # ADR-0006 Phase 3 — Servarr family migration. The Sonarr-side
+  # promises live HERE alongside the service's jobs / lifecycle_class
+  # declarations rather than in the monolithic
+  # ``contracts/promises/promises.yaml``. Co-locating means a "what
+  # does Sonarr guarantee at bootstrap?" audit is one file read;
+  # renaming ``ensure-arr-jellyfin-notifier`` or ``push-indexers``
+  # surfaces the promise's ``ensured_by`` reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # The five Sonarr promises preserve their original semantics
+  # verbatim (probe shape, ensured_by job-name strings, platform
+  # tags). None carry ``bootstrap_blocking`` — the orchestrator's
+  # post-bootstrap reconciliation handles them.
+  promises:
+    # --- Sonarr → Jellyfin notifier ---------------------------------------
+    - id: sonarr-jellyfin-notifier
+      description: Sonarr has the media-stack-jellyfin MediaBrowser notifier
+      ensured_by: ensure-arr-jellyfin-notifier
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: sonarr
+        path: /app/sonarr/api/v3/notification
+        auth: api_key
+        assert: |
+          any(
+            n.get('name') == 'media-stack-jellyfin'
+            and n.get('implementation') == 'MediaBrowser'
+            and n.get('onDownload') is True
+            for n in (response or [])
+          )
+
+    # --- Indexer pipeline (Sonarr side) -----------------------------------
+    - id: sonarr-has-indexers
+      description: Sonarr received at least one indexer from Prowlarr push-sync
+      ensured_by: push-indexers
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: sonarr
+        path: /app/sonarr/api/v3/indexer
+        auth: api_key
+        assert: "isinstance(response, list) and len(response) >= 1"
+
+    # --- Sonarr seed series -----------------------------------------------
+    - id: sonarr-has-series
+      description: Sonarr has the seed-series titles + the popular-TV CustomImport
+      ensured_by: ensure-sonarr-seed-series
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: sonarr
+        path: /app/sonarr/api/v3/series
+        auth: api_key
+        assert: "isinstance(response, list) and len(response) >= 5"
+
+    # --- qBittorrent download client wiring (Sonarr) ----------------------
+    - id: sonarr-download-client
+      description: Sonarr has qBit configured as enabled download client (cat=tv)
+      ensured_by: ensure-arr-download-client
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: sonarr
+        path: /app/sonarr/api/v3/downloadclient
+        auth: api_key
+        assert: |
+          any(
+            c.get('enable') is True
+            and c.get('implementation') == 'QBittorrent'
+            and any(f.get('name') == 'tvCategory' and f.get('value') == 'tv'
+                    for f in c.get('fields') or [])
+            for c in (response or [])
+          )
+
+    # --- Quality profiles (Sonarr) ----------------------------------------
+    - id: sonarr-quality-profiles
+      description: Sonarr has at least one quality profile available
+      ensured_by: apply-arr-runtime-defaults
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: sonarr
+        path: /app/sonarr/api/v3/qualityprofile
+        auth: api_key
+        assert: "isinstance(response, list) and len(response) >= 1"
 defaults:
   root_folder: /media/tv
   discovery_lists:

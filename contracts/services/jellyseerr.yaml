@@ -34,6 +34,84 @@ plugin:
       phase: post
       priority: 5
       requires: [media_server_reachable, media_server_api_key]
+
+  # ADR-0006 Phase 3c — Jellyseerr family migration. The three
+  # Jellyseerr promises live HERE alongside the service's jobs /
+  # event_handlers / lifecycle_class declarations rather than in
+  # the monolithic ``contracts/promises/promises.yaml``.
+  # Co-locating means a "what does Jellyseerr do at bootstrap?"
+  # audit is one file read; renaming ``ensure-jellyseerr-oidc`` or
+  # ``configure-jellyseerr`` surfaces each promise's ``ensured_by``
+  # reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # None of the three Jellyseerr promises carry
+  # ``bootstrap_blocking: true`` — Jellyseerr is post-phase
+  # configuration that runs once Sonarr / Radarr / Jellyfin are up,
+  # so its promises gate UI workflows rather than bootstrap. The
+  # ``ensured_by`` references resolve cross-file:
+  # ``ensure-jellyseerr-oidc`` is registered as a job on this
+  # service via the orchestrator's job dispatch table, and
+  # ``configure-jellyseerr`` is the in-file job declared above.
+  promises:
+    - id: jellyseerr-oidc
+      description: Jellyseerr login page shows the "Sign in with Authelia" button
+      ensured_by: ensure-jellyseerr-oidc
+      platforms: [compose, k8s]
+      # Probe the LIVE public-settings endpoint, not just settings.json
+      # on disk. The ``openIdProviders`` list in settings.json must be
+      # non-empty AND ``oidcLogin`` must be true — Jellyseerr returns
+      # an empty providers array when the global toggle is off, even
+      # if the provider entries are present.
+      probe:
+        type: http_json
+        service: jellyseerr
+        path: /api/v1/settings/public
+        auth: none
+        assert: |
+          isinstance(response.get('openIdProviders'), list)
+          and len(response['openIdProviders']) >= 1
+          and any(p.get('slug') == 'authelia' for p in response['openIdProviders'])
+
+    - id: jellyseerr-application-url
+      description: Jellyseerr applicationUrl is set HTTPS so OIDC redirect_uri matches Authelia's registered list
+      ensured_by: ensure-jellyseerr-oidc
+      platforms: [compose, k8s]
+      # Without this, Jellyseerr derives the redirect_uri from the
+      # raw request Host header and defaults to ``http://...`` —
+      # Authelia's registered redirect_uris are all HTTPS, so the
+      # token exchange returns "redirect_uri parameter does not match
+      # any of the OAuth 2.0 Client's pre-registered 'redirect_uris'".
+      probe:
+        type: file_json
+        path: jellyseerr/settings.json
+        # ``trustProxy`` lives under the ``network`` section (PR #1505
+        # migration 0005 moved it there). Writing it under ``main`` gets
+        # silently stripped on boot — both checks are needed because
+        # the *.json shape and the runtime shape diverge.
+        assert: |
+          str(data['main'].get('applicationUrl', '')).startswith('https://')
+          and data.get('network', {}).get('trustProxy') is True
+
+    - id: jellyseerr-arr-servers
+      description: Jellyseerr has Sonarr+Radarr+Jellyfin connections with API keys
+      ensured_by: configure-jellyseerr
+      platforms: [compose, k8s]
+      probe:
+        type: file_json
+        path: jellyseerr/settings.json
+        assert: |
+          len(data.get('radarr') or []) >= 1
+          and any((r or {}).get('apiKey') for r in (data.get('radarr') or []))
+          and len(data.get('sonarr') or []) >= 1
+          and any((s or {}).get('apiKey') for s in (data.get('sonarr') or []))
+          and bool(data.get('jellyfin', {}).get('apiKey'))
+
   event_handlers:
     RUN:
       configure_jellyseerr: media_stack.services.apps.jellyseerr.runtime_ops:configure_jellyseerr

@@ -42,3 +42,40 @@ plugin:
     monitor_scope_all_value: entireArtist
   adapter_classes:
     servarr: media_stack.services.apps.servarr.technologies.lidarr:LidarrAdapter
+
+  # ADR-0006 Phase 3 — Servarr family migration. The Lidarr-side
+  # promise lives HERE alongside the service's lifecycle_class +
+  # adapter declarations rather than in the monolithic
+  # ``contracts/promises/promises.yaml``. Co-locating means a "what
+  # does Lidarr guarantee at bootstrap?" audit is one file read;
+  # renaming ``ensure-arr-jellyfin-notifier`` surfaces the promise's
+  # ``ensured_by`` reference in the same diff.
+  #
+  # Loader walks both ``contracts/services/*.yaml::plugin.promises``
+  # AND ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  #
+  # Only a single Lidarr promise migrates in Phase 3 — Lidarr's
+  # download-client / indexer / quality-profile guarantees aren't
+  # currently asserted in the registry (the *arr family currently
+  # only pins those for Sonarr + Radarr).
+  promises:
+    # --- Lidarr → Jellyfin notifier ---------------------------------------
+    - id: lidarr-jellyfin-notifier
+      description: Lidarr has the media-stack-jellyfin MediaBrowser notifier
+      ensured_by: ensure-arr-jellyfin-notifier
+      platforms: [compose, k8s]
+      probe:
+        type: http_json
+        service: lidarr
+        path: /app/lidarr/api/v1/notification
+        auth: api_key
+        assert: |
+          any(
+            n.get('name') == 'media-stack-jellyfin'
+            and n.get('implementation') == 'MediaBrowser'
+            and n.get('onReleaseImport') is True
+            for n in (response or [])
+          )
