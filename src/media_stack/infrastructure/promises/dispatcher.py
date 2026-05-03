@@ -27,6 +27,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -267,7 +268,7 @@ def _probe_http_json(
         )
     headers = _auth_headers(spec.auth, spec.service, secrets, resolver)
     try:
-        body, status = _http_get(url, headers)
+        body, status, _resp_headers = _PROBE_HTTP_CLIENT.get_following_redirects(url, headers)
     except urllib.error.HTTPError as exc:
         return ProbeResult.failed(
             f"HTTP {exc.code} from {url}",
@@ -315,7 +316,7 @@ def _probe_http_text(
         )
     headers = _auth_headers(spec.auth, spec.service, secrets, resolver)
     try:
-        body, status = _http_get(url, headers)
+        body, status, _resp_headers = _PROBE_HTTP_CLIENT.get_following_redirects(url, headers)
     except urllib.error.HTTPError as exc:
         return ProbeResult.failed(
             f"HTTP {exc.code} from {url}",
@@ -354,10 +355,19 @@ def _probe_http_status(
         )
     headers = _auth_headers(spec.auth, spec.service, secrets, resolver)
     status: int = 0
+    resp_headers: dict[str, str] = {}
     try:
-        _, status = _http_get(url, headers)
+        _, status, resp_headers = _PROBE_HTTP_CLIENT.get_no_redirects(
+            url, headers,
+        )
     except urllib.error.HTTPError as exc:
+        # 30x already returns as a normal tuple via _http_get's
+        # no-redirect path; this branch handles 4xx / 5xx.
         status = exc.code
+        try:
+            resp_headers = {k.lower(): v for k, v in exc.headers.items()}
+        except Exception:
+            resp_headers = {}
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         return ProbeResult.unknown(
             f"unreachable at {url}: {exc}",
@@ -365,7 +375,8 @@ def _probe_http_status(
             evaluated_at=now,
         )
     return _classify_assert(
-        spec.assert_expr, {"status": status, "response": status},
+        spec.assert_expr,
+        {"status": status, "response": status, "headers": resp_headers},
         url, status, now,
     )
 
@@ -1012,22 +1023,146 @@ def _api_key_headers(
     return {auth_mode: key}
 
 
-def _http_get(url: str, headers: Mapping[str, str]) -> tuple[str, int]:
-    req = urllib.request.Request(url, headers=dict(headers))
-    kwargs: dict[str, Any] = {"timeout": _PROBE_TIMEOUT_SECONDS}
-    if _is_synthetic_gateway_url(url):
-        # Internal gateway probe — envoy serves a self-signed cert
-        # valid for the public hostname, not "envoy". Skip
-        # verification; the probe's question is reachability, not
-        # cert chain.
-        import ssl as _ssl
-        ctx = _ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
-        kwargs["context"] = ctx
-    with urllib.request.urlopen(req, **kwargs) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
-        return body, resp.status
+# HTTP redirect status codes — stored as IntEnum members from the
+# stdlib so the file carries no magic ints. ``IntEnum`` subclasses
+# ``int`` so ``exc.code in _HTTP_REDIRECT_STATUSES`` works directly.
+_HTTP_REDIRECT_STATUSES: frozenset[HTTPStatus] = frozenset({
+    HTTPStatus.MOVED_PERMANENTLY,
+    HTTPStatus.FOUND,
+    HTTPStatus.SEE_OTHER,
+    HTTPStatus.TEMPORARY_REDIRECT,
+    HTTPStatus.PERMANENT_REDIRECT,
+})
+
+# urllib's response bodies arrive as bytes; we decode with
+# error-replace so non-utf8 noise (rare for control-plane APIs)
+# never raises in the probe path.
+_HTTP_RESPONSE_ENCODING = "utf-8"
+_HTTP_DECODE_ERRORS_POLICY = "replace"
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Disable urllib's default 30x auto-follow.
+
+    The default ``HTTPRedirectHandler`` returns a new ``Request`` and
+    urllib re-issues it transparently. ``http_status`` probes that
+    inspect the redirect itself (e.g. ``gateway-http-redirects-to-https``
+    asserts ``status in (301, 302)``) need to see the original response.
+    Returning ``None`` from these handlers makes urllib raise
+    ``HTTPError`` for the 30x — callers translate that back into a
+    plain status + response object.
+    """
+
+    def http_error_301(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any,
+    ) -> None:
+        return None
+
+    def http_error_302(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any,
+    ) -> None:
+        return None
+
+    def http_error_303(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any,
+    ) -> None:
+        return None
+
+    def http_error_307(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any,
+    ) -> None:
+        return None
+
+    def http_error_308(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any,
+    ) -> None:
+        return None
+
+
+class _ProbeHttpClient:
+    """HTTP client for probe dispatchers.
+
+    Two named methods replace what would otherwise be a
+    ``follow_redirects: bool`` flag — see boolean-flag-arg ratchet.
+    Constructor-injected timeout; the gateway-self-signed-cert SSL
+    context is built per-request because it depends on the URL.
+    """
+
+    def __init__(self, timeout: float = _PROBE_TIMEOUT_SECONDS) -> None:
+        self._timeout = timeout
+
+    def get_following_redirects(
+        self, url: str, headers: Mapping[str, str],
+    ) -> tuple[str, int, dict[str, str]]:
+        """GET ``url``; transparently follow 30x to the final resource.
+
+        Used by ``http_text`` / ``http_json`` probes that assert
+        against the body of the redirected-to resource. urllib's
+        default opener is sufficient — ``urlopen`` follows 30x.
+        """
+        req, kwargs = self._build_request(url, headers)
+        with urllib.request.urlopen(req, **kwargs) as resp:
+            return self._extract(resp)
+
+    def get_no_redirects(
+        self, url: str, headers: Mapping[str, str],
+    ) -> tuple[str, int, dict[str, str]]:
+        """GET ``url``; surface 30x responses to the caller as-is.
+
+        Used by ``http_status`` probes whose assert inspects the
+        redirect itself. The no-op handler turns 30x into HTTPError;
+        we translate that back into the canonical 3-tuple.
+        """
+        req, kwargs = self._build_request(url, headers)
+        opener = urllib.request.build_opener(_NoRedirectHandler)
+        try:
+            with opener.open(req, **kwargs) as resp:
+                return self._extract(resp)
+        except urllib.error.HTTPError as exc:
+            if exc.code in _HTTP_REDIRECT_STATUSES:
+                return self._extract_from_error(exc)
+            raise
+
+    def _build_request(
+        self, url: str, headers: Mapping[str, str],
+    ) -> tuple[urllib.request.Request, dict[str, Any]]:
+        req = urllib.request.Request(url, headers=dict(headers))
+        kwargs: dict[str, Any] = {"timeout": self._timeout}
+        if _is_synthetic_gateway_url(url):
+            # Envoy serves a self-signed cert valid for the public
+            # hostname, not "envoy". The probe asks reachability,
+            # not cert chain.
+            import ssl as _ssl
+            ctx = _ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = _ssl.CERT_NONE
+            kwargs["context"] = ctx
+        return req, kwargs
+
+    def _extract(self, resp: Any) -> tuple[str, int, dict[str, str]]:
+        body = resp.read().decode(
+            _HTTP_RESPONSE_ENCODING, errors=_HTTP_DECODE_ERRORS_POLICY,
+        )
+        resp_headers = {k.lower(): v for k, v in resp.headers.items()}
+        return body, resp.status, resp_headers
+
+    def _extract_from_error(
+        self, exc: urllib.error.HTTPError,
+    ) -> tuple[str, int, dict[str, str]]:
+        # ``exc.read()`` can raise on already-closed responses; let
+        # those propagate (don't swallow per the no-silent-failure
+        # ratchet). 30x bodies are usually empty anyway.
+        body = exc.read().decode(
+            _HTTP_RESPONSE_ENCODING, errors=_HTTP_DECODE_ERRORS_POLICY,
+        )
+        resp_headers = {k.lower(): v for k, v in exc.headers.items()}
+        return body, exc.code, resp_headers
+
+
+# Module-level singleton — probe dispatchers go through this class.
+# Tests patch ``urllib.request.urlopen`` (follow-redirects path) or
+# ``urllib.request.build_opener`` (no-redirects path) directly.
+_PROBE_HTTP_CLIENT = _ProbeHttpClient()
 
 
 def _resolve_file_path(rel: str) -> Path:

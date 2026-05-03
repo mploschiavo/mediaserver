@@ -258,6 +258,9 @@ class FixCommitsTouchRatchets(unittest.TestCase):
     # Ratchet tests live in several places after the test-tree reorg:
     #   * ``tests/unit/ratchets/`` (canonical location)
     #   * ``tests/unit/architecture/`` (layering/structural rules)
+    #   * ``tests/unit/contracts/`` (contract-shape pinning tests
+    #     — same role as a ratchet, just scoped to YAML/runtime
+    #     invariants rather than code structure)
     #   * ``tests/unit/**/test_*_ratchet.py`` and
     #     ``tests/unit/**/test_*_ratchets.py`` (older inline ratchets
     #     that haven't been moved)
@@ -266,6 +269,7 @@ class FixCommitsTouchRatchets(unittest.TestCase):
         r"tests/unit/(?:"
         r"ratchets/[\w_/]+\.py"
         r"|architecture/[\w_/]+\.py"
+        r"|contracts/[\w_/]+\.py"
         r"|[\w_/]+test_[\w_]+_ratchets?\.py"
         r")"
     )

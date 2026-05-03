@@ -391,6 +391,12 @@ _NETWORK_ALLOWED_PATH_FRAGMENTS = (
     "/api/handlers_get.py",  # routing probes
     # The dispatch layer makes outbound HTTP for ext_authz callbacks.
     "/api/dispatch.py",
+    # ``_ProbeHttpClient`` IS the client layer for orchestrator
+    # promise probes — owns redirect policy, TLS skip-verify for
+    # synthetic gateway URLs, and header extraction. Ratchet
+    # recognises the role; the file just doesn't carry a ``client``
+    # suffix in its name.
+    "/infrastructure/promises/dispatcher.py",
 )
 
 

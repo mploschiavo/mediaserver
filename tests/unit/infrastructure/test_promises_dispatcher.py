@@ -247,6 +247,79 @@ class TestHttpJsonProbe:
         assert "url" in result.detail.lower()
 
 
+# --- HTTP status probe — redirect + headers behavior ------------------
+
+
+class TestHttpStatusProbe:
+    """``http_status`` probes inspect the immediate response (not the
+    redirected-to resource), so the dispatcher MUST NOT auto-follow
+    30x. Asserts also need ``headers`` in scope so they can validate
+    the ``Location`` header on a redirect response."""
+
+    @patch("urllib.request.build_opener")
+    def test_no_follow_redirect_surfaces_30x_to_assert(
+        self, mock_build_opener: MagicMock,
+    ) -> None:
+        # Simulate a 301 — the no-redirect handler turns it into an
+        # HTTPError; ``_http_get`` translates that back into a normal
+        # 3-tuple so the assert can run against status + Location.
+        opener = MagicMock()
+        err = urllib.error.HTTPError(
+            "http://envoy:8080/", 301, "Moved",
+            {"Location": "https://envoy:8080/"}, None,
+        )
+        opener.open.side_effect = err
+        mock_build_opener.return_value = opener
+
+        r = _StubResolver(
+            configs={"gateway_http": {"host": "envoy", "port": 8080}},
+        )
+        result = dispatch_probe(
+            HttpStatusProbe(
+                service="gateway_http",
+                path="/",
+                assert_expr=(
+                    "status in (301, 302) and "
+                    "'https://' in headers.get('location', '').lower()"
+                ),
+            ),
+            resolver=r, now=0.0,
+        )
+        assert result.is_ok, result.detail
+
+    @patch("urllib.request.build_opener")
+    def test_headers_available_in_assert_scope(
+        self, mock_build_opener: MagicMock,
+    ) -> None:
+        # 200 response — headers should still flow into the assert
+        # scope so probes can introspect content-type / cache headers
+        # without overloading the body.
+        opener = MagicMock()
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b""
+        resp.headers.items.return_value = [
+            ("Content-Type", "application/json"),
+        ]
+        resp.__enter__ = lambda s: s
+        resp.__exit__ = lambda *_: None
+        opener.open.return_value = resp
+        mock_build_opener.return_value = opener
+
+        r = _StubResolver(configs={"x": {"host": "x", "port": 80}})
+        result = dispatch_probe(
+            HttpStatusProbe(
+                service="x", path="/",
+                assert_expr=(
+                    "status == 200 and "
+                    "'json' in headers.get('content-type', '')"
+                ),
+            ),
+            resolver=r, now=0.0,
+        )
+        assert result.is_ok, result.detail
+
+
 # --- File probe dispatch ----------------------------------------------
 
 
