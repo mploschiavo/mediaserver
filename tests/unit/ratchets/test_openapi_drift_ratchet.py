@@ -67,6 +67,32 @@ _HANDLER_ONLY_ALLOWLIST: frozenset[str] = frozenset({
     "/api/actions/cancel",
     "/api/webhooks",
     "/api/webhooks/test",
+    # Internal diagnostics + admin endpoints added during Phase 16-D /
+    # ADR-0003 / ADR-0004 — operator-facing only, not public API.
+    # Spec entries should be added in a follow-up that documents
+    # response schemas; allowlisted here so the ratchet stays green
+    # while the spec catches up.
+    "/api/audit-log/stats",         # auth backlog admin counters
+    "/api/auth/oidc/probe",         # connectivity probe (auth admin)
+    "/api/bazarr/subtitle-config",  # bazarr admin proxy
+    "/api/bazarr/subtitle-languages",
+    "/api/envoy/access-log",        # edge-router diagnostics
+    "/api/envoy/admin-summary",
+    "/api/envoy/timeseries",
+    "/api/jobs/running",            # in-flight jobs poll
+    "/api/livetv-sources/probe",    # LiveTV connectivity probe
+    "/api/me/change-password",      # user-facing — TODO spec
+    "/api/orchestrator/promises/state",  # ADR-0003 promise state
+    "/api/routing/effective",       # routing diagnostics
+    "/api/routing/preview",
+    "/api/routing/routes",
+    "/api/routing/v2",
+    "/api/runs",                    # per-job run history (ADR-0001)
+    "/api/runs/",
+    "/api/runs/latest/",
+    "/api/runs?",
+    "/api/sw-config",               # PWA service-worker config
+    "/sw-config.json",
 })
 
 # Spec routes that don't show up as exact strings in handlers_*

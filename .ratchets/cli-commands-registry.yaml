@@ -31,6 +31,7 @@ commands:
   deploy_verify_main.py: Post-deploy smoke checks (services up, routes responding).
   microk8s_reconcile_main.py: Reconcile microk8s state with the contracted profile.
   microk8s_smoke_test_main.py: End-to-end smoke test for a microk8s deploy.
+  orchestrator_eval_main.py: Run one ADR-0003 satisfy_promises tick and print a per-promise diagnostic table.
   release_pipeline_main.py: Build, deploy, and prove Compose/Kubernetes release images.
   render_architecture_diagrams_main.py: Regenerate the architecture diagram SVGs from contract YAMLs.
   reset_admin_main.py: Break-glass — reset the admin password from inside the controller container.
