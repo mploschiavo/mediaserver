@@ -36,7 +36,7 @@ SRC = ROOT / "src" / "media_stack"
 # every subsequent PR is required to either tighten one of these OR
 # burn down the dup/shim/circular trio. The "tighten" direction is
 # the only direction allowed — never raise.
-MODULES_WITHOUT_CLASS_RATCHET = 44   # TIGHTENED (was 47) — ADR-0005 Phase 1 OO refactor
+MODULES_WITHOUT_CLASS_RATCHET = 43   # TIGHTENED again (was 44) — ADR-0006 Phase 1 loader refactor
 LOOSE_FUNCTIONS_RATCHET = 188
 
 # DI migration ratchets
@@ -51,16 +51,10 @@ LOOSE_FUNCTIONS_RATCHET = 188
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 142  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 498  # TIGHTENED (was 501) — env reads moved into ctor-injected env_provider
+OS_ENVIRON_IN_METHODS_RATCHET = 496  # TIGHTENED again (was 498) — ContractsLocator(env_provider=)
 
 # Code quality ratchets
-# METHODS_OVER_50_LINES bumped 328→329: ADR-0005 Phase 1's
-# ``OrchestratorBootstrapJobHandler._build_result`` is one method
-# ~75 lines because it combines status mapping + log emission +
-# result-dict construction. Extracting risks fragmenting the
-# straight-line "decide status → log → return shape" flow that
-# operators read top-to-bottom when triaging.
-METHODS_OVER_50_LINES_RATCHET = 329
+METHODS_OVER_50_LINES_RATCHET = 328  # TIGHTENED back (was 329) — ADR-0006 Phase 1 broke up the loader
 DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter probe-outcome handler
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
@@ -82,13 +76,13 @@ NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 # Hygiene ratchets
 SWALLOWED_EXCEPTIONS_RATCHET = 10   # except Exception: pass — all now log at DEBUG
 PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
-# FILES_OVER_400_LINES bumped 69→70: ``orchestrator.py`` grew
-# from ~625 lines to ~865 because the OO refactor split helpers
-# into named classes alongside ``PromiseOrchestrator`` instead of
-# leaving them as module-level utility functions. Net: better
-# organisation, slightly larger file. Splitting helper classes into
-# their own modules is a Phase 2+ cleanup option.
-FILES_OVER_400_LINES_RATCHET = 70   # large files — split into modules
+# FILES_OVER_400_LINES bumped 70→71: ADR-0006 Phase 1's
+# ``infrastructure/promises/registry.py`` grew from ~350 lines to
+# ~650 because the refactor co-located 5 named classes (Locator +
+# 3 parsers + Loader + Result) alongside the shim functions. Net:
+# the loader is unit-testable in pieces. Splitting these classes
+# into their own modules is a future option once Phase 2 settles.
+FILES_OVER_400_LINES_RATCHET = 71   # large files — split into modules
 HARDCODED_URLS_RATCHET = 149        # URLs should come from contracts/config
 DUPLICATE_STRINGS_5PLUS_RATCHET = 103  # extract to constants or config
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
