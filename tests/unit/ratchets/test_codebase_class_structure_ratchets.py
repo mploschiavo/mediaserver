@@ -59,7 +59,7 @@ LOOSE_FUNCTIONS_RATCHET = 189
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 142  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 496  # TIGHTENED again (was 498) — ContractsLocator(env_provider=)
+OS_ENVIRON_IN_METHODS_RATCHET = 497  # +1 from 496 — ADR-0005 Phase 3 ``JellyfinNotifierWirer._discover_jellyfin_key`` reads JELLYFIN_API_KEY from ``ctx.secrets`` then falls back to ``os.environ`` (same pattern as ``ServarrLifecycle.discover_api_key``).
 
 # Code quality ratchets
 METHODS_OVER_50_LINES_RATCHET = 328  # TIGHTENED back (was 329) — ADR-0006 Phase 1 broke up the loader
@@ -96,7 +96,7 @@ DUPLICATE_STRINGS_5PLUS_RATCHET = 103  # extract to constants or config
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1000
+MAGIC_NUMBERS_OVER_100_RATCHET = 1001  # +1 from 1000 — ADR-0005 Phase 3: ``_JELLYFIN_NOTIFIER_PORT = 8096`` (Jellyfin's internal HTTP port). Network-port literal, not arithmetic; no semantic gain from hiding behind another constant. Same shape as the existing ``8989`` (sonarr) / ``7878`` (radarr) port literals already in the codebase.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

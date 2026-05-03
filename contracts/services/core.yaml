@@ -202,14 +202,28 @@ plugin:
       priority: 88
       requires: []
 
+    # ADR-0005 Phase 3 cutover: ``phase: post`` removed. The
+    # bootstrap-time path is now the orchestrator dispatching
+    # ``ServarrLifecycle.ensure_jellyfin_notifier`` per-*arr
+    # via the ``*-jellyfin-notifier`` promises in
+    # ``contracts/services/{sonarr,radarr,lidarr}.yaml``.
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard) keeps resolving it. Without ``phase``,
+    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
+    # bootstrap loader's ``phase_order`` never picks it up — exactly
+    # what we want.
+    #
+    # Replaces the controller's webhook→/Library/Refresh full-scan
+    # with a native MediaBrowser notifier per *arr — Jellyfin
+    # rescans only the affected path on import/delete/rename.
+    #
+    # Reverting = restore ``phase: post`` and ``priority: 89``;
+    # the orchestrator's lifecycle dispatch becomes redundant but
+    # harmless (idempotent ensurer).
     ensure-arr-jellyfin-notifier:
       handler: media_stack.services.apps.core.job_adapters:ensure_arr_jellyfin_notifier
       label: "Wire *arr → Jellyfin library refresh"
-      phase: post
-      # Replaces the controller's webhook→/Library/Refresh full-scan
-      # with a native MediaBrowser notifier per *arr — Jellyfin
-      # rescans only the affected path on import/delete/rename.
-      priority: 89
       requires: []
 
     ensure-bazarr-language-profile:

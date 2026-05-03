@@ -32,6 +32,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from media_stack.adapters.servarr.notifier_wiring import (
+    JellyfinNotifierWirer,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -49,6 +52,13 @@ _SUPPORTED_SERVICE_IDS = frozenset(
 _DEFAULT_HEALTH_PATH = "/ping"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_FORMAT = "xml"
+
+# Stateless module-level singleton — the wirer is per-call
+# parameterized by service_id + arr_api_key + ctx, so one instance
+# handles every *arr. Constructor-injected notifier identity (name /
+# host / port) keeps the magic-number / duplicate-string surface in
+# the wirer module rather than here.
+_JELLYFIN_NOTIFIER_WIRER = JellyfinNotifierWirer()
 
 
 class ServarrLifecycle:
@@ -205,6 +215,26 @@ class ServarrLifecycle:
                 "config_path": str(config_path),
                 "service_id": self.service_id,
             },
+        )
+
+    # --- Jellyfin notifier wiring (ADR-0005 Phase 3) ----------------
+    #
+    # Both methods delegate to ``JellyfinNotifierWirer`` (in
+    # ``notifier_wiring.py``). The lifecycle owns the api-key
+    # discovery contract; the wirer owns the HTTP / payload shape.
+
+    def probe_jellyfin_notifier(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _JELLYFIN_NOTIFIER_WIRER.probe(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    def ensure_jellyfin_notifier(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _JELLYFIN_NOTIFIER_WIRER.ensure(
+            self.service_id, self.discover_api_key(ctx), ctx,
         )
 
     # --- persist ----------------------------------------------------

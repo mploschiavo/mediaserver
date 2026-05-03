@@ -335,10 +335,30 @@ class PromisesRegistryConsistent(unittest.TestCase):
             "``ensured_by`` errors:\n" + "\n".join(bad),
         )
 
+    # ADR-0005 Phase 3+ — jobs whose ``phase: post`` was retired
+    # because the orchestrator dispatches the same code path via a
+    # lifecycle ensurer. The job entry stays REGISTERED so
+    # ``run_job(name)`` (auto-heal + operator dashboard) keeps
+    # working, but no promise references the job by string ``ensured_by``
+    # — the wiring is via ``{type: lifecycle, ...}`` instead.
+    #
+    # When you cut over a job, add its name here AND pin the wiring
+    # in a ``test_<svc>_<job>_promise_driven.py`` ratchet so the
+    # cutover can't silently regress.
+    _ORCHESTRATOR_LIFECYCLE_DISPATCHED = {
+        # ADR-0005 Phase 3 (proof-of-pattern, sonarr+radarr+lidarr):
+        # ServarrLifecycle.ensure_jellyfin_notifier wraps the same
+        # handler this job points at. See
+        # tests/unit/contracts/test_servarr_jellyfin_notifier_promise_driven.py.
+        "ensure-arr-jellyfin-notifier",
+    }
+
     def test_no_orphan_ensure_jobs(self):
         """Every ``ensure-*`` job in contracts SHOULD appear as an
         ``ensured_by`` somewhere. Orphans likely indicate the registry
-        drifted away from the real bootstrap surface."""
+        drifted away from the real bootstrap surface — UNLESS the job
+        is explicitly orchestrator-lifecycle-dispatched (see the
+        allowlist above)."""
         # Dict-typed ensurers (Phase 4a) aren't hashable — collect
         # only the string-typed ones for the orphan check. Dict
         # ensurers don't reference contract jobs anyway.
@@ -348,12 +368,17 @@ class PromisesRegistryConsistent(unittest.TestCase):
         }
         orphans = [
             name for name in self.jobs
-            if name.startswith("ensure-") and name not in referenced
+            if name.startswith("ensure-")
+            and name not in referenced
+            and name not in self._ORCHESTRATOR_LIFECYCLE_DISPATCHED
         ]
         self.assertFalse(
             orphans,
             "ensure-* jobs not referenced by any promise — either "
-            "add a promise that probes them or delete the orphan job:\n"
+            "add a promise that probes them, delete the orphan job, "
+            "OR (if the job is now orchestrator-lifecycle-dispatched) "
+            "add it to ``_ORCHESTRATOR_LIFECYCLE_DISPATCHED`` with "
+            "a pointer to the cutover ratchet:\n"
             + "\n".join(f"  - {o}" for o in sorted(orphans)),
         )
 
