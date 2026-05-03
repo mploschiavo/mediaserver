@@ -293,7 +293,9 @@ class AtomicWriteUsage(unittest.TestCase):
         # Worth migrating to atomic_write_xml as a follow-up but
         # not blocking on it; the failure mode (corrupt
         # system.xml) is bounded and recoverable from the .bak.
+        # Phase 16-D moved the file to infrastructure/jellyfin/.
         "src/media_stack/services/apps/jellyfin/gpu.py",
+        "src/media_stack/infrastructure/jellyfin/gpu.py",
     }
 
     def test_no_raw_write_text_to_xml_paths(self) -> None:

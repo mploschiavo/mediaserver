@@ -15,6 +15,8 @@ from typing import Any
 
 import yaml
 
+from media_stack.core.logging_utils import log_swallowed
+
 
 # Resolve the auth contract path. parents[4] from this module is
 # only correct when the source tree is checked out in development —
@@ -41,8 +43,8 @@ def _resolve_contract_path() -> Path:
 
     try:
         add(Path(__file__).resolve().parents[4] / "contracts" / "auth.yaml")
-    except IndexError:
-        pass
+    except IndexError as exc:
+        log_swallowed(exc, "gateway-policy-repo-root-walk")
     add(Path("/opt/media-stack/contracts/auth.yaml"))
     add(Path("/usr/local/share/media-stack/contracts/auth.yaml"))
     add(Path("/contracts/auth.yaml"))
