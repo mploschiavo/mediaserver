@@ -1,18 +1,10 @@
-"""Tests for ``api/routes/misc_legacy.py`` (ADR-0007 Phase 2
-wave 4).
+"""Tests for ``api/routes/schedules.py`` (ADR-0007 Phase 2
+wave 6 cleanup — re-homed from ``misc_legacy.py``).
 
-Each test class owns one route. Each test invokes the production
-Router via ``RouteDispatchHarness.with_default_router()`` — same
-auto-discovery, same spec-parity check, same dispatch path used in
-production.
-
-Wave-4 reconciliation reduced the brief's gross candidate list to
-a single migrated route in this module: ``/api/schedules``. Every
-other candidate either landed in a sibling wave-4 module
-(``state.py`` / ``log_streams.py`` / ``system_diag.py``) or is
-ineligible because the OpenAPI spec doesn't declare it
-(``/api/webhooks``). See the module docstring for the full
-reconciliation table.
+Each test invokes the production Router via
+``RouteDispatchHarness.with_default_router()`` — same
+auto-discovery, same spec-parity check, same dispatch path used
+in production.
 
 The handler body is a thin pass-through to the scheduler service
 singleton; these tests mock the singleton and assert the response
@@ -87,16 +79,14 @@ class TestApiSchedules:
 
 class TestRoutingIntegration:
     """Pin the auto-discovery + spec-parity behavior for the
-    misc_legacy domain. If a future change accidentally drops a
+    schedules domain. If a future change accidentally drops the
     handler from the registry, this fires before any per-route
     test does."""
 
-    def test_schedules_route_registered_by_misc_legacy_module(
+    def test_schedules_route_registered_by_schedules_module(
         self,
     ) -> None:
-        from media_stack.api.routes.misc_legacy import (
-            MiscLegacyGetRoutes,
-        )
+        from media_stack.api.routes.schedules import SchedulesGetRoutes
         harness = RouteDispatchHarness.with_default_router()
         match = next(
             (
@@ -111,20 +101,20 @@ class TestRoutingIntegration:
         # ``__self__`` is the RouteModule instance the Router
         # owns. Confirm that instance is THIS module's class so
         # we don't silently let a different domain claim the path.
-        assert isinstance(match.handler.__self__, MiscLegacyGetRoutes)
+        assert isinstance(match.handler.__self__, SchedulesGetRoutes)
 
     def test_post_to_schedules_not_handled_by_get_module(
         self,
     ) -> None:
         # ``/api/schedules`` ALSO has a POST in the spec (handled
-        # by ``handlers_post``, not migrated to the Router by this
-        # wave). The wave-4 GET-only module here MUST NOT claim
-        # the POST verb — which would either route through the
-        # wrong handler or shadow the legacy POST chain. Until a
-        # future wave migrates POST, the Router for POST must
-        # report ``NO_MATCH`` (legacy chain handles it) — NOT
-        # ``HANDLED`` and NOT ``METHOD_NOT_ALLOWED`` (which would
-        # mean only GET is in the verb table).
+        # by ``handlers_post``, not migrated to the Router yet).
+        # The GET-only module here MUST NOT claim the POST verb —
+        # which would either route through the wrong handler or
+        # shadow the legacy POST chain. Until a future wave
+        # migrates POST, the Router for POST must report
+        # ``NO_MATCH`` (legacy chain handles it) — NOT ``HANDLED``
+        # and NOT ``METHOD_NOT_ALLOWED`` (which would mean only
+        # GET is in the verb table).
         harness = RouteDispatchHarness.with_default_router()
         outcome, _response = harness.try_dispatch(
             "POST", "/api/schedules",
@@ -134,17 +124,3 @@ class TestRoutingIntegration:
             f"Expected POST /api/schedules to fall through to the "
             f"legacy chain (NO_MATCH); got {outcome}"
         )
-
-    def test_api_webhooks_not_registered_on_router(self) -> None:
-        # ``/api/webhooks`` is NOT in the OpenAPI spec, so this
-        # module deliberately does NOT register it. The legacy
-        # ``handlers_get.py`` elif chain handles it as a fallback.
-        # If a future commit adds it to the spec + a route module,
-        # the dispatcher should surface a real match — until then
-        # the Router must report NO_MATCH.
-        harness = RouteDispatchHarness.with_default_router()
-        outcome, _response = harness.try_dispatch(
-            "GET", "/api/webhooks",
-        )
-        from media_stack.api.routing import DispatchOutcome
-        assert outcome == DispatchOutcome.NO_MATCH
