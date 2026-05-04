@@ -145,11 +145,30 @@ plugin:
       priority: 38
       requires: []
 
+    # ADR-0005 Phase 3 cutover: ``phase: download_clients`` +
+    # ``priority: 40`` removed. The bootstrap-time path is now the
+    # orchestrator dispatching ``ServarrLifecycle.ensure_indexers``
+    # per-*arr via the ``sonarr-has-indexers`` /
+    # ``radarr-has-indexers`` promises in
+    # ``contracts/services/{sonarr,radarr}.yaml``.
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard) keeps resolving it. The legacy
+    # ``push_indexers`` handler runs the entire Prowlarr indexer
+    # pipeline (``indexer_steps``); the orchestrator's per-*arr
+    # ensurer does the narrower thing (probe-skip if already
+    # configured, otherwise trigger the same
+    # ``ApplicationIndexerSync forceSync=true`` command Prowlarr
+    # expects). The heavyweight reconcile path stays one
+    # ``run_job`` call away.
+    #
+    # Reverting = restore ``phase: download_clients`` and
+    # ``priority: 40``; the orchestrator's lifecycle dispatch
+    # becomes redundant but harmless (both ensurers are
+    # idempotent against ``ApplicationIndexerSync``).
     push-indexers:
       handler: media_stack.services.apps.core.job_adapters:push_indexers
       label: "Sync indexers to apps"
-      phase: download_clients
-      priority: 40
       requires: []
       # ApplicationIndexerSync only pushes indexers whose tags match
       # each *arr's filter tag — so this MUST wait for tagging to
@@ -191,15 +210,20 @@ plugin:
       priority: 87
       requires: []
 
+    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 88``
+    # removed. The bootstrap-time path is now the orchestrator
+    # dispatching ``JellyseerrLifecycle.ensure_oidc`` /
+    # ``ensure_application_url`` via the ``jellyseerr-oidc`` and
+    # ``jellyseerr-application-url`` promises in
+    # ``contracts/services/jellyseerr.yaml``. The job stays
+    # REGISTERED so ``run_job(name)`` (auto-heal + operator
+    # dashboard) keeps resolving it; without ``phase`` the bootstrap
+    # loader's ``phase_order`` never picks it up. Reverting =
+    # restore ``phase: post`` + ``priority: 88`` AND flip both
+    # promises back to ``ensured_by: ensure-jellyseerr-oidc``.
     ensure-jellyseerr-oidc:
       handler: media_stack.services.apps.core.job_adapters:ensure_jellyseerr_oidc
       label: "Wire Authelia SSO into Jellyseerr"
-      phase: post
-      # Writes oidcLogin + oidc provider block to Jellyseerr's
-      # settings.json so the login page shows the "Sign in with
-      # Authelia" button. Authelia's client entry is already
-      # generated from contracts/auth/oidc_clients.yaml.
-      priority: 88
       requires: []
 
     # ADR-0005 Phase 3 cutover: ``phase: post`` removed. The
@@ -226,14 +250,35 @@ plugin:
       label: "Wire *arr → Jellyfin library refresh"
       requires: []
 
+    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 91``
+    # removed. The bootstrap-time path is now the orchestrator
+    # dispatching ``BazarrLifecycle.ensure_config_wiring`` via the
+    # five Bazarr lifecycle promises in
+    # ``contracts/services/bazarr.yaml`` (bazarr-language-profile,
+    # bazarr-default-profile-toggles, bazarr-providers,
+    # bazarr-arr-integration, bazarr-jellyfin-plugin-config — all share
+    # the same ensurer because the legacy handler does all five things
+    # in one form-encoded POST + one file write).
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard) keeps resolving it. Without ``phase``,
+    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
+    # bootstrap loader's ``phase_order`` never picks it up — exactly
+    # what we want, since the orchestrator is now the bootstrap-time
+    # path.
+    #
+    # Without this wiring, Bazarr's UI shows "Missing languages
+    # profile" and downloads no subtitles. The lifecycle ensurer is
+    # idempotent — only creates the default English profile if no
+    # profiles exist yet; defaults + provider list + arr-integration
+    # are always re-asserted (so drift is corrected on every run).
+    #
+    # Reverting = restore ``phase: post`` and ``priority: 91``; the
+    # orchestrator's lifecycle dispatch becomes redundant but harmless
+    # (idempotent ensurer).
     ensure-bazarr-language-profile:
       handler: media_stack.services.apps.core.job_adapters:ensure_bazarr_language_profile
       label: "Set up Bazarr language profile"
-      phase: post
-      # Without this, Bazarr's UI shows "Missing languages profile"
-      # and downloads no subtitles. Idempotent — only creates the
-      # default English profile if no profiles exist yet.
-      priority: 91
       requires: []
 
     mass-search-throttled:

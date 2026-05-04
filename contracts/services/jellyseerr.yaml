@@ -28,11 +28,18 @@ plugin:
     jellyseerr_service: jellyseerr
     request_manager_service: jellyseerr
   jobs:
+    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 5``
+    # removed. The bootstrap-time path is now the orchestrator
+    # dispatching ``JellyseerrLifecycle.ensure_arr_servers`` via the
+    # ``jellyseerr-arr-servers`` promise above. The job stays
+    # REGISTERED so ``run_job(name)`` (auto-heal + operator
+    # dashboard) keeps resolving it; without ``phase`` the bootstrap
+    # loader's ``phase_order`` never picks it up. Reverting =
+    # restore ``phase: post`` + ``priority: 5`` AND flip the
+    # promise back to ``ensured_by: configure-jellyseerr``.
     configure-jellyseerr:
       handler: media_stack.services.apps.jellyseerr.configure_jellyseerr_job:configure_jellyseerr
       label: "Update Jellyseerr"
-      phase: post
-      priority: 5
       requires: [media_server_reachable, media_server_api_key]
 
   # ADR-0006 Phase 3c — Jellyseerr family migration. The three
@@ -50,67 +57,54 @@ plugin:
   # depends_on resolution — see
   # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
   #
-  # None of the three Jellyseerr promises carry
-  # ``bootstrap_blocking: true`` — Jellyseerr is post-phase
-  # configuration that runs once Sonarr / Radarr / Jellyfin are up,
-  # so its promises gate UI workflows rather than bootstrap. The
-  # ``ensured_by`` references resolve cross-file:
-  # ``ensure-jellyseerr-oidc`` is registered as a job on this
-  # service via the orchestrator's job dispatch table, and
-  # ``configure-jellyseerr`` is the in-file job declared above.
+  # ADR-0005 Phase 3 cutover: probes + ensurers dispatch through
+  # JellyseerrLifecycle.{probe|ensure}_{oidc,application_url,arr_servers}
+  # instead of the legacy ``ensure-jellyseerr-oidc`` and
+  # ``configure-jellyseerr`` job handlers. Same code path under the
+  # hood (the arr-servers ensurer delegates back to the existing
+  # configure handler); different invocation. Reverting = restore
+  # the http_json / file_json probes + string ``ensured_by`` job
+  # references. Per the proof-of-pattern convention each promise
+  # carries explicit ``bootstrap_blocking: true``.
   promises:
     - id: jellyseerr-oidc
       description: Jellyseerr login page shows the "Sign in with Authelia" button
-      ensured_by: ensure-jellyseerr-oidc
       platforms: [compose, k8s]
-      # Probe the LIVE public-settings endpoint, not just settings.json
-      # on disk. The ``openIdProviders`` list in settings.json must be
-      # non-empty AND ``oidcLogin`` must be true — Jellyseerr returns
-      # an empty providers array when the global toggle is off, even
-      # if the provider entries are present.
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: jellyseerr
-        path: /api/v1/settings/public
-        auth: none
-        assert: |
-          isinstance(response.get('openIdProviders'), list)
-          and len(response['openIdProviders']) >= 1
-          and any(p.get('slug') == 'authelia' for p in response['openIdProviders'])
+        method: probe_oidc
+      ensured_by:
+        type: lifecycle
+        service: jellyseerr
+        method: ensure_oidc
 
     - id: jellyseerr-application-url
       description: Jellyseerr applicationUrl is set HTTPS so OIDC redirect_uri matches Authelia's registered list
-      ensured_by: ensure-jellyseerr-oidc
       platforms: [compose, k8s]
-      # Without this, Jellyseerr derives the redirect_uri from the
-      # raw request Host header and defaults to ``http://...`` —
-      # Authelia's registered redirect_uris are all HTTPS, so the
-      # token exchange returns "redirect_uri parameter does not match
-      # any of the OAuth 2.0 Client's pre-registered 'redirect_uris'".
+      bootstrap_blocking: true
       probe:
-        type: file_json
-        path: jellyseerr/settings.json
-        # ``trustProxy`` lives under the ``network`` section (PR #1505
-        # migration 0005 moved it there). Writing it under ``main`` gets
-        # silently stripped on boot — both checks are needed because
-        # the *.json shape and the runtime shape diverge.
-        assert: |
-          str(data['main'].get('applicationUrl', '')).startswith('https://')
-          and data.get('network', {}).get('trustProxy') is True
+        type: lifecycle
+        service: jellyseerr
+        method: probe_application_url
+      ensured_by:
+        type: lifecycle
+        service: jellyseerr
+        method: ensure_application_url
 
     - id: jellyseerr-arr-servers
       description: Jellyseerr has Sonarr+Radarr+Jellyfin connections with API keys
-      ensured_by: configure-jellyseerr
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: file_json
-        path: jellyseerr/settings.json
-        assert: |
-          len(data.get('radarr') or []) >= 1
-          and any((r or {}).get('apiKey') for r in (data.get('radarr') or []))
-          and len(data.get('sonarr') or []) >= 1
-          and any((s or {}).get('apiKey') for s in (data.get('sonarr') or []))
-          and bool(data.get('jellyfin', {}).get('apiKey'))
+        type: lifecycle
+        service: jellyseerr
+        method: probe_arr_servers
+      ensured_by:
+        type: lifecycle
+        service: jellyseerr
+        method: ensure_arr_servers
 
   event_handlers:
     RUN:

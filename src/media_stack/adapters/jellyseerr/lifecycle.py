@@ -14,6 +14,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from media_stack.adapters.jellyseerr.config_wiring import (
+    JellyseerrConfigWirer,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -29,6 +32,13 @@ _DEFAULT_HEALTH_PATH = "/api/v1/status"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_ENV = "JELLYSEERR_API_KEY"
 _DEFAULT_API_KEY_FORMAT = "json"
+
+# Stateless module-level singleton — the wirer is per-call parameterized
+# by ctx (and, for arr-servers, the injected configure_handler +
+# job_context_factory). Constructor-injected provider identity (slug /
+# client id / scopes) keeps the magic-string surface in the wirer
+# module rather than here.
+_CONFIG_WIRER = JellyseerrConfigWirer()
 
 
 class JellyseerrLifecycle:
@@ -174,6 +184,57 @@ class JellyseerrLifecycle:
                 transient=True,
                 evidence={"env_written": env_var, "error": str(exc)},
             )
+
+    # --- Jellyseerr config wiring (ADR-0005 Phase 3) ----------------
+    #
+    # Six methods delegate to ``JellyseerrConfigWirer`` in
+    # ``config_wiring.py``. The lifecycle owns the api-key discovery
+    # contract (above); the wirer owns the HTTP / settings.json /
+    # restart shapes. The arr-servers ensurer takes the existing
+    # ``configure_jellyseerr`` job handler + a ``JobContext``
+    # factory because the underlying configuration flow is wide
+    # enough (registry + library sync + restart) that re-implementing
+    # it inside the wirer would duplicate ~200 lines of tested code.
+
+    def probe_oidc(self, ctx: OrchestrationContext) -> ProbeResult:
+        return _CONFIG_WIRER.probe_oidc(ctx)
+
+    def ensure_oidc(self, ctx: OrchestrationContext) -> Outcome[None]:
+        return _CONFIG_WIRER.ensure_oidc(ctx)
+
+    def probe_application_url(self, ctx: OrchestrationContext) -> ProbeResult:
+        return _CONFIG_WIRER.probe_application_url(ctx)
+
+    def ensure_application_url(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _CONFIG_WIRER.ensure_application_url(ctx)
+
+    def probe_arr_servers(self, ctx: OrchestrationContext) -> ProbeResult:
+        return _CONFIG_WIRER.probe_arr_servers(ctx)
+
+    def ensure_arr_servers(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        # Lazy imports keep the lifecycle module light at load time
+        # (the configure_jellyseerr handler pulls in Docker SDK,
+        # k8s client, etc.) and break the import cycle that would
+        # exist if the application layer imported the lifecycle.
+        # Both imports go through the ``services/`` shim layer (the
+        # same handler entry the legacy job runner resolves from
+        # ``contracts/services/jellyseerr.yaml``) so the adapter
+        # stays on the adapters/ → services/ side of the hexagon
+        # ratchet — the application/ canonical module is reached
+        # transitively via the shim, not by direct import here.
+        from media_stack.services.apps.jellyseerr.configure_jellyseerr_job import (  # noqa: E501
+            configure_jellyseerr,
+        )
+        from media_stack.services.jobs.framework import JobContext
+        return _CONFIG_WIRER.ensure_arr_servers(
+            ctx,
+            configure_handler=configure_jellyseerr,
+            job_context_factory=JobContext,
+        )
 
     def _health_url(self, ctx: OrchestrationContext) -> str:
         host = (ctx.config.get("host") or "").strip()

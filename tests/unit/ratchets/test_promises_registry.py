@@ -351,6 +351,35 @@ class PromisesRegistryConsistent(unittest.TestCase):
         # handler this job points at. See
         # tests/unit/contracts/test_servarr_jellyfin_notifier_promise_driven.py.
         "ensure-arr-jellyfin-notifier",
+        # ADR-0005 Phase 3 (jellyseerr family):
+        # JellyseerrLifecycle.ensure_oidc / ensure_application_url
+        # wrap the legacy ``ensure-jellyseerr-oidc`` settings.json
+        # mutation; ``ensure_arr_servers`` delegates back to the
+        # legacy ``configure-jellyseerr`` handler. Both jobs stay
+        # registered (auto-heal + operator dashboard) but the
+        # bootstrap path is the orchestrator's lifecycle dispatch.
+        # See tests/unit/contracts/test_jellyseerr_config_promise_driven.py.
+        "ensure-jellyseerr-oidc",
+        "configure-jellyseerr",
+        # ADR-0005 Phase 3 (Bazarr family — five promises share one
+        # ensurer because the legacy handler does all five things in
+        # one form-encoded POST + one file write).
+        # BazarrLifecycle.ensure_config_wiring wraps the same handler
+        # this job points at. See
+        # tests/unit/contracts/test_bazarr_config_promise_driven.py.
+        "ensure-bazarr-language-profile",
+        # ADR-0005 Phase 3 follow-on (sonarr + radarr indexer
+        # pipeline): ServarrLifecycle.ensure_indexers narrows the
+        # legacy whole-pipeline run to a per-*arr probe-then-
+        # trigger-Prowlarr-sync flow. The legacy ``push-indexers``
+        # job stays registered so ``run_job(name)`` keeps reaching
+        # the heavyweight handler for full reconcile. Listed here
+        # for cross-reference even though the orphan check below
+        # only flags ``ensure-*`` names — future ratchet work that
+        # widens the orphan check (e.g. to all jobs whose ``phase``
+        # was retired) will pick it up. See
+        # tests/unit/contracts/test_servarr_indexers_promise_driven.py.
+        "push-indexers",
     }
 
     def test_no_orphan_ensure_jobs(self):

@@ -326,7 +326,23 @@ class ContractRegistration(unittest.TestCase):
 
     def test_runs_between_discover_and_push(self) -> None:
         """Phase + priority chain: discover-indexers (30) →
-        tag-indexers-for-apps (35) → push-indexers (40)."""
+        tag-indexers-for-apps (35) → push-indexers (after via the
+        ``after: [reset-prowlarr-app-mappings]`` chain).
+
+        ``push-indexers`` lost its ``phase: download_clients`` +
+        ``priority: 40`` in the ADR-0005 Phase 3 follow-on cutover —
+        it's now orchestrator-lifecycle-dispatched via the
+        ``sonarr-has-indexers`` / ``radarr-has-indexers`` promises
+        (``ServarrLifecycle.ensure_indexers``). The legacy job
+        entry stays REGISTERED so ``run_job(name)`` still reaches
+        the heavyweight whole-pipeline path; the bootstrap loader
+        skips it because ``phase`` is absent. The reset→push
+        sequencing is preserved via ``after:`` instead of
+        priority. See
+        ``tests/unit/contracts/test_servarr_indexers_promise_driven.py``
+        for the cutover wiring pin and
+        ``tests/unit/ratchets/test_runtime_invariants_ratchets.py::IndexerChainJobSequencing``
+        for the chain-integrity ratchet."""
         import yaml
         text = (ROOT / "contracts/services/core.yaml").read_text(encoding="utf-8")
         data = yaml.safe_load(text)
@@ -336,4 +352,21 @@ class ContractRegistration(unittest.TestCase):
         self.assertIn("push-indexers", jobs)
         self.assertEqual(jobs["discover-indexers"]["priority"], 30)
         self.assertEqual(jobs["tag-indexers-for-apps"]["priority"], 35)
-        self.assertEqual(jobs["push-indexers"]["priority"], 40)
+        # ``push-indexers`` retains no ``priority`` after the
+        # cutover; assert its sequencing via the ``after:`` chain
+        # instead.
+        self.assertNotIn(
+            "priority", jobs["push-indexers"],
+            "push-indexers regained ``priority`` — the ADR-0005 "
+            "Phase 3 follow-on cutover removed it. Reverting "
+            "means restoring phase + priority AND flipping every "
+            "*-has-indexers promise back to http_json + string "
+            "ensured_by.",
+        )
+        self.assertEqual(
+            list(jobs["push-indexers"].get("after") or []),
+            ["reset-prowlarr-app-mappings"],
+            "push-indexers ``after:`` chain regressed — operator-"
+            "driven ``run_job push-indexers`` would race the "
+            "mapping-reset job.",
+        )

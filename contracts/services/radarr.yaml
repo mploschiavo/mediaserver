@@ -84,16 +84,26 @@ plugin:
         method: ensure_jellyfin_notifier
 
     # --- Indexer pipeline (Radarr side) -----------------------------------
+    # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
+    # ServarrLifecycle.probe_has_indexers / ensure_indexers instead
+    # of the legacy ``push-indexers`` job. The ensurer narrows the
+    # legacy whole-pipeline run to its per-*arr essence: short-
+    # circuit if this *arr already has indexers, otherwise trigger
+    # Prowlarr's ``ApplicationIndexerSync`` (forceSync=true) — the
+    # same HTTP call the legacy pipeline made internally. Reverting
+    # = restore the http_json probe + string ``ensured_by``.
     - id: radarr-has-indexers
       description: Radarr received at least one indexer from Prowlarr push-sync
-      ensured_by: push-indexers
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: radarr
-        path: /app/radarr/api/v3/indexer
-        auth: api_key
-        assert: "isinstance(response, list) and len(response) >= 1"
+        method: probe_has_indexers
+      ensured_by:
+        type: lifecycle
+        service: radarr
+        method: ensure_indexers
 
     # --- Default-profile content (Radarr import lists) --------------------
     - id: radarr-import-lists-auto

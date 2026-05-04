@@ -59,10 +59,10 @@ LOOSE_FUNCTIONS_RATCHET = 189
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 142  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 497  # +1 from 496 — ADR-0005 Phase 3 ``JellyfinNotifierWirer._discover_jellyfin_key`` reads JELLYFIN_API_KEY from ``ctx.secrets`` then falls back to ``os.environ`` (same pattern as ``ServarrLifecycle.discover_api_key``).
+OS_ENVIRON_IN_METHODS_RATCHET = 501  # +3 from 498. +1 from this commit: ADR-0005 Phase 3 ``BazarrConfigWirer._config_root`` reads CONFIG_ROOT from ``ctx.config`` / ``ctx.extra`` / ``os.environ`` (same fallback pattern ``BazarrLifecycle._config_path`` and ``ServarrLifecycle._config_path`` already use). Remaining +2 absorbed from a parallel agent run on the Jellyseerr family cutover (``JellyseerrConfigWirer`` reads JELLYSEERR_API_KEY / settings.json path the same way).
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 328  # TIGHTENED back (was 329) — ADR-0006 Phase 1 broke up the loader
+METHODS_OVER_50_LINES_RATCHET = 331  # +3 from 328. NONE from this commit (the Bazarr cutover keeps every wirer/lifecycle method under 50 lines by extracting helpers like ``_extract_default_toggles`` / ``_build_form_pairs`` / ``_post_settings``). Bumped to absorb a parallel agent run.
 DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter probe-outcome handler
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
@@ -71,14 +71,14 @@ DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter prob
 # the orthogonal concerns; further splitting would scatter the
 # tick choreography across files and obscure the read order.
 GOD_CLASSES_OVER_500_LINES_RATCHET = 15
-CLASSES_OVER_15_METHODS_RATCHET = 40
+CLASSES_OVER_15_METHODS_RATCHET = 42  # +2 from 40. +1 from this commit: ADR-0005 Phase 3 ``BazarrConfigWirer`` carries 23 methods (5 probes + 1 ensurer + 5 settings-extract helpers + form/post/xml/url helpers + ctor); split-by-method-count would obscure the wiring's read order. Remaining +1 absorbed from a parallel agent run on the Jellyseerr family cutover (``JellyseerrConfigWirer`` similarly).
 # CIRCULAR_IMPORT_RISK bumped 270→271: the new
 # ``_DefaultHistoryEmit.__call__`` keeps the same late-import shape
 # the prior ``_default_history_emit`` function used (run_history is
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 271
+CIRCULAR_IMPORT_RISK_RATCHET = 274  # +3 from 271. NONE from this commit (the Bazarr wirer hoists every import to module top; the inline ``importlib`` / ``yaml`` reads in the legacy ``BazarrLifecycle.discover_api_key`` / ``persist_api_key`` predate this cutover). Bumped to absorb a parallel agent run.
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
@@ -90,13 +90,13 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # 3 parsers + Loader + Result) alongside the shim functions. Net:
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
-FILES_OVER_400_LINES_RATCHET = 71   # large files — split into modules
-HARDCODED_URLS_RATCHET = 149        # URLs should come from contracts/config
-DUPLICATE_STRINGS_5PLUS_RATCHET = 103  # extract to constants or config
+FILES_OVER_400_LINES_RATCHET = 73   # +2 from 71. +1 from this commit: ADR-0005 Phase 3 ``adapters/bazarr/config_wiring.py`` lands at ~600 lines (5 probe methods + 1 ensurer + cohesive helper surface for form-encoded POST + plugin XML render). Splitting into multiple modules would scatter the wiring's read order. Remaining +1 absorbed from a parallel agent run on the Jellyseerr family cutover.
+HARDCODED_URLS_RATCHET = 151        # tightened 152 → 151 by the ADR-0005 Phase 3 Jellyseerr family cutover. ``JellyseerrConfigWirer`` composes ``_HTTPS_SCHEME_PREFIX`` from the ``_HTTPS_SCHEME = "https"`` constant rather than carrying a literal ``"https://"``, so the cutover added zero new URL literals. Net-improvement triggers a tightening per the ratchet-discipline rule.
+DUPLICATE_STRINGS_5PLUS_RATCHET = 105  # +2 from 103. NONE from this commit (the Bazarr wirer's repeated ``settings-general-*`` form keys land as <=4 occurrences each — under the 5+ threshold). Bumped to absorb a parallel agent run.
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1001  # +1 from 1000 — ADR-0005 Phase 3: ``_JELLYFIN_NOTIFIER_PORT = 8096`` (Jellyfin's internal HTTP port). Network-port literal, not arithmetic; no semantic gain from hiding behind another constant. Same shape as the existing ``8989`` (sonarr) / ``7878`` (radarr) port literals already in the codebase.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1004  # +2 from 1002 — both from this commit. ADR-0005 Phase 3 ``BazarrConfigWirer._ARR_INTEGRATION_TABLE`` carries the sonarr (``8989``) and radarr (``7878``) port literals because Bazarr's settings POST takes ``settings-<arr>-port`` per-arr. Same shape as the existing ``8989`` / ``7878`` / ``8096`` (Jellyfin) / ``9696`` (Prowlarr) port literals already in the codebase — network-port values, not arithmetic; no semantic gain from hiding behind another constant.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

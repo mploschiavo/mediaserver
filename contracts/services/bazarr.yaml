@@ -43,79 +43,85 @@ plugin:
   # depends_on resolution — see
   # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
   #
-  # Bazarr promises share a single ensurer (``ensure-bazarr-language-profile``)
-  # because the legacy job builds the language profile, default-profile
-  # toggles, provider list, *arr integration, and Jellyfin-plugin
-  # config in one pass; ADR-0003 Phase 3 (lifecycle_class above) is
-  # the planned eventual migration off the silent-error-as-ok shape.
+  # ADR-0005 Phase 3 cutover: all five Bazarr promises flipped from
+  # http_json/file_text probes + string ``ensured_by:
+  # ensure-bazarr-language-profile`` to lifecycle dispatch through
+  # ``BazarrLifecycle.probe_*`` and ``BazarrLifecycle.ensure_config_wiring``.
+  # Same handler logic under the hood (``BazarrConfigWirer`` ports the
+  # legacy ``ensure_bazarr_language_profile`` job verbatim); different
+  # invocation. Reverting = restore each promise's http_json/file_text
+  # probe and the string ``ensured_by``.
+  #
+  # All five share ``ensure_config_wiring`` because the legacy ensurer
+  # writes profile + toggles + providers + arr-integration in ONE
+  # form-encoded POST — five ensurers would mean five redundant POSTs
+  # that each clobber the shared settings document. Per-promise
+  # probes still differ (each asserts its own slice of the response).
   promises:
     - id: bazarr-language-profile
       description: Bazarr has at least one language profile (default English)
-      ensured_by: ensure-bazarr-language-profile
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: bazarr
-        path: /api/system/languages/profiles
-        auth: api_key
-        assert: "isinstance(response, list) and len(response) > 0"
+        method: probe_language_profile
+      ensured_by:
+        type: lifecycle
+        service: bazarr
+        method: ensure_config_wiring
 
     - id: bazarr-default-profile-toggles
       description: Bazarr auto-assigns the default profile to new series + movies
-      ensured_by: ensure-bazarr-language-profile
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: bazarr
-        path: /api/system/settings
-        auth: api_key
-        assert: |
-          response['general'].get('serie_default_enabled') is True
-          and response['general'].get('movie_default_enabled') is True
+        method: probe_default_profile_toggles
+      ensured_by:
+        type: lifecycle
+        service: bazarr
+        method: ensure_config_wiring
 
     - id: bazarr-providers
       description: Bazarr has the curated subtitle provider set enabled
-      ensured_by: ensure-bazarr-language-profile
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: bazarr
-        path: /api/system/settings
-        auth: api_key
-        assert: |
-          set(response['general'].get('enabled_providers') or []) >= {
-            'opensubtitlescom', 'podnapisi', 'gestdown',
-            'yifysubtitles', 'embeddedsubtitles',
-          }
+        method: probe_providers
+      ensured_by:
+        type: lifecycle
+        service: bazarr
+        method: ensure_config_wiring
 
     - id: bazarr-arr-integration
       description: Bazarr has Sonarr + Radarr connections configured
-      ensured_by: ensure-bazarr-language-profile
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: bazarr
-        path: /api/system/settings
-        auth: api_key
-        assert: |
-          response['general'].get('use_sonarr') is True
-          and response['general'].get('use_radarr') is True
-          and response['sonarr'].get('ip') == 'sonarr'
-          and response['radarr'].get('ip') == 'radarr'
-          and bool(response['sonarr'].get('apikey'))
-          and bool(response['radarr'].get('apikey'))
+        method: probe_arr_integration
+      ensured_by:
+        type: lifecycle
+        service: bazarr
+        method: ensure_config_wiring
 
     - id: bazarr-jellyfin-plugin-config
       description: Jellyfin Bazarr plugin config has the right URL + API key
-      ensured_by: ensure-bazarr-language-profile
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: file_text
-        path: jellyfin/plugins/configurations/Jellyfin.Plugin.Bazarr.xml
-        assert: |
-          '<BazarrUrl>http://bazarr:6767</BazarrUrl>' in data
-          and '<BazarrApiKey>' in data
-          and '<BazarrApiKey></BazarrApiKey>' not in data
+        type: lifecycle
+        service: bazarr
+        method: probe_jellyfin_plugin_config
+      ensured_by:
+        type: lifecycle
+        service: bazarr
+        method: ensure_config_wiring
 
   event_handlers:
     ENSURE:
