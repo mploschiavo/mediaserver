@@ -564,19 +564,33 @@ class TestUserDetailRoute:
 
     def test_user_id_does_not_match_sub_path_segments(self) -> None:
         """Pin: the path-parameter regex matches ``[^/]+`` exactly,
-        so ``/api/users/u1/sessions`` falls through to legacy
-        instead of being routed as ``user_id='u1/sessions'``.
+        so ``/api/users/u1/sessions`` resolves to the dedicated
+        ``/api/users/{user_id}/sessions`` route (wave-8) and NOT
+        to ``/api/users/{user_id}`` with ``user_id='u1/sessions'``.
+
+        Confirms the regex compilation in ``_RouteCompiler._compile_pattern``
+        produces ``(?P<user_id>[^/]+)`` (single-segment), preventing
+        greedy slash-spanning matches even when sibling routes exist.
         """
         from media_stack.api.routing import DispatchOutcome
+        from media_stack.api.routes.post_user_sessions import (
+            UserSessionsRoutes,
+        )
         harness = RouteDispatchHarness.with_default_router()
-        outcome, _ = harness.try_dispatch(
+        match = harness._dispatcher._router.match(
             "GET", "/api/users/u1/sessions",
         )
-        # Either NO_MATCH (legacy chain still owns it) or
-        # METHOD_NOT_ALLOWED (sessions has only POST today). Both
-        # are fine; the assertion is that the router did NOT match
-        # ``/api/users/{user_id}``.
-        assert outcome != DispatchOutcome.HANDLED
+        assert match is not None, (
+            "Expected /api/users/u1/sessions to match the "
+            "/api/users/{user_id}/sessions route after wave-8."
+        )
+        # Confirm the matched route is the sessions route, not a
+        # greedy `/api/users/{user_id}` match with slash in the param.
+        assert match.params == {"user_id": "u1"}, (
+            f"Expected single-segment user_id capture; "
+            f"got params={match.params}"
+        )
+        assert isinstance(match.route.handler.__self__, UserSessionsRoutes)
 
 
 # --- /api/users/{user_id}/login-history -----------------------------
@@ -752,12 +766,21 @@ class TestRoutingIntegration:
             f"Missing users-domain routes: {expected - registered}"
         )
 
-    def test_post_to_users_yields_no_match_or_method_not_allowed(
+    def test_post_to_users_routed_to_post_module(
         self,
     ) -> None:
-        """POST /api/users is in the spec (createUser) but NOT in
-        wave 5 — the router must not silently HANDLED-it."""
+        """POST /api/users (createUser) was migrated in wave-8
+        (``post_users.py``). The GET-side users module here MUST
+        NOT claim the POST verb. Confirm dispatch matches a route
+        owned by a different module than this file's GET routes."""
         from media_stack.api.routing import DispatchOutcome
+        from media_stack.api.routes.post_users import UsersPostRoutes
         harness = RouteDispatchHarness.with_default_router()
-        outcome, _ = harness.try_dispatch("POST", "/api/users")
-        assert outcome != DispatchOutcome.HANDLED
+        match = harness._dispatcher._router.match("POST", "/api/users")
+        assert match is not None, (
+            "Expected POST /api/users to be registered after wave-8."
+        )
+        assert isinstance(match.route.handler.__self__, UsersPostRoutes), (
+            "Expected POST /api/users to route to UsersPostRoutes; "
+            f"got {type(match.route.handler.__self__).__name__}"
+        )
