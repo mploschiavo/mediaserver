@@ -66,14 +66,32 @@ plugin:
   # above, not by separate promises).
   promises:
     # --- Default-profile content -----------------------------------------------
+    #
+    # ADR-0005 Phase 3 cutover. Probe + ensurer flipped from
+    # ``http_text`` + string ``ensured_by: ensure-qbittorrent-categories``
+    # to ``{type: lifecycle, service: qbittorrent, method: …}``. The
+    # orchestrator now dispatches ``QbittorrentLifecycle.ensure_categories``
+    # (which delegates to ``CategoriesWirer``) at bootstrap time.
+    #
+    # Why the cutover: the legacy ``ensure_qbittorrent_categories`` job
+    # is the canonical example in the silent-error-as-ok bug class — a
+    # login failure logs ``err=…`` while the run reports ``status=ok``,
+    # masking the real config-level problem. The lifecycle path returns
+    # ``Outcome.failure(transient=…, evidence=…)`` honestly.
+    #
+    # Reverting = flip both ``probe`` and ``ensured_by`` back to the
+    # legacy shape AND restore ``phase: post`` + ``priority: 84`` on
+    # the ``ensure-qbittorrent-categories`` job in
+    # ``contracts/services/core.yaml``.
     - id: qbittorrent-categories
       description: qBit has the four content categories (movies/tv/music/books)
-      ensured_by: ensure-qbittorrent-categories
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_text
+        type: lifecycle
         service: qbittorrent
-        path: /api/v2/torrents/categories
-        auth: qbit_basic
-        assert: |
-          all(c in data for c in ('"movies"', '"tv"', '"music"', '"books"'))
+        method: probe_categories
+      ensured_by:
+        type: lifecycle
+        service: qbittorrent
+        method: ensure_categories

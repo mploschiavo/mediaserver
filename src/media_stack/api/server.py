@@ -1122,6 +1122,23 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         _auth_policy.canonicalize_path(self)
         if not self._check_auth():
             return
+        # ADR-0007 Phase 1: consult the router first; on no match
+        # fall through to the legacy ``handlers_get.handle()`` chain.
+        # Migration is incremental — each route added under
+        # ``api/routes/`` shifts one path off the legacy chain.
+        from media_stack.api.routing import (
+            DefaultDispatcher,
+            DispatchOutcome,
+        )
+        dispatcher = DefaultDispatcher.instance()
+        path = self.path.split("?", 1)[0]
+        outcome = dispatcher.try_dispatch("GET", path, self)
+        if outcome == DispatchOutcome.HANDLED:
+            return
+        if outcome == DispatchOutcome.METHOD_NOT_ALLOWED:
+            dispatcher.write_method_not_allowed(self, path)
+            return
+        # NO_MATCH — fall through to legacy chain.
         handlers_get.handle(self)
 
     # =======================================================================
@@ -1149,6 +1166,23 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                 {"error": "sensitive endpoint requires re-authentication; "
                           "present X-Sudo-Password header with your password"},
             )
+            return
+        # ADR-0007 Phase 1: consult router first; fall through on
+        # NO_MATCH. Phase 1 only registers GET routes today; the
+        # dispatcher returns NO_MATCH for every POST and falls
+        # through to the legacy chain.
+        from media_stack.api.routing import (
+            DefaultDispatcher,
+            DispatchOutcome,
+        )
+        dispatcher = DefaultDispatcher.instance()
+        post_path = self.path.split("?", 1)[0]
+        outcome = dispatcher.try_dispatch("POST", post_path, self)
+        if outcome == DispatchOutcome.HANDLED:
+            _audit_mutation(self)
+            return
+        if outcome == DispatchOutcome.METHOD_NOT_ALLOWED:
+            dispatcher.write_method_not_allowed(self, post_path)
             return
         handlers_post.handle(self)
         _audit_mutation(self)

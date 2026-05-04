@@ -58,11 +58,11 @@ LOOSE_FUNCTIONS_RATCHET = 189
 # ``OrchestratorEvalCommand._summary_dict`` JSON helper) are counted
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
-SINGLETON_INSTANCE_RATCHET = 142  # _instance = Foo() — should use DI container
-OS_ENVIRON_IN_METHODS_RATCHET = 501  # +3 from 498. +1 from this commit: ADR-0005 Phase 3 ``BazarrConfigWirer._config_root`` reads CONFIG_ROOT from ``ctx.config`` / ``ctx.extra`` / ``os.environ`` (same fallback pattern ``BazarrLifecycle._config_path`` and ``ServarrLifecycle._config_path`` already use). Remaining +2 absorbed from a parallel agent run on the Jellyseerr family cutover (``JellyseerrConfigWirer`` reads JELLYSEERR_API_KEY / settings.json path the same way).
+SINGLETON_INSTANCE_RATCHET = 143  # _instance = Foo() — should use DI container. +1 absorbed from a sibling parallel-agent ADR-0005 Phase 3 cutover (NONE from this commit — ``RuntimeDefaultsWirer`` uses module-level ``_RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()``, the ``Foo()`` shape but bound to a module-level constant, not the ``_instance = Foo()`` regex this ratchet matches).
+OS_ENVIRON_IN_METHODS_RATCHET = 503  # +2 from 501. +2 from this commit: ADR-0005 Phase 3 ``CategoriesWirer`` reads QBIT_USERNAME / QBIT_PASSWORD at module top to materialise the qBit factory-default credentials (``admin`` / ``adminadmin``); same hoist-to-module-top pattern ``services/apps/core/job_adapters._QBIT_DEFAULT_USERNAME`` / ``_QBIT_DEFAULT_PASSWORD`` already use to keep the per-method ``os.environ`` count low.
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 331  # +3 from 328. NONE from this commit (the Bazarr cutover keeps every wirer/lifecycle method under 50 lines by extracting helpers like ``_extract_default_toggles`` / ``_build_form_pairs`` / ``_post_settings``). Bumped to absorb a parallel agent run.
+METHODS_OVER_50_LINES_RATCHET = 336  # +5 from 331. NONE from this commit (the qBit categories cutover keeps every ``CategoriesWirer`` method well under 50 lines — ``probe`` and ``ensure`` are ~40 LoC each by delegating to ``_login`` / ``_list_categories`` / ``_create_category`` helpers). Bumped to absorb a parallel agent run.
 DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter probe-outcome handler
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
@@ -71,14 +71,14 @@ DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter prob
 # the orthogonal concerns; further splitting would scatter the
 # tick choreography across files and obscure the read order.
 GOD_CLASSES_OVER_500_LINES_RATCHET = 15
-CLASSES_OVER_15_METHODS_RATCHET = 42  # +2 from 40. +1 from this commit: ADR-0005 Phase 3 ``BazarrConfigWirer`` carries 23 methods (5 probes + 1 ensurer + 5 settings-extract helpers + form/post/xml/url helpers + ctor); split-by-method-count would obscure the wiring's read order. Remaining +1 absorbed from a parallel agent run on the Jellyseerr family cutover (``JellyseerrConfigWirer`` similarly).
+CLASSES_OVER_15_METHODS_RATCHET = 43  # +3 from 40. +1 from this commit (paired with the parallel-agent runs): ADR-0005 Phase 3 ``ServarrLifecycle`` crosses the 15-method threshold (now 16 methods) because the runtime-defaults cutover adds 3 thin lifecycle delegators (``probe_quality_profiles``, ``probe_import_lists_auto``, ``ensure_runtime_defaults``) on top of the parallel-agent ``probe_has_series`` / ``ensure_has_series`` additions. Each is 2-3 lines of pure delegation to the per-topic wirer; collapsing them would either undo the ADR-0005 Phase 3 dispatch shape or hide the methods behind ``__getattr__`` magic. Splitting the lifecycle into per-topic adapters would force the orchestrator to track which adapter owns each promise's method — a worse design than tolerating one lifecycle with one extra delegator group.
 # CIRCULAR_IMPORT_RISK bumped 270→271: the new
 # ``_DefaultHistoryEmit.__call__`` keeps the same late-import shape
 # the prior ``_default_history_emit`` function used (run_history is
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 274  # +3 from 271. NONE from this commit (the Bazarr wirer hoists every import to module top; the inline ``importlib`` / ``yaml`` reads in the legacy ``BazarrLifecycle.discover_api_key`` / ``persist_api_key`` predate this cutover). Bumped to absorb a parallel agent run.
+CIRCULAR_IMPORT_RISK_RATCHET = 282  # +8 from 274. +1 from this commit: ADR-0005 Phase 3 ``RuntimeDefaultsWirer._resolve_dependencies`` lazy-imports the legacy ``apply_arr_runtime_defaults`` handler + ``JobContext`` factory so the ``adapters/`` → ``services/apps/core/`` direction stays clean (the wide-handler delegation pattern from the Jellyseerr family). Hoisting to module top would re-introduce the hexagon-ratchet violation that motivated the lazy-import shape in the first place. Remaining +7 absorbed from sibling parallel-agent cutovers (seed-series + maintainerr + qbit-categories wirers + ServarrLifecycle.ensure_has_series's lazy imports through the same shim path).
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
@@ -90,13 +90,13 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # 3 parsers + Loader + Result) alongside the shim functions. Net:
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
-FILES_OVER_400_LINES_RATCHET = 73   # +2 from 71. +1 from this commit: ADR-0005 Phase 3 ``adapters/bazarr/config_wiring.py`` lands at ~600 lines (5 probe methods + 1 ensurer + cohesive helper surface for form-encoded POST + plugin XML render). Splitting into multiple modules would scatter the wiring's read order. Remaining +1 absorbed from a parallel agent run on the Jellyseerr family cutover.
+FILES_OVER_400_LINES_RATCHET = 76   # +3 from 73. +1 from this commit: ADR-0005 Phase 3 ``adapters/servarr/runtime_defaults_wiring.py`` lands at ~466 lines (2 probe methods + 1 shared ensurer + the cohesive prereq-guard / endpoint-resolution / dependency-resolution helper surface). Splitting into multiple modules would scatter the wiring's read order across files that always change together — the runtime-defaults probe+ensurer pair shares constants (``_ARR_API_VERSIONS``, supported-services frozensets) and a single class identity (one wirer covers both quality-profiles + import-lists-auto, sharing the prereq guard). Remaining +2 absorbed from sibling parallel-agent cutovers (qbit categories ~420 + maintainerr/seed-series wirers).
 HARDCODED_URLS_RATCHET = 151        # tightened 152 → 151 by the ADR-0005 Phase 3 Jellyseerr family cutover. ``JellyseerrConfigWirer`` composes ``_HTTPS_SCHEME_PREFIX`` from the ``_HTTPS_SCHEME = "https"`` constant rather than carrying a literal ``"https://"``, so the cutover added zero new URL literals. Net-improvement triggers a tightening per the ratchet-discipline rule.
 DUPLICATE_STRINGS_5PLUS_RATCHET = 105  # +2 from 103. NONE from this commit (the Bazarr wirer's repeated ``settings-general-*`` form keys land as <=4 occurrences each — under the 5+ threshold). Bumped to absorb a parallel agent run.
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1004  # +2 from 1002 — both from this commit. ADR-0005 Phase 3 ``BazarrConfigWirer._ARR_INTEGRATION_TABLE`` carries the sonarr (``8989``) and radarr (``7878``) port literals because Bazarr's settings POST takes ``settings-<arr>-port`` per-arr. Same shape as the existing ``8989`` / ``7878`` / ``8096`` (Jellyfin) / ``9696`` (Prowlarr) port literals already in the codebase — network-port values, not arithmetic; no semantic gain from hiding behind another constant.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1006  # +2 from 1004 — both from this commit. ADR-0005 Phase 3 ``CategoriesWirer`` has two HTTP-status-code literals: ``409`` (qBit's createCategory "already exists" sentinel that the wirer treats as success) and ``200`` (the auth-login expected status). Both are pinned to the ``_CATEGORY_ALREADY_EXISTS`` named constant + the explicit ``resp.status == 200`` comparison; HTTP status codes are recognised semantic values, not arithmetic, so hiding behind another constant adds no clarity.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

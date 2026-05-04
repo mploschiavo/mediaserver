@@ -32,6 +32,9 @@ import os
 import urllib.error
 import urllib.request
 
+from media_stack.adapters.qbittorrent.categories_wiring import (
+    CategoriesWirer,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -46,6 +49,14 @@ logger = logging.getLogger(__name__)
 _DEFAULT_HEALTH_PATH = "/api/v2/app/version"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_ENV = "QBITTORRENT_PASSWORD"
+
+# Stateless module-level singleton — the wirer is per-call parameterized
+# by ``OrchestrationContext`` (host/port/credentials), so one instance
+# handles every qBittorrent invocation. Constructor-injected timeouts +
+# default credentials keep the magic-number / os.environ surface in the
+# wirer module rather than here. ADR-0005 Phase 3 cutover for
+# ``ensure-qbittorrent-categories``.
+_CATEGORIES_WIRER = CategoriesWirer()
 
 
 class QbittorrentLifecycle:
@@ -183,6 +194,20 @@ class QbittorrentLifecycle:
                 transient=True,
                 evidence={"env_written": env_var, "error": str(exc)},
             )
+
+    # --- Categories wiring (ADR-0005 Phase 3) -----------------------
+    #
+    # Both methods delegate to ``CategoriesWirer`` (in
+    # ``categories_wiring.py``). The lifecycle owns the credential
+    # discovery contract via ``discover_api_key`` (used by the
+    # orchestrator pre-bootstrap), the wirer owns the cookie-jar
+    # session login + per-category POST shape.
+
+    def probe_categories(self, ctx: OrchestrationContext) -> ProbeResult:
+        return _CATEGORIES_WIRER.probe(ctx)
+
+    def ensure_categories(self, ctx: OrchestrationContext) -> Outcome[None]:
+        return _CATEGORIES_WIRER.ensure(ctx)
 
     # --- helpers ----------------------------------------------------
 

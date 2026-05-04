@@ -1270,9 +1270,14 @@ class GetRequestHandler:
             _handle_service_logs(handler, path)
 
         # --- Metrics ---
-        elif path == "/metrics":
-            handler._raw_response(HTTPStatus.OK, "text/plain; version=0.0.4; charset=utf-8",
-                                  metrics_svc.get_prometheus_metrics(api_cache).encode("utf-8"))
+        # ``/metrics`` is intentionally NOT here. ADR-0007 noted
+        # this branch was unreachable dead code: line 478 above
+        # routes ``/metrics`` to ``_handle_user_mgmt`` first via
+        # the ``path in (..., "/metrics", ...)`` tuple match. The
+        # user-mgmt handler emits the augmented Prometheus output
+        # (api_cache + security counters + audit). This shorter
+        # variant (api_cache only) was never invoked. Removed in
+        # the ADR-0007 Phase 1 commit.
         elif path == "/api/envoy/stats":
             handler._json_response(HTTPStatus.OK, metrics_svc.get_envoy_stats())
         elif path == "/api/envoy/admin-summary":

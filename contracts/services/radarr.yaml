@@ -106,18 +106,26 @@ plugin:
         method: ensure_indexers
 
     # --- Default-profile content (Radarr import lists) --------------------
+    # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
+    # ServarrLifecycle.probe_import_lists_auto /
+    # ensure_runtime_defaults. Probe is Radarr-only (sonarr lifecycle
+    # short-circuits via the unsupported-service pattern). Ensurer
+    # is shared with the two quality-profiles promises — the legacy
+    # handler reconciles every *arr's import-lists in one pass, so
+    # per-promise ensurers would clobber each other. Reverting =
+    # restore the http_json probe + string ``ensured_by``.
     - id: radarr-import-lists-auto
       description: Radarr import lists have enableAuto=true (TMDb popular movies auto-add)
-      ensured_by: apply-arr-runtime-defaults
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: radarr
-        path: /app/radarr/api/v3/importlist
-        auth: api_key
-        assert: |
-          isinstance(response, list) and response
-          and all(l.get('enableAuto') is True for l in response if l.get('enabled'))
+        method: probe_import_lists_auto
+      ensured_by:
+        type: lifecycle
+        service: radarr
+        method: ensure_runtime_defaults
 
     # --- qBittorrent download client wiring (Radarr) ----------------------
     - id: radarr-download-client
@@ -139,13 +147,22 @@ plugin:
           )
 
     # --- Quality profiles (Radarr) ----------------------------------------
+    # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
+    # ServarrLifecycle.probe_quality_profiles /
+    # ensure_runtime_defaults. Shared ensurer with the other two
+    # runtime-defaults promises (rationale on the Sonarr-side cutover
+    # comment + the wirer module top — Bazarr monolithic-handler
+    # lesson). Reverting = restore the http_json probe + string
+    # ``ensured_by``.
     - id: radarr-quality-profiles
       description: Radarr has at least one quality profile available
-      ensured_by: apply-arr-runtime-defaults
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: radarr
-        path: /app/radarr/api/v3/qualityprofile
-        auth: api_key
-        assert: "isinstance(response, list) and len(response) >= 1"
+        method: probe_quality_profiles
+      ensured_by:
+        type: lifecycle
+        service: radarr
+        method: ensure_runtime_defaults

@@ -38,6 +38,12 @@ from media_stack.adapters.servarr.indexer_pipeline import (
 from media_stack.adapters.servarr.notifier_wiring import (
     JellyfinNotifierWirer,
 )
+from media_stack.adapters.servarr.runtime_defaults_wiring import (
+    RuntimeDefaultsWirer,
+)
+from media_stack.adapters.servarr.seed_series_wiring import (
+    SeedSeriesWirer,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -68,6 +74,24 @@ _JELLYFIN_NOTIFIER_WIRER = JellyfinNotifierWirer()
 # ctx. Constructor-injected Prowlarr identity (host / port) keeps
 # the magic-number / duplicate-string surface in the wirer module.
 _INDEXER_PIPELINE_WIRER = IndexerPipelineWirer()
+
+# Same shape — stateless module-level singleton. The seed-series
+# wirer is Sonarr-only (other *arrs short-circuit) and uses the
+# Jellyseerr wide-handler delegation pattern: probe is owned, but
+# ensure delegates to the legacy handler via injected callables so
+# ~100 LoC of multi-subsystem orchestration isn't duplicated here.
+_SEED_SERIES_WIRER = SeedSeriesWirer()
+
+# Same shape — stateless module-level singleton, per-call
+# parameterized by service_id + arr_api_key + ctx. Per the Bazarr
+# monolithic-handler lesson, the runtime-defaults wirer owns N
+# distinct probes (quality-profiles + import-lists-auto) but ONE
+# shared ensurer that delegates to the legacy
+# ``apply_arr_runtime_defaults`` handler — same wide-handler
+# delegation pattern the Jellyseerr family uses, because the legacy
+# handler does ~100 LoC of multi-arr orchestration in one pass and
+# splitting into N ensurers would clobber the shared *arr settings.
+_RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()
 
 
 class ServarrLifecycle:
@@ -265,6 +289,80 @@ class ServarrLifecycle:
         self, ctx: OrchestrationContext,
     ) -> Outcome[None]:
         return _INDEXER_PIPELINE_WIRER.ensure(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    # --- Seed-series wiring (ADR-0005 Phase 3 — wide-handler) -------
+    #
+    # The seed-series wirer's probe is owned (count Sonarr's series,
+    # idempotent skip when sufficient); the ensurer delegates to the
+    # legacy ``ensure_sonarr_seed_series`` handler via injected
+    # callables. The legacy handler is wide (~100 LoC: read seed
+    # config, fetch qualityprofile + rootfolder + existing series,
+    # tvdbId-lookup per seed name, POST each new series). Following
+    # the Jellyseerr addendum, we keep that handler as the
+    # implementation rather than duplicating it inside the wirer.
+    #
+    # Lazy imports go through the ``services/`` shim path so the
+    # adapters → application hexagon ratchet stays clean — the
+    # canonical ``application.jobs.framework`` module is reached
+    # transitively via the shim, not by direct import here. Same
+    # convention the Jellyseerr arr-servers ensurer follows.
+
+    def probe_has_series(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _SEED_SERIES_WIRER.probe(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    def ensure_has_series(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        from media_stack.services.apps.core.job_adapters import (
+            ensure_sonarr_seed_series,
+        )
+        from media_stack.services.jobs.framework import JobContext
+        return _SEED_SERIES_WIRER.ensure(
+            self.service_id, self.discover_api_key(ctx), ctx,
+            configure_handler=ensure_sonarr_seed_series,
+            job_context_factory=JobContext,
+        )
+
+    # --- Runtime-defaults wiring (ADR-0005 Phase 3) -----------------
+    #
+    # Three promises bind here:
+    #   * sonarr-quality-profiles    → probe_quality_profiles
+    #   * radarr-quality-profiles    → probe_quality_profiles
+    #   * radarr-import-lists-auto   → probe_import_lists_auto
+    # All three share ``ensure_runtime_defaults`` (rationale on the
+    # wirer module top: legacy handler is monolithic — splitting into
+    # per-promise ensurers would mean three POST runs that each
+    # clobber the shared *arr settings document).
+    #
+    # ``probe_import_lists_auto`` short-circuits ``ok`` for non-radarr
+    # service ids using the unsupported-service pattern from
+    # ``JellyfinNotifierWirer``; sonarr lifecycle instances will never
+    # have a promise that calls it, but the wirer guards anyway.
+
+    def probe_quality_profiles(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _RUNTIME_DEFAULTS_WIRER.probe_quality_profiles(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    def probe_import_lists_auto(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _RUNTIME_DEFAULTS_WIRER.probe_import_lists_auto(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    def ensure_runtime_defaults(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _RUNTIME_DEFAULTS_WIRER.ensure_runtime_defaults(
             self.service_id, self.discover_api_key(ctx), ctx,
         )
 

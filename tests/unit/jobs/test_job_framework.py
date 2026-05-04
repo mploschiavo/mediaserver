@@ -156,7 +156,22 @@ class TestBuildBootstrapJobs(unittest.TestCase):
         self.assertIn("configure-plugins", sub_names)
         self.assertIn("configure-playback", sub_names)
         self.assertIn("configure-home-screen", sub_names)
-        self.assertIn("configure-collections", sub_names)
+        # ``configure-collections`` was here pre-ADR-0005 Phase 3.
+        # The cutover dropped its ``phase: media_server`` so the
+        # bootstrap DAG no longer schedules it via the framework —
+        # the orchestrator dispatches Maintainerr's rule-link promise
+        # via ``MaintainerrLifecycle.ensure_rules_linked_to_arr``
+        # instead. The job stays REGISTERED for ``run_job(name)``
+        # auto-heal + Jellyfin auto-collections plugin reconcile. See
+        # tests/unit/contracts/test_maintainerr_rules_promise_driven.py.
+        self.assertNotIn(
+            "configure-collections", sub_names,
+            "configure-collections regained ``phase: media_server`` — "
+            "the ADR-0005 Phase 3 cutover removed it. Reverting means "
+            "restoring phase + priority in jellyfin.yaml AND flipping "
+            "the maintainerr-rules-linked-to-arr promise back to "
+            "string ``ensured_by: configure-collections``.",
+        )
 
     def test_has_prewarm_in_tree(self):
         root = build_job_framework()

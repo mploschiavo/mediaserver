@@ -394,6 +394,12 @@ def _count_inline_api_paths() -> int:
         "/api/contract_validator.py",
         "/api/services/openapi_router.py",
         "/api/services/security_get_deps.py",
+        # ADR-0007 Phase 2: route modules under ``api/routes/`` ARE
+        # the routing table — ``@get("/api/health")`` decorators
+        # carrying inline path strings is the canonical registration
+        # mechanism. Same role as ``handlers_get.py``'s elif chain
+        # before the migration; same exemption.
+        "/api/routes/",
     )
     for path in _iter_business_logic_files(skip_path_fragments=skip):
         try:

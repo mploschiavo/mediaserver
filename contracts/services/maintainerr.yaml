@@ -48,21 +48,30 @@ plugin:
   # the *arrs and has no key of its own; see lifecycle_class above).
   promises:
     # --- Maintainerr → *arr cross-wiring ----------------------------------
+    #
+    # ADR-0005 Phase 3 cutover (2026-05-03): probe + ensured_by
+    # flipped to lifecycle-typed dispatch. The legacy
+    # ``ensured_by: configure-collections`` reference was a misnomer —
+    # ``configure-collections`` is the Jellyfin auto-collections job
+    # (see ``contracts/services/jellyfin.yaml``), unrelated to
+    # Maintainerr's ``radarrSettingsId`` / ``sonarrSettingsId`` linkage.
+    # The lifecycle ensurer (``MaintainerrLifecycle.ensure_rules_linked_to_arr``)
+    # delegates to the real handler — ``ensure_maintainerr_integrations``
+    # — via the wide-handler delegation pattern (Jellyseerr precedent).
+    # See ``src/media_stack/adapters/maintainerr/rules_wiring.py``
+    # and ``tests/unit/contracts/test_maintainerr_rules_promise_driven.py``.
     - id: maintainerr-rules-linked-to-arr
       description: Movie rules link to Radarr; TV rules link to Sonarr (not None)
-      ensured_by: configure-collections
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: maintainerr
-        path: /app/maintainerr/api/collections
-        auth: none
-        assert: |
-          any(
-            (c.get('type') == 'movie' and c.get('radarrSettingsId') is not None)
-            or (c.get('type') == 'show' and c.get('sonarrSettingsId') is not None)
-            for c in (response or [])
-          )
+        method: probe_rules_linked_to_arr
+      ensured_by:
+        type: lifecycle
+        service: maintainerr
+        method: ensure_rules_linked_to_arr
 defaults:
   enabled: true
   required: false
