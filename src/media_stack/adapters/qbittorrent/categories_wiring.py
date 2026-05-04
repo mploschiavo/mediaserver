@@ -59,6 +59,9 @@ import urllib.parse
 import urllib.request
 from typing import Any, Mapping
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -116,7 +119,7 @@ _FACTORY_DEFAULT_PASSWORD = (
 _CATEGORY_ALREADY_EXISTS = 409
 
 
-class CategoriesWirer:
+class CategoriesWirer(LifecycleWirerBase):
     """Per-call qBittorrent category-wiring engine.
 
     Stateless across calls. Each ``probe`` / ``ensure`` builds a

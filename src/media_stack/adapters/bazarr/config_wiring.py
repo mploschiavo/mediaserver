@@ -61,6 +61,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -137,7 +140,7 @@ _DEFAULT_CONFIG_ROOT = "/srv-config"
 _CONFIG_ROOT_ENV = "CONFIG_ROOT"
 
 
-class BazarrConfigWirer:
+class BazarrConfigWirer(LifecycleWirerBase):
     """Bazarr settings + profile + plugin-XML wiring.
 
     Stateless beyond the constructor-injected curated provider list,

@@ -54,6 +54,9 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable, Mapping
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -97,7 +100,7 @@ _QUALITY_PROFILE_SUPPORTED: frozenset[str] = frozenset({"sonarr", "radarr"})
 _IMPORT_LISTS_AUTO_SUPPORTED: frozenset[str] = frozenset({"radarr"})
 
 
-class RuntimeDefaultsWirer:
+class RuntimeDefaultsWirer(LifecycleWirerBase):
     """Per-*arr runtime-defaults wiring.
 
     Constructor-injected ``configure_handler`` + ``job_context_factory``

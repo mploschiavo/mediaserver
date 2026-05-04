@@ -47,6 +47,9 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -73,7 +76,7 @@ _ARR_API_VERSIONS: dict[str, str] = {
 }
 
 
-class IndexerPipelineWirer:
+class IndexerPipelineWirer(LifecycleWirerBase):
     """Per-*arr indexer-pipeline wiring.
 
     Constructor-injected Prowlarr coordinates (host / port);

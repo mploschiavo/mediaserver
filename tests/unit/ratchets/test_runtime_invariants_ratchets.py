@@ -284,9 +284,13 @@ class FixCommitsTouchRatchets(unittest.TestCase):
     )
 
     # Subjects that are pure version-bumps / chore commits aren't
-    # fixes even if their bodies say "fixes ...".
+    # fixes even if their bodies say "fixes ...". Conventional-commit
+    # scope syntax (``docs(adr-0005): ...``) is also skipped — the
+    # parens-scope is the canonical convention here.
     _SKIP_SUBJECT_PREFIX = (
-        "v1.0.", "Bump ", "Release ", "chore:", "docs:",
+        "v1.0.", "Bump ", "Release ",
+        "chore:", "chore(",
+        "docs:", "docs(",
     )
 
     # Baseline rev — only commits AFTER this one are subject to the

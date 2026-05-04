@@ -60,6 +60,9 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -78,7 +81,7 @@ _RADARR_LINK_FIELD = "radarrSettingsId"
 _SONARR_LINK_FIELD = "sonarrSettingsId"
 
 
-class MaintainerrCollectionsWirer:
+class MaintainerrCollectionsWirer(LifecycleWirerBase):
     """Rule-link wiring for the ``maintainerr-rules-linked-to-arr``
     promise.
 
