@@ -1,11 +1,102 @@
 # ADR-0007 — OpenAPI-driven API request routing
 
-**Status:** Draft (2026-05-03). Refactoring lever, not a runtime
-change. Builds on the existing ``contracts/api/openapi.yaml``
-spec (already canonical, ratcheted, drift-checked). Doesn't
-unblock anything load-bearing — this is a maintainability /
-correctness improvement that pays off every time a new route
-lands or an existing one drifts.
+**Status:** ✅ **Implemented (2026-05-04).** Phase 1 (router foundation)
+landed at `e4c9b5b4`; Phase 2 (domain migration) closed at `21c876ff`
+after 8 waves. The legacy `handlers_get.py` + `handlers_post.py`
+chain (~5,360 LoC) is deleted; all 240 routes flow through the
+OpenAPI Router. See the [Status as of 2026-05-04](#status-as-of-2026-05-04)
+section for the as-shipped record.
+
+Builds on the existing ``contracts/api/openapi.yaml`` spec (already
+canonical, ratcheted, drift-checked). The maintainability /
+correctness improvement promised at draft time has been realized —
+spec-vs-handler drift now fails at startup via
+`Router.assert_full_spec_coverage()` rather than living undetected
+in elif chains.
+
+## Status as of 2026-05-04
+
+**Phase 2 closed.** Final tally:
+
+- 240 routes registered across 41 `RouteModule` classes
+- 0 unmigrated routes (5 infrastructure GETs allowlisted in
+  `Router._INFRASTRUCTURE_ALLOWLIST`: `/`, `/dashboard`, `/api/docs`,
+  `/api/static/{asset}`, `/metrics` — served by `server.py` directly,
+  not RouteModules)
+- `handlers_get.py` (2,572 LoC) + `handlers_post.py` (2,788 LoC)
+  deleted; helpers extracted into 9 service modules under
+  `src/media_stack/api/services/` (actor, csrf_exempt_paths,
+  known_actions, logs_handlers, media_integrity_dispatch, openapi,
+  rate_limiters, routing_probes) + `application/auth/users/bulk_ops.py`
+- All six pre-cleanup gates passing:
+  1. ✅ Every spec path has a registered handler (or is allowlisted)
+  2. ✅ Zero duplicate path registrations
+  3. ✅ `tests/unit/api/test_router_spec_parity.py` strict mode
+  4. ✅ `OpenApiHandlerParity` ratchet upgraded literal-anchor → structural
+  5. ✅ Full pytest green (7835 passed / 54 skipped / 0 failed; ratchet 370 passed)
+  6. ⏸ Live soak — operational, awaiting next image bake + deploy
+
+### Phase 2 commit history
+
+| Commit | Wave | Routes added | New modules |
+|---|---|---|---|
+| `e38f9112` | 1 | first proof + 1 domain | health |
+| `3a949727` | 2 | 20 routes / 6 domains | indexers_quality + 5 |
+| `91efc0ec` | 3+4 | ~55 routes / 14 domains | 13 parallel-agent modules (auth, downloads, epg, envoy, logs, routing_admin, probes_dns_tls, system_diag, content_lists, config, branding_user, security_audit, ops, stack_backup, jobs, misc_legacy) |
+| `c9f8c30c` | 5 | 67 routes / 8 domains | 8 modules |
+| `9439299b` | 5+ | re-home /api/schedules | schedules.py |
+| `77f60652` | 6 | 20 routes / 4 modules | post_jobs_queue, post_user_resources, post_content_config, webhooks_and_deferred |
+| `2b7a013e` | (B) | snake_case path-params + 2 ratchets | (no new routes; case-normalization sweep) |
+| `a98a1ef6` | 7 | 4 routes | snapshots, auth_password_tickets + 2 routes folded into ops.py |
+| `6e6fde13` | 8 | 40 routes / 11 modules | post_users, post_user_sessions, post_roles, post_tokens, post_me, post_schedules_crud, post_bans, post_media_integrity, post_indexers_import_lists, post_misc + Router infra-allowlist |
+| `a903572e` | (D) | parity flip + structural ratchet upgrade | (gate work) |
+| `21c876ff` | (E) | **cleanup** — delete legacy files, lift helpers, retighten ratchets | 9 service modules |
+
+### Net diff: -3,913 LoC
+
+The migration deleted ~5,360 LoC of legacy handler code and
+introduced ~1,447 LoC of class-based replacements (route modules +
+service helpers + tests). The line-count reduction is incidental;
+the structural improvement is the real win:
+
+- Spec → handler drift fails at startup, not at runtime.
+- Adding a new route is a new file under `api/routes/` (no
+  central registration list to merge).
+- Each route module is a class with constructor-injected
+  collaborators — 168 wave-6/7/8 unit tests assert behavior
+  in isolation without monkey-patching.
+
+### Conventions established along the way
+
+- **snake_case wire format** for path params + JSON body keys
+  (carve-out for upstream-API passthrough fields like arr
+  `eventType`, `upgradeAllowed`). Enforced by 2 new ratchets:
+  `RegisteredPathParamsAreSnakeCase`,
+  `BodyJsonKeysAreSnakeCase` (with allowlist).
+- **Infrastructure-GET allowlist** — non-API spec paths served
+  directly by server.py are exempt from
+  `assert_full_spec_coverage()`. The list is intentionally tight
+  (5 entries); any addition requires deliberate intent.
+- **OpenApiHandlerParity** ratchet now structural — calls
+  `Router.assert_full_spec_coverage()` instead of grepping
+  source for literal anchors. The Router's startup check is the
+  authoritative source; the ratchet pins it from the outside.
+
+### Outstanding follow-ups (not blocking)
+
+- **Gate 6 (live soak)** — bootstrap cycle on compose + k8s
+  through the router-only path. Operational; needs an image
+  bake + deploy.
+- **NewType refactor** — `string-typed-ids` ratchet picked up
+  ~22 new offenders during the case-normalization sweep
+  (`run_id: str`, `user_id: str`, `service_id: str`, etc.).
+  Convert to `RunId = NewType("RunId", str)` per identity domain
+  in a single-pass refactor when ready.
+- **`handle_action` cancel alias** — `post_misc.handle_action`
+  special-cases `name=="cancel"` to delegate to `handle_cancel`
+  (preserves the legacy `/actions/cancel` operator-script alias).
+  A future cleanup could unify `KNOWN_ACTIONS` membership with
+  the named-handler set.
 
 ## Context
 
@@ -410,7 +501,7 @@ phase. Reversibility:
   ``api/routes/<domain>.py`` deletion + restoration of the legacy
   ``elif`` branches. ~5-minute revert per domain.
 
-## Phase 1 deliverables (not yet started)
+## Phase 1 deliverables (✅ shipped at `e4c9b5b4` and prior)
 
 - Fix ``/metrics`` shadow at
   ``src/media_stack/api/handlers_get.py:1273``.
@@ -435,16 +526,23 @@ phase. Reversibility:
   ``handlers_{get,post}.handle()`` only goes DOWN. Phase 2 drives
   it to zero.
 
-## Phase 2 deliverables
+## Phase 2 deliverables (✅ shipped at `21c876ff`)
 
-- One commit per domain (~18 commits total per the rollout table
-  above). Each lands an ``api/routes/<domain>.py`` module + the
-  corresponding ``elif`` branch deletions.
-- After the last domain migrates: delete
-  ``api/handlers_get.py`` + ``api/handlers_post.py``. The legacy
-  fallback in ``GetRequestHandler.handle()`` /
-  ``PostRequestHandler.handle()`` is removed; ``server.py`` calls
-  ``router.dispatch(...)`` directly.
+Original plan called for ~18 commits, one per domain. Actual
+rollout was 8 waves (the first few bundled multiple domains via
+parallel-agent migration; the last three were targeted scope
+adjustments + cleanup). See the [commit history table](#phase-2-commit-history)
+above for the detailed mapping.
+
+- ✅ All 240 routes migrated into `api/routes/*.py` modules
+  (41 RouteModule classes total).
+- ✅ `api/handlers_get.py` + `api/handlers_post.py` deleted in
+  the cleanup commit (`21c876ff`); helpers extracted into 9
+  service modules.
+- ✅ The legacy fallback in `server.py` is removed; `do_GET` /
+  `do_POST` call `router.dispatch(...)` directly. NO_MATCH
+  emits a strict 404; METHOD_NOT_ALLOWED emits 405 with the
+  spec-declared verbs.
 
 ## Relationship to other ADRs
 
