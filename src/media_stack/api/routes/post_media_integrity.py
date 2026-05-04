@@ -72,7 +72,7 @@ class _MediaIntegrityDispatcher:
         if self._dispatch_fn is not None:
             self._dispatch_fn(handler, path, body, actor)
             return
-        from media_stack.api.handlers_post import (
+        from media_stack.api.services.media_integrity_dispatch import (
             _dispatch_media_integrity_via_job,
         )
         _dispatch_media_integrity_via_job(handler, path, body, actor)
@@ -93,7 +93,7 @@ class _ActorResolverProvider:
     def resolve(self, handler: Any, body: dict[str, Any]) -> Any:
         if self._resolver is not None:
             return self._resolver.resolve(handler, body)
-        from media_stack.api.handlers_post import _actor_resolver
+        from media_stack.api.services.actor import _actor_resolver
         return _actor_resolver.resolve(handler, body)
 
 

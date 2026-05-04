@@ -172,41 +172,13 @@ class ImportTrashCustomFormatsTests(unittest.TestCase):
         self.assertIn("broken:", result["errors"][0])
 
 
-class ImportHandlerTests(unittest.TestCase):
-    """POST /api/custom-formats/import routing."""
-
-    def _handler(self, body: dict):
-        h = MagicMock()
-        h.path = "/api/custom-formats/import"
-        h._read_json_body.return_value = body
-        captured: dict = {}
-
-        def _respond(status, payload):
-            captured["status"] = status
-            captured["payload"] = payload
-        h._json_response.side_effect = _respond
-        return h, captured
-
-    def test_validates_required_fields(self):
-        from media_stack.api.handlers_post import PostRequestHandler
-        svc = PostRequestHandler()
-        h, captured = self._handler({})
-        svc.handle(h)
-        self.assertEqual(captured["status"], 400)
-        self.assertIn("error", captured["payload"])
-
-    def test_delegates_to_service(self):
-        from media_stack.api.handlers_post import PostRequestHandler
-        svc = PostRequestHandler()
-        h, captured = self._handler({"service": "sonarr", "index_url": "http://x"})
-        with patch(
-            "media_stack.services.apps.servarr.quality_preset_service.import_trash_custom_formats",
-            return_value={"imported": ["x264"], "skipped": [], "errors": [],
-                          "total_available": 1, "service": "sonarr"},
-        ):
-            svc.handle(h)
-        self.assertEqual(captured["status"], 200)
-        self.assertEqual(captured["payload"]["imported"], ["x264"])
+# The legacy ``ImportHandlerTests`` block exercised
+# ``handlers_post.PostRequestHandler.handle()`` directly and was
+# retired with that module in ADR-0007 Phase 2 Phase E. Equivalent
+# coverage of POST ``/api/custom-formats/import`` lives at
+# ``tests/unit/api/routes/test_post_content_config.py``
+# (``TestCustomFormatsImport``) driven through ``RouteDispatchHarness``
+# against the lifted route module.
 
 
 if __name__ == "__main__":

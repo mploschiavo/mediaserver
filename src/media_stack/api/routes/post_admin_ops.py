@@ -150,11 +150,13 @@ _GUARDRAIL_SUBPATH_DISABLE = "disable"
 
 
 class PostMutationGate:
-    """CSRF double-submit gate for router-dispatched POST routes.
+    """CSRF double-submit + user-mgmt rate-limit gate for
+    router-dispatched POST routes.
 
-    The legacy chain runs ``_global_preflight`` before any handler
-    body — that gate verifies the ``X-CSRF-Token`` header echoes
-    the ``media_stack_csrf`` cookie. Routes migrated to the OpenAPI
+    The legacy chain ran ``_global_preflight`` before any handler
+    body -- that gate verifies the ``X-CSRF-Token`` header echoes
+    the ``media_stack_csrf`` cookie AND enforces the per-IP
+    user-mgmt rate-limit bucket. Routes migrated to the OpenAPI
     Router bypass that gate (the dispatcher returns HANDLED before
     the legacy chain runs), so the gate has to be re-applied here
     for every mutation.
@@ -164,6 +166,12 @@ class PostMutationGate:
     to exercise business logic without forging tokens. The default
     path constructs a fresh ``CsrfProtector()`` per gate instance,
     matching the singleton the legacy chain holds module-globally.
+
+    The rate-limit bucket defaults to OFF (``rate_limit=False``)
+    because most routes use the global ``_global_post_limiter`` in
+    server.py. Routes that need the tighter user-mgmt bucket (the
+    bans, sessions, users domains) construct
+    ``PostMutationGate(rate_limit=True)``.
     """
 
     def __init__(
@@ -171,14 +179,25 @@ class PostMutationGate:
         csrf: CsrfProtector | None = None,
         *,
         enforce_env_var: str = "CSRF_ENFORCE",
+        rate_limit: bool = False,
     ) -> None:
         self._csrf = csrf or CsrfProtector()
         self._enforce_env = enforce_env_var
+        self._rate_limit = rate_limit
+        self._rate_limit_failed = False
 
     def verify(self, handler: Any) -> bool:
-        """Return True iff the request carries a valid CSRF pair.
+        """Return True iff the request passes CSRF + rate-limit."""
+        self._rate_limit_failed = False
+        if not self._verify_csrf(handler):
+            return False
+        if self._rate_limit and not self._verify_rate_limit(handler):
+            self._rate_limit_failed = True
+            return False
+        return True
 
-        Mirrors ``handlers_post._check_csrf``: requests without a
+    def _verify_csrf(self, handler: Any) -> bool:
+        """Mirrors ``handlers_post._check_csrf``: requests without a
         Cookie header are API clients (basic auth from a script)
         and exempt unless ``CSRF_ENFORCE=1`` forces strict mode.
         Browser requests (Cookie present) must echo the token.
@@ -201,8 +220,48 @@ class PostMutationGate:
             cookie_header=cookie_header, header_value=csrf_header,
         )
 
+    def _verify_rate_limit(self, handler: Any) -> bool:
+        """Per-IP user-mgmt bucket check. Reset-password gets a
+        tighter per-account bucket on top of the IP bucket."""
+        from media_stack.api.services.rate_limiters import (
+            _user_mgmt_limiter,
+            _pw_reset_limiter,
+        )
+        from media_stack.api.session_singletons import (
+            trusted_proxy_auth as _trusted_proxy_auth,
+        )
+        try:
+            client_id = (
+                _trusted_proxy_auth.client_ip(handler) or "-"
+            )
+        except Exception:  # noqa: BLE001
+            client_id = "-"
+        if not _user_mgmt_limiter.allow(
+            client_id=client_id, bucket="user-mgmt",
+        ):
+            return False
+        # Reset-password gets a separate, tighter per-ACCOUNT bucket so
+        # an attacker rotating IPs still trips the throttle on the
+        # target user_id.
+        path = getattr(handler, "path", "") or ""
+        parts = path.split("/")
+        if len(parts) >= 5 and parts[4] == "reset-password":
+            target_uid = parts[3]
+            if not _pw_reset_limiter.allow(
+                client_id=target_uid, bucket="pw-reset",
+            ):
+                return False
+        return True
+
     def reject(self, handler: Any) -> None:
-        """Emit the same 403 body the legacy chain emits."""
+        """Emit the matching error body for whichever sub-gate
+        rejected the request."""
+        if self._rate_limit_failed:
+            handler._json_response(
+                HTTPStatus.TOO_MANY_REQUESTS,
+                {"error": "rate limit exceeded; slow down"},
+            )
+            return
         handler._json_response(
             HTTPStatus.FORBIDDEN,
             {"error": "CSRF token missing or invalid"},

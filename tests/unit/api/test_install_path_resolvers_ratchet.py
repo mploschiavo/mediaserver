@@ -52,7 +52,7 @@ class InstallPathResolversRatchet(unittest.TestCase):
             "_CONTRACT_PATH_CANDIDATES",
         ),
         (
-            "media_stack.api.handlers_get",
+            "media_stack.api.services.openapi",
             "_OPENAPI_PATH_CANDIDATES",
         ),
     )

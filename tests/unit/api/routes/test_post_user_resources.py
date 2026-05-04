@@ -963,11 +963,13 @@ class TestRoutingIntegration:
 
     def test_paths_not_in_csrf_exempt_set(self) -> None:
         """CSRF double-submit MUST be enforced on every mutation
-        in this module. The exempt set lives on
-        ``PostRequestHandler._CSRF_EXEMPT_POST_PATHS``; pinning
-        absence here protects against accidental exemption."""
-        from media_stack.api.handlers_post import PostRequestHandler
-        exempt = PostRequestHandler._CSRF_EXEMPT_POST_PATHS
+        in this module. The exempt set lives in
+        ``services.csrf_exempt_paths.CSRF_EXEMPT_POST_PATHS``;
+        pinning absence here protects against accidental exemption."""
+        from media_stack.api.services.csrf_exempt_paths import (
+            CSRF_EXEMPT_POST_PATHS,
+        )
+        exempt = CSRF_EXEMPT_POST_PATHS
         for path in (
             "/api/invites",
             "/api/invites/accept",

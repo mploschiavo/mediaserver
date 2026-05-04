@@ -18,25 +18,19 @@ consequence is catastrophic:
 - ``POST /api/password-tickets/`` — consume a plaintext-password ticket
 - ``POST /api/users/**``          — all user-mgmt mutations
 
-Even though some of these endpoints don't exist yet (they land in
-subsequent PRs), this ratchet locks in the invariant NOW: the
-``_CSRF_EXEMPT_POST_PATHS`` set inside ``handlers_post.py`` must
-never list any of those prefixes. The set is the single source of
-truth for CSRF skipping; if a future change adds a security path to
-the exempt set, this test fails loudly before the PR lands.
+ADR-0007 Phase E retired ``handlers_post.py`` and lifted the CSRF
+allowlist into ``services/csrf_exempt_paths.py`` (canonical name:
+``CSRF_EXEMPT_POST_PATHS``). The dispatch preflight that calls
+``_check_csrf`` lives in ``server.py::_global_post_preflight``.
 
 What the checks do
 ------------------
-1. Parse ``handlers_post.py`` with ``ast``, locate the
-   ``_CSRF_EXEMPT_POST_PATHS`` ``frozenset({...})`` literal, and
+1. Parse ``services/csrf_exempt_paths.py`` with ``ast``, locate the
+   ``CSRF_EXEMPT_POST_PATHS`` ``frozenset({...})`` literal, and
    assert none of its entries match the security prefixes.
-2. Walk every ``if handler.path == "..."``/``startswith("...")``
-   branch in the POST dispatcher. For each branch matching a
-   security prefix, assert the dispatcher reaches ``_check_csrf``
-   via ``_global_preflight``. Reaching ``_global_preflight`` at the
-   top of ``handle()`` is sufficient proof; we verify that call
-   exists unconditionally and that no security branch bails out
-   before it.
+2. Confirm ``server.py`` defines ``_global_post_preflight`` and
+   that it calls ``_check_csrf`` (the only path through which
+   non-exempt POSTs reach a handler body).
 
 Allowlist policy
 ----------------
@@ -55,11 +49,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "media_stack"
-HANDLERS_POST = SRC / "api" / "handlers_post.py"
+CSRF_EXEMPT_PATHS_MODULE = SRC / "api" / "services" / "csrf_exempt_paths.py"
+SERVER_MODULE = SRC / "api" / "server.py"
 
 
 # Security-sensitive URL prefixes. ANY exact-path or startswith match
-# against one of these inside ``_CSRF_EXEMPT_POST_PATHS`` is a fail.
+# against one of these inside ``CSRF_EXEMPT_POST_PATHS`` is a fail.
 _SECURITY_PREFIXES: tuple[str, ...] = (
     "/api/bans/",
     "/api/sessions/",
@@ -72,7 +67,7 @@ _SECURITY_PREFIXES: tuple[str, ...] = (
 )
 
 
-# Paths permitted in ``_CSRF_EXEMPT_POST_PATHS``. Each entry names a
+# Paths permitted in ``CSRF_EXEMPT_POST_PATHS``. Each entry names a
 # real exemption reason. The ratchet may only SHRINK: deleting an
 # exemption fails nothing; adding a new one to the production code
 # without updating this allowlist fails ``test_no_new_exemptions``.
@@ -91,37 +86,48 @@ _CSRF_EXEMPT_ALLOWLIST: frozenset[str] = frozenset({
 })
 
 
+# Names accepted as the canonical CSRF-exempt set. Both the legacy
+# ``_CSRF_EXEMPT_POST_PATHS`` and the post-Phase-E
+# ``CSRF_EXEMPT_POST_PATHS`` are honoured so a partial migration
+# doesn't silently fail.
+_EXEMPT_SET_NAMES: frozenset[str] = frozenset({
+    "CSRF_EXEMPT_POST_PATHS",
+    "_CSRF_EXEMPT_POST_PATHS",
+})
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
 def _load_module_ast() -> ast.Module:
-    return ast.parse(HANDLERS_POST.read_text(encoding="utf-8"))
+    return ast.parse(CSRF_EXEMPT_PATHS_MODULE.read_text(encoding="utf-8"))
 
 
 def _extract_exempt_paths(tree: ast.Module) -> frozenset[str]:
-    """Find the ``_CSRF_EXEMPT_POST_PATHS = frozenset({...})`` literal
+    """Find the ``CSRF_EXEMPT_POST_PATHS = frozenset({...})`` literal
     and return its string contents.
 
-    Accepts the attribute form ``PostRequestHandler._CSRF_EXEMPT_POST_PATHS``
-    so the exact nesting (class-level vs module-level) doesn't break
-    the scan.
+    Accepts both bare ``ast.Assign`` (untyped) and ``ast.AnnAssign``
+    (annotated, ``CSRF_EXEMPT_POST_PATHS: frozenset[str] = ...``)
+    forms; the lifted module uses the annotated form.
     """
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        # Match any target whose id ends in _CSRF_EXEMPT_POST_PATHS.
-        targets = [t for t in node.targets if isinstance(t, ast.Name)]
-        if not targets:
-            continue
-        if not any(t.id == "_CSRF_EXEMPT_POST_PATHS" for t in targets):
-            continue
-        return _extract_frozenset_strings(node.value)
+        if isinstance(node, ast.Assign):
+            targets = [t for t in node.targets if isinstance(t, ast.Name)]
+            if any(t.id in _EXEMPT_SET_NAMES for t in targets):
+                return _extract_frozenset_strings(node.value)
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+            if (isinstance(target, ast.Name)
+                    and target.id in _EXEMPT_SET_NAMES
+                    and node.value is not None):
+                return _extract_frozenset_strings(node.value)
     raise AssertionError(
-        "_CSRF_EXEMPT_POST_PATHS assignment not found in "
-        f"{HANDLERS_POST.relative_to(ROOT)}; the ratchet can't prove "
-        "the invariant.",
+        "CSRF_EXEMPT_POST_PATHS assignment not found in "
+        f"{CSRF_EXEMPT_PATHS_MODULE.relative_to(ROOT)}; the ratchet "
+        "can't prove the invariant.",
     )
 
 
@@ -148,53 +154,40 @@ def _security_prefix_hit(path: str) -> str | None:
     return None
 
 
-def _dispatcher_calls_global_preflight(tree: ast.Module) -> bool:
-    """Confirm the POST dispatcher goes through ``_global_preflight``.
+def _server_defines_global_post_preflight() -> bool:
+    """Confirm ``server.py`` defines ``_global_post_preflight``.
 
-    We find the ``handle`` method on ``PostRequestHandler`` and scan
-    its body for a top-level ``if not self._global_preflight(handler):
-    return`` guard. That call is what invokes ``_check_csrf`` for
-    every non-exempt path.
+    ADR-0007 Phase E moved the CSRF preflight from the legacy
+    ``PostRequestHandler._global_preflight`` (in handlers_post.py) to
+    a module-level function in server.py invoked before Router
+    dispatch.
     """
-    for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
-        if cls.name != "PostRequestHandler":
-            continue
-        for fn in cls.body:
-            if not isinstance(fn, ast.FunctionDef):
-                continue
-            if fn.name != "handle":
-                continue
-            for stmt in fn.body:
-                if not isinstance(stmt, ast.If):
-                    continue
-                if _calls_method(stmt.test, "_global_preflight"):
-                    return True
-    return False
-
-
-def _calls_method(node: ast.AST, name: str) -> bool:
-    """Return True if ``node`` contains a call to ``self.<name>(...)``."""
-    for sub in ast.walk(node):
-        if (isinstance(sub, ast.Call)
-                and isinstance(sub.func, ast.Attribute)
-                and sub.func.attr == name):
+    tree = ast.parse(SERVER_MODULE.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name in {
+            "_global_post_preflight", "_global_preflight",
+        }:
             return True
     return False
 
 
-def _global_preflight_calls_check_csrf(tree: ast.Module) -> bool:
-    """Confirm ``_global_preflight`` itself calls ``_check_csrf``.
+def _global_preflight_calls_check_csrf() -> bool:
+    """Confirm the preflight function in server.py calls ``_check_csrf``.
 
-    This closes the chain: handle() → _global_preflight → _check_csrf,
-    so any path not in ``_CSRF_EXEMPT_POST_PATHS`` is verified.
+    This closes the chain: server preflight → ``_check_csrf``, so any
+    path not in ``CSRF_EXEMPT_POST_PATHS`` is verified.
     """
-    for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
-        if cls.name != "PostRequestHandler":
+    tree = ast.parse(SERVER_MODULE.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
             continue
-        for fn in cls.body:
-            if (isinstance(fn, ast.FunctionDef)
-                    and fn.name == "_global_preflight"):
-                return _calls_method(fn, "_check_csrf")
+        if node.name not in {"_global_post_preflight", "_global_preflight"}:
+            continue
+        for sub in ast.walk(node):
+            if (isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.func.id == "_check_csrf"):
+                return True
     return False
 
 
@@ -210,7 +203,7 @@ class CsrfOnMutatingSecurityEndpointsRatchet(unittest.TestCase):
         exempt = _extract_exempt_paths(tree)
         self.assertTrue(
             exempt,
-            "_CSRF_EXEMPT_POST_PATHS is empty or missing — ratchet "
+            "CSRF_EXEMPT_POST_PATHS is empty or missing — ratchet "
             "cannot validate the invariant.",
         )
         violations: list[str] = []
@@ -246,25 +239,22 @@ class CsrfOnMutatingSecurityEndpointsRatchet(unittest.TestCase):
         self.assertFalse(
             stale,
             "Stale ratchet allowlist entries — exemption no longer "
-            "present in _CSRF_EXEMPT_POST_PATHS:\n  - "
+            "present in CSRF_EXEMPT_POST_PATHS:\n  - "
             + "\n  - ".join(sorted(stale)),
         )
 
     def test_dispatcher_runs_global_preflight(self) -> None:
-        tree = _load_module_ast()
         self.assertTrue(
-            _dispatcher_calls_global_preflight(tree),
-            "PostRequestHandler.handle() no longer calls "
-            "self._global_preflight(handler) at the top. Without it, "
-            "no POST is CSRF-checked and this ratchet's invariant is "
-            "meaningless.",
+            _server_defines_global_post_preflight(),
+            "server.py no longer defines _global_post_preflight. "
+            "Without the central preflight, no POST is CSRF-checked "
+            "and this ratchet's invariant is meaningless.",
         )
 
     def test_global_preflight_runs_check_csrf(self) -> None:
-        tree = _load_module_ast()
         self.assertTrue(
-            _global_preflight_calls_check_csrf(tree),
-            "_global_preflight no longer calls self._check_csrf. "
+            _global_preflight_calls_check_csrf(),
+            "_global_post_preflight no longer calls _check_csrf. "
             "CSRF validation is bypassed for every non-exempt path.",
         )
 
@@ -277,35 +267,18 @@ class CsrfOnMutatingSecurityEndpointsRatchet(unittest.TestCase):
 
 
 _COMPLIANT_SAMPLE = """
-class PostRequestHandler:
-    _CSRF_EXEMPT_POST_PATHS = frozenset({
-        "/webhooks/arr",
-        "/api/auth/login",
-    })
-
-    def handle(self, handler):
-        if not self._global_preflight(handler):
-            return
-
-    def _global_preflight(self, handler):
-        if not self._check_csrf(handler):
-            return False
-        return True
+CSRF_EXEMPT_POST_PATHS: frozenset[str] = frozenset({
+    "/webhooks/arr",
+    "/api/auth/login",
+})
 """
 
 
 _VIOLATING_SAMPLE = """
-class PostRequestHandler:
-    _CSRF_EXEMPT_POST_PATHS = frozenset({
-        "/api/bans/add",
-        "/api/auth/login",
-    })
-
-    def handle(self, handler):
-        pass
-
-    def _global_preflight(self, handler):
-        return True
+CSRF_EXEMPT_POST_PATHS: frozenset[str] = frozenset({
+    "/api/bans/add",
+    "/api/auth/login",
+})
 """
 
 
@@ -328,14 +301,6 @@ class _HelperSelfTest(unittest.TestCase):
             _security_prefix_hit("/api/bans/1.2.3.4"), "/api/bans/",
         )
         self.assertIsNone(_security_prefix_hit("/api/auth/login"))
-
-    def test_dispatcher_checks(self) -> None:
-        good = ast.parse(_COMPLIANT_SAMPLE)
-        bad = ast.parse(_VIOLATING_SAMPLE)
-        self.assertTrue(_dispatcher_calls_global_preflight(good))
-        self.assertFalse(_dispatcher_calls_global_preflight(bad))
-        self.assertTrue(_global_preflight_calls_check_csrf(good))
-        self.assertFalse(_global_preflight_calls_check_csrf(bad))
 
     def test_extract_raises_when_missing(self) -> None:
         tree = ast.parse("x = 1\n")

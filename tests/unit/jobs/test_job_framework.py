@@ -345,12 +345,12 @@ class TestMediaServerJobsNotSkipped(unittest.TestCase):
 
 class TestKnownActionsIncludeJobs(unittest.TestCase):
     def test_all_jobs_in_known_actions(self):
-        from media_stack.api.handlers_post import KNOWN_ACTIONS
+        from media_stack.api.services.known_actions import KNOWN_ACTIONS
         for job_name in get_job_registry():
             self.assertIn(job_name, KNOWN_ACTIONS, f"Job {job_name} not in KNOWN_ACTIONS")
 
     def test_configure_media_server_in_known_actions(self):
-        from media_stack.api.handlers_post import KNOWN_ACTIONS
+        from media_stack.api.services.known_actions import KNOWN_ACTIONS
         self.assertIn("configure-media-server", KNOWN_ACTIONS)
 
     def test_all_jobs_have_priority(self):

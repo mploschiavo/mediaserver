@@ -116,7 +116,7 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # toggle; same false-positive shape — the path string contains a
 # service name (bazarr/livetv/etc.) but the path IS the public
 # API and can't be abstracted away.
-HARDCODED_SERVICE_REFS_RATCHET = 160  # 157 → 160 — ADR-0007 Phase 2 wave 8: 3 new POST routes contain service names in their path templates (e.g. /api/jellyfin/reset, /api/import-lists/{service}/{list_id}/...). Same false-positive shape — paths ARE the public API and can't be abstracted away.
+HARDCODED_SERVICE_REFS_RATCHET = 154  # 160 → 154 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed inline service-name references. Tightened to new floor.
 
 
 # ---------------------------------------------------------------------------

@@ -905,13 +905,15 @@ class TestRoutingIntegration:
     def test_csrf_exempt_paths_match_legacy_set(self) -> None:
         """Pin per ``bug_class_csrf_double_submit``: login,
         logout, and tokens/refresh remain in the upstream
-        ``PostRequestHandler._CSRF_EXEMPT_POST_PATHS`` set so the
-        dispatcher's CSRF preflight allows the un-cookied request
-        through. A future change that adds a CSRF check inside the
-        route would shadow the upstream gate; this test pins the
-        contract from the route side."""
-        from media_stack.api.handlers_post import PostRequestHandler
-        exempt = PostRequestHandler._CSRF_EXEMPT_POST_PATHS
+        ``CSRF_EXEMPT_POST_PATHS`` set so the dispatcher's CSRF
+        preflight allows the un-cookied request through. A future
+        change that adds a CSRF check inside the route would shadow
+        the upstream gate; this test pins the contract from the
+        route side."""
+        from media_stack.api.services.csrf_exempt_paths import (
+            CSRF_EXEMPT_POST_PATHS,
+        )
+        exempt = CSRF_EXEMPT_POST_PATHS
         # Login / logout / refresh remain CSRF-exempt — they
         # authenticate via the body.
         assert "/api/auth/login" in exempt

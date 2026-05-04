@@ -67,7 +67,7 @@ from urllib.parse import parse_qs, unquote
 
 import yaml as _yaml
 
-from media_stack.api.handlers_get import (
+from media_stack.api.services.openapi import (
     _OPENAPI_YAML,
     _build_openapi_servers,
 )

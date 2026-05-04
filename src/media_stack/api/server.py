@@ -1,8 +1,8 @@
 """Controller HTTP API server — thin routing layer over service modules.
 
 Handles URL dispatch, auth, SSE streaming, and response formatting.
-Business logic lives in api/services/*.py modules.
-Route handling lives in api/handlers_get.py and api/handlers_post.py.
+Business logic lives in api/services/*.py modules. Route handlers
+register themselves via the OpenAPI Router in api/routes/*.py.
 """
 
 from __future__ import annotations
@@ -24,8 +24,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .state import ControllerState
-from . import handlers_get
-from . import handlers_post
 
 try:
     from media_stack.core.auth.users.user_service_factory import (
@@ -695,7 +693,7 @@ def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
 # Re-export for backward compatibility — other modules import these from server.py
 from .webhooks import _fire_webhooks  # noqa: F401
 from .cache import api_cache as _api_cache  # noqa: F401
-from .handlers_get import _build_openapi_servers  # noqa: F401
+from .services.openapi import _build_openapi_servers  # noqa: F401
 
 logger = logging.getLogger("controller_api")
 
@@ -703,7 +701,7 @@ ActionTriggerFn = Callable[[str, dict[str, Any]], None]
 
 
 # Re-export constants that other modules import from server.py
-KNOWN_ACTIONS = handlers_post.KNOWN_ACTIONS
+from .services.known_actions import KNOWN_ACTIONS  # noqa: E402, F401
 
 # Lower number = higher priority. Used by PriorityQueue in the dispatch loop.
 # Core action priorities (configure-* jobs get priority from their contract).
@@ -746,6 +744,78 @@ _AUTH_REQUIRED_PATHS = frozenset({
     "/api/guardrails", "/webhooks/test", "/config", "/cancel",
 })
 _AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/", "/api/stack/")
+
+
+# Global per-IP POST rate limit + CSRF gate (lifted from legacy
+# ``handlers_post._global_preflight``). Enforced on every POST after
+# auth/RBAC/sudo but BEFORE Router dispatch so a flood-of-mutations
+# attack hits the limit early and a CSRF-missing request 403s without
+# touching any handler body.
+def _global_post_preflight(handler: Any) -> bool:
+    """Rate-limit + CSRF gate applied to every POST.
+
+    Returns True iff the request may proceed; emits the 429 / 403
+    response and returns False otherwise. Mirrors the buckets the
+    legacy ``handlers_post.PostRequestHandler._global_preflight``
+    used so the live behaviour is unchanged across the cutover.
+    """
+    from media_stack.api.services.rate_limiters import (
+        _global_post_limiter,
+    )
+    from media_stack.api.services.csrf_exempt_paths import (
+        CSRF_EXEMPT_POST_PATHS,
+    )
+    try:
+        client_id = _trusted_proxy_auth.client_ip(handler) or "-"
+    except Exception:  # noqa: BLE001
+        client_id = "-"
+    if not _global_post_limiter.allow(
+        client_id=client_id, bucket="global-post",
+    ):
+        handler._json_response(
+            HTTPStatus.TOO_MANY_REQUESTS,
+            {"error": "rate limit exceeded; slow down"},
+        )
+        return False
+    bare_path = (getattr(handler, "path", "") or "").split("?", 1)[0]
+    if bare_path in CSRF_EXEMPT_POST_PATHS:
+        return True
+    if not _check_csrf(handler):
+        security_counters.incr("csrf_fail")
+        handler._json_response(
+            HTTPStatus.FORBIDDEN,
+            {"error": "CSRF token missing or invalid"},
+        )
+        return False
+    return True
+
+
+def _check_csrf(handler: Any) -> bool:
+    """CSRF enforcement -- smart default + Origin/Referer cross-check.
+
+    Requests that include a session cookie are assumed to come from a
+    browser and must present a matching X-CSRF-Token header. Requests
+    without a cookie are API clients using basic-auth from a script;
+    they're not CSRF-vulnerable and are allowed through unless
+    CSRF_ENFORCE=1 forces strict mode.
+    """
+    mode = (os.getenv("CSRF_ENFORCE", "") or "").strip()
+    if mode == "0":
+        return True
+    headers = getattr(handler, "headers", None)
+    if headers is None:
+        return True
+    try:
+        cookie_header = headers.get("Cookie", "") or ""
+        csrf_header = headers.get(_csrf_issuer.header_name, "") or ""
+    except AttributeError:
+        return True
+    has_cookie = bool(cookie_header.strip())
+    if not (mode == "1" or has_cookie):
+        return True
+    return _csrf_issuer.verify(
+        cookie_header=cookie_header, header_value=csrf_header,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1115,17 +1185,86 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         }
 
     # =======================================================================
-    # GET routing — delegates to handlers_get
+    # Infrastructure paths served outside the Router
+    # =======================================================================
+
+    # ``Router._INFRASTRUCTURE_ALLOWLIST`` documents these as
+    # "served by server.py" -- they're declared in the OpenAPI spec
+    # because operators consume them, but they intentionally bypass
+    # the RouteModule pattern.
+
+    _UI_MOVED_PATHS = frozenset({"/", "/dashboard", "/api/docs"})
+
+    def _emit_ui_moved(self, path: str) -> None:
+        """Return ``410 GONE`` plus a Location pointer for any path
+        that used to be served by the Python controller's UI surface
+        (dashboard root, static assets, Swagger UI HTML wrapper).
+        These assets now live in a dedicated UI container. The
+        machine-readable JSON body lets scripts follow the Location
+        header; monitors that watch for 4xx codes can flag 410
+        (permanently-gone) distinctly from 404 (might be a typo).
+        Stripped from the controller in v1.0.175.
+        """
+        body = {
+            "error": "served by ui container",
+            "ui_path": "/app/media-stack-ui/",
+        }
+        payload = json.dumps(body).encode("utf-8")
+        self._raw_response(
+            HTTPStatus.GONE,
+            "application/json",
+            payload,
+            {"Location": "/app/media-stack-ui/"},
+        )
+
+    def _emit_metrics(self) -> None:
+        """Render Prometheus metrics. Mirrors the legacy
+        ``handlers_get`` ``/metrics`` branch which delegated to the
+        user-service-backed metrics emitter."""
+        if _build_user_service is None:
+            self._raw_response(
+                HTTPStatus.OK, "text/plain; version=0.0.4",
+                b"# user service unavailable\n",
+            )
+            return
+        try:
+            from media_stack.core.auth.users.metrics import render_metrics
+            svc = _build_user_service()
+            payload = render_metrics(svc).encode("utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] /metrics render raised: %s", exc,
+            )
+            payload = b"# render_metrics failed\n"
+        self._raw_response(
+            HTTPStatus.OK, "text/plain; version=0.0.4", payload,
+        )
+
+    def _try_serve_infrastructure_path(self, path: str) -> bool:
+        """Handle the documented infrastructure-allowlist paths
+        (UI-moved 410s, /metrics). Returns True iff the request was
+        served here so the caller can short-circuit before the strict
+        404."""
+        if path in self._UI_MOVED_PATHS or path.startswith("/api/static/"):
+            self._emit_ui_moved(path)
+            return True
+        if path == "/metrics":
+            self._emit_metrics()
+            return True
+        return False
+
+    # =======================================================================
+    # GET routing — Router-only dispatch (ADR-0007 Phase 2 Phase E)
     # =======================================================================
 
     def do_GET(self) -> None:  # noqa: N802
         _auth_policy.canonicalize_path(self)
         if not self._check_auth():
             return
-        # ADR-0007 Phase 1: consult the router first; on no match
-        # fall through to the legacy ``handlers_get.handle()`` chain.
-        # Migration is incremental — each route added under
-        # ``api/routes/`` shifts one path off the legacy chain.
+        # ADR-0007 Phase 2 Phase E: the legacy ``handlers_get.handle()``
+        # elif chain has been retired. Every registered GET route lives
+        # in ``api/routes/*.py`` and is dispatched through the Router.
+        # NO_MATCH now emits a strict 404 instead of falling through.
         from media_stack.api.routing import (
             DefaultDispatcher,
             DispatchOutcome,
@@ -1138,11 +1277,20 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         if outcome == DispatchOutcome.METHOD_NOT_ALLOWED:
             dispatcher.write_method_not_allowed(self, path)
             return
-        # NO_MATCH — fall through to legacy chain.
-        handlers_get.handle(self)
+        # NO_MATCH — try the infrastructure allowlist (UI-moved 410s,
+        # /metrics) before declaring a 404.
+        if self._try_serve_infrastructure_path(path):
+            return
+        # Strict 404. Every legitimate path is either registered with
+        # the Router or covered by the infrastructure allowlist; an
+        # unmatched path is a typo or probe.
+        self._json_response(
+            HTTPStatus.NOT_FOUND,
+            {"error": f"unknown path {path!r}"},
+        )
 
     # =======================================================================
-    # POST routing — delegates to handlers_post
+    # POST routing — Router-only dispatch (ADR-0007 Phase 2 Phase E)
     # =======================================================================
 
     def do_POST(self) -> None:  # noqa: N802
@@ -1167,10 +1315,16 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
                           "present X-Sudo-Password header with your password"},
             )
             return
-        # ADR-0007 Phase 1: consult router first; fall through on
-        # NO_MATCH. Phase 1 only registers GET routes today; the
-        # dispatcher returns NO_MATCH for every POST and falls
-        # through to the legacy chain.
+        # Global per-IP rate-limit gate — applies to EVERY POST
+        # (formerly inside the legacy ``_global_preflight``). The
+        # narrower per-route gates (``PostMutationGate`` / ``user_mgmt``
+        # bucket) still run inside the route modules themselves.
+        if not _global_post_preflight(self):
+            return
+        # ADR-0007 Phase 2 Phase E: the legacy ``handlers_post.handle()``
+        # elif chain has been retired. Every registered POST route
+        # lives in ``api/routes/*.py`` and is dispatched through the
+        # Router. NO_MATCH emits a strict 404.
         from media_stack.api.routing import (
             DefaultDispatcher,
             DispatchOutcome,
@@ -1184,8 +1338,12 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
         if outcome == DispatchOutcome.METHOD_NOT_ALLOWED:
             dispatcher.write_method_not_allowed(self, post_path)
             return
-        handlers_post.handle(self)
-        _audit_mutation(self)
+        # NO_MATCH — strict 404. Every legitimate path is registered
+        # with the Router; an unmatched path is a typo or probe.
+        self._json_response(
+            HTTPStatus.NOT_FOUND,
+            {"error": f"unknown path {post_path!r}"},
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -88,7 +88,7 @@ from http import HTTPStatus
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from media_stack.api.handlers_get import _handle_logs_sse
+from media_stack.api.services.logs_handlers import _handle_logs_sse
 from media_stack.api.routing import RouteModule, get, post
 from media_stack.core.logging_utils import log_swallowed
 from media_stack.core.observability.security_counters import (

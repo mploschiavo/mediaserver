@@ -13,7 +13,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.handlers_post import _WebhookHmacVerifier
+from media_stack.api.routes.webhooks_and_deferred import (
+    WebhookHmacVerifier as _WebhookHmacVerifier,
+)
 
 
 class _FakeHeaders:

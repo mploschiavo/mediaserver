@@ -2,52 +2,81 @@
 
 Three routes migrated off the ``handlers_get.handle()`` elif chain:
 
-* ``GET /api/services`` — Apps-page listing of every registered
+* ``GET /api/services`` -- Apps-page listing of every registered
   service with profile-aware filtering. Drives the dashboard's
   card grid.
-* ``GET /api/services/categories`` — category groupings derived
+* ``GET /api/services/categories`` -- category groupings derived
   from the registry YAML, plus a synthetic ``Infrastructure``
   bucket for the controller itself. Drives the grouped UI view.
-* ``GET /api/services/{service_id}/api-key`` — per-service API-key
+* ``GET /api/services/{service_id}/api-key`` -- per-service API-key
   status (configured? masked preview?) without ever returning the
-  full key. Parameterized — the spec declares ``service_id`` as a
+  full key. Parameterized -- the spec declares ``service_id`` as a
   path parameter (snake_case, matching the rest of the controller's
   wire-format convention).
 
-Implementation choices, per Phase 2's "lift the body OR call the
-helper — agent's choice based on what's cleanest" rule:
-
-* The two unparameterized routes delegate to the existing
-  ``GetRequestHandler._handle_services`` / ``_handle_services_categories``
-  helpers in ``handlers_get``. The first reads
-  ``handler.path`` for the ``?include=all`` query string, which
-  the Router doesn't strip — keeping the helper avoids
-  reimplementing query-param parsing.
-* The parameterized route LIFTS the body. The legacy
-  ``_handle_service_api_key`` extracts the service id by parsing
-  ``path.split("/")`` itself; the Router already hands us
-  ``service_id`` as a kwarg from the regex match
-  (``(?P<service_id>[^/]+)`` — see ``_RouteCompiler._compile_pattern``),
-  so re-parsing would be redundant work that could drift from the
-  Router's view of the URL. Lifting the body uses the kwarg
-  directly and shrinks the handler to the actual lookup logic.
-
-When ADR-0007's final cleanup commit deletes the legacy chain,
-the two delegated helpers can move into this file or stay where
-they are; either way these route methods stay unchanged.
+ADR-0007 Phase 2 Phase E: bodies lifted verbatim from the legacy
+``GetRequestHandler._handle_services`` / ``_handle_services_categories``
+helpers so the legacy chain can be deleted entirely.
 """
 
 from __future__ import annotations
 
+import copy
 import os
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import parse_qs
 
-from media_stack.api.handlers_get import (
-    _handle_services,
-    _handle_services_categories,
-)
 from media_stack.api.routing import RouteModule, get
+
+
+class ServicesListingService:
+    """Builds the Apps-page service listing.
+
+    Accepts an ``include_all`` flag for the ``?include=all`` query
+    param so the route module can hand off the parsed value rather
+    than re-parsing the URL.
+    """
+
+    def build(self, *, include_all: bool) -> dict[str, Any]:
+        from media_stack.api.services.registry import (
+            SERVICES,
+            build_apps_listing,
+        )
+
+        ctrl_port = int(
+            os.environ.get(
+                "BOOTSTRAP_API_PORT",
+                os.environ.get("CONTROLLER_PORT", "9100"),
+            ),
+        )
+        return build_apps_listing(
+            list(SERVICES),
+            include_all=include_all,
+            controller_port=ctrl_port,
+        )
+
+
+class ServicesCategoriesService:
+    """Returns the registry's categories plus a synthetic
+    ``Infrastructure`` bucket for the controller."""
+
+    def build(self) -> list[dict[str, Any]]:
+        from media_stack.api.services.registry import CATEGORIES
+
+        cats = copy.deepcopy(CATEGORIES)
+        infra = next(
+            (c for c in cats if c["label"].lower() == "infrastructure"),
+            None,
+        )
+        if infra:
+            if "controller" not in infra["ids"]:
+                infra["ids"].append("controller")
+        else:
+            cats.append(
+                {"label": "Infrastructure", "ids": ["controller"]},
+            )
+        return cats
 
 
 class ServicesRegistryGetRoutes(RouteModule):
@@ -55,23 +84,66 @@ class ServicesRegistryGetRoutes(RouteModule):
     + instantiates this class + walks its tagged methods at
     startup."""
 
+    def __init__(
+        self,
+        *,
+        listing_service: ServicesListingService | None = None,
+        categories_service: ServicesCategoriesService | None = None,
+    ) -> None:
+        self._listing = listing_service or ServicesListingService()
+        self._categories = (
+            categories_service or ServicesCategoriesService()
+        )
+
     @get("/api/services")
     def handle_services(self, handler: Any) -> None:
-        """Return the Apps-page listing — every registered service
+        """Return the Apps-page listing -- every registered service
         with hostname/port plus the synthetic ``controller`` entry,
         filtered by ``COMPOSE_PROFILES`` unless ``?include=all``
-        is set. Delegates to the legacy helper because that helper
-        also handles query-string parsing off ``handler.path``.
-        """
-        _handle_services(handler)
+        is set."""
+        # The Apps page renders one card per launchable, profile-
+        # active service. Two filter dimensions:
+        #
+        #   * ``web_ui: false`` -- hidden registry entries that exist
+        #     ONLY to anchor jobs in the bootstrap DAG (``core``,
+        #     ``media_integrity``). They have no host/port and the
+        #     dashboard must not render them.
+        #
+        #   * Profile gate -- the active deploy's ``COMPOSE_PROFILES``
+        #     set decides whether plex / authentik / traefik / etc.
+        #     should be considered "deployed". Without this filter
+        #     the launcher used to show every YAML-declared service
+        #     (28+) regardless of whether the operator actually
+        #     deployed it, leading to a row of broken tiles and a
+        #     "why is plex listed when I never enabled it?" support
+        #     loop.
+        #
+        # Operators can opt out per-request with ``?include=all`` --
+        # useful for tooling and the registry inspector -- but the UI
+        # treats the unfiltered list as the default.
+        params: dict[str, str] = {}
+        if "?" in handler.path:
+            for k, vs in parse_qs(
+                handler.path.split("?", 1)[1], keep_blank_values=True,
+            ).items():
+                if vs:
+                    params[k] = vs[0]
+        include_all = (
+            params.get("include", "").strip().lower() == "all"
+        )
+        handler._json_response(
+            HTTPStatus.OK,
+            self._listing.build(include_all=include_all),
+        )
 
     @get("/api/services/categories")
     def handle_services_categories(self, handler: Any) -> None:
         """Return the registry's category groupings with the
         ``Infrastructure`` bucket augmented to include the
-        controller itself. Delegates to the legacy helper.
-        """
-        _handle_services_categories(handler)
+        controller itself."""
+        handler._json_response(
+            HTTPStatus.OK, self._categories.build(),
+        )
 
     @get("/api/services/{service_id}/api-key")
     def handle_service_api_key(
@@ -117,4 +189,8 @@ class ServicesRegistryGetRoutes(RouteModule):
         })
 
 
-__all__ = ["ServicesRegistryGetRoutes"]
+__all__ = [
+    "ServicesRegistryGetRoutes",
+    "ServicesListingService",
+    "ServicesCategoriesService",
+]

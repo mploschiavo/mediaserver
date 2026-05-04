@@ -127,33 +127,47 @@ class ActorResolution:
 
 
 class LegacyHelperAdapter:
-    """Adapter onto ``_UserMgmtPostHelper`` for the bulk-import +
-    revoke-sessions paths whose business logic is non-trivially
-    coupled to UserService internals (and is preserved verbatim
-    rather than re-implemented in this module).
+    """Adapter onto the bulk-import + revoke-sessions services lifted
+    out of the legacy ``_UserMgmtPostHelper``.
 
     Constructor-injectable so tests pin behaviour without
-    monkey-patching the legacy module.
+    monkey-patching the underlying service singletons.
     """
 
-    def __init__(self, helper: Any | None = None) -> None:
-        self._explicit = helper
+    def __init__(
+        self,
+        *,
+        importer: Any | None = None,
+        revoker: Any | None = None,
+    ) -> None:
+        self._importer = importer
+        self._revoker = revoker
 
-    def _helper(self) -> Any:
-        if self._explicit is not None:
-            return self._explicit
-        from media_stack.api import handlers_post as _hp
-        return _hp._user_mgmt_helper
+    def _resolve_importer(self) -> Any:
+        if self._importer is not None:
+            return self._importer
+        from media_stack.application.auth.users.bulk_ops import (
+            UserBulkImporter,
+        )
+        return UserBulkImporter()
+
+    def _resolve_revoker(self) -> Any:
+        if self._revoker is not None:
+            return self._revoker
+        from media_stack.application.auth.users.bulk_ops import (
+            UserSessionRevoker,
+        )
+        return UserSessionRevoker()
 
     def bulk_import(
         self, svc: Any, body: dict[str, Any], actor: Any,
     ) -> dict[str, Any]:
-        return self._helper().bulk_import(svc, body, actor)
+        return self._resolve_importer().import_rows(svc, body, actor)
 
     def revoke_sessions(
         self, svc: Any, user_id: str, actor: Any,
     ) -> dict[str, Any]:
-        return self._helper().revoke_sessions(svc, user_id, actor)
+        return self._resolve_revoker().revoke_for_user(svc, user_id, actor)
 
 
 def _strip_legacy_plaintext(
@@ -194,7 +208,7 @@ class UsersPostRoutes(RouteModule):
         actor_resolution: ActorResolution | None = None,
         legacy_helper: LegacyHelperAdapter | None = None,
     ) -> None:
-        self._gate = mutation_gate or PostMutationGate()
+        self._gate = mutation_gate or PostMutationGate(rate_limit=True)
         self._repo = repository or UserMgmtRepository()
         self._actor = actor_resolution or ActorResolution()
         self._helper = legacy_helper or LegacyHelperAdapter()

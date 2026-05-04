@@ -865,9 +865,11 @@ class EnvoyVirtualHostRoutingPatternTests(unittest.TestCase):
         """
         # This test validates the architecture expectation, not Envoy config.
         # The controller listens on CONTROLLER_PORT and serves all endpoints
-        # directly without any path-prefix stripping needed.
-        from media_stack.api.handlers_get import _handle_keys
-        self.assertTrue(callable(_handle_keys))
+        # directly without any path-prefix stripping needed. ADR-0007 Phase 2
+        # Phase E retired ``handlers_get._handle_keys`` and lifted the
+        # ``/api/keys`` GET handler onto ``DiskKeysGetRoutes.handle_keys``.
+        from media_stack.api.routes.disk_keys import DiskKeysGetRoutes
+        self.assertTrue(callable(DiskKeysGetRoutes.handle_keys))
 
 
 if __name__ == "__main__":

@@ -156,8 +156,8 @@ class KnownActionsTests(unittest.TestCase):
         """Backwards compatibility: existing curl/CI/Slack scripts
         that POST to /actions/validate-credentials etc. must keep
         working after the migration."""
-        from media_stack.api.handlers_post import PostRequestHandler
-        known = PostRequestHandler._build_known_actions()
+        from media_stack.api.services.known_actions import KnownActionsBuilder
+        known = KnownActionsBuilder().build()
         for name in _MIGRATED_JOBS:
             self.assertIn(
                 name, known,

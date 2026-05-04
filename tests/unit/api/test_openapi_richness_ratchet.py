@@ -95,67 +95,69 @@ class OpenApiJsonHandlerReadsRealSpec(unittest.TestCase):
 
     def test_handler_reads_yaml_path(self) -> None:
         src = (
-            ROOT / "src" / "media_stack" / "api" / "handlers_get.py"
+            ROOT / "src" / "media_stack" / "api"
+            / "routes" / "misc_gets.py"
         ).read_text(encoding="utf-8")
-        # Anchor on the dispatch elif, not the bare path string —
-        # the path appears in the candidate-list comment too, which
-        # would land us in the wrong block.
-        anchor = 'elif path == "/api/openapi.json":'
-        idx = src.find(anchor)
-        self.assertNotEqual(
-            idx, -1, "/api/openapi.json branch missing from handlers_get.py"
-        )
-        # Window of ~1000 chars after anchor — should reference
-        # _OPENAPI_YAML and yaml.safe_load.
-        block = src[idx:idx + 1000]
+        # The route delegates to ``_SpecDumpStrategy``, which is
+        # constructed with ``_OPENAPI_YAML`` at module level. Check
+        # that the symbol is imported AND wired into the strategy
+        # constructor, AND that ``safe_load`` runs against the
+        # captured source.
         self.assertIn(
             "_OPENAPI_YAML",
-            block,
-            "/api/openapi.json branch must read _OPENAPI_YAML (the "
+            src,
+            "/api/openapi.json route must read _OPENAPI_YAML (the "
             "parsed contracts/api/openapi.yaml). If you reverted to "
             "_get_openapi_spec() the api-docs page goes empty.",
         )
         self.assertIn(
+            "_SpecDumpStrategy(",
+            src,
+            "/api/openapi.json route must construct a "
+            "_SpecDumpStrategy bound to _OPENAPI_YAML.",
+        )
+        self.assertIn(
             "safe_load",
-            block,
-            "/api/openapi.json branch must yaml.safe_load the YAML "
+            src,
+            "/api/openapi.json route must yaml.safe_load the YAML "
             "spec. The legacy stub at _get_openapi_spec() returned a "
             "hardcoded list and the api-docs page rendered empty.",
         )
 
     def test_legacy_stub_present_only_as_fallback(self) -> None:
-        """The legacy `_get_openapi_spec()` is allowed to remain as a
-        defensive fallback when YAML parsing fails — but the PRIMARY
-        path must hit the real spec. Test asserts the primary call is
-        through `safe_load(_OPENAPI_YAML)`, not directly through
-        `handler._get_openapi_spec()` as the first action."""
+        """The legacy ``_get_openapi_spec()`` is allowed to remain as
+        a defensive fallback when YAML parsing fails -- but the
+        PRIMARY path must hit the real spec. The dump_json method
+        wraps the call in a ``try/except`` where the parse path
+        comes first; ``_get_openapi_spec()`` runs only inside the
+        except branch."""
         src = (
-            ROOT / "src" / "media_stack" / "api" / "handlers_get.py"
+            ROOT / "src" / "media_stack" / "api"
+            / "routes" / "misc_gets.py"
         ).read_text(encoding="utf-8")
-        # Find the JSON branch — assert safe_load appears BEFORE
-        # _get_openapi_spec in the same block.
-        # Anchor on the dispatch elif, not the bare path string —
-        # the path appears in the candidate-list comment too, which
-        # would land us in the wrong block.
-        anchor = 'elif path == "/api/openapi.json":'
+        # Anchor on the dump_json method definition specifically.
+        anchor = "def dump_json(self"
         idx = src.find(anchor)
-        block = src[idx:idx + 1500]
-        # Use call-syntax patterns so this regex doesn't match the
-        # explanatory comment text earlier in the block. Match either
-        # ``yaml.safe_load(_OPENAPI_YAML)`` or ``_yaml.safe_load(...)``
-        # (the handler imports yaml as _yaml in the local scope).
-        import re
-        load_match = re.search(r"\b_?yaml\.safe_load\(_OPENAPI_YAML\)", block)
-        load_pos = load_match.start() if load_match else -1
+        self.assertGreater(idx, -1, "dump_json missing")
+        # Cap to the next ``def `` so we only see one method body.
+        next_def = src.find("\n    def ", idx + len(anchor))
+        block = src[idx:next_def] if next_def > 0 else src[idx:idx + 800]
+        # The happy path must come first (parse + emit), and
+        # ``_get_openapi_spec()`` must be inside the except branch.
+        try_pos = block.find("try:")
+        except_pos = block.find("except")
         stub_pos = block.find("handler._get_openapi_spec()")
-        self.assertGreater(load_pos, 0, "safe_load missing")
-        if stub_pos > 0:
-            self.assertLess(
-                load_pos, stub_pos,
-                "The yaml.safe_load call must come BEFORE the "
-                "_get_openapi_spec() fallback. If the stub runs "
-                "first, the rich spec never gets served.",
-            )
+        self.assertGreater(try_pos, -1, "dump_json missing try block")
+        self.assertGreater(
+            except_pos, try_pos,
+            "except must follow try in dump_json",
+        )
+        self.assertGreater(
+            stub_pos, except_pos,
+            "_get_openapi_spec() must run only inside the except "
+            "branch -- if it runs first, the rich spec never gets "
+            "served.",
+        )
 
 
 if __name__ == "__main__":

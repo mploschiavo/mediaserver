@@ -23,48 +23,45 @@ from tests.unit.api.routes._helpers import RouteDispatchHarness
 
 
 class TestServicesListing:
-    """``GET /api/services`` — the Apps-page listing. Delegates to
-    ``handlers_get._handle_services``; we patch the symbol the route
-    module imported."""
+    """``GET /api/services`` -- the Apps-page listing. The route
+    module owns a ``ServicesListingService`` constructor-injected
+    via the route module's __init__, so the test patches the
+    service's ``build()`` method through the singleton instance."""
 
-    @patch("media_stack.api.routes.services_registry._handle_services")
-    def test_delegates_to_legacy_helper(self, mock_helper) -> None:
-        def _emit(handler):
-            handler._json_response(200, [{"id": "sonarr"}])
-        mock_helper.side_effect = _emit
-
-        harness = RouteDispatchHarness.with_default_router()
-        response = harness.dispatch("GET", "/api/services")
+    def test_delegates_to_listing_service(self) -> None:
+        with patch(
+            "media_stack.api.routes.services_registry"
+            ".ServicesListingService.build",
+            return_value=[{"id": "sonarr"}],
+        ) as mock_build:
+            harness = RouteDispatchHarness.with_default_router()
+            response = harness.dispatch("GET", "/api/services")
 
         assert response.status == 200
         assert json.loads(response.body) == [{"id": "sonarr"}]
-        mock_helper.assert_called_once()
+        mock_build.assert_called_once()
 
 
 class TestServicesCategories:
-    """``GET /api/services/categories`` — the grouped-by-category
-    view. Delegates to
-    ``handlers_get._handle_services_categories``."""
+    """``GET /api/services/categories`` -- the grouped-by-category
+    view. Lifted body in the route module."""
 
-    @patch(
-        "media_stack.api.routes.services_registry"
-        "._handle_services_categories",
-    )
-    def test_delegates_to_legacy_helper(self, mock_helper) -> None:
-        def _emit(handler):
-            handler._json_response(200, [
+    def test_delegates_to_categories_service(self) -> None:
+        with patch(
+            "media_stack.api.routes.services_registry"
+            ".ServicesCategoriesService.build",
+            return_value=[
                 {"label": "Media", "ids": ["sonarr", "radarr"]},
                 {"label": "Infrastructure", "ids": ["controller"]},
-            ])
-        mock_helper.side_effect = _emit
-
-        harness = RouteDispatchHarness.with_default_router()
-        response = harness.dispatch("GET", "/api/services/categories")
+            ],
+        ) as mock_build:
+            harness = RouteDispatchHarness.with_default_router()
+            response = harness.dispatch("GET", "/api/services/categories")
 
         assert response.status == 200
         body = json.loads(response.body)
         assert {c["label"] for c in body} == {"Media", "Infrastructure"}
-        mock_helper.assert_called_once()
+        mock_build.assert_called_once()
 
 
 class TestServiceApiKey:

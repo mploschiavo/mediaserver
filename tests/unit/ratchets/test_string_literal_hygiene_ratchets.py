@@ -388,18 +388,27 @@ def _count_inline_api_paths() -> int:
     """
     count = 0
     skip = (
-        "/api/handlers_get.py",
-        "/api/handlers_post.py",
+        # ADR-0007 Phase E cleanup: handlers_get.py / handlers_post.py
+        # were deleted; their helpers live in the route + service
+        # modules below. These ARE the API boundary so they OWN the
+        # routing table.
         "/api/server.py",
         "/api/contract_validator.py",
         "/api/services/openapi_router.py",
         "/api/services/security_get_deps.py",
+        "/api/services/openapi.py",
+        "/api/services/routing_probes.py",
+        "/api/services/route_probe.py",
+        "/api/services/csrf_exempt_paths.py",
+        "/api/services/known_actions.py",
         # ADR-0007 Phase 2: route modules under ``api/routes/`` ARE
         # the routing table — ``@get("/api/health")`` decorators
         # carrying inline path strings is the canonical registration
-        # mechanism. Same role as ``handlers_get.py``'s elif chain
-        # before the migration; same exemption.
+        # mechanism. Same exemption applied to the legacy elif chain
+        # in handlers_get.py / handlers_post.py before they were
+        # deleted in Phase E.
         "/api/routes/",
+        "/api/routing/",
     )
     for path in _iter_business_logic_files(skip_path_fragments=skip):
         try:
@@ -454,11 +463,18 @@ def test_burndown_raw_json_usage() -> None:
     count = 0
     for path in _iter_business_logic_files(
         skip_path_fragments=(
-            # API boundary OWNS json (de)serialization.
-            "/api/handlers_get.py",
-            "/api/handlers_post.py",
+            # ADR-0007 Phase E cleanup: handlers_get/post.py deleted;
+            # their JSON-handling helpers live in route + service
+            # modules. API boundary OWNS json (de)serialization.
             "/api/server.py",
             "/api/services/_resolve.py",
+            "/api/services/logs_handlers.py",
+            "/api/services/security_get_handlers.py",
+            "/api/services/security_post_handlers.py",
+            "/api/services/media_integrity_dispatch.py",
+            "/api/services/media_integrity_handlers.py",
+            "/api/routes/",
+            "/api/routing/",
             # The framework persists job history as json — that's
             # the persistence layer's job.
             "/application/jobs/framework.py",
@@ -519,11 +535,19 @@ _JSON_KEY_NAMES = frozenset({
 })
 
 _SERIALIZER_LAYER_PATHS = (
-    "/api/handlers_get.py",
-    "/api/handlers_post.py",
+    # ADR-0007 Phase E cleanup: handlers_get/post.py deleted; their
+    # serializer surface lives in route + service modules.
     "/api/server.py",
     "/api/services/_resolve.py",
     "/api/services/security_get_deps.py",
+    "/api/services/security_get_handlers.py",
+    "/api/services/security_post_handlers.py",
+    "/api/services/logs_handlers.py",
+    "/api/services/events_sse.py",
+    "/api/services/media_integrity_dispatch.py",
+    "/api/services/media_integrity_handlers.py",
+    "/api/routes/",
+    "/api/routing/",
     # Adapters translate upstream JSON.
     "/adapters/",
     # Servarr / arr clients OWN their wire shapes.
@@ -596,15 +620,29 @@ _HTTP_FIELD_LITERALS = frozenset({
 })
 
 _HTTP_CLIENT_LAYER_PATHS = (
-    "/api/handlers_get.py",
-    "/api/handlers_post.py",
+    # ADR-0007 Phase E cleanup: handlers_get/post.py deleted; their
+    # transport-vocabulary helpers live in route + service modules.
     "/api/server.py",
     "/api/services/security_get_deps.py",
+    "/api/services/security_get_handlers.py",
+    "/api/services/security_post_handlers.py",
     "/api/services/_security.py",
     "/api/services/auth_config.py",
     "/api/services/csrf.py",
+    "/api/services/csrf_exempt_paths.py",
+    "/api/services/actor.py",
     "/api/services/k8s_ingress_sync.py",
+    "/api/services/logs_handlers.py",
+    "/api/services/events_sse.py",
+    "/api/services/logs_sse.py",
+    "/api/services/media_integrity_dispatch.py",
+    "/api/services/media_integrity_handlers.py",
+    "/api/services/routing_probes.py",
+    "/api/services/route_probe.py",
+    "/api/services/openapi.py",
     "/api/dispatch.py",
+    "/api/routes/",
+    "/api/routing/",
     # Auth contract + Authelia client own header vocab.
     "/core/auth/",
     "/domain/auth/",
@@ -739,9 +777,19 @@ def test_burndown_inline_query_params() -> None:
         skip_path_fragments=(
             # Query construction inside the API handler / dispatch
             # layer is ok — that's where wire formatting lives.
-            "/api/handlers_get.py",
-            "/api/handlers_post.py",
+            # ADR-0007 Phase E cleanup: handlers_get/post.py deleted;
+            # their query-construction helpers live in route + service
+            # modules.
             "/api/dispatch.py",
+            "/api/routes/",
+            "/api/routing/",
+            "/api/services/logs_handlers.py",
+            "/api/services/events_sse.py",
+            "/api/services/media_integrity_dispatch.py",
+            "/api/services/media_integrity_handlers.py",
+            "/api/services/routing_probes.py",
+            "/api/services/security_get_handlers.py",
+            "/api/services/security_post_handlers.py",
         ),
     ):
         try:

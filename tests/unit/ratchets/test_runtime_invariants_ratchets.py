@@ -1467,9 +1467,11 @@ class PopularTvCustomImportWired(unittest.TestCase):
     """
 
     def test_handler_exists_and_is_routed(self) -> None:
+        # ADR-0007 Phase E: handlers_get.py was deleted; the
+        # popular-TV feed lives in the brand_discovery route module.
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "api" / "handlers_get.py"
+            / "src" / "media_stack" / "api" / "routes" / "brand_discovery.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             "/api/discovery/popular-tv", src,
@@ -1477,8 +1479,8 @@ class PopularTvCustomImportWired(unittest.TestCase):
             "Sonarr's CustomImport will 404 and no TV auto-adds.",
         )
         self.assertIn(
-            "_handle_popular_tv", src,
-            "_handle_popular_tv handler disappeared",
+            "handle_popular_tv", src,
+            "handle_popular_tv handler disappeared",
         )
         self.assertIn(
             "api.tvmaze.com/shows", src,

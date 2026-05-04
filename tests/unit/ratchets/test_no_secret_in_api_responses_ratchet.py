@@ -6,11 +6,16 @@ motivated this test was ``GET /api/keys`` returning the full
 ``discover_api_keys()`` dict to any authenticated caller — a single
 compromised read token == full stack compromise.
 
+ADR-0007 Phase E retired ``handlers_get.py``; the GET handlers now
+live across the ``api/routes/*.py`` modules. This ratchet now scans
+every method named ``handle_*`` / ``_handle_*`` inside those
+modules.
+
 This test enforces, by AST analysis, that:
 
-1. No GET handler in ``src/media_stack/api/handlers_get.py`` passes
-   the raw output of ``discover_api_keys`` (or similar key-sourcing
-   helpers) directly into ``_json_response`` / ``_raw_response``.
+1. No GET handler passes the raw output of ``discover_api_keys`` (or
+   similar key-sourcing helpers) directly into ``_json_response`` /
+   ``_raw_response``.
 2. Every response that includes API-key inventory MUST flow through
    ``core.auth.secret_redaction.redact_api_key_map`` (or equivalent
    redaction) on the same call path.
@@ -19,22 +24,17 @@ The check is conservative: a handler that reads keys AND emits a
 response AND does not import/reference a redaction helper is
 flagged. An explicit ALLOWED list (empty by design) captures
 exceptions.
-
-A ratchet rather than a forever-static count because some handlers
-may legitimately need to touch key discovery for metadata (e.g.
-``/api/healthz``). When they do, they show up in the allowlist with
-a reason.
 """
 
 from __future__ import annotations
 
 import ast
-import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-HANDLERS_GET = ROOT / "src" / "media_stack" / "api" / "handlers_get.py"
+ROUTES_DIR = ROOT / "src" / "media_stack" / "api" / "routes"
+SERVICES_DIR = ROOT / "src" / "media_stack" / "api" / "services"
 
 # Handler names that are INTENTIONALLY allowed to reference raw key
 # material (each entry documents why). Empty today — every GET that
@@ -83,69 +83,100 @@ def _calls_any(node: ast.AST, names: frozenset[str]) -> bool:
 
 
 def _method_handlers(tree: ast.AST) -> list[ast.FunctionDef]:
-    """Return every method named ``_handle_*`` in the module."""
+    """Return every method whose name is ``_handle_*`` or ``handle_*``.
+
+    The legacy ``handlers_get.py`` used ``_handle_*`` private methods.
+    The post-Phase-E route modules use public ``handle_*`` methods
+    (Router auto-discovery picks up the ``@get(...)``-decorated
+    methods regardless of leading underscore). Both are accepted.
+    """
     out: list[ast.FunctionDef] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("_handle_"):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        if node.name.startswith("_handle_") or node.name.startswith("handle_"):
             out.append(node)
+    return out
+
+
+def _iter_scan_files() -> list[Path]:
+    """All route + service modules whose handlers might hand back
+    key material. Tests + adapter modules are out of scope (they
+    don't emit user-facing responses)."""
+    out: list[Path] = []
+    for d in (ROUTES_DIR, SERVICES_DIR):
+        if not d.is_dir():
+            continue
+        for p in d.rglob("*.py"):
+            if p.name.startswith("test_"):
+                continue
+            out.append(p)
     return out
 
 
 class NoSecretInApiResponsesRatchet(unittest.TestCase):
 
     def test_every_handler_that_reads_keys_redacts_before_response(self) -> None:
-        self.assertTrue(
-            HANDLERS_GET.is_file(),
-            f"handlers_get.py not found: {HANDLERS_GET}",
-        )
-        tree = ast.parse(
-            HANDLERS_GET.read_text(encoding="utf-8"), str(HANDLERS_GET),
-        )
         violations: list[str] = []
-        for handler in _method_handlers(tree):
-            if handler.name in _ALLOWED_RAW_KEY_HANDLERS:
+        scanned = 0
+        for source_file in _iter_scan_files():
+            try:
+                tree = ast.parse(
+                    source_file.read_text(encoding="utf-8"), str(source_file),
+                )
+            except (OSError, SyntaxError, UnicodeDecodeError):
                 continue
-            if not _calls_any(handler, _KEY_SOURCES):
-                continue
-            if not _calls_any(handler, _RESPONSE_EMITTERS):
-                # Reads keys but doesn't emit a response (e.g.
-                # a helper); fine.
-                continue
-            if _calls_any(handler, _REDACTION_HELPERS):
-                continue
-            violations.append(
-                f"{handler.name}:{handler.lineno} reads a key source "
-                f"({sorted(_KEY_SOURCES)}) and emits a response "
-                f"({sorted(_RESPONSE_EMITTERS)}) without going through "
-                f"a redaction helper ({sorted(_REDACTION_HELPERS)})",
-            )
+            scanned += 1
+            for handler in _method_handlers(tree):
+                if handler.name in _ALLOWED_RAW_KEY_HANDLERS:
+                    continue
+                if not _calls_any(handler, _KEY_SOURCES):
+                    continue
+                if not _calls_any(handler, _RESPONSE_EMITTERS):
+                    # Reads keys but doesn't emit a response (e.g.
+                    # a helper); fine.
+                    continue
+                if _calls_any(handler, _REDACTION_HELPERS):
+                    continue
+                violations.append(
+                    f"{source_file.name}::{handler.name}:{handler.lineno} "
+                    f"reads a key source ({sorted(_KEY_SOURCES)}) and "
+                    f"emits a response ({sorted(_RESPONSE_EMITTERS)}) "
+                    f"without going through a redaction helper "
+                    f"({sorted(_REDACTION_HELPERS)})",
+                )
+        self.assertGreater(
+            scanned, 0,
+            "ratchet scanned no route/service modules — directories "
+            f"missing? routes={ROUTES_DIR}, services={SERVICES_DIR}",
+        )
         self.assertFalse(
             violations,
             "Handlers that leak raw API keys to response bodies:\n  - "
             + "\n  - ".join(violations),
         )
 
-    def test_allowlist_only_names_existing_handlers(self) -> None:
-        """Prevent stale allowlist entries after a rename."""
-        if not _ALLOWED_RAW_KEY_HANDLERS:
-            return  # nothing to validate
-        tree = ast.parse(HANDLERS_GET.read_text(encoding="utf-8"))
-        names = {h.name for h in _method_handlers(tree)}
-        for allowed in _ALLOWED_RAW_KEY_HANDLERS:
-            self.assertIn(
-                allowed, names,
-                f"allowlist names unknown handler: {allowed}",
-            )
-
     def test_handlers_get_imports_redaction_module(self) -> None:
         # Defensive: if the redaction module is never imported, the
         # main test might false-pass because no handler sees a
-        # redaction-helper name. Assert the import exists somewhere.
-        src = HANDLERS_GET.read_text(encoding="utf-8")
-        self.assertIn(
-            "secret_redaction", src,
-            "handlers_get.py must import from secret_redaction so the "
-            "ratchet can verify redaction happens before response",
+        # redaction-helper name. Assert the import exists somewhere
+        # across the GET-domain code base. ADR-0007 Phase E split
+        # the legacy single-file import; now any of the route modules
+        # touching keys must pull in secret_redaction.
+        seen = False
+        for source_file in _iter_scan_files():
+            try:
+                src = source_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if "secret_redaction" in src:
+                seen = True
+                break
+        self.assertTrue(
+            seen,
+            "No route/service module imports from secret_redaction. "
+            "If GET handlers genuinely no longer touch key material, "
+            "delete this defensive check.",
         )
 
 

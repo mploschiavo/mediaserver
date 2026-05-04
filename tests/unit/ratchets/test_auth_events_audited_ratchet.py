@@ -1,6 +1,5 @@
-"""Ratchet: every session-mint / session-revoke code path in
-``handlers_post.py`` must be accompanied by a matching audit-log
-append for a login/logout event.
+"""Ratchet: every session-mint / session-revoke code path must be
+accompanied by a matching audit-log append for a login/logout event.
 
 Why the ratchet exists
 ----------------------
@@ -11,14 +10,19 @@ tamper-evident trace; the ``append(...)`` on the hash-chained audit
 log is what turns "someone authenticated" into "we have evidence of
 who, when, from where".
 
+ADR-0007 Phase E retired ``handlers_post.py``; the session-mint /
+revoke surface lives in ``api/services/security_post_handlers.py``
+(login/logout helpers) plus ``api/routes/post_auth_session.py``
+(the route module that imports the audit-action constants).
+
 How the scan works
 ------------------
-For each ``FunctionDef`` in the module, we walk its body to find
-calls to ``session_store.create(...)`` or ``session_store.revoke(...)``
-(matched by attribute name). If found, we then require a call to
-``audit`` / ``_audit`` / ``_audit_login_event`` / ``append`` that
-names a login/logout action from ``audit_actions`` in the SAME
-function body.
+For each ``FunctionDef`` in the scanned modules, we walk its body to
+find calls to ``session_store.create(...)`` or
+``session_store.revoke(...)`` (matched by attribute name). If found,
+we then require a call to ``audit`` / ``_audit`` /
+``_audit_login_event`` / ``append`` that names a login/logout action
+from ``audit_actions`` in the SAME function body.
 
 This is conservative by design: adding a new entry-point that mints
 sessions without an audit entry fails the ratchet loudly.
@@ -34,7 +38,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-_HANDLERS_POST = ROOT / "src" / "media_stack" / "api" / "handlers_post.py"
+# ADR-0007 Phase E: handlers_post.py was deleted; the session-mint /
+# revoke + audit surface lives across these post-Phase-E files. Each
+# is scanned by the same helpers below.
+_AUTH_SESSION_FILES: tuple[Path, ...] = (
+    ROOT / "src" / "media_stack" / "api" / "services" / "security_post_handlers.py",
+    ROOT / "src" / "media_stack" / "api" / "routes" / "post_auth_session.py",
+)
 
 # The session-store attribute names whose calls must be audited.
 _SESSION_MINT_ATTRS: frozenset[str] = frozenset({"create"})
@@ -55,16 +65,23 @@ _AUDIT_ACTION_TOKENS: frozenset[str] = frozenset({
 
 def _is_session_store_call(call: ast.Call, attrs: frozenset[str]) -> bool:
     """True when ``call`` looks like ``session_store.<attr>(...)`` or
-    ``_session_store.<attr>(...)`` (either module-level import alias)."""
+    ``_session_store.<attr>(...)`` (either module-level import alias).
+
+    Also accepts ``self._session_store.<attr>(...)`` and
+    ``self.session_store.<attr>(...)`` for the post-Phase-E
+    class-based session-mint helpers.
+    """
     func = call.func
     if not isinstance(func, ast.Attribute):
         return False
     if func.attr not in attrs:
         return False
     value = func.value
-    if not isinstance(value, ast.Name):
-        return False
-    return value.id in {"session_store", "_session_store"}
+    if isinstance(value, ast.Name):
+        return value.id in {"session_store", "_session_store"}
+    if isinstance(value, ast.Attribute):
+        return value.attr in {"session_store", "_session_store"}
+    return False
 
 
 def _function_mentions_audit_token(fn: ast.FunctionDef) -> bool:
@@ -104,25 +121,30 @@ def _function_has_session_call(
 
 class AuthEventsAuditedRatchet(unittest.TestCase):
 
-    def _iter_functions(self) -> list[ast.FunctionDef]:
-        tree = ast.parse(
-            _HANDLERS_POST.read_text(encoding="utf-8"), str(_HANDLERS_POST),
-        )
-        return [
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef)
-        ]
+    def _iter_functions(self) -> list[tuple[Path, ast.FunctionDef]]:
+        out: list[tuple[Path, ast.FunctionDef]] = []
+        for source_file in _AUTH_SESSION_FILES:
+            if not source_file.is_file():
+                continue
+            tree = ast.parse(
+                source_file.read_text(encoding="utf-8"),
+                str(source_file),
+            )
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    out.append((source_file, node))
+        return out
 
     def test_every_session_mint_path_audits_login_success(self) -> None:
         violations: list[str] = []
-        for fn in self._iter_functions():
+        for source_file, fn in self._iter_functions():
             if not _function_has_session_call(fn, _SESSION_MINT_ATTRS):
                 continue
             if not _function_mentions_audit_token(fn):
                 violations.append(
-                    f"{fn.name}:{fn.lineno} mints a session via "
-                    "session_store.create(...) without a matching "
-                    "audit entry.",
+                    f"{source_file.name}::{fn.name}:{fn.lineno} mints "
+                    "a session via session_store.create(...) without a "
+                    "matching audit entry.",
                 )
         self.assertFalse(
             violations,
@@ -132,14 +154,14 @@ class AuthEventsAuditedRatchet(unittest.TestCase):
 
     def test_logout_path_audits_session_revoke(self) -> None:
         violations: list[str] = []
-        for fn in self._iter_functions():
+        for source_file, fn in self._iter_functions():
             if not _function_has_session_call(fn, _SESSION_REVOKE_ATTRS):
                 continue
             if not _function_mentions_audit_token(fn):
                 violations.append(
-                    f"{fn.name}:{fn.lineno} revokes a session via "
-                    "session_store.revoke(...) without a matching "
-                    "audit entry.",
+                    f"{source_file.name}::{fn.name}:{fn.lineno} revokes "
+                    "a session via session_store.revoke(...) without a "
+                    "matching audit entry.",
                 )
         self.assertFalse(
             violations,
@@ -150,12 +172,22 @@ class AuthEventsAuditedRatchet(unittest.TestCase):
     def test_handlers_post_imports_audit_action_constants(self) -> None:
         """Defensive: if the import disappears in a refactor the main
         scan might false-pass because the Name references vanish too.
-        Pin the import presence."""
-        src = _HANDLERS_POST.read_text(encoding="utf-8")
+        Pin the import presence — at least one of the auth-session
+        files must reference the LOGIN_*/LOGOUT constants.
+
+        ADR-0007 Phase E: handlers_post.py is gone; the constants are
+        imported by the route module that owns session minting.
+        """
+        sources = [
+            f.read_text(encoding="utf-8")
+            for f in _AUTH_SESSION_FILES if f.is_file()
+        ]
+        combined = "\n".join(sources)
         for constant in ("LOGIN_SUCCESS", "LOGIN_FAILURE", "LOGOUT"):
             self.assertIn(
-                constant, src,
-                f"handlers_post.py must import/use {constant}",
+                constant, combined,
+                f"At least one of {[f.name for f in _AUTH_SESSION_FILES]} "
+                f"must import/use {constant}",
             )
 
 

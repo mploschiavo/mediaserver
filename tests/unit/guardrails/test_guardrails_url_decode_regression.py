@@ -4,63 +4,83 @@ before building the URL).
 
 The bug operators hit: Test/Disable buttons returned ``404 unknown
 guardrail: storage%3Ainode_floor`` for every rule whose id contained
-a colon — which is every rule. Cause: the dispatcher in
-``handlers_post.py`` extracted the id from ``handler.path`` and
+a colon — which is every rule. Original cause: the legacy dispatcher
+in ``handlers_post.py`` extracted the id from ``handler.path`` and
 looked it up in the registry without ``urllib.parse.unquote``-ing
-first. ``encodeURIComponent("storage:inode_floor")`` →
-``"storage%3Ainode_floor"``; registry lookup of the encoded form
-misses, the dispatcher returns 404, and every operator-facing button
-silently fails.
+first.
 
-This test asserts the dispatcher unquotes path components. It does
-NOT test every rule individually — it tests the encoding contract
-once at the dispatcher boundary.
+ADR-0007 Phase 2 Phase E retired ``handlers_post.py`` entirely. The
+guardrails POSTs are now parameterised routes on
+``api/routes/post_admin_ops.py`` registered via
+``@post("/api/guardrails/{id}")`` / ``@post("/api/guardrails/{id}/test")``
+/ ``@post("/api/guardrails/{id}/disable")``. The dispatch entry-point
+itself lives at ``src/media_stack/api/routing/dispatch.py``.
+
+Two checks remain:
+
+1. The parameterised routes are registered with the Router under the
+   expected ``{id}``-shape — the dispatch entry-point is no longer the
+   ``handler.path``-startswith chain, but the guardrail POSTs must
+   still go through the parameterised path-param matcher.
+2. Every registered rule id round-trips
+   ``encodeURIComponent`` → ``urllib.parse.unquote`` unchanged so a
+   future rule id with characters that don't survive that pair fails
+   here before the SPA's button click does.
 """
 from __future__ import annotations
 
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 
 class GuardrailUrlDecodeRegressionTest(unittest.TestCase):
-    def test_dispatcher_uses_unquote_on_rule_id(self) -> None:
-        """Static check: the guardrails POST dispatcher reads the
-        rule id from ``handler.path`` and MUST pass it through
-        ``urllib.parse.unquote`` before calling ``registry.get``.
+    def test_guardrails_routes_use_parameterised_id(self) -> None:
+        """Static check: the guardrails POST routes are registered
+        with the Router as parameterised ``/{id}`` routes — NOT as
+        ``startswith("/api/guardrails/")`` prefix matches.
 
-        Without this, every SPA-triggered Test / Disable / Save
-        click 404s because the registry never contains the
-        URL-encoded id ``storage%3Ainode_floor`` (only the literal
-        ``storage:inode_floor``).
-
-        We use a source-grep ratchet rather than a live HTTP fixture
-        because the dispatcher is awkward to instantiate in
-        isolation; a regression here would re-introduce the bug
-        symmetrically for every rule.
+        The legacy ``handlers_post.py`` chain extracted the id by
+        ``handler.path[len("/api/guardrails/"):]`` and forgot to
+        ``urllib.parse.unquote`` it; ADR-0007 Phase 2 replaced that
+        with parameterised routes that match through the Router's
+        compiled pattern. The dispatch entry-point is now
+        ``src/media_stack/api/routing/dispatch.py`` and the
+        guardrails routes are decorated on ``post_admin_ops.py``.
         """
+        # Source check on the route module — verifies the @post
+        # decorators carry the parameterised path syntax.
         src = (
-            ROOT / "src" / "media_stack" / "api" / "handlers_post.py"
+            ROOT / "src" / "media_stack" / "api"
+            / "routes" / "post_admin_ops.py"
         ).read_text(encoding="utf-8")
-        # Find the guardrails POST branch (matches the start of the
-        # block — narrow window so we don't accidentally accept an
-        # unquote() in some other path).
-        anchor = 'if handler.path.startswith("/api/guardrails/"):'
-        idx = src.find(anchor)
-        self.assertNotEqual(idx, -1, "guardrails POST branch missing")
-        # Look at the next ~600 chars of source.
-        block = src[idx:idx + 1200]
-        self.assertIn(
-            "unquote",
-            block,
-            "guardrails POST branch must call urllib.parse.unquote on "
-            "the rule id extracted from handler.path — without it, "
-            "every SPA-triggered Test/Disable click 404s on rules "
-            "whose ids contain reserved chars (every rule has a colon).",
+        for decorator in (
+            '@post("/api/guardrails/{id}")',
+            '@post("/api/guardrails/{id}/test")',
+            '@post("/api/guardrails/{id}/disable")',
+        ):
+            self.assertIn(
+                decorator, src,
+                f"guardrails POST route missing parameterised "
+                f"{{id}} registration: {decorator!r}. Without this "
+                f"the path-param goes through the legacy "
+                f"startswith-and-slice extraction that lost "
+                f"unquote() and 404'd every encoded rule id.",
+            )
+        # Sanity: the dispatch entry-point file exists where the
+        # docstring claims it lives.
+        dispatch_path = (
+            ROOT / "src" / "media_stack" / "api"
+            / "routing" / "dispatch.py"
+        )
+        self.assertTrue(
+            dispatch_path.is_file(),
+            "Router dispatch entry-point missing — every POST flows "
+            "through this module after Phase E retirement of "
+            "handlers_post.py.",
         )
 
     def test_every_registered_rule_id_round_trips_url_encoding(self) -> None:

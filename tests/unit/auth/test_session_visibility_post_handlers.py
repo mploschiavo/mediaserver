@@ -27,8 +27,8 @@ from unittest.mock import MagicMock, patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.handlers_post import (  # noqa: E402
-    PostRequestHandler, _global_post_limiter, _user_mgmt_limiter,
+from media_stack.api.services.rate_limiters import (  # noqa: E402
+    _global_post_limiter, _user_mgmt_limiter,
 )
 from media_stack.api.services import security_post_handlers as sph  # noqa: E402
 from media_stack.core.auth.authz import Actor  # noqa: E402
@@ -214,17 +214,11 @@ class _HandlerHarness(unittest.TestCase):
             user_service_builder=lambda: self.svc,
             cache=self.cache, event_bus=self.bus,
         )
-        # Swap the shared instance so the PostRequestHandler routes to ours.
+        # Swap the shared instance so the route module routes to ours.
         self._orig_security = sph._security_post_handlers
         sph._security_post_handlers = self.handler
-        # Patch module-level symbol used in handlers_post.py too.
-        import media_stack.api.handlers_post as hp
-        self._orig_hp = hp._security_post_handlers
-        hp._security_post_handlers = self.handler
 
     def tearDown(self) -> None:
-        import media_stack.api.handlers_post as hp
-        hp._security_post_handlers = self._orig_hp
         sph._security_post_handlers = self._orig_security
 
 
@@ -497,55 +491,75 @@ class SelfServiceTests(_HandlerHarness):
 
 
 class DispatcherIntegrationTests(_HandlerHarness):
+    """Integration coverage for the bans-post route module flow.
+
+    ADR-0007 Phase 2 Phase E retired the legacy
+    ``PostRequestHandler.handle()`` chain. Routes now register
+    themselves with the OpenAPI Router and the ``BansPostRoutes``
+    module owns the per-route gating that used to live in the
+    legacy elif chain.
+    """
 
     def _admin_hndlr(self, path: str, body: dict, **kw):
-        # Supply CSRF-compliant headers.
-        # The default CSRF mode accepts header/cookie match when the
-        # cookie is absent (API-client style). We pass no cookie so
-        # CSRF check short-circuits to True.
+        # Supply CSRF-compliant headers. With ``cookie=""`` the
+        # default CSRF mode accepts header/cookie match (API-client
+        # style: no cookie -> not CSRF-vulnerable), so the gate
+        # short-circuits to True.
         return _handler(path, body, cookie="", **kw)
 
-    def test_unknown_security_path_goes_404(self) -> None:
-        h, captured = self._admin_hndlr(
-            "/api/bans/elsewhere", {},
+    def _build_route_module(self):
+        from media_stack.api.routes.post_bans import (
+            BansPostRoutes,
+            _ActorResolverProvider,
         )
-        srv = PostRequestHandler()
-        with patch(
-            "media_stack.api.handlers_post._actor_resolver",
-        ) as mr:
-            mr.resolve.return_value = _admin_actor()
-            srv.handle(h)
+
+        class _StubResolver:
+            def resolve(self, handler, body):
+                return _admin_actor()
+
+        return BansPostRoutes(
+            actor_resolver_provider=_ActorResolverProvider(
+                resolver=_StubResolver(),
+            ),
+        )
+
+    def test_unknown_security_path_goes_404(self) -> None:
+        # An unknown security path no longer routes through this
+        # module -- the Router emits 404 before any per-route handler
+        # runs. We simulate by calling SecurityPostHandlers.dispatch
+        # directly, which preserves the legacy 404 contract.
+        h, captured = self._admin_hndlr("/api/bans/elsewhere", {})
+        self.handler.dispatch(h, h.path, {}, _admin_actor())
         self.assertEqual(captured["status"], 404)
 
     def test_rate_limit_429(self) -> None:
-        srv = PostRequestHandler()
-        with patch(
-            "media_stack.api.handlers_post._actor_resolver",
-        ) as mr:
-            mr.resolve.return_value = _admin_actor()
-            # Exhaust the user-mgmt bucket (capacity 10). The global
-            # bucket (30) is more generous; the user-mgmt limiter
-            # fires first on the security path.
-            for _ in range(10):
-                h, _ = self._admin_hndlr(
-                    "/api/bans/users", {"username": "x", "reason": "other"},
-                )
-                srv.handle(h)
-            h, captured = self._admin_hndlr(
-                "/api/bans/users", {"username": "y", "reason": "other"},
+        # The route module's user-mgmt bucket fires after 10 requests
+        # to /api/bans/users in a tight loop. The bucket is shared
+        # across the test class via the singleton in services/rate_limiters.
+        from media_stack.api.services.rate_limiters import (
+            _user_mgmt_limiter,
+        )
+        # Reset bucket so prior tests don't leak.
+        _user_mgmt_limiter._buckets.clear()  # type: ignore[attr-defined]
+        module = self._build_route_module()
+        for _ in range(10):
+            h, _cap = self._admin_hndlr(
+                "/api/bans/users",
+                {"username": "x", "reason": "other"},
             )
-            srv.handle(h)
-            self.assertEqual(captured["status"], 429)
+            module.handle_add_user_ban(h)
+        h, captured = self._admin_hndlr(
+            "/api/bans/users",
+            {"username": "y", "reason": "other"},
+        )
+        module.handle_add_user_ban(h)
+        self.assertEqual(captured["status"], 429)
 
     def test_bad_body_is_400(self) -> None:
-        srv = PostRequestHandler()
-        with patch(
-            "media_stack.api.handlers_post._actor_resolver",
-        ) as mr:
-            mr.resolve.return_value = _admin_actor()
-            h, captured = self._admin_hndlr("/api/bans/users", {})
-            srv.handle(h)
-            self.assertEqual(captured["status"], 400)
+        module = self._build_route_module()
+        h, captured = self._admin_hndlr("/api/bans/users", {})
+        module.handle_add_user_ban(h)
+        self.assertEqual(captured["status"], 400)
 
 
 class CascadeCoverageTests(_HandlerHarness):

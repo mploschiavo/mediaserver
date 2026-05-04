@@ -115,20 +115,28 @@ class HeartbeatAndPerJobLogs(unittest.TestCase):
 class SkipForcedRotationEnvVar(unittest.TestCase):
 
     def test_env_var_short_circuits_needs_rotation(self) -> None:
-        # Mock the user lookup so we control source=env-seed.
-        # The _suspends_rotation env var is read inside the lambda
-        # block in handlers_get.py; assert the env var name appears
-        # in source AND that the boolean shape is right.
-        path = ROOT / "src/media_stack/api/handlers_get.py"
+        # The skip-rotation env-var check moved from the legacy
+        # ``handlers_get.py`` lambda into the
+        # ``ForcedRotationGate.needs_rotation_for`` method on
+        # ``api/routes/users_get.py`` during ADR-0007 Phase 2 Phase E.
+        # Assert the env var name + the bootstrap-sources guard tuple
+        # both still live there so flipping the env knob only
+        # suppresses rotation for env-seed/env-legacy callers.
+        path = ROOT / "src/media_stack/api/routes/users_get.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn("STACK_ADMIN_SKIP_FORCED_ROTATION", text)
-        # The check must AND with the source check, so flipping
-        # the env var only suppresses for env-seed/env-legacy.
+        # The check must AND with the source check: only env-seed /
+        # env-legacy sources can be suppressed.
+        self.assertIn('"env-seed"', text)
+        self.assertIn('"env-legacy"', text)
+        # Source-tuple guard must remain a short-circuit ahead of the
+        # truthy-env check so non-bootstrap sources are never
+        # incorrectly flagged as not-needing-rotation.
         self.assertRegex(
             text,
-            r'source\.lower\(\) in \("env-seed", "env-legacy"\)\s*\n'
-            r'\s*and os\.environ\.get\(\s*\n'
-            r'\s*"STACK_ADMIN_SKIP_FORCED_ROTATION"',
+            r'if source\.lower\(\) not in _BOOTSTRAP_SOURCES:\s*\n'
+            r'\s*return False\s*\n'
+            r'\s*return self\._skip not in _TRUTHY',
             "needs_rotation logic regressed — skip env var should "
             "AND with source check, not OR or replace.",
         )

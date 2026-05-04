@@ -117,7 +117,7 @@ class TestActionTriggerQueue(unittest.TestCase):
 
     def test_all_known_actions_have_priority(self):
         from media_stack.api.server import ACTION_PRIORITY
-        from media_stack.api.handlers_post import KNOWN_ACTIONS
+        from media_stack.api.services.known_actions import KNOWN_ACTIONS
         for action in KNOWN_ACTIONS:
             self.assertIn(action, ACTION_PRIORITY, f"{action} missing from ACTION_PRIORITY")
 

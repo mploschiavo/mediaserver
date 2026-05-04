@@ -145,7 +145,9 @@ class PasswordTicketConsumerService:
     def _limiter(self) -> Any:
         if self._limiter_fn is not None:
             return self._limiter_fn()
-        from media_stack.api.handlers_post import _pw_reset_limiter
+        from media_stack.api.services.rate_limiters import (
+            _pw_reset_limiter,
+        )
         return _pw_reset_limiter
 
     # --- admin check ---------------------------------------------------

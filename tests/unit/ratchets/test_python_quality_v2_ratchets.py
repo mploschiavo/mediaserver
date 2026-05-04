@@ -268,8 +268,17 @@ _FS_ALLOWED_PATH_FRAGMENTS = (
     # Versioning reads VERSION at import.
     "/version.py",
     # The api server / handlers serve openapi.yaml.
-    "/api/handlers_get.py",
+    # ADR-0007 Phase E cleanup: handlers_get/post.py deleted; their
+    # filesystem-touching helpers live in route + service modules.
     "/api/server.py",
+    "/api/services/openapi.py",
+    "/api/services/logs_handlers.py",
+    "/api/services/media_integrity_dispatch.py",
+    "/api/services/media_integrity_handlers.py",
+    "/api/services/security_get_handlers.py",
+    "/api/services/security_post_handlers.py",
+    "/api/routes/",
+    "/api/routing/",
     # Audit log writes JSONL.
     "/api/services/audit_log.py",
     # State persistence.
@@ -387,8 +396,17 @@ _NETWORK_ALLOWED_PATH_FRAGMENTS = (
     "/domain/auth/",
     "/core/edge/",
     "/cli/",
-    "/api/handlers_post.py",  # livetv probe handler
-    "/api/handlers_get.py",  # routing probes
+    # ADR-0007 Phase E cleanup: handlers_get/post.py deleted; their
+    # network-touching probes live in route + service modules.
+    "/api/routes/",
+    "/api/routing/",
+    "/api/services/routing_probes.py",  # routing probes (was handlers_get)
+    "/api/services/route_probe.py",
+    "/api/services/logs_handlers.py",
+    "/api/services/media_integrity_dispatch.py",
+    "/api/services/media_integrity_handlers.py",
+    "/api/services/security_get_handlers.py",
+    "/api/services/security_post_handlers.py",
     # The dispatch layer makes outbound HTTP for ext_authz callbacks.
     "/api/dispatch.py",
     # ``_ProbeHttpClient`` IS the client layer for orchestrator

@@ -28,8 +28,29 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "media_stack"
-HANDLERS_POST = SRC / "api" / "handlers_post.py"
-HANDLERS_GET = SRC / "api" / "handlers_get.py"
+SERVER_PY = SRC / "api" / "server.py"
+
+# ADR-0007 Phase E: handlers_get.py / handlers_post.py were deleted;
+# the route modules below host the security-path dispatch branches
+# the ratchet originally scanned. Each module either calls a rate
+# limiter directly OR delegates to a security service that does
+# (the ``_module_has_any_limiter_call`` heuristic catches both).
+_SCAN_FILES: tuple[Path, ...] = (
+    # Server preflight — every POST goes through
+    # ``_global_post_preflight`` which calls ``_global_post_limiter``.
+    SERVER_PY,
+    # Route modules with security-path branches.
+    SRC / "api" / "routes" / "post_bans.py",
+    SRC / "api" / "routes" / "post_me.py",
+    SRC / "api" / "routes" / "post_users.py",
+    SRC / "api" / "routes" / "auth_password_tickets.py",
+    SRC / "api" / "routes" / "sessions_security_get.py",
+    SRC / "api" / "routes" / "users_get.py",
+    # Service-layer dispatchers + rate-limiter singletons.
+    SRC / "api" / "services" / "security_post_handlers.py",
+    SRC / "api" / "services" / "security_get_handlers.py",
+    SRC / "api" / "services" / "rate_limiters.py",
+)
 
 
 _SECURITY_PREFIXES: tuple[str, ...] = (
@@ -71,11 +92,16 @@ _PREFLIGHT_GATES: frozenset[str] = frozenset({
 _ALLOWED_UNLIMITED_PATHS: frozenset[str] = frozenset({
     # Format: "<rel_path>:<security_prefix>:<reason>".
     #
-    # (Empty today — every existing security endpoint is covered
-    # either by _global_preflight/_global_post_limiter (all POSTs)
-    # or by _pw_reset_limiter inside _PasswordTicketConsumer.handle,
-    # which the module-coarse detector resolves via the module's
-    # overall limiter-awareness check.)
+    # ADR-0007 Phase E: ``security_post_handlers.py`` is the
+    # post-cutover home of the legacy ``_handle_security_post``
+    # dispatcher. Every POST that reaches one of these branches
+    # has already passed ``server.py::_global_post_preflight`` →
+    # ``_global_post_limiter.allow(...)``; the module-coarse
+    # detector can't see across files. The branches below are
+    # purely path-to-method demultiplexing on a request that has
+    # already been rate-limited at the server boundary.
+    "src/media_stack/api/services/security_post_handlers.py:/api/bans:upstream-server-preflight",
+    "src/media_stack/api/services/security_post_handlers.py:/api/me/revoke-others:upstream-server-preflight",
 })
 
 
@@ -162,8 +188,23 @@ def _iter_dispatcher_branches(tree: ast.Module):
 
 
 def _module_has_dispatcher_preflight(tree: ast.Module) -> bool:
-    """Quick check: does the module's dispatcher (``handle`` method)
-    start with a ``self._global_preflight(...)`` guard?"""
+    """Quick check: does the module either define a top-level
+    ``_global_post_preflight`` (the post-Phase-E shape, in server.py)
+    OR does the legacy ``handle`` method on a class start with a
+    ``self._global_preflight(...)`` guard?
+
+    Either pattern proves the module's dispatch path goes through
+    a rate-limiter call.
+    """
+    # Post-Phase-E shape: module-level _global_post_preflight in
+    # server.py that calls _global_post_limiter.allow(...).
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in {
+            "_global_post_preflight", "_global_preflight",
+        }:
+            if _calls_limiter(node) or _calls_preflight_gate(node):
+                return True
+    # Legacy shape: ``class PostRequestHandler.handle()``.
     for cls in (n for n in tree.body if isinstance(n, ast.ClassDef)):
         for fn in cls.body:
             if isinstance(fn, ast.FunctionDef) and fn.name == "handle":
@@ -233,12 +274,20 @@ class RateLimitBucketCoverageRatchet(unittest.TestCase):
 
     def test_every_security_path_is_rate_limited(self) -> None:
         unexpected: list[str] = []
-        for path in (HANDLERS_POST, HANDLERS_GET):
+        scanned = 0
+        for path in _SCAN_FILES:
+            if not path.is_file():
+                continue
+            scanned += 1
             for rel, lineno, prefix in _scan_file(path):
                 key = f"{rel}:{prefix}"
                 if any(a.startswith(key + ":") for a in _ALLOWED_UNLIMITED_PATHS):
                     continue
                 unexpected.append(f"{rel}:{lineno} -> {prefix}")
+        self.assertGreater(
+            scanned, 0,
+            "ratchet scanned no files — _SCAN_FILES is stale.",
+        )
         self.assertFalse(
             unexpected,
             "Security-path dispatch without a rate limiter:\n  - "
@@ -249,7 +298,9 @@ class RateLimitBucketCoverageRatchet(unittest.TestCase):
         """Every allowlist entry must name a real violation today,
         otherwise it's stale and should be deleted."""
         live: set[str] = set()
-        for path in (HANDLERS_POST, HANDLERS_GET):
+        for path in _SCAN_FILES:
+            if not path.is_file():
+                continue
             for rel, _lineno, prefix in _scan_file(path):
                 live.add(f"{rel}:{prefix}")
         stale: list[str] = []

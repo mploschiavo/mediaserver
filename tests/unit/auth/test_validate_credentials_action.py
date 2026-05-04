@@ -109,7 +109,7 @@ class TestActionValidateCredentials(unittest.TestCase):
     @patch("media_stack.api.services.health.probe_credentials")
     @patch("media_stack.services.jobs.action_handlers.runtime_platform")
     def test_action_in_known_actions(self, mock_rp, mock_probe):
-        from media_stack.api.handlers_post import KNOWN_ACTIONS
+        from media_stack.api.services.known_actions import KNOWN_ACTIONS
         self.assertIn("validate-credentials", KNOWN_ACTIONS)
 
     @patch("media_stack.api.services.health.probe_credentials")
