@@ -184,6 +184,49 @@ class RunHistoryRepository:
             out["parent_job_name"] = parent_names[parent_id]
         return out
 
+    def get_run_detail(self, run_id: str) -> tuple[bool, dict[str, Any]]:
+        """Fetch a single run by id, with its children inlined.
+
+        Returns ``(found, body)`` — ``found=False`` when the run-id
+        is not in the persistence window so the route can emit 404
+        without the repository knowing HTTP status codes.
+
+        Preserves the exact legacy shape from
+        ``handlers_get.py:913-937``:
+        ``{...run_record, "children": [...child_records]}``
+        with ``parent_job_name`` inlined on every row that resolves.
+        Error string ``"run {run_id!r} not found"`` preserved verbatim.
+        """
+        record = self._rh.get_run(run_id)
+        if record is None:
+            return False, {"error": f"run {run_id!r} not found"}
+        parent_names = {r.run_id: r.job_name for r in self._rh.iter_records()}
+        children = [
+            self._with_parent_name(c, parent_names)
+            for c in self._rh.get_children(run_id)
+        ]
+        body: dict[str, Any] = {
+            **self._with_parent_name(record, parent_names),
+            "children": children,
+        }
+        return True, body
+
+    def get_latest_for_job(
+        self, job_name: str,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Fetch the most-recent run record for a job name.
+
+        Returns ``(found, body)`` — ``found=False`` when no runs exist
+        for that job yet. Mirrors legacy branch at
+        ``handlers_get.py:897-912``. Error string
+        ``"no runs for {job_name!r}"`` preserved verbatim.
+        """
+        record = self._rh.get_latest_run(job_name)
+        if record is None:
+            return False, {"error": f"no runs for {job_name!r}"}
+        parent_names = {r.run_id: r.job_name for r in self._rh.iter_records()}
+        return True, self._with_parent_name(record, parent_names)
+
 
 class OrchestratorStateAdapter:
     """Adapter onto ``orchestrator_state.read_state``.
@@ -308,6 +351,34 @@ class OpsGetRoutes(RouteModule):
         """
         body = self._runs.list_runs(handler.path)
         handler._json_response(HTTPStatus.OK, body)
+
+    @get("/api/runs/latest/{job_name}")
+    def handle_run_latest(self, handler: Any, *, job_name: str) -> None:
+        """Return the most-recent run record for a job.
+
+        ``job_name`` is a URL path parameter. 404 when no runs
+        exist for that job yet. Response is the flat run record dict
+        with ``parent_job_name`` inlined when the parent resolves —
+        no ``children`` array. Mirrors legacy at
+        ``handlers_get.py:897-912``.
+        """
+        found, body = self._runs.get_latest_for_job(job_name)
+        status = HTTPStatus.OK if found else HTTPStatus.NOT_FOUND
+        handler._json_response(status, body)
+
+    @get("/api/runs/{run_id}")
+    def handle_run_detail(self, handler: Any, *, run_id: str) -> None:
+        """Return a single run record with its children inlined.
+
+        ``run_id`` is a URL path parameter. 404 when the run-id is
+        not in the JSONL persistence window. Response shape:
+        ``{...run_record_fields, "children": [...child_records]}``
+        with ``parent_job_name`` inlined on any row whose parent
+        resolves. Mirrors legacy at ``handlers_get.py:913-937``.
+        """
+        found, body = self._runs.get_run_detail(run_id)
+        status = HTTPStatus.OK if found else HTTPStatus.NOT_FOUND
+        handler._json_response(status, body)
 
     @get("/api/telemetry")
     def handle_telemetry(self, handler: Any) -> None:

@@ -573,3 +573,283 @@ class TestRoutingIntegration:
         assert isinstance(instance._runs, RunHistoryRepository)
         assert isinstance(instance._orchestrator, OrchestratorStateAdapter)
         assert isinstance(instance._telemetry, TelemetrySource)
+
+
+# ---------------------------------------------------------------------------
+# Wave-7 fakes — extend the wave-4 _FakeRunHistoryModule with the
+# three additional methods that get_run_detail / get_latest_for_job call.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FakeRunHistoryModuleV2(_FakeRunHistoryModule):
+    """Extends the wave-4 fake with three additional methods that the
+    wave-7 ``get_run_detail`` / ``get_latest_for_job`` repository
+    methods call.
+
+    Keeps the existing ``get_runs`` / ``iter_records`` contract
+    unchanged — wave-4 tests continue to pass unchanged.
+    """
+
+    def get_run(self, run_id: str) -> "_FakeRunRecord | None":
+        for r in self.records:
+            if r.run_id == run_id:
+                return r
+        return None
+
+    def get_latest_run(self, job_name: str) -> "_FakeRunRecord | None":
+        # Mirror the real impl: newest last in the JSONL → reversed scan.
+        for r in reversed(self.records):
+            if r.job_name == job_name:
+                return r
+        return None
+
+    def get_children(self, parent_run_id: str) -> "list[_FakeRunRecord]":
+        return [r for r in self.records if r.parent_run_id == parent_run_id]
+
+
+# ---------------------------------------------------------------------------
+# Shared harness for the two new parameterized routes
+# ---------------------------------------------------------------------------
+
+
+class _RunDetailHarness:
+    """Rebinds all OpsGetRoutes handlers (exact + parameterized) with
+    a test-wired instance so stubs flow through the production Router.
+    Pattern mirrors ``_RouteHarness`` in ``test_post_jobs_queue.py``.
+    """
+
+    @classmethod
+    def with_repo(cls, repo: "RunHistoryRepository") -> RouteDispatchHarness:
+        from media_stack.api.routing import (
+            DefaultDispatcher,
+            Router,
+            RouterDispatcher,
+        )
+
+        DefaultDispatcher.reset_for_tests()
+        router = Router()
+        replacement = OpsGetRoutes(run_history_repository=repo)
+        cls._rebind(router, replacement)
+        return RouteDispatchHarness(RouterDispatcher(router))
+
+    @classmethod
+    def _rebind(cls, router: Any, routes: "OpsGetRoutes") -> None:
+        for key, route in list(router._exact.items()):
+            m = cls._maybe_replacement(route, routes)
+            if m is not None:
+                router._exact[key] = type(route)(
+                    verb=route.verb, path=route.path, handler=m,
+                    pattern=route.pattern, param_names=route.param_names,
+                    display=route.display,
+                )
+        for idx, route in enumerate(list(router._parameterized)):
+            m = cls._maybe_replacement(route, routes)
+            if m is not None:
+                router._parameterized[idx] = type(route)(
+                    verb=route.verb, path=route.path, handler=m,
+                    pattern=route.pattern, param_names=route.param_names,
+                    display=route.display,
+                )
+
+    @staticmethod
+    def _maybe_replacement(route: Any, routes: "OpsGetRoutes") -> Any:
+        if "OpsGetRoutes" not in route.display:
+            return None
+        method_name = route.display.rsplit(".", 1)[-1]
+        return getattr(routes, method_name, None)
+
+
+# ---------------------------------------------------------------------------
+# /api/runs/latest/{job_name}
+# ---------------------------------------------------------------------------
+
+
+class TestRunLatestRoute:
+    """``GET /api/runs/latest/{job_name}`` — most-recent run for a job."""
+
+    def _harness(
+        self, fake: _FakeRunHistoryModuleV2,
+    ) -> RouteDispatchHarness:
+        return _RunDetailHarness.with_repo(
+            RunHistoryRepository(run_history_module=fake),
+        )
+
+    def test_returns_flat_record_for_known_job(self) -> None:
+        """Happy path: most-recent run returned as flat dict with no
+        ``children`` key."""
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(
+                run_id="r1",
+                job_name="ensure-jellyfin-libraries",
+                status="ok",
+                started_at=1777140000.0,
+            ),
+        ])
+        harness = self._harness(fake)
+
+        response = harness.dispatch(
+            "GET", "/api/runs/latest/ensure-jellyfin-libraries",
+        )
+
+        assert response.status == 200
+        body = json.loads(response.body)
+        assert body["run_id"] == "r1"
+        assert body["job_name"] == "ensure-jellyfin-libraries"
+        assert "children" not in body
+
+    def test_path_param_job_name_captured(self) -> None:
+        """Router regex captures ``job_name`` and forwards it to the
+        repository unchanged."""
+        captured: list[str] = []
+
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(run_id="r1", job_name="reconcile-quality-profiles"),
+        ])
+
+        class _SpyRepo(RunHistoryRepository):
+            def get_latest_for_job(  # type: ignore[override]
+                self, job_name: str,
+            ) -> tuple[bool, dict[str, Any]]:
+                captured.append(job_name)
+                return super().get_latest_for_job(job_name)
+
+        harness = _RunDetailHarness.with_repo(
+            _SpyRepo(run_history_module=fake),
+        )
+        harness.dispatch(
+            "GET", "/api/runs/latest/reconcile-quality-profiles",
+        )
+
+        assert captured == ["reconcile-quality-profiles"]
+
+    def test_404_when_no_runs_for_job(self) -> None:
+        """Legacy 404 error string preserved verbatim."""
+        fake = _FakeRunHistoryModuleV2(records=[])
+        harness = self._harness(fake)
+
+        response = harness.dispatch("GET", "/api/runs/latest/never-ran")
+
+        assert response.status == 404
+        assert json.loads(response.body) == {
+            "error": "no runs for 'never-ran'",
+        }
+
+    def test_parent_job_name_inlined_when_parent_resolves(self) -> None:
+        """``parent_job_name`` is inlined same as in the list route."""
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(run_id="p1", job_name="root-job"),
+            _FakeRunRecord(
+                run_id="c1", job_name="child-job", parent_run_id="p1",
+            ),
+        ])
+        harness = self._harness(fake)
+
+        response = harness.dispatch("GET", "/api/runs/latest/child-job")
+
+        body = json.loads(response.body)
+        assert body["parent_job_name"] == "root-job"
+
+
+# ---------------------------------------------------------------------------
+# /api/runs/{run_id}
+# ---------------------------------------------------------------------------
+
+
+class TestRunDetailRoute:
+    """``GET /api/runs/{run_id}`` — single run with children inlined."""
+
+    def _harness(
+        self, fake: _FakeRunHistoryModuleV2,
+    ) -> RouteDispatchHarness:
+        return _RunDetailHarness.with_repo(
+            RunHistoryRepository(run_history_module=fake),
+        )
+
+    def test_returns_record_with_children_array(self) -> None:
+        """Happy path: run record merged with children array."""
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(run_id="p1", job_name="root-job", status="ok"),
+            _FakeRunRecord(
+                run_id="c1", job_name="child-job", status="ok",
+                parent_run_id="p1",
+            ),
+        ])
+        harness = self._harness(fake)
+
+        response = harness.dispatch("GET", "/api/runs/p1")
+
+        assert response.status == 200
+        body = json.loads(response.body)
+        assert body["run_id"] == "p1"
+        assert body["job_name"] == "root-job"
+        assert isinstance(body["children"], list)
+        assert len(body["children"]) == 1
+        assert body["children"][0]["run_id"] == "c1"
+
+    def test_children_array_empty_when_no_children(self) -> None:
+        """No children → ``"children": []``, not absent or None."""
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(run_id="solo", job_name="solo-job"),
+        ])
+        harness = self._harness(fake)
+
+        response = harness.dispatch("GET", "/api/runs/solo")
+
+        body = json.loads(response.body)
+        assert body["children"] == []
+
+    def test_path_param_run_id_captured(self) -> None:
+        """Router regex captures ``run_id`` and forwards it to the
+        repository unchanged."""
+        captured: list[str] = []
+
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(run_id="run-abc123", job_name="test-job"),
+        ])
+
+        class _SpyRepo(RunHistoryRepository):
+            def get_run_detail(  # type: ignore[override]
+                self, run_id: str,
+            ) -> tuple[bool, dict[str, Any]]:
+                captured.append(run_id)
+                return super().get_run_detail(run_id)
+
+        harness = _RunDetailHarness.with_repo(
+            _SpyRepo(run_history_module=fake),
+        )
+        harness.dispatch("GET", "/api/runs/run-abc123")
+
+        assert captured == ["run-abc123"]
+
+    def test_404_when_run_id_not_found(self) -> None:
+        """Legacy 404 error string preserved verbatim."""
+        fake = _FakeRunHistoryModuleV2(records=[])
+        harness = self._harness(fake)
+
+        response = harness.dispatch("GET", "/api/runs/nonexistent-id")
+
+        assert response.status == 404
+        assert json.loads(response.body) == {
+            "error": "run 'nonexistent-id' not found",
+        }
+
+    def test_parent_job_name_inlined_on_fetched_record(self) -> None:
+        """The fetched record itself carries ``parent_job_name`` when its
+        parent is in the persistence window."""
+        fake = _FakeRunHistoryModuleV2(records=[
+            _FakeRunRecord(run_id="gp", job_name="grandparent"),
+            _FakeRunRecord(
+                run_id="p", job_name="parent-job", parent_run_id="gp",
+            ),
+            _FakeRunRecord(
+                run_id="c", job_name="child-job", parent_run_id="p",
+            ),
+        ])
+        harness = self._harness(fake)
+
+        response = harness.dispatch("GET", "/api/runs/p")
+
+        body = json.loads(response.body)
+        assert body["parent_job_name"] == "grandparent"
+        assert body["children"][0]["run_id"] == "c"

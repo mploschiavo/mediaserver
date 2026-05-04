@@ -10710,6 +10710,86 @@ paths:
                     parent_run_id: ""
                     batch_id: "batch-001"
 
+  /api/runs/latest/{job_name}:
+    get:
+      operationId: getLatestRunForJob
+      tags: [Jobs]
+      summary: Most-recent run record for a given job name
+      description: |
+        Returns the most-recent ``RunRecord`` for the given job name.
+        404 when no runs exist for that job yet. Response shape is
+        the flat run record dict with ``parent_job_name`` inlined
+        when the parent resolves -- no ``children`` array.
+      parameters:
+        - in: path
+          name: job_name
+          required: true
+          schema:
+            type: string
+          example: ensure-jellyfin-libraries
+      responses:
+        "200":
+          description: Most-recent run record for the job.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                run_id: "run-0001"
+                job_name: "ensure-jellyfin-libraries"
+                status: "ok"
+                started_at: 1777140000.0
+        "404":
+          description: No runs found for that job name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "no runs for 'ensure-jellyfin-libraries'"
+
+  /api/runs/{run_id}:
+    get:
+      operationId: getRunDetail
+      tags: [Jobs]
+      summary: Single run record with children inlined
+      description: |
+        Returns the ``RunRecord`` for the given ``run_id`` with its
+        child runs inlined under a ``children`` array. 404 when the
+        run-id is not in the JSONL persistence window.
+        ``parent_job_name`` is inlined on any row whose parent
+        resolves against the current persistence window.
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema:
+            type: string
+          example: run-a1b2c3d4
+      responses:
+        "200":
+          description: Run record with children inlined.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                run_id: "run-0001"
+                job_name: "ensure-jellyfin-libraries"
+                status: "ok"
+                started_at: 1777140000.0
+                children: []
+        "404":
+          description: Run not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "run 'run-0001' not found"
+
   /api/orchestrator/promises/state:
     get:
       operationId: getOrchestratorPromisesState
