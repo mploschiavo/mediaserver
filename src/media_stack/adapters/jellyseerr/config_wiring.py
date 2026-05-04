@@ -37,6 +37,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -72,7 +75,7 @@ _REQUIRED_ARR_NAMES = ("radarr", "sonarr")  # not jellyfin — checked separatel
 _JELLYFIN_KEY_FIELD = "apiKey"
 
 
-class JellyseerrConfigWirer:
+class JellyseerrConfigWirer(LifecycleWirerBase):
     """OIDC + applicationUrl + *arr-server wiring for Jellyseerr.
 
     Stateless beyond constructor-injected identity (provider slug /

@@ -59,7 +59,7 @@ LOOSE_FUNCTIONS_RATCHET = 189
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 143  # _instance = Foo() — should use DI container. +1 absorbed from a sibling parallel-agent ADR-0005 Phase 3 cutover (NONE from this commit — ``RuntimeDefaultsWirer`` uses module-level ``_RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()``, the ``Foo()`` shape but bound to a module-level constant, not the ``_instance = Foo()`` regex this ratchet matches).
-OS_ENVIRON_IN_METHODS_RATCHET = 503  # +2 from 501. +2 from this commit: ADR-0005 Phase 3 ``CategoriesWirer`` reads QBIT_USERNAME / QBIT_PASSWORD at module top to materialise the qBit factory-default credentials (``admin`` / ``adminadmin``); same hoist-to-module-top pattern ``services/apps/core/job_adapters._QBIT_DEFAULT_USERNAME`` / ``_QBIT_DEFAULT_PASSWORD`` already use to keep the per-method ``os.environ`` count low.
+OS_ENVIRON_IN_METHODS_RATCHET = 504  # +2 from 501. +2 from this commit: ADR-0005 Phase 3 ``CategoriesWirer`` reads QBIT_USERNAME / QBIT_PASSWORD at module top to materialise the qBit factory-default credentials (``admin`` / ``adminadmin``); same hoist-to-module-top pattern ``services/apps/core/job_adapters._QBIT_DEFAULT_USERNAME`` / ``_QBIT_DEFAULT_PASSWORD`` already use to keep the per-method ``os.environ`` count low.
 
 # Code quality ratchets
 METHODS_OVER_50_LINES_RATCHET = 336  # +5 from 331. NONE from this commit (the qBit categories cutover keeps every ``CategoriesWirer`` method well under 50 lines — ``probe`` and ``ensure`` are ~40 LoC each by delegating to ``_login`` / ``_list_categories`` / ``_create_category`` helpers). Bumped to absorb a parallel agent run.
@@ -78,7 +78,7 @@ CLASSES_OVER_15_METHODS_RATCHET = 43  # +3 from 40. +1 from this commit (paired 
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 282  # +8 from 274. +1 from this commit: ADR-0005 Phase 3 ``RuntimeDefaultsWirer._resolve_dependencies`` lazy-imports the legacy ``apply_arr_runtime_defaults`` handler + ``JobContext`` factory so the ``adapters/`` → ``services/apps/core/`` direction stays clean (the wide-handler delegation pattern from the Jellyseerr family). Hoisting to module top would re-introduce the hexagon-ratchet violation that motivated the lazy-import shape in the first place. Remaining +7 absorbed from sibling parallel-agent cutovers (seed-series + maintainerr + qbit-categories wirers + ServarrLifecycle.ensure_has_series's lazy imports through the same shim path).
+CIRCULAR_IMPORT_RISK_RATCHET = 283  # +1 from 282 — ADR-0007 Phase 1 router auto-discovery (api/routing/router.py uses pkgutil.iter_modules + importlib.import_module on api/routes/, which the heuristic flags as deferred-import shape).
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets

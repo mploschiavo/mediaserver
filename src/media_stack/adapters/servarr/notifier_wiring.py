@@ -31,6 +31,9 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -104,7 +107,7 @@ _NOTIFIER_EVENT_FLAGS: dict[str, dict[str, bool]] = {
 }
 
 
-class JellyfinNotifierWirer:
+class JellyfinNotifierWirer(LifecycleWirerBase):
     """Per-*arr Jellyfin MediaBrowser-notifier wiring.
 
     Constructor-injected notifier identity (name / host / port);
@@ -270,10 +273,7 @@ class JellyfinNotifierWirer:
         )
 
     def _discover_jellyfin_key(self, ctx: OrchestrationContext) -> str:
-        return (
-            (ctx.secrets.get(_JELLYFIN_API_KEY_ENV) or "").strip()
-            or os.environ.get(_JELLYFIN_API_KEY_ENV, "").strip()
-        )
+        return self._discover_secret(ctx, _JELLYFIN_API_KEY_ENV)
 
     def _post_notifier(
         self,
@@ -296,22 +296,14 @@ class JellyfinNotifierWirer:
             with urllib.request.urlopen(
                 req, timeout=_NOTIFIER_HTTP_POST_TIMEOUT_SECONDS,
             ) as resp:
-                return Outcome.success(
-                    None,
+                return self._outcome_success(
                     evidence={"http_status": resp.status, "url": url},
                 )
-        except urllib.error.HTTPError as exc:
-            return Outcome.failure(
-                f"HTTP {exc.code} from {url}",
-                transient=False,
-                evidence={"http_status": exc.code, "url": url},
-            )
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
-            return Outcome.failure(
-                f"unreachable at {url}: {exc}",
-                transient=True,
-                evidence={"url": url, "error": str(exc)},
-            )
+        except (
+            urllib.error.HTTPError, urllib.error.URLError,
+            OSError, TimeoutError,
+        ) as exc:
+            return self._classify_http_outcome(exc, url=url)
 
     def _build_payload(
         self, service_id: str, jf_key: str,

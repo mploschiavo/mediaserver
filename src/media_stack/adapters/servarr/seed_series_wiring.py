@@ -48,6 +48,9 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from media_stack.adapters._shared.lifecycle_wirer_base import (
+    LifecycleWirerBase,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -70,7 +73,7 @@ _SEED_SERIES_OK_THRESHOLD = 5
 _PROBE_TIMEOUT_SECONDS = 5
 
 
-class SeedSeriesWirer:
+class SeedSeriesWirer(LifecycleWirerBase):
     """Per-Sonarr seed-series wiring.
 
     Stateless beyond constructor-injected identity (supported
