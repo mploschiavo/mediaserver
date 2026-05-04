@@ -96,6 +96,12 @@ ENDPOINTS_OVERRIDES: dict[str, str] = {
     "apps": "/apps",
     "config": "/config",
     "status": "/status",
+    # Hyphenated API paths whose underscore-named fixtures collide
+    # with the slash-substitution default. Added during ADR-0007
+    # Phase 2 wave 3+4 fixture capture.
+    "envoy_admin_summary": "/api/envoy/admin-summary",
+    "sw_config": "/api/sw-config",
+    "sw_config_json": "/sw-config.json",
 }
 
 

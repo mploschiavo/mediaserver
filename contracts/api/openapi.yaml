@@ -2992,6 +2992,148 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
 
+  /api/routing/v2:
+    get:
+      operationId: getRoutingV2
+      tags: [Routing]
+      summary: Get routing configuration in v2 schema
+      description: |
+        Returns the v1 routing dict migrated through ``migrate_v1_to_v2``
+        into the structured v2 shape (hosts[], path_aliases[], apex,
+        catch_all, defaults, ...) plus a sibling ``validation`` array of
+        non-blocking VR-* errors. Read-only in PR-4 of the routing
+        redesign; PR-5 adds POST + apply.
+      responses:
+        "200":
+          description: Routing v2 config + validation errors
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  config:
+                    type: object
+                    additionalProperties: true
+                  validation:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "500":
+          description: Migration / validation pipeline failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/routing/routes:
+    get:
+      operationId: getRoutingRoutes
+      tags: [Routing]
+      summary: Operator-facing route table
+      description: |
+        Enumerates every URL the gateway emits - per-service path-prefix
+        routes, per-service subdomain routes, path aliases, the apex
+        action, and the catch-all - flattened into rows with
+        ``host``/``match``/``target``/``kind``/``source`` so the
+        Routing tab can render a sortable table.
+      responses:
+        "200":
+          description: Flat route table + summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  summary:
+                    type: object
+                    additionalProperties: true
+        "500":
+          description: Route enumeration failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/routing/preview:
+    get:
+      operationId: getRoutingPreview
+      tags: [Routing]
+      summary: Preview generated Envoy + binding plan
+      description: |
+        Pure-function preview of the Envoy ``route_config`` plus the
+        active ``EdgeBindingAdapter``'s ``ApplyPlan`` for the *current*
+        v2 config. No body, no mutation - operators see what would get
+        applied without touching the cluster.
+      responses:
+        "200":
+          description: Envoy route_config + binding plan
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  envoy:
+                    type: object
+                    additionalProperties: true
+                  binding:
+                    type: object
+                    additionalProperties: true
+        "500":
+          description: Preview generation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/routing/effective:
+    get:
+      operationId: getRoutingEffective
+      tags: [Routing]
+      summary: Routing config with defaults merged into hosts
+      description: |
+        Same shape as ``/api/routing/v2`` but with ``defaults`` merged
+        into each host's per-field knobs, so the UI shows what Envoy
+        actually sees instead of the operator-facing "inherited"
+        placeholders. Read-only.
+      responses:
+        "200":
+          description: Effective routing config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    type: object
+                    additionalProperties: true
+        "500":
+          description: Effective-config materialisation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
   # =========================================================================
   # Security
   # =========================================================================
@@ -4390,6 +4532,77 @@ paths:
                 type: string
               example: 'attachment; filename="media-stack-backup-20260407-143022.json"'
 
+  /api/sw-config:
+    get:
+      operationId: getServiceWorkerConfig
+      tags: [Config]
+      summary: Service-worker runtime configuration (alias)
+      description: |
+        Alias of `/sw-config.json` mounted under `/api/` for ext_authz parity —
+        sister apps pass `/api/*` through unauthenticated. The dashboard's PWA
+        service worker fetches this on install/update so its navigation
+        denylist tracks the routing engine instead of being hard-coded in
+        the bundled SW.
+      responses:
+        "200":
+          description: Service-worker configuration payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
+                  basepath:
+                    type: string
+                  denylist_patterns:
+                    type: array
+                    items:
+                      type: string
+                  allowed_app_prefixes:
+                    type: array
+                    items:
+                      type: string
+                  sister_app_prefixes:
+                    type: array
+                    items:
+                      type: string
+
+  /sw-config.json:
+    get:
+      operationId: getServiceWorkerConfigJson
+      tags: [Config]
+      summary: Service-worker runtime configuration
+      description: |
+        Top-level path the dashboard's PWA service worker fetches at install/
+        update time. Returns the SW's basepath, sister-app prefixes the SW
+        should NOT hijack, and pre-built navigation denylist regex strings.
+        See `/api/sw-config` for the same payload mounted under `/api/`.
+      responses:
+        "200":
+          description: Service-worker configuration payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: integer
+                  basepath:
+                    type: string
+                  denylist_patterns:
+                    type: array
+                    items:
+                      type: string
+                  allowed_app_prefixes:
+                    type: array
+                    items:
+                      type: string
+                  sister_app_prefixes:
+                    type: array
+                    items:
+                      type: string
+
   /api/restore:
     post:
       operationId: restoreBackup
@@ -4544,6 +4757,120 @@ paths:
                   "http.ingress_http.downstream_rq_4xx": 412
                   "http.ingress_http.downstream_rq_5xx": 3
                 raw_count: 2847
+
+  /api/envoy/admin-summary:
+    get:
+      operationId: getEnvoyAdminSummary
+      tags: [Metrics]
+      summary: Envoy admin summary
+      description: |
+        Operator-facing aggregate of cluster health, request rates,
+        p50/p95/p99 latency, active connections, and TLS handshake
+        errors. Surfaced on the Routing tab. Each call also appends
+        a sample to the rolling buffer that backs
+        `/api/envoy/timeseries`.
+      responses:
+        "200":
+          description: Aggregated Envoy admin-API summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/envoy/access-log:
+    get:
+      operationId: getEnvoyAccessLog
+      x-status: planned
+      tags: [Metrics]
+      summary: Tail recent Envoy access-log entries
+      description: |
+        Returns the last `limit` entries from the Envoy access log,
+        each parsed into a structured row when JSON-formatted. Sources
+        tried in order: `ENVOY_ACCESS_LOG_PATH` file, `kubectl logs`
+        on the envoy pod, then `docker compose logs envoy`.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+          description: Maximum number of log entries to return
+      responses:
+        "200":
+          description: Recent access-log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  limit:
+                    type: integer
+        "500":
+          description: Internal error while tailing the access log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  rows:
+                    type: array
+                    items:
+                      type: object
+
+  /api/envoy/timeseries:
+    get:
+      operationId: getEnvoyTimeseries
+      x-status: planned
+      tags: [Metrics]
+      summary: Envoy admin-summary rolling time series
+      description: |
+        Rolling buffer of recent admin-summary samples plus derived
+        rate deltas. The buffer is populated as a side-effect of
+        `/api/envoy/admin-summary` polling, so the series only covers
+        the time the Routing panel has been open. The `window` query
+        param defaults to 1800 (30 min) and clamps to >= 60s.
+      parameters:
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 60
+            default: 1800
+          description: Window size in seconds (clamps to >= 60)
+      responses:
+        "200":
+          description: Time-series window of admin-summary samples
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  samples:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  deltas:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  window_seconds:
+                    type: integer
+                  now:
+                    type: integer
 
   /api/feed.xml:
     get:
@@ -9759,6 +10086,83 @@ paths:
                 count: 2
                 history: []
 
+  /api/jobs/running:
+    get:
+      operationId: getJobsRunning
+      tags: [Jobs]
+      summary: In-flight jobs / actions / k8s job pods
+      description: |
+        Aggregates every job, action, scan, or operation the
+        controller currently has in-flight. Drives the global
+        "things are happening right now" banner and the Jobs page's
+        ``CurrentlyRunningCard``.
+
+        Sources combined here:
+          1. ``ActionRecord``-tracked actions with status=RUNNING
+             (bootstrap, reconcile, mass-search, etc.).
+          2. K8s ``Job`` pods in Active phase (CronJob fires that
+             haven't completed yet) — best-effort via the in-cluster
+             k8s client. Skipped outside k8s.
+          3. ``run_history.get_running_tree()`` — in-flight runs
+             grouped parent → children for the
+             ``CurrentlyRunningCard``.
+
+        Migrated from the legacy ``elif`` chain in v1.0.21X-era
+        ADR-0007 Phase 2 wave 3.
+      responses:
+        "200":
+          description: In-flight aggregator snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running:
+                    type: array
+                    description: |
+                      Flat list of in-flight items. Each entry has at
+                      least ``id`` + ``name`` + ``kind`` (one of
+                      ``action`` / ``k8s_job``) plus source-specific
+                      metadata (``started_at``, ``elapsed_seconds``,
+                      ``triggered_by``, ``active_pods``).
+                    items:
+                      type: object
+                      additionalProperties: true
+                  count:
+                    type: integer
+                    description: Cardinality of ``running[]``.
+                  tree:
+                    type: array
+                    description: |
+                      Recursive parent → child run tree as emitted by
+                      ``run_history.get_running_tree``. Empty array
+                      if no jobs are running.
+                    items:
+                      type: object
+                      additionalProperties: true
+                additionalProperties: true
+              example:
+                running: []
+                count: 0
+                tree: []
+        "500":
+          description: Aggregation failure — partial response is empty.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  running:
+                    type: array
+                    items:
+                      type: object
+                  tree:
+                    type: array
+                    items:
+                      type: object
+
   /api/jobs/queue:
     get:
       operationId: getJobsQueue
@@ -9829,6 +10233,129 @@ paths:
           description: Enqueued
         "400":
           $ref: '#/components/responses/BadRequest'
+
+  /api/runs:
+    get:
+      operationId: listRuns
+      tags: [Jobs]
+      summary: Per-job-run history with optional filters
+      description: |
+        Returns the run-history buffer (append-only JSONL persisted at
+        ``config/.controller/run-history.jsonl``) with optional filters.
+        Replaces the legacy "last 10 runs" view that pulled from the
+        batch-level ``job-history.json``. Filters AND together; with no
+        filters every record up to ``limit`` is returned.
+
+        Each row carries a ``parent_job_name`` field when its
+        ``parent_run_id`` resolves against another row in the buffer —
+        the dashboard uses this to render "child-job (under
+        parent-name)" without an extra fetch per row. Drives the
+        Jobs page's run-history table.
+      parameters:
+        - in: query
+          name: job
+          schema:
+            type: string
+          description: Filter to a single ``job_name``.
+        - in: query
+          name: parent
+          schema:
+            type: string
+          description: Filter to children of a given ``parent_run_id``.
+        - in: query
+          name: batch
+          schema:
+            type: string
+          description: Filter to a single ``batch_id``.
+        - in: query
+          name: since
+          schema:
+            type: number
+          description: Only return runs with ``started_at >= since`` (epoch seconds).
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 50000
+          description: Cap on returned records. Clamped server-side.
+      responses:
+        "200":
+          description: Filtered run-history snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                additionalProperties: true
+              example:
+                runs:
+                  - run_id: "run-0001"
+                    job_name: "ensure-jellyfin-libraries"
+                    status: "ok"
+                    started_at: 1777140000.0
+                    finished_at: 1777140012.5
+                    elapsed_seconds: 12.5
+                    parent_run_id: ""
+                    batch_id: "batch-001"
+
+  /api/orchestrator/promises/state:
+    get:
+      operationId: getOrchestratorPromisesState
+      tags: [Operations]
+      summary: Last persisted orchestrator promise-evaluation tick
+      description: |
+        Read-only snapshot of the orchestrator's most recent
+        promise-evaluation tick. Sourced from
+        ``.controller/promise_state.json`` plus runtime metadata
+        (platform, live_services). Read by ``FreshInstallVerifier``
+        (ADR-0004) so the verifier's "did the fresh install work?"
+        answer matches the live auto-heal cycle.
+
+        Two non-200 modes both carry ``last_tick_age_seconds`` so the
+        verifier can distinguish "no state yet" (saved_at=None) from
+        "state is stale" (saved_at present, age > threshold) and back
+        off accordingly.
+      responses:
+        "200":
+          description: Persisted tick within the freshness threshold.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                version: 1
+                saved_at: 1777140000.0
+                last_tick_age_seconds: 12.3
+                platform: "k8s"
+                live_services: ["sonarr", "radarr"]
+                totals:
+                  total: 42
+                  ok: 40
+                  failed_transient: 1
+                  failed_permanent: 0
+                  skipped_cooldown: 1
+                  skipped_platform: 0
+                  unknown: 0
+                attempts: []
+        "503":
+          description: |
+            Persisted state is missing, malformed, or stale. The body
+            still carries ``last_tick_age_seconds`` (or ``None`` if no
+            ``saved_at``) so callers can choose to retry without
+            reparsing.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
 
   /api/jobs/queue/clear:
     post:

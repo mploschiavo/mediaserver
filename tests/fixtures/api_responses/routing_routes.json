@@ -1,0 +1,154 @@
+{
+  "rows": [
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/bazarr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "bazarr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/emby/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "emby",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/homepage/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "homepage",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/jdownloader/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "jdownloader",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/jellyfin/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "jellyfin",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/jellyseerr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "jellyseerr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/lidarr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "lidarr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/maintainerr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "maintainerr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/mythtv/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "mythtv",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/nzbget/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "nzbget",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/prowlarr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "prowlarr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/qbittorrent/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "qbittorrent",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/radarr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "radarr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/readarr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "readarr",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "auto_path",
+      "match": "/app/sonarr/",
+      "source": "strategy=hybrid, app_path_prefix=/app (derived per-service)",
+      "target": "sonarr",
+      "target_kind": "service"
+    },
+    {
+      "host": "auth.iomio.io",
+      "kind": "subdomain",
+      "match": "/",
+      "source": "hosts[] entry (role=auth)",
+      "target": "authelia",
+      "target_kind": "service"
+    },
+    {
+      "host": "jf.iomio.io",
+      "kind": "subdomain",
+      "match": "/",
+      "source": "hosts[] entry (role=media_server)",
+      "target": "jellyfin",
+      "target_kind": "service"
+    },
+    {
+      "host": "m.iomio.io",
+      "kind": "catch_all",
+      "match": "/ (catch-all)",
+      "source": "catch_all.action",
+      "target": "(404)",
+      "target_kind": "404"
+    }
+  ],
+  "summary": {
+    "active_service_count": 22,
+    "app_path_prefix": "/app",
+    "gateway_host": "m.iomio.io",
+    "strategy": "hybrid"
+  }
+}

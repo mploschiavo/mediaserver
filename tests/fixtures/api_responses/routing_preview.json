@@ -1,0 +1,140 @@
+{
+  "binding": {
+    "adapter": "k8s_ingress",
+    "steps": [
+      {
+        "description": "Set media-stack-envoy Service type \u2192 ClusterIP",
+        "kind": "service.patch",
+        "payload": {
+          "apiVersion": "v1",
+          "kind": "Service",
+          "metadata": {
+            "name": "media-stack-envoy",
+            "namespace": "media-stack"
+          },
+          "spec": {
+            "type": "ClusterIP"
+          }
+        }
+      },
+      {
+        "description": "Apply Ingress 'media-stack-edge' covering 3 hostname(s): auth.iomio.io, jf.iomio.io, m.iomio.io",
+        "kind": "ingress.apply",
+        "payload": {
+          "apiVersion": "networking.k8s.io/v1",
+          "kind": "Ingress",
+          "metadata": {
+            "annotations": {},
+            "name": "media-stack-edge",
+            "namespace": "media-stack"
+          },
+          "spec": {
+            "ingressClassName": "nginx",
+            "rules": [
+              {
+                "host": "auth.iomio.io",
+                "http": {
+                  "paths": [
+                    {
+                      "backend": {
+                        "service": {
+                          "name": "media-stack-envoy",
+                          "port": {
+                            "number": 8080
+                          }
+                        }
+                      },
+                      "path": "/",
+                      "pathType": "Prefix"
+                    }
+                  ]
+                }
+              },
+              {
+                "host": "jf.iomio.io",
+                "http": {
+                  "paths": [
+                    {
+                      "backend": {
+                        "service": {
+                          "name": "media-stack-envoy",
+                          "port": {
+                            "number": 8080
+                          }
+                        }
+                      },
+                      "path": "/",
+                      "pathType": "Prefix"
+                    }
+                  ]
+                }
+              },
+              {
+                "host": "m.iomio.io",
+                "http": {
+                  "paths": [
+                    {
+                      "backend": {
+                        "service": {
+                          "name": "media-stack-envoy",
+                          "port": {
+                            "number": 8080
+                          }
+                        }
+                      },
+                      "path": "/",
+                      "pathType": "Prefix"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "warnings": []
+  },
+  "envoy": {
+    "route_config": {
+      "name": "main",
+      "virtual_hosts": [
+        {
+          "domains": [
+            "auth.iomio.io"
+          ],
+          "name": "vh_auth_auth.iomio.io",
+          "routes": [
+            {
+              "match": {
+                "prefix": "/"
+              },
+              "route": {
+                "cluster": "service_authelia",
+                "timeout": "60s"
+              }
+            }
+          ]
+        },
+        {
+          "domains": [
+            "jf.iomio.io"
+          ],
+          "name": "vh_media_server_jf.iomio.io",
+          "routes": [
+            {
+              "match": {
+                "prefix": "/"
+              },
+              "route": {
+                "cluster": "service_jellyfin",
+                "timeout": "60s"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "vhost_count": 2
+  }
+}
