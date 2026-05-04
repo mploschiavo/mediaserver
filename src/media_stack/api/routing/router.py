@@ -51,10 +51,42 @@ logger = logging.getLogger(__name__)
 
 
 _PATH_PARAM_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
-_DEFAULT_OPENAPI_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "contracts" / "api" / "openapi.yaml"
-)
+
+
+def _resolve_default_openapi_path() -> Path:
+    """Locate ``contracts/api/openapi.yaml`` across deployment shapes.
+
+    The contracts directory lives at the repo root in development
+    (``parents[4]`` from this module) but at one of two filesystem
+    locations when installed as a wheel into a container:
+
+    * ``/opt/media-stack/contracts`` — populated by
+      ``deploy/compose/controller.Dockerfile`` line 113
+    * ``/usr/local/share/media-stack/contracts`` — alt install layout
+
+    The ``MEDIA_STACK_OPENAPI_PATH`` env var overrides the search
+    entirely (CI / test fixtures / non-standard installs).
+
+    Returns the first existing path, or the dev-mode path as a
+    last-resort default so the original ``RouterMisconfigured``
+    error surfaces with a meaningful location.
+    """
+    import os
+    override = os.environ.get("MEDIA_STACK_OPENAPI_PATH", "").strip()
+    if override:
+        return Path(override)
+    candidates = (
+        Path(__file__).resolve().parents[4] / "contracts" / "api" / "openapi.yaml",
+        Path("/opt/media-stack/contracts/api/openapi.yaml"),
+        Path("/usr/local/share/media-stack/contracts/api/openapi.yaml"),
+    )
+    for c in candidates:
+        if c.is_file():
+            return c
+    return candidates[0]
+
+
+_DEFAULT_OPENAPI_PATH = _resolve_default_openapi_path()
 _DEFAULT_ROUTES_PACKAGE = "media_stack.api.routes"
 _SUPPORTED_VERBS = frozenset({"GET", "POST", "DELETE", "PUT", "PATCH"})
 
