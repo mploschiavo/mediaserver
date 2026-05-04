@@ -9962,6 +9962,57 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
 
+  /api/livetv-sources/probe:
+    post:
+      operationId: probeLiveTvSource
+      tags: [Config]
+      summary: Probe an M3U / XMLTV URL before saving
+      description: |
+        Server-side probe that fetches up to 4 KiB of the supplied
+        URL and inspects the leading bytes / Content-Type to
+        classify the body as M3U or XMLTV. Returns
+        ``{ok, status, content_type, bytes, sample, kind, error}``
+        so the dashboard's Probe button can render an at-a-glance
+        verdict before the operator commits the source. Server-side
+        because most providers don't expose CORS for browser
+        fetches.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  description: Tuner / guide URL to probe.
+            example:
+              url: "https://iptv-org.github.io/iptv/countries/us.m3u"
+      responses:
+        "200":
+          description: Probe result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                ok: true
+                status: 206
+                content_type: application/vnd.apple.mpegurl
+                bytes: 4096
+                sample: "#EXTM3U\n#EXTINF:-1 ..."
+                kind: m3u
+                error: ""
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
   /api/log-level:
     get:
       operationId: getLogLevel
@@ -11274,3 +11325,170 @@ paths:
           description: Scan triggered (if applicable)
         "403":
           description: HMAC signature missing or invalid
+
+  # =========================================================================
+  # Webhooks_and_deferred — final-cleanup wave (ADR-0007 Phase 2 wave 6)
+  #
+  # The bare `/webhooks` GET + POST + `/webhooks/test` paths are spec'd above
+  # under their canonical entries. The `/api/`-prefixed aliases were
+  # historically allowlisted in `_HANDLER_ONLY_ALLOWLIST` because they had no
+  # spec entry; the OpenAPI Router migration in wave 6 lifts them onto
+  # `WebhooksAndDeferredRoutes`, so each alias is now declared explicitly so
+  # the spec parity ratchets pin the dispatch surface end-to-end.
+  # =========================================================================
+
+  /api/webhooks:
+    get:
+      operationId: listWebhooksApi
+      tags: [Webhooks]
+      summary: List registered webhook URLs (alias of `/webhooks`)
+      description: |
+        SPA-canonical alias of `GET /webhooks`. The dashboard's nginx only
+        proxies `/api/*`; the bare `/webhooks` path stays for direct curl
+        and for arr-side webhook receivers that hit the controller without
+        the `/api` prefix.
+      x-status: planned
+      responses:
+        "200":
+          description: Webhook URL list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook_urls:
+                    type: array
+                    items:
+                      type: string
+              example:
+                webhook_urls: []
+    post:
+      operationId: addWebhookApi
+      tags: [Webhooks]
+      summary: Register a webhook URL (alias of `POST /webhooks`)
+      description: |
+        SPA-canonical alias of `POST /webhooks`. Validates the URL against
+        the SSRF allow-list (no private / loopback / link-local /
+        multicast / reserved IP ranges) BEFORE persisting.
+      x-status: planned
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: uri
+            example:
+              url: "https://hooks.example.com/media-stack"
+      responses:
+        "200":
+          description: Updated webhook list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhook_urls:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          description: URL failed SSRF validation or scheme check
+
+  /api/webhooks/test:
+    post:
+      operationId: testWebhooksApi
+      tags: [Webhooks]
+      summary: Test all registered webhooks (alias of `/webhooks/test`)
+      description: |
+        SPA-canonical alias of `POST /webhooks/test`. Sends a test payload
+        to every registered webhook URL and reports per-URL status.
+      x-status: planned
+      responses:
+        "200":
+          description: Test results
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/bazarr/subtitle-config:
+    get:
+      operationId: getBazarrSubtitleConfig
+      tags: [Config]
+      summary: Aggregator over Bazarr's languages + profiles + settings
+      description: |
+        Surfaces Bazarr's available languages, configured language profiles,
+        and the operator-default profile id in a single dashboard-friendly
+        shape. Used by Settings → Display → Subtitle preferences.
+      x-status: planned
+      responses:
+        "200":
+          description: Subtitle configuration aggregate
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                available_languages: []
+                profiles: []
+                default_profile_id: null
+                errors: []
+        "500":
+          description: Proxy call failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/logs/stream:
+    get:
+      operationId: streamControllerLogsFiltered
+      tags: [Operations]
+      summary: Filterable SSE stream of controller log lines
+      description: |
+        Server-Sent Events stream of controller log lines with the same
+        filter dimensions as `GET /api/logs/{service}` (`action`, `level`,
+        `q`, `since`). Replaces the legacy unfiltered `/logs/stream`
+        endpoint for the new dashboard tail mode while leaving the bare
+        path in place for compat. Heartbeats every ~30s keep reverse
+        proxies (Envoy / nginx / Cloudflare) from idle-killing the
+        connection.
+      parameters:
+        - in: query
+          name: after_seq
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Resume from this sequence number (exclusive)
+        - in: query
+          name: action
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: level
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string

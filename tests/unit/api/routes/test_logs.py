@@ -356,20 +356,23 @@ class TestRoutingIntegration:
             f"Missing logs routes: {expected - registered}"
         )
 
-    def test_logs_stream_not_registered_in_router(self) -> None:
-        """Pin the explicit deferral: ``/api/logs/stream`` is NOT in
-        the OpenAPI spec, so it must NOT be registered with the
-        Router. Until a follow-up adds the spec entry, the legacy
-        elif chain owns the SSE route. If a future change tries to
-        register it, ``RouterMisconfigured`` would fire at startup;
-        this test makes the omission explicit instead of implicit.
+    def test_logs_stream_now_registered_via_webhooks_and_deferred(
+        self,
+    ) -> None:
+        """ADR-0007 Phase 2 wave 6 added ``/api/logs/stream`` to the
+        spec and migrated the handler onto
+        ``WebhooksAndDeferredRoutes``. This test was previously
+        pinning the deferral; flip the assertion to confirm the
+        Router now owns the route. The legacy elif chain still
+        matches the path during the cleanup phase, but the Router
+        wins at dispatch time.
         """
         harness = RouteDispatchHarness.with_default_router()
         registered = {
             r.path
             for r in harness._dispatcher._router.registered_routes()
         }
-        assert "/api/logs/stream" not in registered
+        assert "/api/logs/stream" in registered
 
     def test_post_to_logs_returns_no_match_for_legacy_fallthrough(
         self,

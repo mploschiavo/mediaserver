@@ -228,11 +228,14 @@ class TestRoutingIntegration:
         from media_stack.api.routing import DispatchOutcome
         assert outcome == DispatchOutcome.METHOD_NOT_ALLOWED
 
-    def test_legacy_only_api_webhooks_falls_through(self) -> None:
-        """``/api/webhooks`` is matched by the legacy chain but is
-        NOT in the OpenAPI spec; the Router must NO_MATCH so the
-        legacy fallback path keeps serving it during Phase 2."""
+    def test_api_webhooks_now_routed_via_router(self) -> None:
+        """``/api/webhooks`` was historically NO_MATCH on the Router
+        because it had no spec entry; ADR-0007 Phase 2 wave 6 added
+        the spec entry and migrated the handler onto
+        ``WebhooksAndDeferredRoutes``. The Router MUST dispatch the
+        route now (HANDLED), not fall through to the legacy chain.
+        """
         harness = RouteDispatchHarness.with_default_router()
         outcome, _ = harness.try_dispatch("GET", "/api/webhooks")
         from media_stack.api.routing import DispatchOutcome
-        assert outcome == DispatchOutcome.NO_MATCH
+        assert outcome == DispatchOutcome.HANDLED
