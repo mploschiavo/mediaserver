@@ -59,6 +59,44 @@ _DEFAULT_ROUTES_PACKAGE = "media_stack.api.routes"
 _SUPPORTED_VERBS = frozenset({"GET", "POST", "DELETE", "PUT", "PATCH"})
 
 
+# ---------------------------------------------------------------------------
+# Infrastructure allowlist for ``assert_full_spec_coverage()``.
+#
+# These (verb, path) pairs are documented in the OpenAPI spec
+# because operators consume them, but they're served directly by
+# ``server.py`` outside the Router and intentionally bypass the
+# RouteModule pattern. ``assert_full_spec_coverage`` skips these
+# entries so the strict-coverage check doesn't trip on
+# infrastructure GETs that have no route module by design.
+#
+# Adding a new entry requires explicit intent — the test in
+# ``tests/unit/api/routing/test_router_allowlist.py`` pins the
+# exact set so an accidental expansion fails the build.
+# ---------------------------------------------------------------------------
+
+_INFRASTRUCTURE_ALLOWLIST: frozenset[tuple[str, str]] = frozenset({
+    # Landing page redirect — server.py emits a 302 to /dashboard
+    # without any route module involved.
+    ("GET", "/"),
+    # Dashboard landing page — server.py serves a static HTML
+    # bundle directly off disk (no API handler in the Router).
+    ("GET", "/dashboard"),
+    # Swagger UI / Redoc page — server.py serves the rendered
+    # docs HTML; the spec consumer (``openapi.yaml``) is loaded by
+    # the Router itself but the page is not a RouteModule target.
+    ("GET", "/api/docs"),
+    # Static asset serving — assets live on disk and are streamed
+    # through ``server.py``'s static-file handler. Wrapping that
+    # in a RouteModule would re-implement file mime-detection +
+    # range-request semantics for no benefit.
+    ("GET", "/api/static/{asset}"),
+    # Prometheus metrics scrape — the prometheus_client library
+    # owns the response body shape; ``server.py`` glues it to the
+    # request without going through the Router.
+    ("GET", "/metrics"),
+})
+
+
 HandlerFn = Callable[..., Any]
 PathParams = Mapping[str, str]
 
@@ -333,11 +371,23 @@ class Router:
 
     def assert_full_spec_coverage(self) -> None:
         """Strict mode: raise if any spec (path, verb) is missing
-        a registered handler. Phase 2's cleanup commit calls this
-        after every domain has migrated."""
+        a registered handler, EXCEPT entries on the
+        ``_INFRASTRUCTURE_ALLOWLIST`` — those are served by
+        ``server.py`` outside the Router (landing pages, static
+        assets, Prometheus metrics, Swagger docs) and
+        intentionally bypass the RouteModule pattern.
+
+        Phase 2's cleanup commit calls this after every domain
+        has migrated. The allowlist is exact-match — adding a new
+        infrastructure GET requires editing both the constant and
+        its pin test in
+        ``tests/unit/api/routing/test_router_allowlist.py``.
+        """
         missing: list[str] = []
         for path, verbs in self._spec_paths.items():
             for verb in verbs:
+                if (verb, path) in _INFRASTRUCTURE_ALLOWLIST:
+                    continue
                 if not self.has_route(verb, path):
                     missing.append(f"{verb} {path}")
         if missing:

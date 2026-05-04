@@ -103,24 +103,22 @@ class TestRoutingIntegration:
         # we don't silently let a different domain claim the path.
         assert isinstance(match.handler.__self__, SchedulesGetRoutes)
 
-    def test_post_to_schedules_not_handled_by_get_module(
+    def test_post_to_schedules_handled_by_post_module(
         self,
     ) -> None:
-        # ``/api/schedules`` ALSO has a POST in the spec (handled
-        # by ``handlers_post``, not migrated to the Router yet).
-        # The GET-only module here MUST NOT claim the POST verb —
-        # which would either route through the wrong handler or
-        # shadow the legacy POST chain. Until a future wave
-        # migrates POST, the Router for POST must report
-        # ``NO_MATCH`` (legacy chain handles it) — NOT ``HANDLED``
-        # and NOT ``METHOD_NOT_ALLOWED`` (which would mean only
-        # GET is in the verb table).
+        # ``/api/schedules`` POST was migrated in wave-8
+        # (``post_schedules_crud.py``). The GET-only module in
+        # this file MUST NOT claim the POST verb (that would
+        # double-register the path and trip ``RouterMisconfigured``
+        # at startup). The dispatch must route to a different
+        # RouteModule — confirm ``HANDLED`` here; ownership-check
+        # via ``__self__.__class__`` lives in the POST test file.
         harness = RouteDispatchHarness.with_default_router()
         outcome, _response = harness.try_dispatch(
             "POST", "/api/schedules",
         )
         from media_stack.api.routing import DispatchOutcome
-        assert outcome == DispatchOutcome.NO_MATCH, (
-            f"Expected POST /api/schedules to fall through to the "
-            f"legacy chain (NO_MATCH); got {outcome}"
+        assert outcome == DispatchOutcome.HANDLED, (
+            f"Expected POST /api/schedules to route through the "
+            f"router (HANDLED) since wave-8; got {outcome}"
         )
