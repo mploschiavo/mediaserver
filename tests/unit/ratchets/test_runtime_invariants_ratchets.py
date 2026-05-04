@@ -77,6 +77,15 @@ class UrllibPostHandlesRedirects(unittest.TestCase):
         "src/media_stack/api/handlers_post.py",
         "src/media_stack/api/services/admin.py",
 
+        # Bazarr — no URL-base prefix on the upstream Bazarr server
+        # itself. The ``/app/bazarr/`` prefix is added by the
+        # controller's edge proxy; the wirer talks directly to
+        # ``bazarr:6767/api/system/settings`` (no redirect dance).
+        # Same convention the legacy ``ensure_bazarr_language_profile``
+        # handler in job_adapters.py uses; the lifecycle port preserves
+        # the shape.
+        "src/media_stack/adapters/bazarr/config_wiring.py",
+
         # content.py — TODO migrate to _make_servarr_http_request.
         # These call *arr DELETE on indexer/import-list paths and
         # ARE in the same bug class as the v1.0.121 fix. Allow-listed
@@ -472,27 +481,44 @@ class ProwlarrApplicationMappingReset(unittest.TestCase):
 # L9 — indexer-chain job sequencing in core.yaml
 # ---------------------------------------------------------------------------
 class IndexerChainJobSequencing(unittest.TestCase):
-    """The download_clients phase has four jobs that MUST run in
-    this order::
+    """The download_clients phase has three bootstrap-scheduled jobs
+    that MUST run in this order::
 
         discover-indexers          (priority 30)
         tag-indexers-for-apps      (priority 35)
         reset-prowlarr-app-mappings (priority 38)  <-- v1.0.125
-        push-indexers              (priority 40)
 
     Reset MUST run AFTER tag (so we don't reset mappings while
-    tagging is in flight) and BEFORE push (so the next push sees
-    a clean slate when an *arr is at zero).
+    tagging is in flight) and BEFORE the indexer push (so the next
+    push sees a clean slate when an *arr is at zero).
 
-    If someone re-orders priorities or removes a job, this
-    ratchet catches it before deploy."""
+    The fourth chain link, ``push-indexers``, lost its
+    ``phase: download_clients`` + ``priority: 40`` in the ADR-0005
+    Phase 3 follow-on cutover (orchestrator-lifecycle-dispatched
+    via the *-has-indexers promises). This ratchet now pins:
+
+      * The first three jobs' phase + priority (unchanged).
+      * The job entry still exists in core.yaml (handler stays
+        registered so ``run_job(name)`` reaches the heavyweight
+        whole-pipeline path — auto-heal + operator dashboard).
+      * ``after: [reset-prowlarr-app-mappings]`` is preserved — the
+        operator-driven reconcile path still has the reset-then-push
+        sequencing locked in.
+      * ``phase`` + ``priority`` are intentionally absent (the
+        cutover removed them; restoring them double-runs with the
+        orchestrator's lifecycle dispatch).
+
+    If someone re-orders priorities or removes a job, or re-adds
+    ``phase: download_clients`` to ``push-indexers``, this ratchet
+    catches it before deploy."""
 
     _EXPECTED_ORDER = [
         ("discover-indexers", 30),
         ("tag-indexers-for-apps", 35),
         ("reset-prowlarr-app-mappings", 38),
-        ("push-indexers", 40),
     ]
+    _LIFECYCLE_DISPATCHED_TAIL = "push-indexers"
+    _LIFECYCLE_DISPATCHED_AFTER = "reset-prowlarr-app-mappings"
 
     def test_indexer_chain_jobs_priority_ordered(self) -> None:
         try:
@@ -520,9 +546,10 @@ class IndexerChainJobSequencing(unittest.TestCase):
                 expected_pri,
                 f"core.yaml::{name} priority drift "
                 f"(want {expected_pri}, got {job.get('priority')}). "
-                f"The four indexer-chain jobs are sequenced 30 → 35 "
-                f"→ 38 → 40 so reset runs AFTER tagging and BEFORE "
-                f"push. Re-ordering breaks the bullet-proof chain.",
+                f"The first three indexer-chain jobs are sequenced "
+                f"30 → 35 → 38 so reset runs AFTER tagging and "
+                f"BEFORE push. Re-ordering breaks the bullet-proof "
+                f"chain.",
             )
             self.assertEqual(
                 job.get("phase"), "download_clients",
@@ -536,6 +563,56 @@ class IndexerChainJobSequencing(unittest.TestCase):
                 f"core.yaml indexer-chain priorities not strictly "
                 f"ascending: {observed}",
             )
+
+    def test_lifecycle_dispatched_tail_still_registered(self) -> None:
+        """``push-indexers`` is now orchestrator-lifecycle-dispatched
+        via the ``sonarr-has-indexers`` / ``radarr-has-indexers``
+        promises (ADR-0005 Phase 3 follow-on). Its bootstrap-loader
+        priority + phase intentionally went away. But it MUST stay
+        registered in core.yaml so the heavyweight whole-pipeline
+        path is reachable through ``run_job(name)``."""
+        try:
+            import yaml as _yaml
+        except ImportError:
+            self.skipTest("PyYAML not installed")
+        path = ROOT / "contracts" / "services" / "core.yaml"
+        if not path.is_file():
+            self.skipTest("core.yaml not present")
+        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        jobs = ((doc.get("plugin") or {}).get("jobs") or {})
+        entry = jobs.get(self._LIFECYCLE_DISPATCHED_TAIL)
+        self.assertIsNotNone(
+            entry,
+            f"core.yaml is missing {self._LIFECYCLE_DISPATCHED_TAIL!r}. "
+            f"The ADR-0005 Phase 3 follow-on cutover keeps it "
+            f"registered (just unscheduled) — restore the entry "
+            f"without phase/priority so run_job + auto-heal "
+            f"resolve it.",
+        )
+        self.assertNotIn(
+            "phase", entry,
+            f"{self._LIFECYCLE_DISPATCHED_TAIL!r} has phase= again — "
+            f"the cutover removed it. Reverting means restoring "
+            f"phase: download_clients + priority: 40 in core.yaml "
+            f"AND flipping every *-has-indexers promise back to "
+            f"http_json + string ``ensured_by``.",
+        )
+        self.assertNotIn(
+            "priority", entry,
+            f"{self._LIFECYCLE_DISPATCHED_TAIL!r} has priority= "
+            f"again — kept paired with phase removal so reverting "
+            f"is a single-step diff.",
+        )
+        self.assertEqual(
+            list(entry.get("after") or []),
+            [self._LIFECYCLE_DISPATCHED_AFTER],
+            f"{self._LIFECYCLE_DISPATCHED_TAIL!r} lost its "
+            f"``after: [{self._LIFECYCLE_DISPATCHED_AFTER}]`` "
+            f"chain. Operator-driven ``run_job push-indexers`` "
+            f"would then race the mapping-reset job — exactly the "
+            f"failure mode the v1.0.125 fix prevents on the "
+            f"bootstrap path.",
+        )
 
 
 # ---------------------------------------------------------------------------

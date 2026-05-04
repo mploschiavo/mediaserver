@@ -128,13 +128,14 @@ class LegacyMonolithDoesNotContainJellyseerrPromises(unittest.TestCase):
 
 class EnsurerCarriesForward(unittest.TestCase):
     """Each Jellyseerr promise's ``ensured_by`` reference must
-    survive the YAML move. ``jellyseerr-oidc`` and
-    ``jellyseerr-application-url`` both resolve to
-    ``ensure-jellyseerr-oidc`` (one job ensures both probes);
-    ``jellyseerr-arr-servers`` resolves to ``configure-jellyseerr``
-    (the in-file job declared on the same service plugin).
-    Loader normalises bare-string ``ensured_by:`` into a
-    ``JobEnsurer`` with ``job_name`` — both shapes hold here."""
+    survive the YAML move. ADR-0005 Phase 3 then cut these promises
+    over from ``ensured_by: ensure-jellyseerr-oidc`` /
+    ``configure-jellyseerr`` strings to typed lifecycle dispatch
+    via ``JellyseerrLifecycle.{ensure_oidc,ensure_application_url,
+    ensure_arr_servers}``. The legacy job entries are still
+    REGISTERED so ``run_job(name)`` keeps resolving them — that's
+    pinned by ``test_jellyseerr_config_promise_driven.py``.
+    """
 
     _EXPECTED_FAMILY = (
         "jellyseerr-oidc",
@@ -142,10 +143,15 @@ class EnsurerCarriesForward(unittest.TestCase):
         "jellyseerr-arr-servers",
     )
 
-    _EXPECTED_JOB_NAME = {
-        "jellyseerr-oidc": "ensure-jellyseerr-oidc",
-        "jellyseerr-application-url": "ensure-jellyseerr-oidc",
-        "jellyseerr-arr-servers": "configure-jellyseerr",
+    # ADR-0005 Phase 3 cutover — each promise's ensurer is now a
+    # ``LifecycleEnsurer`` carrying (service, method) instead of a
+    # ``JobEnsurer`` carrying (job_name). Reverting the cutover
+    # restores the legacy job-name shape; this map preserves the
+    # original mapping for that revert path's regression check.
+    _EXPECTED_LIFECYCLE_METHOD = {
+        "jellyseerr-oidc":             "ensure_oidc",
+        "jellyseerr-application-url":  "ensure_application_url",
+        "jellyseerr-arr-servers":      "ensure_arr_servers",
     }
 
     def setUp(self) -> None:
@@ -159,15 +165,24 @@ class EnsurerCarriesForward(unittest.TestCase):
                 f"move-not-edit must keep all three promises live.",
             )
 
-    def test_ensurer_job_names_preserved(self) -> None:
-        for pid, expected_job in self._EXPECTED_JOB_NAME.items():
+    def test_ensurer_lifecycle_methods_preserved(self) -> None:
+        # Post-Phase-3 cutover: ensurer.method holds the lifecycle
+        # method name. Reverting the cutover (restoring string
+        # ``ensured_by: ensure-jellyseerr-oidc``) flips this.
+        for pid, expected_method in self._EXPECTED_LIFECYCLE_METHOD.items():
             promise = self.by_id[pid]
-            actual_job = getattr(promise.ensurer, "job_name", None)
+            actual_method = getattr(promise.ensurer, "method", None)
+            actual_service = getattr(promise.ensurer, "service", None)
             self.assertEqual(
-                actual_job, expected_job,
-                f"{pid}: ensurer job_name drifted to {actual_job!r} "
-                f"— the split is a YAML move, not an edit. "
-                f"Expected {expected_job!r}.",
+                actual_service, "jellyseerr",
+                f"{pid}: ensurer.service drifted to {actual_service!r} "
+                f"— expected 'jellyseerr' (cutover routes through "
+                f"JellyseerrLifecycle).",
+            )
+            self.assertEqual(
+                actual_method, expected_method,
+                f"{pid}: ensurer.method drifted to {actual_method!r} "
+                f"— expected {expected_method!r} (Phase 3 cutover).",
             )
 
     def test_platforms_preserved(self) -> None:

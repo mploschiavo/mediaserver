@@ -54,7 +54,17 @@ _MIGRATED_JOBS = {
     # come up. See contracts/services/core.yaml for the rationale.
     "envoy-config":          {"phase": "infrastructure",   "requires": []},
     "discover-indexers":     {"phase": "download_clients", "requires": []},
-    "push-indexers":         {"phase": "download_clients", "requires": []},
+    # ``push-indexers`` was orchestrator-lifecycle-dispatched in the
+    # ADR-0005 Phase 3 follow-on cutover (``ServarrLifecycle.
+    # ensure_indexers`` per-*arr via the *-has-indexers promises).
+    # Its YAML entry intentionally has no ``phase:`` so the bootstrap
+    # loader's per-phase tree doesn't double up with the orchestrator
+    # path. ``discover_jobs_from_contracts`` falls back to ``default``
+    # when ``phase`` is absent — that's the migration's expected
+    # discovery-time shape now. See
+    # tests/unit/contracts/test_servarr_indexers_promise_driven.py
+    # for the cutover wiring pin.
+    "push-indexers":         {"phase": "default",          "requires": []},
     "validate-credentials":  {"phase": "post",
                               "requires": ["media_server_api_key",
                                            "arr_apps_reachable"]},

@@ -1,9 +1,50 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Phase 1 + Phase 2 cutover shipped (2026-05-03), awaiting
-live validation on compose + k8s. Phase 3+ pending. Builds on
+**Status:** Phase 1 + Phase 2 + Phase 3 (proof-of-pattern + first
+cutover) shipped (2026-05-03), awaiting live validation on compose +
+k8s. Phase 3 continues with the remaining family-level cutovers
+(servarr indexer / download-client / runtime-defaults / seed-series,
+bazarr, jellyseerr, qbittorrent, maintainerr, prowlarr). Builds on
 ADR-0003 (orchestrator) and ADR-0004 (verifier). Unblocks ADR-0003
 Phase 5e.3+ deletions.
+
+Phase 3 progress (proof-of-pattern shipped at ``1f13a8a6``):
+
+- The three ``*-jellyfin-notifier`` promises (sonarr, radarr, lidarr)
+  flipped from string-typed ``ensured_by: ensure-arr-jellyfin-notifier``
+  to lifecycle-typed dispatch via
+  ``ServarrLifecycle.{probe,ensure}_jellyfin_notifier``. The wiring
+  lives in a new ``adapters/servarr/notifier_wiring.py`` module
+  (``JellyfinNotifierWirer`` class — constructor-injected notifier
+  identity, stateless, per-call parameterized).
+- ``ensure-arr-jellyfin-notifier`` job stays registered (so
+  ``run_job(name)`` + auto-heal continue to resolve it) but lost
+  ``phase: post`` — the orchestrator's lifecycle dispatch is now the
+  bootstrap-time path.
+- New ``_ORCHESTRATOR_LIFECYCLE_DISPATCHED`` allowlist on
+  ``test_promises_registry::test_no_orphan_ensure_jobs`` recognises
+  the cutover-survivor pattern: a job that's intentionally
+  unreferenced from string ``ensured_by`` because the orchestrator
+  dispatches the same code path via lifecycle method.
+- Per-family wiring pin at
+  ``tests/unit/contracts/test_servarr_jellyfin_notifier_promise_driven.py``.
+  Lifecycle-method unit tests at
+  ``tests/unit/adapters/test_servarr_lifecycle_jellyfin_notifier.py``.
+
+Phase 3 continues — for each remaining family/handler:
+
+1. Port the legacy job handler to a wirer class
+   (``adapters/<svc>/<topic>_wiring.py``) — class-based,
+   constructor-injected deps, no static methods, no magic numbers.
+2. Add lifecycle method delegators on the family's lifecycle class
+   (``ServarrLifecycle`` / ``BazarrLifecycle`` / ``JellyseerrLifecycle``).
+3. Flip each affected promise's ``probe`` + ``ensured_by`` to
+   ``{type: lifecycle, ...}`` form.
+4. Drop ``phase: post`` from the legacy job entry. Keep handler /
+   label / requires.
+5. Add the job's name to ``_ORCHESTRATOR_LIFECYCLE_DISPATCHED``.
+6. Write a per-family wiring-pin ratchet.
+7. Document any ratchet drift with reasons.
 
 Phase 2 cutover landed — what changed:
 

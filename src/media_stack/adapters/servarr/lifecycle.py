@@ -32,6 +32,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from media_stack.adapters.servarr.indexer_pipeline import (
+    IndexerPipelineWirer,
+)
 from media_stack.adapters.servarr.notifier_wiring import (
     JellyfinNotifierWirer,
 )
@@ -59,6 +62,12 @@ _DEFAULT_API_KEY_FORMAT = "xml"
 # host / port) keeps the magic-number / duplicate-string surface in
 # the wirer module rather than here.
 _JELLYFIN_NOTIFIER_WIRER = JellyfinNotifierWirer()
+
+# Same shape as the notifier wirer above — stateless module-level
+# singleton, per-call parameterized by service_id + arr_api_key +
+# ctx. Constructor-injected Prowlarr identity (host / port) keeps
+# the magic-number / duplicate-string surface in the wirer module.
+_INDEXER_PIPELINE_WIRER = IndexerPipelineWirer()
 
 
 class ServarrLifecycle:
@@ -234,6 +243,28 @@ class ServarrLifecycle:
         self, ctx: OrchestrationContext,
     ) -> Outcome[None]:
         return _JELLYFIN_NOTIFIER_WIRER.ensure(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    # --- Indexer-pipeline wiring (ADR-0005 Phase 3 follow-on) -------
+    #
+    # Both methods delegate to ``IndexerPipelineWirer`` (in
+    # ``indexer_pipeline.py``). The lifecycle owns the api-key
+    # discovery contract; the wirer owns the per-arr indexer-list
+    # HTTP shape and the Prowlarr ``ApplicationIndexerSync``
+    # trigger.
+
+    def probe_has_indexers(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _INDEXER_PIPELINE_WIRER.probe(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    def ensure_indexers(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _INDEXER_PIPELINE_WIRER.ensure(
             self.service_id, self.discover_api_key(ctx), ctx,
         )
 

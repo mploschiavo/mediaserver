@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from media_stack.adapters.bazarr.config_wiring import BazarrConfigWirer
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -35,6 +36,12 @@ _DEFAULT_HEALTH_PATH = "/api/system/status"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_ENV = "BAZARR_API_KEY"
 _DEFAULT_API_KEY_FORMAT = "yaml"
+
+# Stateless module-level singleton — the wirer is per-call parameterized
+# by api_key + ctx, so one instance handles every Bazarr reconcile.
+# Mirrors the ``_JELLYFIN_NOTIFIER_WIRER`` pattern in
+# ``adapters/servarr/lifecycle.py``.
+_BAZARR_CONFIG_WIRER = BazarrConfigWirer()
 
 
 class BazarrLifecycle:
@@ -146,6 +153,57 @@ class BazarrLifecycle:
             transient=False,
             evidence={"config_path": str(path)},
         )
+
+    # --- Config wiring (ADR-0005 Phase 3) ---------------------------
+    #
+    # Five probes + one ensurer all delegate to ``BazarrConfigWirer``
+    # (in ``config_wiring.py``). The lifecycle owns the api-key
+    # discovery contract; the wirer owns the HTTP / form-payload /
+    # plugin-XML shape.
+    #
+    # All five promises share ``ensure_config_wiring`` — the legacy
+    # ensurer's settings POST writes profile + toggles + providers +
+    # arr-integration in one round-trip, so splitting into 5 ensurers
+    # would be 5 redundant POSTs that each clobber the shared settings
+    # document. The probes differ per-promise.
+
+    def probe_language_profile(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _BAZARR_CONFIG_WIRER.probe_language_profile(
+            self.discover_api_key(ctx), ctx,
+        )
+
+    def probe_default_profile_toggles(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _BAZARR_CONFIG_WIRER.probe_default_profile_toggles(
+            self.discover_api_key(ctx), ctx,
+        )
+
+    def probe_providers(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _BAZARR_CONFIG_WIRER.probe_providers(
+            self.discover_api_key(ctx), ctx,
+        )
+
+    def probe_arr_integration(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _BAZARR_CONFIG_WIRER.probe_arr_integration(
+            self.discover_api_key(ctx), ctx,
+        )
+
+    def probe_jellyfin_plugin_config(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _BAZARR_CONFIG_WIRER.probe_jellyfin_plugin_config(ctx)
+
+    def ensure_config_wiring(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _BAZARR_CONFIG_WIRER.ensure(self.discover_api_key(ctx), ctx)
 
     def persist_api_key(
         self, key: str, ctx: OrchestrationContext,
