@@ -21,11 +21,11 @@ Spec parity (every path is declared in
 * ``POST /api/credentials``                   -> ``revalidateCredentials``
 * ``POST /api/rotate-keys``                   -> ``rotateKeys``
 * ``POST /api/password-policy``               -> ``updatePasswordPolicy``
-* ``POST /api/services/{serviceId}/api-key``  -> ``setServiceApiKey``
+* ``POST /api/services/{service_id}/api-key``  -> ``setServiceApiKey``
 * ``POST /api/services/{service_id}/reset``   -> ``hardResetService``
 
 Note the parameter-name asymmetry: the api-key path uses
-``serviceId`` while the reset path uses ``service_id``. Both are
+``service_id`` while the reset path uses ``service_id``. Both are
 declared in the live spec verbatim and the Router's
 ``_check_handler_signature`` enforces that the kwargs match. A
 mismatch raises ``RouterMisconfigured`` before the server binds.
@@ -63,7 +63,7 @@ RBAC have already passed.
 
 API-key redaction
 -----------------
-``/api/services/{serviceId}/api-key`` POST returns a status string
+``/api/services/{service_id}/api-key`` POST returns a status string
 plus the ``service`` + ``env`` identifiers. The raw key is never
 echoed: on a manual set, only ``{status: set, service, env}`` is
 returned; on auto-discovery, only ``{status: discovered, service,
@@ -683,9 +683,9 @@ class SecurityTlsPostRoutes(RouteModule):
 
     # --- Per-service mutations ----------------------------------------
 
-    @post("/api/services/{serviceId}/api-key")
+    @post("/api/services/{service_id}/api-key")
     def handle_set_service_api_key(
-        self, handler: Any, serviceId: str,
+        self, handler: Any, service_id: str,
     ) -> None:
         """Manually set or auto-discover one service's API key.
 
@@ -696,19 +696,19 @@ class SecurityTlsPostRoutes(RouteModule):
         ``{status, service, source}`` (discovery) — the raw key
         is NEVER echoed back.
 
-        The kwarg name ``serviceId`` matches the spec verbatim;
+        The kwarg name ``service_id`` matches the spec verbatim;
         ``_check_handler_signature`` enforces that mismatches fail
         at startup.
         """
         if not self._csrf_or_403(handler):
             return
-        svc = self._service_key.lookup(serviceId)
+        svc = self._service_key.lookup(service_id)
         if svc is None or not getattr(svc, "api_key_env", ""):
             handler._json_response(
                 HTTPStatus.NOT_FOUND,
                 {
                     "error": (
-                        f"Service '{serviceId}' not found or has "
+                        f"Service '{service_id}' not found or has "
                         f"no API key"
                     ),
                 },
@@ -720,16 +720,16 @@ class SecurityTlsPostRoutes(RouteModule):
             self._service_key.set_manual(svc.api_key_env, manual)
             handler._json_response(HTTPStatus.OK, {
                 "status": "set",
-                "service": serviceId,
+                "service": service_id,
                 "env": svc.api_key_env,
             })
             return
-        key, source = self._service_key.discover(serviceId)
+        key, source = self._service_key.discover(service_id)
         if key:
             self._service_key.set_manual(svc.api_key_env, key)
             handler._json_response(HTTPStatus.OK, {
                 "status": "discovered",
-                "service": serviceId,
+                "service": service_id,
                 "source": source,
             })
             return
@@ -737,7 +737,7 @@ class SecurityTlsPostRoutes(RouteModule):
             HTTPStatus.NOT_FOUND,
             {
                 "error": (
-                    f"Could not discover API key for {serviceId}. "
+                    f"Could not discover API key for {service_id}. "
                     f"Provide it manually via api_key field."
                 ),
             },
@@ -752,9 +752,8 @@ class SecurityTlsPostRoutes(RouteModule):
 
         Body (optional): forwarded as ``options`` to the underlying
         service. The kwarg name ``service_id`` matches the spec
-        verbatim — note this differs from the api-key route which
-        uses ``serviceId``; both forms appear in the live spec and
-        the Router enforces the match per-path.
+        verbatim; ``_check_handler_signature`` enforces that mismatches
+        fail at startup.
         """
         if not self._csrf_or_403(handler):
             return

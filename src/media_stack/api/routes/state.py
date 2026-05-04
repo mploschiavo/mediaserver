@@ -1,6 +1,6 @@
 """State-domain GET routes (ADR-0007 Phase 2).
 
-Covers the ``/status``, ``/apps``, ``/apps/{appName}``, ``/config``,
+Covers the ``/status``, ``/apps``, ``/apps/{app_name}``, ``/config``,
 and ``/webhooks`` GET endpoints. These all read from
 ``handler.state`` (the in-memory ``ControllerState``) — the
 "domain" name comes from the State tag in ``contracts/api/openapi.yaml``.
@@ -11,9 +11,9 @@ moves WHERE the dispatch decision is made (Router instead of an
 ``elif`` chain); the response shape is identical so downstream
 consumers see no change.
 
-Note on parameterized routes: ``/apps/{appName}`` declares
-``appName`` as a path parameter in the OpenAPI spec, so the
-Router passes it to the handler as the ``appName`` kwarg. The
+Note on parameterized routes: ``/apps/{app_name}`` declares
+``app_name`` as a path parameter in the OpenAPI spec, so the
+Router passes it to the handler as the ``app_name`` kwarg. The
 method signature below uses that exact name to match the spec.
 
 Note on ``/api/webhooks``: the legacy chain matched both
@@ -57,22 +57,22 @@ class StateGetRoutes(RouteModule):
             HTTPStatus.OK, {"apps": dict(handler.state.app_status)},
         )
 
-    @get("/apps/{appName}")
-    def handle_app_by_name(self, handler: Any, appName: str) -> None:
+    @get("/apps/{app_name}")
+    def handle_app_by_name(self, handler: Any, app_name: str) -> None:
         """Single-app bootstrap status.
 
         Returns the app's status entry on hit, ``404`` with an
-        ``error`` field if the app isn't tracked. ``appName`` is
+        ``error`` field if the app isn't tracked. ``app_name`` is
         bound by the Router from the path segment per the OpenAPI
-        ``parameters: [{name: appName, in: path}]`` declaration.
+        ``parameters: [{name: app_name, in: path}]`` declaration.
         """
-        info = handler.state.app_status.get(appName)
+        info = handler.state.app_status.get(app_name)
         if info is not None:
-            handler._json_response(HTTPStatus.OK, {appName: info})
+            handler._json_response(HTTPStatus.OK, {app_name: info})
         else:
             handler._json_response(
                 HTTPStatus.NOT_FOUND,
-                {"error": f"app '{appName}' not found"},
+                {"error": f"app '{app_name}' not found"},
             )
 
     @get("/config")
