@@ -1,50 +1,87 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Phase 1 + Phase 2 + Phase 3 (proof-of-pattern + first
-cutover) shipped (2026-05-03), awaiting live validation on compose +
-k8s. Phase 3 continues with the remaining family-level cutovers
-(servarr indexer / download-client / runtime-defaults / seed-series,
-bazarr, jellyseerr, qbittorrent, maintainerr, prowlarr). Builds on
-ADR-0003 (orchestrator) and ADR-0004 (verifier). Unblocks ADR-0003
-Phase 5e.3+ deletions.
+**Status:** Phases 1–3 fully shipped (2026-05-03). Every
+per-service ensurer is now lifecycle-dispatched; 8 wirer classes
+across 19 promise cutovers cover the *arr family (notifier /
+indexers / download-client / runtime-defaults / seed-series),
+qBittorrent, Bazarr, Jellyseerr, and Maintainerr. Awaiting live
+validation on compose + k8s. Builds on ADR-0003 (orchestrator) and
+ADR-0004 (verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
 
-Phase 3 progress (proof-of-pattern shipped at ``1f13a8a6``):
+Phase 3 final state (final wave shipped at ``e4c9b5b4``):
 
-- The three ``*-jellyfin-notifier`` promises (sonarr, radarr, lidarr)
-  flipped from string-typed ``ensured_by: ensure-arr-jellyfin-notifier``
-  to lifecycle-typed dispatch via
-  ``ServarrLifecycle.{probe,ensure}_jellyfin_notifier``. The wiring
-  lives in a new ``adapters/servarr/notifier_wiring.py`` module
-  (``JellyfinNotifierWirer`` class — constructor-injected notifier
-  identity, stateless, per-call parameterized).
-- ``ensure-arr-jellyfin-notifier`` job stays registered (so
-  ``run_job(name)`` + auto-heal continue to resolve it) but lost
-  ``phase: post`` — the orchestrator's lifecycle dispatch is now the
-  bootstrap-time path.
-- New ``_ORCHESTRATOR_LIFECYCLE_DISPATCHED`` allowlist on
-  ``test_promises_registry::test_no_orphan_ensure_jobs`` recognises
-  the cutover-survivor pattern: a job that's intentionally
-  unreferenced from string ``ensured_by`` because the orchestrator
-  dispatches the same code path via lifecycle method.
-- Per-family wiring pin at
-  ``tests/unit/contracts/test_servarr_jellyfin_notifier_promise_driven.py``.
-  Lifecycle-method unit tests at
-  ``tests/unit/adapters/test_servarr_lifecycle_jellyfin_notifier.py``.
+| Wirer class | Promises covered | Reference commit |
+|---|---|---|
+| ``JellyfinNotifierWirer`` | sonarr/radarr/lidarr ``-jellyfin-notifier`` (3) | ``1f13a8a6`` (proof-of-pattern) |
+| ``IndexerPipelineWirer`` | sonarr/radarr ``-has-indexers`` (2) | ``f241f639`` |
+| ``BazarrConfigWirer`` | 5 bazarr ``-*`` promises | ``f241f639`` |
+| ``JellyseerrConfigWirer`` | 3 jellyseerr ``-*`` promises | ``f241f639`` |
+| ``RuntimeDefaultsWirer`` | sonarr/radarr ``-quality-profiles`` + ``radarr-import-lists-auto`` (3) | ``e4c9b5b4`` |
+| ``SeedSeriesWirer`` | ``sonarr-has-series`` (1) | ``e4c9b5b4`` |
+| ``CategoriesWirer`` | ``qbittorrent-categories`` (1) | ``e4c9b5b4`` |
+| ``MaintainerrCollectionsWirer`` | ``maintainerr-rules-linked-to-arr`` (1) | ``e4c9b5b4`` |
 
-Phase 3 continues — for each remaining family/handler:
+Across the wave, three patterns crystallized into the recipe (see
+``ref_adr_0005_phase_3_cutover_recipe`` memory):
 
-1. Port the legacy job handler to a wirer class
-   (``adapters/<svc>/<topic>_wiring.py``) — class-based,
-   constructor-injected deps, no static methods, no magic numbers.
-2. Add lifecycle method delegators on the family's lifecycle class
-   (``ServarrLifecycle`` / ``BazarrLifecycle`` / ``JellyseerrLifecycle``).
-3. Flip each affected promise's ``probe`` + ``ensured_by`` to
-   ``{type: lifecycle, ...}`` form.
-4. Drop ``phase: post`` from the legacy job entry. Keep handler /
-   label / requires.
-5. Add the job's name to ``_ORCHESTRATOR_LIFECYCLE_DISPATCHED``.
-6. Write a per-family wiring-pin ratchet.
-7. Document any ratchet drift with reasons.
+- **Standard wirer** (notifier / indexers / qbit / runtime-defaults
+  probes) — wirer owns the HTTP shape, payload, idempotent skip.
+- **Monolithic-handler decision** (Bazarr, RuntimeDefaults
+  ensurer) — when one operation drives N invariants, use 1 shared
+  ensurer + N distinct probes; pin shared-ensurer invariant.
+- **Wide-handler delegation** (Jellyseerr, SeedSeries, Maintainerr) —
+  when the legacy handler is >150 LoC of multi-subsystem
+  orchestration, keep it as the implementation; wirer delegates
+  via injected ``configure_handler`` + ``job_context_factory``
+  callables.
+
+Each cutover follows a 7-step recipe (read handler → extract
+wirer class → lifecycle-method delegators → YAML cutover → drop
+``phase: post`` from legacy job → add to
+``_ORCHESTRATOR_LIFECYCLE_DISPATCHED`` allowlist → write
+wiring-pin ratchet) plus a mandatory ``grep -rn "<job>.*priority"
+tests/`` step to find sister ratchets pinning legacy phase /
+priority and restructure them in the same diff.
+
+Bug caught during the wave: ``maintainerr-rules-linked-to-arr``'s
+legacy ``ensured_by: configure-collections`` was a misnomer —
+``configure-collections`` is the Jellyfin auto-collections job,
+unrelated to Maintainerr. The cutover untangles this; the real
+handler is ``ensure_maintainerr_integrations``.
+
+## Phase 4 — ``LifecycleWirerBase`` extraction (next, ~half day)
+
+8 sibling wirer classes now share the same shape (constructor +
+``probe`` + ``ensure`` + helpers). Duplicate-code ratchet bumped
+from 19 → 23 over the wave. Phase 4 extracts a shared
+``LifecycleWirerBase`` (or composes a small mixin set), refactors
+all 8 wirers to inherit, drives the ratchet back down, tightens
+``logging-only-in-exception-handlers`` + ``python-broad-except``
+where the swallowed-exception pattern is centralized in the base.
+
+Single dedicated commit. Each of the 8 wirer test suites must
+continue to pass (no behavior change).
+
+## Phase 5+ — retire bootstrap-only ensurers + close ADR-0003 Phase 5e.3+
+
+After live validation succeeds:
+
+- ``_run_preflights`` retirement — the legacy preflight pipeline
+  in ``application/jobs/`` becomes redundant once the orchestrator
+  drives every per-service ensurer.
+- Bootstrap-only ensurers (``apply-arr-runtime-defaults``,
+  ``ensure-arr-download-client``, etc.) lose their handler
+  registrations — the wirers ARE the implementation now; the
+  legacy handlers exist only for ``run_job(name)`` /
+  auto-heal compatibility, which Phase 5+ also retires.
+- JobRunner internals retirement — the run-history /
+  phase-orchestration code paths that exclusively serve
+  bootstrap collapse.
+- This closes ADR-0003 Phase 5e.3+ — the deferred legacy-path
+  deletions.
+
+Multi-week. Each step depends on operator validation that the
+orchestrator-driven path is genuinely the only consumer.
 
 Phase 2 cutover landed — what changed:
 
