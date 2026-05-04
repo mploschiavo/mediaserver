@@ -93,8 +93,8 @@ class TestAppsRoute:
 
 
 class TestAppByNameRoute:
-    """``/apps/{appName}`` — parameterized route. Tests that the
-    Router's path-param injection passes ``appName`` through as a
+    """``/apps/{app_name}`` — parameterized route. Tests that the
+    Router's path-param injection passes ``app_name`` through as a
     kwarg AND that the 404 path fires when the app is unknown."""
 
     def test_returns_app_info_when_known(self) -> None:
@@ -208,7 +208,7 @@ class TestRoutingIntegration:
     def test_all_state_routes_registered(self) -> None:
         harness = RouteDispatchHarness.with_default_router()
         expected = {
-            "/status", "/apps", "/apps/{appName}",
+            "/status", "/apps", "/apps/{app_name}",
             "/config", "/webhooks",
         }
         registered = {

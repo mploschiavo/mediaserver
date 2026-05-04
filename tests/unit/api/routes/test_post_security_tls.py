@@ -16,7 +16,7 @@ security invariants:
   strict-for-everyone) are pinned by per-mode tests.
 * The TLS install path NEVER echoes the private key in any
   response field — pinned by a regex anti-leak assertion.
-* Auto-discovery + manual-set on ``/api/services/{serviceId}/api-key``
+* Auto-discovery + manual-set on ``/api/services/{service_id}/api-key``
   never echoes the raw key — pinned by an entropy-style regex
   anti-leak assertion.
 * Per-route auth gating is delegated to the upstream
@@ -726,7 +726,7 @@ class TestUpdatePasswordPolicyRoute:
 
 
 # ---------------------------------------------------------------------------
-# Route: POST /api/services/{serviceId}/api-key
+# Route: POST /api/services/{service_id}/api-key
 # ---------------------------------------------------------------------------
 
 
@@ -758,7 +758,7 @@ class _StubServiceKeyRegen:
 
 
 class TestSetServiceApiKeyRoute:
-    """``POST /api/services/{serviceId}/api-key`` — manual set or
+    """``POST /api/services/{service_id}/api-key`` — manual set or
     auto-discover."""
 
     def test_unknown_service_returns_404(self) -> None:
@@ -770,7 +770,7 @@ class TestSetServiceApiKeyRoute:
             body=b"",
             headers=_csrf_headers(),
         )
-        routes.handle_set_service_api_key(handler, serviceId="envoy")
+        routes.handle_set_service_api_key(handler, service_id="envoy")
         assert handler.captured.status == 404
 
     def test_manual_key_persisted_and_safe_response(self) -> None:
@@ -788,7 +788,7 @@ class TestSetServiceApiKeyRoute:
                 "Content-Length": str(len(body)),
             },
         )
-        routes.handle_set_service_api_key(handler, serviceId="sonarr")
+        routes.handle_set_service_api_key(handler, service_id="sonarr")
 
         assert handler.captured.status == 200
         body_obj = json.loads(handler.captured.body)
@@ -820,7 +820,7 @@ class TestSetServiceApiKeyRoute:
             body=b"",
             headers=_csrf_headers(),
         )
-        routes.handle_set_service_api_key(handler, serviceId="sonarr")
+        routes.handle_set_service_api_key(handler, service_id="sonarr")
 
         assert handler.captured.status == 200
         body_obj = json.loads(handler.captured.body)
@@ -845,7 +845,7 @@ class TestSetServiceApiKeyRoute:
             body=b"",
             headers=_csrf_headers(),
         )
-        routes.handle_set_service_api_key(handler, serviceId="sonarr")
+        routes.handle_set_service_api_key(handler, service_id="sonarr")
 
         assert handler.captured.status == 404
         body_obj = json.loads(handler.captured.body)
@@ -918,7 +918,7 @@ class TestRoutingIntegration:
             ("POST", "/api/credentials"),
             ("POST", "/api/rotate-keys"),
             ("POST", "/api/password-policy"),
-            ("POST", "/api/services/{serviceId}/api-key"),
+            ("POST", "/api/services/{service_id}/api-key"),
             ("POST", "/api/services/{service_id}/reset"),
         }
         registered = {

@@ -8,12 +8,11 @@ Three routes migrated off the ``handlers_get.handle()`` elif chain:
 * ``GET /api/services/categories`` — category groupings derived
   from the registry YAML, plus a synthetic ``Infrastructure``
   bucket for the controller itself. Drives the grouped UI view.
-* ``GET /api/services/{serviceId}/api-key`` — per-service API-key
+* ``GET /api/services/{service_id}/api-key`` — per-service API-key
   status (configured? masked preview?) without ever returning the
-  full key. Parameterized — the spec declares ``serviceId`` as a
-  path parameter (camelCase, NOT ``service_id`` — note the spec
-  uses camelCase here while ``/api/services/{service_id}/reset``
-  uses snake_case; we match the spec verbatim per path).
+  full key. Parameterized — the spec declares ``service_id`` as a
+  path parameter (snake_case, matching the rest of the controller's
+  wire-format convention).
 
 Implementation choices, per Phase 2's "lift the body OR call the
 helper — agent's choice based on what's cleanest" rule:
@@ -27,8 +26,8 @@ helper — agent's choice based on what's cleanest" rule:
 * The parameterized route LIFTS the body. The legacy
   ``_handle_service_api_key`` extracts the service id by parsing
   ``path.split("/")`` itself; the Router already hands us
-  ``serviceId`` as a kwarg from the regex match
-  (``(?P<serviceId>[^/]+)`` — see ``_RouteCompiler._compile_pattern``),
+  ``service_id`` as a kwarg from the regex match
+  (``(?P<service_id>[^/]+)`` — see ``_RouteCompiler._compile_pattern``),
   so re-parsing would be redundant work that could drift from the
   Router's view of the URL. Lifting the body uses the kwarg
   directly and shrinks the handler to the actual lookup logic.
@@ -74,12 +73,12 @@ class ServicesRegistryGetRoutes(RouteModule):
         """
         _handle_services_categories(handler)
 
-    @get("/api/services/{serviceId}/api-key")
+    @get("/api/services/{service_id}/api-key")
     def handle_service_api_key(
-        self, handler: Any, serviceId: str,
+        self, handler: Any, service_id: str,
     ) -> None:
         """Return API-key status (configured? masked preview?) for a
-        single service. The kwarg name ``serviceId`` matches the
+        single service. The kwarg name ``service_id`` matches the
         spec's path-parameter declaration verbatim — the Router's
         ``_RouteCompiler._check_handler_signature`` enforces this
         at startup; a mismatch raises ``RouterMisconfigured`` before
@@ -93,13 +92,13 @@ class ServicesRegistryGetRoutes(RouteModule):
         drift between the Router's URL view and the handler's.
         """
         from media_stack.api.services.registry import SERVICE_MAP
-        svc = SERVICE_MAP.get(serviceId)
+        svc = SERVICE_MAP.get(service_id)
         if not svc or not svc.api_key_env:
             handler._json_response(
                 HTTPStatus.NOT_FOUND,
                 {
                     "error": (
-                        f"Service '{serviceId}' not found or has "
+                        f"Service '{service_id}' not found or has "
                         f"no API key"
                     ),
                 },
@@ -111,7 +110,7 @@ class ServicesRegistryGetRoutes(RouteModule):
         else:
             preview = "set" if current else ""
         handler._json_response(HTTPStatus.OK, {
-            "service": serviceId,
+            "service": service_id,
             "env": svc.api_key_env,
             "has_key": bool(current),
             "key_preview": preview,

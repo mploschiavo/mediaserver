@@ -1281,7 +1281,7 @@ paths:
                   jellyfin:
                     status: configured
 
-  /apps/{appName}:
+  /apps/{app_name}:
     get:
       operationId: getAppStatus
       tags: [State]
@@ -1290,7 +1290,7 @@ paths:
         Returns the bootstrap status for a specific application by name.
         Returns 404 if the app is not tracked.
       parameters:
-        - name: appName
+        - name: app_name
           in: path
           required: true
           schema:
@@ -1721,7 +1721,7 @@ paths:
                 - label: Infrastructure
                   ids: [envoy, homepage, controller]
 
-  /api/services/{serviceId}/api-key:
+  /api/services/{service_id}/api-key:
     get:
       operationId: getServiceApiKey
       tags: [Services]
@@ -1748,7 +1748,7 @@ paths:
             const info = await r.json();
             console.log(`${info.service}: ${info.has_key ? info.key_preview : "no key"}`);
       parameters:
-        - name: serviceId
+        - name: service_id
           in: path
           required: true
           schema:
@@ -1839,7 +1839,7 @@ paths:
       security:
         - basicAuth: []
       parameters:
-        - name: serviceId
+        - name: service_id
           in: path
           required: true
           schema:

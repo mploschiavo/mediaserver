@@ -9,7 +9,7 @@ we mock those helpers' module-level imports so the tests assert
 the helper's behaviour. The parameterized route's body is lifted
 into the route module itself, so we mock at the registry layer
 and assert the response shape directly — including the path-param
-plumbing (``serviceId`` flowing from URL through the Router into
+plumbing (``service_id`` flowing from URL through the Router into
 the handler kwarg).
 """
 
@@ -68,14 +68,14 @@ class TestServicesCategories:
 
 
 class TestServiceApiKey:
-    """``GET /api/services/{serviceId}/api-key`` — the parameterized
+    """``GET /api/services/{service_id}/api-key`` — the parameterized
     route. Body is lifted into the route module, so tests mock
     ``SERVICE_MAP`` + ``os.environ`` rather than a delegated helper.
 
     These tests also exercise the path-param plumbing end-to-end:
     the URL contains a real service id, the Router's regex
     captures it, and the handler receives it as the
-    ``serviceId`` kwarg.
+    ``service_id`` kwarg.
     """
 
     def test_unknown_service_returns_404(self) -> None:
@@ -172,7 +172,7 @@ class TestRoutingIntegration:
         expected = {
             "/api/services",
             "/api/services/categories",
-            "/api/services/{serviceId}/api-key",
+            "/api/services/{service_id}/api-key",
         }
         registered = {
             r.path
@@ -186,7 +186,7 @@ class TestRoutingIntegration:
     def test_parameterized_route_captures_service_id(self) -> None:
         """Sanity check: the Router's regex captures arbitrary
         path segments (with hyphens, digits, etc.) as
-        ``serviceId``. The handler returns 404 for an unknown id,
+        ``service_id``. The handler returns 404 for an unknown id,
         which proves the kwarg flowed through."""
         with patch(
             "media_stack.api.services.registry.SERVICE_MAP",
