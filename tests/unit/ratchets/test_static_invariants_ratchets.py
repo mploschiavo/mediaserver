@@ -380,72 +380,36 @@ class MeaningfulFilenamesAcrossRepo(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class OpenApiHandlerParity(unittest.TestCase):
     """Every path declared in ``api/openapi.yaml`` must have a
-    matching backend handler in handlers_get / handlers_post /
-    server.py. The dashboard parity ratchet (v1.0.117
-    DashboardEndpointParity) covers dashboard→backend; this one
-    covers openapi→backend (different consumers, same drift
-    risk)."""
+    matching backend handler. Upgraded structural mode (ADR-0007
+    Phase 2 wave-8 / cleanup): walks the production Router's
+    registered routes instead of grepping handler-source files for
+    string-literal anchors. The Router's own ``RouterMisconfigured``
+    startup check is the authoritative source of truth; this
+    ratchet pins it from the OUTSIDE so we'd notice if someone
+    bypassed the startup check.
 
-    _ALLOWED_DYNAMIC_PATHS = {
-        # /actions/{name} is dispatched via path.startswith("/actions/")
-        # in handlers_post.py; the literal-anchor scan misses
-        # prefix-based dispatch.
-        "/actions/{name}",
-    }
+    The dashboard parity ratchet (v1.0.117 DashboardEndpointParity)
+    covers dashboard→backend; this one covers openapi→backend
+    (different consumers, same drift risk).
+    """
 
     def test_every_openapi_path_has_handler(self) -> None:
+        from media_stack.api.routing.router import Router
+        from media_stack.api.routing.exceptions import RouterMisconfigured
         try:
-            import yaml as _yaml
-        except ImportError:
-            self.skipTest("PyYAML not installed")
-        ofile = ROOT / "contracts" / "api" / "openapi.yaml"
-        if not ofile.is_file():
-            self.skipTest("openapi.yaml not present")
-        doc = _yaml.safe_load(ofile.read_text(encoding="utf-8")) or {}
-        paths = list((doc.get("paths") or {}).keys())
-
-        backend = (
-            (SRC / "api" / "handlers_get.py").read_text(encoding="utf-8")
-            + "\n" + (SRC / "api" / "handlers_post.py").read_text(encoding="utf-8")
-            + "\n" + (SRC / "api" / "server.py").read_text(encoding="utf-8")
-        )
-
-        missing: list[str] = []
-        for raw in paths:
-            if raw in self._ALLOWED_DYNAMIC_PATHS:
-                continue
-            stripped = re.sub(r"\{[^}]+\}", "", raw).rstrip("/")
-            if not stripped:
-                continue
-            found = False
-            for anchor in (
-                f'"{stripped}"', f"'{stripped}'",
-                f'startswith("{stripped}")', f"startswith('{stripped}')",
-            ):
-                if anchor in backend:
-                    found = True
-                    break
-            if not found:
-                # Try parent-prefix match: /api/X/Y → /api/X/
-                parent = "/".join(stripped.split("/")[:-1])
-                while parent.startswith("/api") or parent.startswith("/actions"):
-                    for anchor in (
-                        f'startswith("{parent}/")', f"startswith('{parent}/')",
-                        f'"{parent}/"', f"'{parent}/'",
-                    ):
-                        if anchor in backend:
-                            found = True
-                            break
-                    if found:
-                        break
-                    parent = "/".join(parent.split("/")[:-1])
-            if not found:
-                missing.append(raw)
-        self.assertFalse(
-            missing,
-            f"openapi.yaml paths with no backend handler "
-            f"({len(missing)}):\n  - " + "\n  - ".join(missing[:15]),
-        )
+            router = Router()
+        except RouterMisconfigured as exc:
+            self.fail(
+                f"Router failed to construct — every spec path must "
+                f"have a registered RouteModule handler OR be on the "
+                f"infrastructure allowlist:\n{exc}"
+            )
+        try:
+            router.assert_full_spec_coverage()
+        except RouterMisconfigured as exc:
+            self.fail(
+                f"Spec/handler parity broken (structural mode):\n{exc}"
+            )
 
 
 if __name__ == "__main__":
