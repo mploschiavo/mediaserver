@@ -318,7 +318,11 @@ class TestGetUnknownPath(unittest.TestCase):
             h.do_GET()
         self.assertEqual(_get_response_code(h), 404)
         body = _get_json_written(h)
-        self.assertEqual(body["error"], "not found")
+        # ADR-0007 Phase 2 Phase E: NO_MATCH now emits a strict
+        # error mentioning the unknown path; the legacy "not found"
+        # constant moved with the legacy chain's deletion.
+        self.assertIn("unknown path", body["error"])
+        self.assertIn("/nonexistent/path", body["error"])
 
 
 class TestGetConfig(unittest.TestCase):

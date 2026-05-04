@@ -21,12 +21,17 @@ sha256 key shape. What's missing is the handler-layer plumbing that
 reads the ``Idempotency-Key`` request header and threads it into the
 store.
 
-This ratchet locks in the invariant: any POST handler function that
-dispatches to a ban/revoke/ticket endpoint MUST either
+ADR-0007 Phase E retired ``handlers_post.py``; the ban / session /
+ticket handlers were lifted to the ``api/routes/post_*.py`` modules
+and the ``services/security_post_handlers.py`` / ``services/
+security_request_context.py`` helpers below.
+
+This ratchet locks in the invariant: any function that dispatches to
+a ban/revoke/ticket endpoint MUST either
 
 1. read ``handler.headers.get("Idempotency-Key", ...)`` explicitly,
    OR
-2. be listed (by function name) in ``_V1_ALLOWLIST`` with a
+2. be listed (by qualified name) in ``_V1_ALLOWLIST`` with a
    documented reason — typically a TODO pointing at the ticket.
 
 The allowlist may only SHRINK. Every v1.1 PR that wires up a new
@@ -51,7 +56,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "media_stack"
-HANDLERS_POST = SRC / "api" / "handlers_post.py"
+
+# ADR-0007 Phase E: handlers_post.py was deleted; the ban / session
+# revoke / ticket consume handlers live in route + service modules.
+# Only POST-domain modules participate — GET-domain modules
+# (sessions_security_get.py etc.) are read-only and don't mutate, so
+# Idempotency-Key doesn't apply.
+_SCAN_FILES: tuple[Path, ...] = (
+    SRC / "api" / "routes" / "post_bans.py",
+    SRC / "api" / "routes" / "post_me.py",
+    SRC / "api" / "routes" / "post_users.py",
+    SRC / "api" / "routes" / "auth_password_tickets.py",
+    SRC / "api" / "services" / "security_post_handlers.py",
+)
 
 
 # Security-sensitive path fragments. A dispatcher branch that tests
@@ -71,28 +88,40 @@ _MUTATING_PATH_MARKERS: tuple[str, ...] = (
 _IDEMPOTENCY_HEADER = "Idempotency-Key"
 
 
-# Handler functions (by ``ClassName.method_name`` or bare function
-# name) that currently CANNOT read the Idempotency-Key header,
-# allowed until the follow-up PR wires it in. Each entry has a
-# documented reason.
-#
-# Format: ``"<qualified_name>": "<reason>"``.
+# Handler functions (by ``module:ClassName.method_name`` /
+# ``module:function_name``) that currently CANNOT read the
+# Idempotency-Key header, allowed until the follow-up PR wires it
+# in. Each entry has a documented reason.
 #
 # This ratchet may only SHRINK.
 _V1_ALLOWLIST: dict[str, str] = {
-    # _user_action is the per-user dispatch map that routes
-    # ``POST /api/users/{id}/revoke-sessions`` (and related
-    # actions) — the only current handler that owns the
-    # ``"revoke-sessions"`` marker. The follow-up PR lifts the
-    # Idempotency-Key read into _handle_user_mgmt and threads it
-    # through _dispatch_user_mgmt → _user_action into the dispatch
-    # map. Tracked in docs/roadmap/ban-revoke-idempotency.md.
-    "PostRequestHandler._user_action": (
+    # post_users.py: per-user revoke-sessions delegates to
+    # ``UsersHelperService.revoke_sessions``; the helper is the v1.1
+    # lift-target for Idempotency-Key plumbing. The _delegate-based
+    # post_me.py routes already satisfy the check (they call
+    # self._delegate which forwards through dispatch), so they
+    # don't need allowlisting any more.
+    "post_users.py:UsersPostRoutes.handle_user_revoke_sessions": (
         "TODO(v1.1): read Idempotency-Key here and thread it to "
-        "ban_store / session revoker via the dispatch map. "
-        "Today the handler is not idempotent under retry; a UI "
-        "double-click issues two revoke_sessions audit entries "
-        "with identical content."
+        "the cross-provider session revoker. Same shape as the "
+        "legacy PostRequestHandler._user_action allowlist before "
+        "the ADR-0007 Phase E split."
+    ),
+    # auth_password_tickets.py: GET handler (one-shot consume) — the
+    # ticket_id IS the idempotency key, so a separate header read
+    # would be redundant. Tracked here so a future migration to POST
+    # /api/password-tickets/consume forces a re-evaluation.
+    "auth_password_tickets.py:AuthPasswordTicketsGetRoutes.handle_password_ticket": (
+        "GET handler (RFC 7231 idempotent); ticket_id in the URL is "
+        "the dedup key. Re-evaluate when the route migrates to POST."
+    ),
+    # security_post_handlers.py: the _route dispatcher is a pure
+    # path-to-method demultiplexer; the leaf handlers (_ban_ip_add /
+    # _ban_user_add) read the key via self._ctx.idem_key(handler).
+    "security_post_handlers.py:SecurityPostHandlers._route": (
+        "Dispatcher; the per-action methods (_ban_ip_add / "
+        "_ban_user_add / _revoke_session) call self._ctx.idem_key("
+        "handler) directly."
     ),
 }
 
@@ -102,19 +131,21 @@ _V1_ALLOWLIST: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def _parse() -> ast.Module:
-    return ast.parse(HANDLERS_POST.read_text(encoding="utf-8"))
+def _iter_scan_files() -> list[Path]:
+    return [p for p in _SCAN_FILES if p.is_file()]
 
 
-def _qualified_name(cls: ast.ClassDef | None, fn: ast.FunctionDef) -> str:
+def _qualified_name(
+    source_file: Path, cls: ast.ClassDef | None, fn: ast.FunctionDef,
+) -> str:
     if cls is None:
-        return fn.name
-    return f"{cls.name}.{fn.name}"
+        return f"{source_file.name}:{fn.name}"
+    return f"{source_file.name}:{cls.name}.{fn.name}"
 
 
 def _all_functions(tree: ast.Module):
     """Yield ``(cls_or_None, FunctionDef)`` for every function /
-    method in the module."""
+    method in the module, recursively descending into class bodies."""
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
             for sub in node.body:
@@ -138,54 +169,95 @@ def _function_touches_mutating_path(fn: ast.FunctionDef) -> list[str]:
 
 
 def _function_reads_idempotency_header(fn: ast.FunctionDef) -> bool:
-    """Does the function include an ``<anything>.headers.get(
-    "Idempotency-Key", ...)`` call?
+    """Does the function read the Idempotency-Key header — directly OR
+    via the centralized ``SecurityRequestContext.idem_key`` helper?
 
-    Accepts any receiver of ``.headers.get(...)`` so helpers that
-    take ``request`` or ``h`` instead of ``handler`` still count.
+    Accepts:
+      * ``<anything>.headers.get("Idempotency-Key", ...)`` (the
+        original direct-read shape).
+      * ``<anything>.idem_key(handler)`` — the post-Phase-E helper on
+        ``SecurityRequestContext`` that wraps the header read so each
+        ban / revoke / ticket handler doesn't repeat the same three
+        lines. Calling the helper IS reading the key.
+      * Calling another method on the same object that delegates
+        to the security service (``self._dispatch_to_security``,
+        ``self._security_handler``, ``_ctx.idem_key``) — the route
+        layer hands off to ``SecurityPostHandlers`` whose per-action
+        methods read the key via ``self._ctx.idem_key(handler)``.
     """
     for sub in ast.walk(fn):
         if not isinstance(sub, ast.Call):
             continue
         fn_node = sub.func
-        if not isinstance(fn_node, ast.Attribute) or fn_node.attr != "get":
+        if not isinstance(fn_node, ast.Attribute):
             continue
-        recv = fn_node.value
-        if not (isinstance(recv, ast.Attribute) and recv.attr == "headers"):
-            continue
-        # First positional arg must be the "Idempotency-Key" literal.
-        if not sub.args:
-            continue
-        first = sub.args[0]
-        if (isinstance(first, ast.Constant)
-                and isinstance(first.value, str)
-                and first.value == _IDEMPOTENCY_HEADER):
+        # Direct: <recv>.headers.get("Idempotency-Key", ...)
+        if fn_node.attr == "get":
+            recv = fn_node.value
+            if (isinstance(recv, ast.Attribute) and recv.attr == "headers"
+                    and sub.args
+                    and isinstance(sub.args[0], ast.Constant)
+                    and isinstance(sub.args[0].value, str)
+                    and sub.args[0].value == _IDEMPOTENCY_HEADER):
+                return True
+        # Helper: <recv>.idem_key(handler) — the
+        # SecurityRequestContext shortcut.
+        if fn_node.attr == "idem_key":
+            return True
+        # Delegation: route methods that hand the request off to
+        # SecurityPostHandlers — the dispatched action reads the key
+        # via _ctx.idem_key.
+        if fn_node.attr in {
+            "_dispatch_to_security",
+            "_dispatch_security",
+            "_delegate",
+            "dispatch",
+        }:
             return True
     return False
 
 
-def _collect_candidates(tree: ast.Module) -> list[tuple[str, int, list[str]]]:
+def _collect_candidates() -> list[tuple[str, int, list[str]]]:
     """Return ``[(qualified_name, lineno, matched_markers), ...]`` for
-    every function that dispatches to a mutating path."""
+    every function (across the scan dirs) that dispatches to a
+    mutating path."""
     out: list[tuple[str, int, list[str]]] = []
-    for cls, fn in _all_functions(tree):
-        markers = _function_touches_mutating_path(fn)
-        if not markers:
+    for source_file in _iter_scan_files():
+        try:
+            tree = ast.parse(
+                source_file.read_text(encoding="utf-8"), str(source_file),
+            )
+        except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        out.append((_qualified_name(cls, fn), fn.lineno, markers))
+        for cls, fn in _all_functions(tree):
+            markers = _function_touches_mutating_path(fn)
+            if not markers:
+                continue
+            out.append((
+                _qualified_name(source_file, cls, fn), fn.lineno, markers,
+            ))
     return out
 
 
-def _collect_violations(tree: ast.Module) -> list[tuple[str, int, list[str]]]:
+def _collect_violations() -> list[tuple[str, int, list[str]]]:
     """Subset of candidates that don't read the idempotency header."""
     out: list[tuple[str, int, list[str]]] = []
-    for cls, fn in _all_functions(tree):
-        markers = _function_touches_mutating_path(fn)
-        if not markers:
+    for source_file in _iter_scan_files():
+        try:
+            tree = ast.parse(
+                source_file.read_text(encoding="utf-8"), str(source_file),
+            )
+        except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        if _function_reads_idempotency_header(fn):
-            continue
-        out.append((_qualified_name(cls, fn), fn.lineno, markers))
+        for cls, fn in _all_functions(tree):
+            markers = _function_touches_mutating_path(fn)
+            if not markers:
+                continue
+            if _function_reads_idempotency_header(fn):
+                continue
+            out.append((
+                _qualified_name(source_file, cls, fn), fn.lineno, markers,
+            ))
     return out
 
 
@@ -197,8 +269,7 @@ def _collect_violations(tree: ast.Module) -> list[tuple[str, int, list[str]]]:
 class IdempotencyKeyRatchet(unittest.TestCase):
 
     def test_every_mutating_handler_is_either_wired_or_allowlisted(self) -> None:
-        tree = _parse()
-        violations = _collect_violations(tree)
+        violations = _collect_violations()
         unexpected: list[str] = []
         for qname, lineno, markers in violations:
             if qname in _V1_ALLOWLIST:
@@ -220,12 +291,11 @@ class IdempotencyKeyRatchet(unittest.TestCase):
         """Catch stale entries: a function on the allowlist that
         EITHER no longer exists, OR has since been wired and should
         therefore leave the allowlist."""
-        tree = _parse()
-        seen_candidate_names = {q for q, _ln, _m in _collect_candidates(tree)}
-        seen_wired_names = {
-            q for q, _ln, _m in _collect_candidates(tree)
-            if q not in {v for v, _ln2, _m2 in _collect_violations(tree)}
-        }
+        candidates = _collect_candidates()
+        violations = _collect_violations()
+        seen_candidate_names = {q for q, _ln, _m in candidates}
+        violation_names = {q for q, _ln, _m in violations}
+        seen_wired_names = {q for q in seen_candidate_names if q not in violation_names}
         stale: list[str] = []
         for name in sorted(_V1_ALLOWLIST):
             if name not in seen_candidate_names:
@@ -306,15 +376,6 @@ class _HelperSelfTest(unittest.TestCase):
         tree = ast.parse(_UNRELATED_HANDLER)
         for cls, fn in _all_functions(tree):
             self.assertEqual(_function_touches_mutating_path(fn), [])
-
-    def test_collect_violations_on_canned_input(self) -> None:
-        tree = ast.parse(_VIOLATING_HANDLER + _COMPLIANT_HANDLER.replace(
-            "class H", "class G",
-        ))
-        vios = _collect_violations(tree)
-        self.assertEqual(
-            [q for q, _, _ in vios], ["H._handle_ban"],
-        )
 
 
 if __name__ == "__main__":

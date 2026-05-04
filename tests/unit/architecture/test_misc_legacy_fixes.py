@@ -190,23 +190,30 @@ class RecyclarrPlaceholderRemoved(unittest.TestCase):
 class StackUpdateEndpointsRegistered(unittest.TestCase):
 
     def test_get_endpoint_in_handlers(self) -> None:
-        path = ROOT / "src/media_stack/api/handlers_get.py"
+        # ADR-0007 Phase 2 Phase E retired ``handlers_get.py``. GET
+        # /api/stack/update + /api/stack/upgrade/{task_id} now live on
+        # ``api/routes/stack_update.py`` registered via the Router.
+        path = ROOT / "src/media_stack/api/routes/stack_update.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn(
             '"/api/stack/update"', text,
-            "GET /api/stack/update endpoint disappeared from handlers_get",
+            "GET /api/stack/update endpoint disappeared from "
+            "api/routes/stack_update.py",
         )
         self.assertIn(
-            '"/api/stack/upgrade/"', text,
-            "GET /api/stack/upgrade/{task_id} endpoint disappeared",
+            '"/api/stack/upgrade/{task_id}"', text,
+            "GET /api/stack/upgrade/{task_id} endpoint disappeared "
+            "from api/routes/stack_update.py",
         )
 
     def test_post_endpoint_in_handlers(self) -> None:
-        path = ROOT / "src/media_stack/api/handlers_post.py"
+        # POST /api/stack/upgrade lifted onto post_admin_ops.py.
+        path = ROOT / "src/media_stack/api/routes/post_admin_ops.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn(
             '"/api/stack/upgrade"', text,
-            "POST /api/stack/upgrade endpoint disappeared from handlers_post",
+            "POST /api/stack/upgrade endpoint disappeared from "
+            "api/routes/post_admin_ops.py",
         )
 
     def test_stack_upgrade_requires_auth(self) -> None:

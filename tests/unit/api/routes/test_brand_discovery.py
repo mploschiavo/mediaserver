@@ -34,7 +34,7 @@ class TestBrandingRoute:
         # would make the Router refuse to construct.
         harness = RouteDispatchHarness.with_default_router()
         with patch(
-            "media_stack.api.handlers_get.Path.is_file",
+            "media_stack.api.routes.brand_discovery.Path.is_file",
             return_value=False,
         ):
             response = harness.dispatch("GET", "/api/branding")
@@ -63,26 +63,27 @@ class TestPopularTvRoute:
     """
 
     def setup_method(self) -> None:
-        from media_stack.api.handlers_get import GetRequestHandler
+        from media_stack.api.routes.brand_discovery import _popular_tv
         # Reset to a clean state before each test so cache state
         # from a prior run doesn't leak.
-        GetRequestHandler._POPULAR_TV_CACHE = {"ts": 0.0, "payload": []}
+        _popular_tv._cache_ts = 0.0
+        _popular_tv._cache_payload = []
 
     def teardown_method(self) -> None:
-        from media_stack.api.handlers_get import GetRequestHandler
-        GetRequestHandler._POPULAR_TV_CACHE = {"ts": 0.0, "payload": []}
+        from media_stack.api.routes.brand_discovery import _popular_tv
+        _popular_tv._cache_ts = 0.0
+        _popular_tv._cache_payload = []
 
     def test_serves_cached_payload_when_fresh(self) -> None:
         import time
-        from media_stack.api.handlers_get import GetRequestHandler
+        from media_stack.api.routes.brand_discovery import _popular_tv
+
         cached = [
             {"tvdbId": 81189, "title": "Breaking Bad"},
             {"tvdbId": 121361, "title": "Game of Thrones"},
         ]
-        GetRequestHandler._POPULAR_TV_CACHE = {
-            "ts": time.time(),
-            "payload": cached,
-        }
+        _popular_tv._cache_ts = time.time()
+        _popular_tv._cache_payload = cached
         harness = RouteDispatchHarness.with_default_router()
         response = harness.dispatch("GET", "/api/discovery/popular-tv")
         assert response.status == 200
@@ -91,14 +92,13 @@ class TestPopularTvRoute:
     def test_falls_back_to_stale_cache_when_tvmaze_unreachable(
         self,
     ) -> None:
-        from media_stack.api.handlers_get import GetRequestHandler
+        from media_stack.api.routes.brand_discovery import _popular_tv
+
         # Stale cache (ts=0 == far in the past) + urlopen raising
         # forces the "stale fallback" branch.
         stale = [{"tvdbId": 79126, "title": "The Wire"}]
-        GetRequestHandler._POPULAR_TV_CACHE = {
-            "ts": 0.0,
-            "payload": stale,
-        }
+        _popular_tv._cache_ts = 0.0
+        _popular_tv._cache_payload = stale
         with patch(
             "urllib.request.urlopen",
             side_effect=OSError("network down"),

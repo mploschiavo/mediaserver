@@ -12,33 +12,21 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-import base64
-
-from media_stack.api.handlers_get import GetRequestHandler  # noqa: E402
+from media_stack.api.routes.users_get import _MeRecordBuilder  # noqa: E402
 
 
 def _build_response(user_row: dict | None, username: str) -> dict:
-    """Drive GetRequestHandler._build_me_response with a stubbed
-    handler + service. Identity resolution has several fallbacks
-    (cookie → trusted-proxy → Basic auth); we go straight to Basic
-    auth by putting the credentials in the Authorization header."""
-    helper = GetRequestHandler.__new__(GetRequestHandler)
-    handler = MagicMock()
-    auth = "Basic " + base64.b64encode(f"{username}:x".encode()).decode()
-    handler.headers = {"Authorization": auth} if username else {}
-    svc = MagicMock()
-    svc.list_users.return_value = [user_row] if user_row else []
-    from media_stack.api.session_singletons import (
-        session_cookie_reader, trusted_proxy_auth,
-    )
-    session_cookie_reader.username_for_handler = lambda h: ""
-    trusted_proxy_auth.identity = lambda h: ""
-    return helper._build_me_response(handler, svc)
+    """Drive ``_MeRecordBuilder.build()`` with the given user row +
+    resolved username. The legacy fallback chain (cookie ->
+    trusted-proxy -> Basic auth) is exercised by the route module
+    elsewhere; here we just need to pin the needs_rotation logic."""
+    builder = _MeRecordBuilder()
+    users = [user_row] if user_row else []
+    return builder.build(username, users)
 
 
 class MeNeedsRotationTests(unittest.TestCase):

@@ -85,7 +85,7 @@ class _ActorResolverProvider:
     def resolve(self, handler: Any, body: dict[str, Any]) -> Any:
         if self._resolver is not None:
             return self._resolver.resolve(handler, body)
-        from media_stack.api.handlers_post import _actor_resolver
+        from media_stack.api.services.actor import _actor_resolver
         return _actor_resolver.resolve(handler, body)
 
 
@@ -105,7 +105,7 @@ class BansPostRoutes(RouteModule):
         security_handler_provider: _SecurityPostHandlerProvider | None = None,
         actor_resolver_provider: _ActorResolverProvider | None = None,
     ) -> None:
-        self._gate = mutation_gate or PostMutationGate()
+        self._gate = mutation_gate or PostMutationGate(rate_limit=True)
         self._security_handler = (
             security_handler_provider or _SecurityPostHandlerProvider()
         )

@@ -290,15 +290,15 @@ class TestRoutingProbeRoute:
         body = json.loads(handler.captured.body)
         assert "matrix down" in body["error"]
 
-    @patch("media_stack.api.handlers_get._routing_matrix_probe")
+    @patch("media_stack.api.services.routing_probes._routing_matrix_probe")
     def test_default_resolution_pulls_singleton_from_handlers_get(
         self, mock_singleton,
     ) -> None:
         """The Router-resolved instance has no probe injected; the
-        first call resolves the legacy singleton lazily. Pinning
-        this contract guards against accidental hard-coupling at
-        construction time (which would fire ``handlers_get`` import
-        side effects on Router build)."""
+        first call resolves the routing-probes service singleton
+        lazily. Pinning this contract guards against accidental
+        hard-coupling at construction time (which would fire module
+        import side effects on Router build)."""
         mock_singleton.probe_all.return_value = {
             "rows": [], "routing": {}, "services": {},
         }

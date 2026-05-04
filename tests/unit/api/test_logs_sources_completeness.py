@@ -153,13 +153,17 @@ class LogsSourcesDispatchHandlerRatchet(unittest.TestCase):
 
     def test_dispatcher_reads_services_registry(self) -> None:
         src = (
-            ROOT / "src" / "media_stack" / "api" / "handlers_get.py"
+            ROOT / "src" / "media_stack" / "api"
+            / "routes" / "logs.py"
         ).read_text(encoding="utf-8")
-        anchor = '/api/logs/sources'
+        # The first occurrence of the path is in the module docstring;
+        # anchor on the @get decorator so we find the actual route
+        # handler body.
+        anchor = '@get("/api/logs/sources")'
         idx = src.find(anchor)
         self.assertNotEqual(
             idx, -1,
-            "/api/logs/sources branch missing from handlers_get.py",
+            "/api/logs/sources route missing from routes/logs.py",
         )
         # Window of ~1500 chars after the anchor — enough to include
         # the SERVICES import and platform list.
@@ -168,7 +172,7 @@ class LogsSourcesDispatchHandlerRatchet(unittest.TestCase):
             "SERVICES",
             block,
             "/api/logs/sources branch must read from the SERVICES "
-            "registry — without it, the source list won't grow when "
+            "registry -- without it, the source list won't grow when "
             "new techs are added (the original bug class).",
         )
         self.assertIn(

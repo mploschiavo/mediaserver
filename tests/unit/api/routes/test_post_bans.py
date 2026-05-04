@@ -396,7 +396,7 @@ class TestProviderDefaultPath:
     def test_actor_resolver_provider_default_path(
         self, monkeypatch,
     ) -> None:
-        from media_stack.api import handlers_post
+        from media_stack.api.services import actor as actor_svc
 
         captured: dict[str, Any] = {}
 
@@ -407,7 +407,7 @@ class TestProviderDefaultPath:
                 return "ACTOR"
 
         monkeypatch.setattr(
-            handlers_post, "_actor_resolver", _StubResolver(),
+            actor_svc, "_actor_resolver", _StubResolver(),
         )
         provider = _ActorResolverProvider()
         result = provider.resolve("HANDLER", {"k": "v"})

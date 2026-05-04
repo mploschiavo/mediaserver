@@ -157,8 +157,8 @@ class KnownActionsProvider:
     def _resolve(self) -> frozenset[str]:
         if self._known_actions is not None:
             return self._known_actions
-        from media_stack.api import handlers_post as _hp
-        return _hp.KNOWN_ACTIONS
+        from media_stack.api.services.known_actions import KNOWN_ACTIONS
+        return KNOWN_ACTIONS
 
 
 class ActionTrigger:

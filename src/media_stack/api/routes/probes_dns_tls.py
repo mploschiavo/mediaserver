@@ -148,14 +148,14 @@ class ProbesDnsTlsGetRoutes(RouteModule):
             return self._routing_matrix_probe
         # Fresh attribute lookup so test patches reach the call site
         # (caching the default would freeze the pre-patch reference).
-        from media_stack.api import handlers_get
-        return handlers_get._routing_matrix_probe
+        from media_stack.api.services import routing_probes
+        return routing_probes._routing_matrix_probe
 
     def _resolve_gateway_hostname_probe(self) -> Any:
         if self._gateway_hostname_probe is not None:
             return self._gateway_hostname_probe
-        from media_stack.api import handlers_get
-        return handlers_get._gateway_hostname_probe
+        from media_stack.api.services import routing_probes
+        return routing_probes._gateway_hostname_probe
 
     # --- Routes -----------------------------------------------------
 

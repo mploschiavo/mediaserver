@@ -8,19 +8,20 @@ What this file pins:
   ``os.environ`` and reports ``existed: true`` / ``existed: false``
   so the dashboard can render an idempotent confirmation rather
   than an error.
-- The controller's POST dispatcher routes ``/api/envvars/delete``
-  through ``_diagnostics.delete_envvar`` and rejects (a) missing
-  ``key`` (400) and (b) keys outside the allowed prefix set (400).
-- The CSRF gate fires when ``_CSRF_ENFORCE`` is set: a request
-  without an ``X-CSRF-Token`` header that matches the
-  ``media_stack_csrf`` cookie is rejected with 403 before the
-  handler runs.
+- The ``UserResourcesPostRoutes.handle_envvar_delete`` route
+  rejects (a) missing ``key`` (400) and (b) keys outside the
+  allowed prefix set (400) and (c) deletes an existing key on
+  the happy path.
 
 These tests intentionally do not exercise the HTTP transport — the
-``handlers_post.PostRequestHandler.handle`` dispatcher is invoked
-with a ``MagicMock`` handler so we can inspect the response shape.
-The same helper pattern that ``test_user_mgmt_rate_limit_csrf.py``
-uses for /api/users.
+``UserResourcesPostRoutes.handle_envvar_delete`` route is invoked
+directly with a ``MagicMock`` handler so we can inspect the response
+shape.
+
+ADR-0007 Phase 2 Phase E: tests previously drove the legacy
+``PostRequestHandler.handle()`` chain; that's gone. CSRF gating
+moved to ``server.do_POST`` (``_global_post_preflight``); the per-
+route module owns the validation we exercise here.
 """
 
 from __future__ import annotations
@@ -30,12 +31,14 @@ import sys
 import unittest
 from pathlib import Path
 from unittest import mock
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.handlers_post import PostRequestHandler  # noqa: E402
+from media_stack.api.routes.post_user_resources import (  # noqa: E402
+    UserResourcesPostRoutes,
+)
 from media_stack.api.services.config._diagnostics import (  # noqa: E402
     DiagnosticsService,
 )
@@ -89,29 +92,24 @@ class DeleteEnvVarServiceTests(unittest.TestCase):
 
 
 class DeleteEnvVarRouteTests(unittest.TestCase):
-    """``POST /api/envvars/delete`` dispatcher — happy path + 400 cases."""
+    """``POST /api/envvars/delete`` route module — happy path + 400 cases."""
 
     def setUp(self) -> None:
         self._orig_env = dict(os.environ)
-        # Disable CSRF + global rate-limit for the dispatcher tests so
-        # we can exercise the route shape without setting up cookies.
-        self._csrf_patch = patch(
-            "media_stack.api.handlers_post._CSRF_ENFORCE", False,
-        )
-        self._csrf_patch.start()
 
     def tearDown(self) -> None:
         os.environ.clear()
         os.environ.update(self._orig_env)
-        self._csrf_patch.stop()
+
+    def _routes(self) -> UserResourcesPostRoutes:
+        return UserResourcesPostRoutes()
 
     def test_happy_path_drops_key(self) -> None:
         os.environ["BOOTSTRAP_DELETE_ROUTE_KEY"] = "x"
-        svc = PostRequestHandler()
         h, captured = _handler(
             "/api/envvars/delete", {"key": "BOOTSTRAP_DELETE_ROUTE_KEY"},
         )
-        svc.handle(h)
+        self._routes().handle_envvar_delete(h)
         self.assertEqual(captured["status"], 200)
         self.assertEqual(captured["payload"]["status"], "deleted")
         self.assertEqual(
@@ -121,9 +119,8 @@ class DeleteEnvVarRouteTests(unittest.TestCase):
         self.assertNotIn("BOOTSTRAP_DELETE_ROUTE_KEY", os.environ)
 
     def test_missing_key_returns_400(self) -> None:
-        svc = PostRequestHandler()
         h, captured = _handler("/api/envvars/delete", {})
-        svc.handle(h)
+        self._routes().handle_envvar_delete(h)
         self.assertEqual(captured["status"], 400)
         self.assertIn("error", captured["payload"])
         self.assertIn("key", captured["payload"]["error"])
@@ -131,65 +128,51 @@ class DeleteEnvVarRouteTests(unittest.TestCase):
     def test_disallowed_prefix_returns_400(self) -> None:
         # PATH is a host var, not under any platform/service prefix —
         # the dashboard must not be able to clear it.
-        svc = PostRequestHandler()
         h, captured = _handler("/api/envvars/delete", {"key": "PATH"})
-        svc.handle(h)
+        self._routes().handle_envvar_delete(h)
         self.assertEqual(captured["status"], 400)
         self.assertIn("prefix", captured["payload"]["error"].lower())
 
     def test_idempotent_when_key_absent(self) -> None:
         os.environ.pop("BOOTSTRAP_TOTALLY_ABSENT", None)
-        svc = PostRequestHandler()
         h, captured = _handler(
             "/api/envvars/delete", {"key": "BOOTSTRAP_TOTALLY_ABSENT"},
         )
-        svc.handle(h)
+        self._routes().handle_envvar_delete(h)
         self.assertEqual(captured["status"], 200)
         self.assertFalse(captured["payload"]["existed"])
 
 
 class DeleteEnvVarCsrfTests(unittest.TestCase):
-    """CSRF gate on the delete route — the dispatcher must reject
-    requests that lack a matching ``X-CSRF-Token`` header when CSRF
-    is enforced (the production default for browser sessions)."""
+    """CSRF gate -- now applied centrally in ``server._global_post_preflight``.
+
+    The route module itself is not CSRF-aware; CSRF runs in
+    ``server.do_POST`` BEFORE the Router dispatches. Tests here pin
+    the CSRF predicate directly via ``_check_csrf``.
+    """
 
     def test_csrf_enforced_rejects_missing_token(self) -> None:
-        svc = PostRequestHandler()
-        with patch(
-            "media_stack.api.handlers_post._CSRF_ENFORCE", True,
+        from media_stack.api.server import _check_csrf
+        with mock.patch.dict(
+            os.environ, {"CSRF_ENFORCE": "1"}, clear=False,
         ):
-            h, captured = _handler(
+            h, _ = _handler(
                 "/api/envvars/delete", {"key": "BOOTSTRAP_FOO"},
             )
-            svc.handle(h)
-            self.assertEqual(captured["status"], 403)
-            self.assertIn("CSRF", captured["payload"]["error"])
+            self.assertFalse(_check_csrf(h))
 
     def test_csrf_enforced_passes_when_header_matches_cookie(self) -> None:
-        # The cookie's token must equal the X-CSRF-Token header
-        # (double-submit). When they line up the dispatcher should
-        # land on the success branch.
-        orig_env = dict(os.environ)
-        try:
-            svc = PostRequestHandler()
-            with patch(
-                "media_stack.api.handlers_post._CSRF_ENFORCE", True,
-            ):
-                os.environ["BOOTSTRAP_CSRF_OK"] = "1"
-                h, captured = _handler(
-                    "/api/envvars/delete",
-                    {"key": "BOOTSTRAP_CSRF_OK"},
-                    cookie="media_stack_csrf=tok-abc",
-                    csrf="tok-abc",
-                )
-                svc.handle(h)
-                self.assertEqual(captured["status"], 200)
-                self.assertEqual(
-                    captured["payload"]["status"], "deleted",
-                )
-        finally:
-            os.environ.clear()
-            os.environ.update(orig_env)
+        from media_stack.api.server import _check_csrf
+        with mock.patch.dict(
+            os.environ, {"CSRF_ENFORCE": "1"}, clear=False,
+        ):
+            h, _ = _handler(
+                "/api/envvars/delete",
+                {"key": "BOOTSTRAP_CSRF_OK"},
+                cookie="media_stack_csrf=tok-abc",
+                csrf="tok-abc",
+            )
+            self.assertTrue(_check_csrf(h))
 
 
 if __name__ == "__main__":

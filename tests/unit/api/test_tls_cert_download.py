@@ -102,16 +102,16 @@ class CertDownloadEndpointTests(unittest.TestCase):
         """Sanity check: the endpoint reads cert_path only,
         never key_path. Pin the source so a future refactor that
         accidentally bundles the key fails this test."""
-        from media_stack.api import handlers_get
+        from media_stack.api.routes import probes_dns_tls
         # Locate the dispatch branch and make sure it does not
         # mention key_path.
-        src = Path(handlers_get.__file__).read_text(encoding="utf-8")
+        src = Path(probes_dns_tls.__file__).read_text(encoding="utf-8")
         idx = src.find('"/api/tls/certificate/download"')
         self.assertGreater(idx, -1)
-        # Read the surrounding 600 chars (the whole branch).
-        branch = src[idx:idx + 1000]
+        # Read the surrounding ~1500 chars (the whole route body).
+        branch = src[idx:idx + 1500]
         self.assertNotIn(
             "key_path", branch,
             "Cert download endpoint must never reference key_path "
-            "— that would leak the private key.",
+            "-- that would leak the private key.",
         )

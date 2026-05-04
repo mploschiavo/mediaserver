@@ -146,8 +146,8 @@ class KnownActionsAliasTests(unittest.TestCase):
         _reset_caches()
 
     def test_known_actions_includes_aliases(self) -> None:
-        from media_stack.api.handlers_post import PostRequestHandler
-        known = PostRequestHandler._build_known_actions()
+        from media_stack.api.services.known_actions import KnownActionsBuilder
+        known = KnownActionsBuilder().build()
         self.assertIn(
             "reconcile", known,
             "POST /actions/reconcile would 404 — alias names must "

@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from media_stack.api.handlers_get import _handle_service_logs
+from media_stack.api.services.logs_handlers import _handle_service_logs
 from media_stack.api.routing import RouteModule, get
 
 

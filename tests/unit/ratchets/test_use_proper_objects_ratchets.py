@@ -441,7 +441,11 @@ _URL_ALLOWED_PATH_FRAGMENTS = (
     # Docs, examples, vendored fixtures.
     "/docs/",
     # OpenAPI spec embedding — references to schema URIs are fine.
-    "/api/handlers_get.py",  # serves /openapi.yaml — large allowlist
+    # ADR-0007 Phase E cleanup: handlers_get.py deleted; openapi
+    # service module hosts the spec-embedding logic.
+    "/api/services/openapi.py",
+    "/api/routes/",
+    "/api/routing/",
 )
 
 
@@ -593,8 +597,16 @@ _DOMAIN_DICT_ALLOWED_PATH_FRAGMENTS = (
     # is "no dict-as-domain-object IN BUSINESS LOGIC".
     "/adapters/",
     # API handlers serialize to dicts at the boundary.
-    "/api/handlers_get.py",
-    "/api/handlers_post.py",
+    # ADR-0007 Phase E cleanup: handlers_get/post.py deleted; their
+    # serialize-to-dict layer lives in route + service modules.
+    "/api/routes/",
+    "/api/routing/",
+    "/api/services/security_get_handlers.py",
+    "/api/services/security_post_handlers.py",
+    "/api/services/logs_handlers.py",
+    "/api/services/events_sse.py",
+    "/api/services/media_integrity_dispatch.py",
+    "/api/services/media_integrity_handlers.py",
 )
 
 

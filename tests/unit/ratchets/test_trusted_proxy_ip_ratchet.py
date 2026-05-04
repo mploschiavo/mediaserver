@@ -25,8 +25,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-_HANDLERS_POST = ROOT / "src" / "media_stack" / "api" / "handlers_post.py"
 _SERVER = ROOT / "src" / "media_stack" / "api" / "server.py"
+
+# ADR-0007 Phase E: handlers_post.py was deleted; the audit-emitting
+# POST handlers + the trusted-proxy resolver helpers were lifted to
+# the route + service modules below. Each is scanned by the same
+# AST helpers.
+_POST_DOMAIN_FILES: tuple[Path, ...] = tuple(
+    p for p in [
+        ROOT / "src" / "media_stack" / "api" / "services" / "security_post_handlers.py",
+        ROOT / "src" / "media_stack" / "api" / "services" / "security_request_context.py",
+        ROOT / "src" / "media_stack" / "api" / "services" / "actor.py",
+        ROOT / "src" / "media_stack" / "api" / "routes" / "post_bans.py",
+        ROOT / "src" / "media_stack" / "api" / "routes" / "post_me.py",
+        ROOT / "src" / "media_stack" / "api" / "routes" / "post_users.py",
+        ROOT / "src" / "media_stack" / "api" / "routes" / "post_auth_session.py",
+        ROOT / "src" / "media_stack" / "api" / "routes" / "auth_password_tickets.py",
+    ]
+)
 
 # Explicit allowlist of ``client_address`` references in the scanned
 # modules. Each entry is (file-basename, line-substring) — if the line
@@ -67,11 +83,28 @@ def _scan_audit_calls(tree: ast.AST) -> list[ast.Call]:
 def _call_mentions_trusted_proxy_ip(call: ast.Call) -> bool:
     """True if any keyword / sub-call in this audit site references
     ``trusted_proxy_auth.client_ip`` or a ``self._client_ip`` / a
-    ``_client_ip`` helper (both of which now delegate)."""
+    ``_client_ip`` helper (both of which now delegate).
+
+    Also accepts the post-Phase-E ``append_audit(..., ip=ip, ...)``
+    shape where the immediate caller passes a bare local variable
+    named ``ip`` — that variable is bound upstream from
+    ``self.client_ip(handler)``, the resolved trusted-proxy IP. The
+    audit helper itself is a thin proxy that doesn't repeat the
+    resolver call.
+    """
     for child in ast.walk(call):
         if isinstance(child, ast.Attribute):
             if child.attr in ("client_ip", "_client_ip"):
                 return True
+    # Accept the helper-shape ``ip=ip`` keyword — the local ``ip``
+    # parameter on a thin wrapper method (typed ``ip: str``) is the
+    # resolved value passed from the caller's
+    # ``self.client_ip(handler)`` call.
+    for kw in call.keywords:
+        if kw.arg in {"ip", "client_ip", "source_ip"} and isinstance(
+            kw.value, ast.Name,
+        ):
+            return True
     return False
 
 
@@ -101,24 +134,37 @@ class AuditSiteRatchet(unittest.TestCase):
         return _scan_audit_calls(ast.parse(src)), src
 
     def test_handlers_post_audit_sites_use_trusted_proxy(self):
-        calls, src = self._scan(_HANDLERS_POST)
-        self.assertTrue(calls, "expected at least one audit.append site "
-                               "in handlers_post.py — refactor likely "
-                               "missed a call.")
-        for call in calls:
-            if _audit_site_takes_no_ip(call):
+        # ADR-0007 Phase E: scan every post-domain route + service
+        # module. The test name keeps ``handlers_post`` for log-grep
+        # continuity even though the legacy file is gone.
+        any_call_seen = False
+        violations: list[str] = []
+        for path in _POST_DOMAIN_FILES:
+            if not path.is_file():
                 continue
-            ok = _call_mentions_trusted_proxy_ip(call)
-            # Fallback: the call references a method (e.g. self._client_ip)
-            # whose implementation is known to delegate.
-            if not ok:
+            calls, src = self._scan(path)
+            if calls:
+                any_call_seen = True
+            for call in calls:
+                if _audit_site_takes_no_ip(call):
+                    continue
+                if _call_mentions_trusted_proxy_ip(call):
+                    continue
                 line = src.splitlines()[call.lineno - 1]
-                self.fail(
-                    f"handlers_post.py:{call.lineno}: audit.append() "
-                    f"records an IP but does not route through "
-                    f"trusted_proxy_auth.client_ip / _client_ip helper. "
-                    f"Offending line: {line.strip()}"
+                violations.append(
+                    f"{path.name}:{call.lineno}: {line.strip()}"
                 )
+        self.assertTrue(
+            any_call_seen,
+            "expected at least one audit.append site in the post-domain "
+            "files — refactor likely missed a call.",
+        )
+        self.assertFalse(
+            violations,
+            "audit.append() records an IP but does not route through "
+            "trusted_proxy_auth.client_ip / _client_ip helper:\n  - "
+            + "\n  - ".join(violations),
+        )
 
     def test_server_audit_sites_use_trusted_proxy(self):
         calls, src = self._scan(_SERVER)
@@ -154,18 +200,26 @@ class ClientAddressDirectReferenceRatchet(unittest.TestCase):
         return hits
 
     def test_handlers_post_has_no_direct_client_address(self):
-        hits = self._direct_refs(_HANDLERS_POST)
-        allowed_lines = {
-            ln for (f, sub) in _CLIENT_ADDRESS_ALLOWLIST
-            if f == _HANDLERS_POST.name
-            for ln in _find_lines(_HANDLERS_POST, sub)
-        }
-        unexpected = sorted(set(hits) - allowed_lines)
+        # ADR-0007 Phase E: scan every post-domain route + service
+        # module for direct ``client_address`` reads.
+        violations: list[str] = []
+        for path in _POST_DOMAIN_FILES:
+            if not path.is_file():
+                continue
+            hits = self._direct_refs(path)
+            allowed_lines = {
+                ln for (f, sub) in _CLIENT_ADDRESS_ALLOWLIST
+                if f == path.name
+                for ln in _find_lines(path, sub)
+            }
+            unexpected = sorted(set(hits) - allowed_lines)
+            for ln in unexpected:
+                violations.append(f"{path.name}:{ln}")
         self.assertFalse(
-            unexpected,
-            f"handlers_post.py still reads handler.client_address at "
-            f"lines {unexpected} — migrate to trusted_proxy_auth."
-            f"client_ip or add an explicit allowlist entry.",
+            violations,
+            "post-domain modules still read handler.client_address at "
+            f"{violations} — migrate to trusted_proxy_auth.client_ip "
+            "or add an explicit allowlist entry.",
         )
 
     def test_server_has_no_direct_client_address(self):

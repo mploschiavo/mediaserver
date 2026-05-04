@@ -2,7 +2,9 @@
 
 Covers every endpoint wired by
 ``src/media_stack/api/services/security_get_handlers.py`` plus the
-``security-read`` rate-limit bucket in ``handlers_get.py``.
+``security-read`` rate-limit gate in
+``api/routes/sessions_security_get.py`` (lifted out of the
+retired ``handlers_get.py`` during ADR-0007 Phase 2 Phase E).
 
 For each endpoint the test matrix covers:
   * happy-path 200 + shape
@@ -798,51 +800,61 @@ class TestMyLoginHistory(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Rate-limit bucket (handlers_get.py-level)
+# Rate-limit gate (api/routes/sessions_security_get.py)
 # ---------------------------------------------------------------------------
 
 
+def _build_security_read_gate():
+    """Construct a fresh ``_SecurityReadGate`` per test so bucket
+    state from one case never leaks into another. The gate's
+    ``_DEFAULT_CAPACITY`` / ``_DEFAULT_REFILL_PER_SECOND`` mirror
+    the legacy ``handlers_get._security_read_limiter`` parameters
+    verbatim."""
+    from media_stack.api.routes.sessions_security_get import (
+        _SecurityReadGate,
+    )
+    return _SecurityReadGate()
+
+
 class TestSecurityReadLimiter(unittest.TestCase):
-    """The security-read bucket lives in handlers_get.py and is
-    consulted for admin enumeration paths before the helper runs.
-    We import the bucket directly and drain it to verify 429 behavior."""
+    """The security-read bucket now lives on
+    ``_SecurityReadGate._limiter`` (lifted from ``handlers_get.py``
+    during ADR-0007 Phase 2 Phase E). Drain the limiter directly to
+    pin the same per-client capacity / per-bucket isolation behavior
+    the legacy bucket guaranteed."""
 
     def setUp(self) -> None:
-        from media_stack.api import handlers_get as _hg
-        self.hg = _hg
-        # Reset before each test so bucket state from other tests
-        # doesn't leak in.
-        self.hg._security_read_limiter.reset()
+        self.gate = _build_security_read_gate()
+        self.capacity = self.gate._DEFAULT_CAPACITY
+        self.bucket = self.gate._BUCKET_NAME
 
     def test_bucket_allows_up_to_capacity(self):
         allowed_count = 0
-        for _ in range(self.hg._SECURITY_READ_BUCKET_CAPACITY):
-            if self.hg._security_read_limiter.allow(
-                client_id="127.0.0.1", bucket="security-read",
+        for _ in range(self.capacity):
+            if self.gate._limiter.allow(
+                client_id="127.0.0.1", bucket=self.bucket,
             ):
                 allowed_count += 1
-        self.assertEqual(
-            allowed_count, self.hg._SECURITY_READ_BUCKET_CAPACITY,
-        )
+        self.assertEqual(allowed_count, self.capacity)
 
     def test_bucket_denies_after_capacity(self):
-        for _ in range(self.hg._SECURITY_READ_BUCKET_CAPACITY):
-            self.hg._security_read_limiter.allow(
-                client_id="192.0.2.1", bucket="security-read",
+        for _ in range(self.capacity):
+            self.gate._limiter.allow(
+                client_id="192.0.2.1", bucket=self.bucket,
             )
         # One more should be denied.
-        self.assertFalse(self.hg._security_read_limiter.allow(
-            client_id="192.0.2.1", bucket="security-read",
+        self.assertFalse(self.gate._limiter.allow(
+            client_id="192.0.2.1", bucket=self.bucket,
         ))
 
     def test_bucket_is_per_client(self):
-        for _ in range(self.hg._SECURITY_READ_BUCKET_CAPACITY):
-            self.hg._security_read_limiter.allow(
-                client_id="203.0.113.1", bucket="security-read",
+        for _ in range(self.capacity):
+            self.gate._limiter.allow(
+                client_id="203.0.113.1", bucket=self.bucket,
             )
         # A different IP still has its own credit line.
-        self.assertTrue(self.hg._security_read_limiter.allow(
-            client_id="203.0.113.2", bucket="security-read",
+        self.assertTrue(self.gate._limiter.allow(
+            client_id="203.0.113.2", bucket=self.bucket,
         ))
 
 
@@ -851,19 +863,17 @@ class TestSecurityReadLimiterIntegration(unittest.TestCase):
     read once the bucket is drained."""
 
     def setUp(self) -> None:
-        from media_stack.api import handlers_get as _hg
-        self.hg = _hg
-        self.hg._security_read_limiter.reset()
+        self.gate = _build_security_read_gate()
 
     def test_429_when_bucket_exhausted_for_admin_read(self):
         # Drain the bucket for our synthetic client.
-        for _ in range(self.hg._SECURITY_READ_BUCKET_CAPACITY):
-            self.hg._security_read_limiter.allow(
-                client_id="10.10.10.10", bucket="security-read",
+        for _ in range(self.gate._DEFAULT_CAPACITY):
+            self.gate._limiter.allow(
+                client_id="10.10.10.10", bucket=self.gate._BUCKET_NAME,
             )
         # Ask once more — should be denied.
-        ok = self.hg._security_read_limiter.allow(
-            client_id="10.10.10.10", bucket="security-read",
+        ok = self.gate._limiter.allow(
+            client_id="10.10.10.10", bucket=self.gate._BUCKET_NAME,
         )
         self.assertFalse(ok)
 
@@ -934,16 +944,22 @@ class TestInternalErrorSafety(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Admin-endpoint wiring in handlers_get.py (limiter + dispatch glue)
+# Admin-endpoint wiring on api/routes/sessions_security_get.py
+# (limiter + dispatch glue — lifted from handlers_get.py)
 # ---------------------------------------------------------------------------
 
 
 class TestHandlersGetWiring(unittest.TestCase):
-    """Confirm the dispatcher in ``handlers_get.py`` routes through
-    the limiter + helper without importing it blindly."""
+    """Confirm the route module on ``sessions_security_get.py``
+    routes admin-read paths through the gate + helper without
+    importing it blindly. Mirrors the legacy
+    ``handlers_get._SECURITY_READ_PATHS`` / ``_sessviz_handler``
+    wiring after the Phase E retirement."""
 
     def test_security_read_paths_set_is_complete(self):
-        from media_stack.api import handlers_get as _hg
+        from media_stack.api.routes.sessions_security_get import (
+            _SECURITY_READ_PATHS,
+        )
         expected = {
             "/api/sessions/active",
             "/api/audit-log/head",
@@ -953,14 +969,20 @@ class TestHandlersGetWiring(unittest.TestCase):
             "/api/security/new-locations",
             "/api/security/concurrent",
         }
-        self.assertEqual(set(_hg._SECURITY_READ_PATHS), expected)
+        self.assertEqual(set(_SECURITY_READ_PATHS), expected)
 
     def test_dispatcher_singleton_present(self):
-        from media_stack.api import handlers_get as _hg
-        self.assertIsNotNone(_hg._sessviz_handler)
-        self.assertTrue(
-            hasattr(_hg._sessviz_handler, "dispatch"),
+        # The session-visibility helper is now reached via the
+        # ``_SessionsViewerAdapter`` that the route module
+        # constructs by default — verify the adapter exists and has
+        # the ``dispatch`` entry-point the legacy
+        # ``_sessviz_handler`` exposed.
+        from media_stack.api.routes.sessions_security_get import (
+            _SessionsViewerAdapter,
         )
+        adapter = _SessionsViewerAdapter()
+        self.assertIsNotNone(adapter)
+        self.assertTrue(hasattr(adapter, "dispatch"))
 
 
 if __name__ == "__main__":

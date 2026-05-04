@@ -24,12 +24,12 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api import handlers_get  # noqa: E402
+from media_stack.api.services import routing_probes  # noqa: E402
 
 
 class GatewayHostnameProbeTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.probe = handlers_get._GatewayHostnameProbe()
+        self.probe = routing_probes.GatewayHostnameProbe()
 
     def _patch_routing(self, routing: dict[str, Any], services: list[Any]) -> Any:
         # Patch the underlying functions/attrs the probe imports lazily.
@@ -86,7 +86,7 @@ class GatewayHostnameProbeTest(unittest.TestCase):
         stay removed. Their presence implies the leak path is back."""
         for attr in ("_HOST_RE", "_locate_envoy_yaml", "_looks_like_hostname"):
             self.assertFalse(
-                hasattr(self.probe, attr) or hasattr(handlers_get._GatewayHostnameProbe, attr),
+                hasattr(self.probe, attr) or hasattr(routing_probes.GatewayHostnameProbe, attr),
                 f"{attr} re-introduced — risks reintroducing the Lua/proto/JS leak.",
             )
 

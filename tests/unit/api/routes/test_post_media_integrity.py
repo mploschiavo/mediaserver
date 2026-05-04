@@ -366,7 +366,7 @@ class TestProviderDefaultPath:
     def test_actor_resolver_default_path_uses_handlers_post_resolver(
         self, monkeypatch,
     ) -> None:
-        from media_stack.api import handlers_post
+        from media_stack.api.services import actor as actor_svc
 
         captured: dict[str, Any] = {}
 
@@ -378,7 +378,7 @@ class TestProviderDefaultPath:
                 return "ACTOR"
 
         monkeypatch.setattr(
-            handlers_post, "_actor_resolver", _StubResolver(),
+            actor_svc, "_actor_resolver", _StubResolver(),
         )
         provider = _ActorResolverProvider()
         assert provider.resolve("H", {"a": 1}) == "ACTOR"
@@ -387,7 +387,9 @@ class TestProviderDefaultPath:
     def test_dispatcher_default_path_uses_handlers_post_helper(
         self, monkeypatch,
     ) -> None:
-        from media_stack.api import handlers_post
+        from media_stack.api.services import (
+            media_integrity_dispatch as mi_dispatch,
+        )
 
         captured: dict[str, Any] = {}
 
@@ -397,7 +399,7 @@ class TestProviderDefaultPath:
             captured["actor"] = actor
 
         monkeypatch.setattr(
-            handlers_post,
+            mi_dispatch,
             "_dispatch_media_integrity_via_job",
             stub_dispatch,
         )

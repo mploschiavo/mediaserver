@@ -125,50 +125,14 @@ class ConfigureAutoScanJobTests(unittest.TestCase):
             self.assertEqual(_controller_url(), "http://ctrl:9200")
 
 
-class ArrWebhookHandlerTests(unittest.TestCase):
-    """POST /webhooks/arr — event parsing and Jellyfin scan trigger."""
-
-    def _handler(self, body: dict):
-        """Build a minimal fake handler matching the expectations of handlers_post."""
-        h = MagicMock()
-        h.path = "/webhooks/arr"
-        h._read_json_body.return_value = body
-        captured: dict = {}
-
-        def _respond(status, payload):
-            captured["status"] = status
-            captured["payload"] = payload
-        h._json_response.side_effect = _respond
-        return h, captured
-
-    def test_download_event_triggers_scan(self):
-        from media_stack.api.handlers_post import PostRequestHandler
-        svc = PostRequestHandler()
-        h, captured = self._handler({"eventType": "Download",
-                                     "movie": {"title": "Dune"}})
-        with patch(
-            "media_stack.api.services.health.discover_api_keys",
-            return_value={"jellyfin": "jf-key"},
-        ), patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
-            {"jellyfin": SimpleNamespace(host="jellyfin", port=8096)},
-        ), patch("urllib.request.urlopen") as mock_open:
-            svc.handle(h)
-        self.assertEqual(captured["status"], 200)
-        self.assertEqual(captured["payload"]["event"], "Download")
-        mock_open.assert_called_once()
-        call_req = mock_open.call_args[0][0]
-        self.assertIn("/Library/Refresh", call_req.full_url)
-
-    def test_unrelated_event_skips_scan(self):
-        from media_stack.api.handlers_post import PostRequestHandler
-        svc = PostRequestHandler()
-        h, captured = self._handler({"eventType": "Test",
-                                     "series": {"title": "x"}})
-        with patch("urllib.request.urlopen") as mock_open:
-            svc.handle(h)
-        self.assertEqual(captured["status"], 200)
-        mock_open.assert_not_called()
+# The legacy ``ArrWebhookHandlerTests`` block exercised
+# ``handlers_post.PostRequestHandler.handle()`` directly and was
+# retired with that module in ADR-0007 Phase 2 Phase E. Equivalent
+# coverage of POST ``/webhooks/arr`` (Download-event-triggers-scan +
+# unrelated-event-skips-scan) lives at
+# ``tests/unit/api/routes/test_webhooks_and_deferred.py``
+# (``TestWebhooksArrPost`` / ``handle_webhooks_arr``) and is driven
+# through ``RouteDispatchHarness`` against the lifted route module.
 
 
 if __name__ == "__main__":
