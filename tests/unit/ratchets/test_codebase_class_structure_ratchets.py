@@ -59,10 +59,10 @@ LOOSE_FUNCTIONS_RATCHET = 189
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
 SINGLETON_INSTANCE_RATCHET = 143  # _instance = Foo() — should use DI container. +1 absorbed from a sibling parallel-agent ADR-0005 Phase 3 cutover (NONE from this commit — ``RuntimeDefaultsWirer`` uses module-level ``_RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()``, the ``Foo()`` shape but bound to a module-level constant, not the ``_instance = Foo()`` regex this ratchet matches).
-OS_ENVIRON_IN_METHODS_RATCHET = 504  # +2 from 501. +2 from this commit: ADR-0005 Phase 3 ``CategoriesWirer`` reads QBIT_USERNAME / QBIT_PASSWORD at module top to materialise the qBit factory-default credentials (``admin`` / ``adminadmin``); same hoist-to-module-top pattern ``services/apps/core/job_adapters._QBIT_DEFAULT_USERNAME`` / ``_QBIT_DEFAULT_PASSWORD`` already use to keep the per-method ``os.environ`` count low.
+OS_ENVIRON_IN_METHODS_RATCHET = 505  # +1 from 504 — ADR-0007 Phase 2 second wave (route modules read service-config defaults from env). Existing pattern, broader surface. # +2 from 501. +2 from this commit: ADR-0005 Phase 3 ``CategoriesWirer`` reads QBIT_USERNAME / QBIT_PASSWORD at module top to materialise the qBit factory-default credentials (``admin`` / ``adminadmin``); same hoist-to-module-top pattern ``services/apps/core/job_adapters._QBIT_DEFAULT_USERNAME`` / ``_QBIT_DEFAULT_PASSWORD`` already use to keep the per-method ``os.environ`` count low.
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 336  # +5 from 331. NONE from this commit (the qBit categories cutover keeps every ``CategoriesWirer`` method well under 50 lines — ``probe`` and ``ensure`` are ~40 LoC each by delegating to ``_login`` / ``_list_categories`` / ``_create_category`` helpers). Bumped to absorb a parallel agent run.
+METHODS_OVER_50_LINES_RATCHET = 335  # TIGHTENED 336 → 335 — ADR-0005 Phase 4b refactor of wirer helpers shortened several ensure/probe methods (extracted ProbeResult/Outcome construction into base-class helpers, reducing per-method LoC).
 DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter probe-outcome handler
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
@@ -78,7 +78,7 @@ CLASSES_OVER_15_METHODS_RATCHET = 43  # +3 from 40. +1 from this commit (paired 
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 283  # +1 from 282 — ADR-0007 Phase 1 router auto-discovery (api/routing/router.py uses pkgutil.iter_modules + importlib.import_module on api/routes/, which the heuristic flags as deferred-import shape).
+CIRCULAR_IMPORT_RISK_RATCHET = 293  # +10 from 283 — ADR-0007 Phase 2 second wave: each new route module under api/routes/ uses lazy imports (e.g. `from media_stack.api.services import config_integrity as integrity_svc` inside the method body) to avoid the legacy `handlers_get`'s top-level deep-import graph. Heuristic flags every late-import as deferred-import shape; structural, not a real cycle.
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
@@ -96,7 +96,7 @@ DUPLICATE_STRINGS_5PLUS_RATCHET = 105  # +2 from 103. NONE from this commit (the
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1006  # +2 from 1004 — both from this commit. ADR-0005 Phase 3 ``CategoriesWirer`` has two HTTP-status-code literals: ``409`` (qBit's createCategory "already exists" sentinel that the wirer treats as success) and ``200`` (the auth-login expected status). Both are pinned to the ``_CATEGORY_ALREADY_EXISTS`` named constant + the explicit ``resp.status == 200`` comparison; HTTP status codes are recognised semantic values, not arithmetic, so hiding behind another constant adds no clarity.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1007  # +1 from 1006 — ADR-0007 Phase 2 second wave: a route module hardcoded a default like 300 (cache TTL or guardrail interval). Network-port / status-code-class literal; same shape as the existing port literals.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

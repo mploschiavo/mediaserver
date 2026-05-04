@@ -105,30 +105,30 @@ class SeedSeriesWirer(LifecycleWirerBase):
         ctx: OrchestrationContext,
     ) -> ProbeResult:
         if service_id != self._supported_service_id:
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"{service_id} doesn't carry a seed-series promise",
                 evidence={"reason": "unsupported_service"},
-                evaluated_at=ctx.now(),
             )
         url = self._series_endpoint(service_id, ctx)
         if not url:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no host/port in config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         if not arr_api_key:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no sonarr api key — cannot probe",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         existing = self._list_series(url, arr_api_key)
         if existing is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not list series at {url}",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         return self._classify_probe_result(existing, url, ctx)
 
@@ -159,14 +159,12 @@ class SeedSeriesWirer(LifecycleWirerBase):
         existing-series GET burst when nothing needs to change.
         """
         if service_id != self._supported_service_id:
-            return Outcome.success(
-                None,
+            return self._outcome_success(
                 evidence={"reason": "unsupported_service"},
             )
         probe = self.probe(service_id, arr_api_key, ctx)
         if probe.is_ok and probe.evidence.get("reason") != "unsupported_service":
-            return Outcome.success(
-                None,
+            return self._outcome_success(
                 evidence={
                     "reason": "already_configured",
                     "series_count": probe.evidence.get("series_count"),
@@ -175,21 +173,18 @@ class SeedSeriesWirer(LifecycleWirerBase):
         try:
             job_ctx = job_context_factory()
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"could not build JobContext: {exc}",
-                transient=True,
                 evidence={"error": str(exc), "service_id": service_id},
             )
         try:
             result = configure_handler(job_ctx)
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"ensure_sonarr_seed_series raised: {exc}",
-                transient=True,
                 evidence={"error": str(exc), "service_id": service_id},
             )
-        return Outcome.success(
-            None,
+        return self._outcome_success(
             evidence={
                 "result": result if isinstance(result, dict) else None,
                 "service_id": service_id,
@@ -244,23 +239,23 @@ class SeedSeriesWirer(LifecycleWirerBase):
     ) -> ProbeResult:
         count = len(existing)
         if count >= self._ok_threshold:
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"{count} series configured (>= {self._ok_threshold})",
                 evidence={
                     "url": url,
                     "series_count": count,
                     "threshold": self._ok_threshold,
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.failed(
+        return self._probe_failed(
+            ctx,
             f"{count} series at {url} (< {self._ok_threshold})",
             evidence={
                 "url": url,
                 "series_count": count,
                 "threshold": self._ok_threshold,
             },
-            evaluated_at=ctx.now(),
         )
 
 

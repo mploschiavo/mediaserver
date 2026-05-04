@@ -52,7 +52,6 @@ on the follow-up ``createCategory`` POSTs.
 from __future__ import annotations
 
 import http.cookiejar
-import logging
 import os
 import urllib.error
 import urllib.parse
@@ -72,9 +71,6 @@ from media_stack.infrastructure.qbittorrent import (
     QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
     QBITTORRENT_FACTORY_DEFAULT_USERNAME,
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 # --- HTTP timing -----------------------------------------------------
@@ -184,86 +180,82 @@ class CategoriesWirer(LifecycleWirerBase):
         """
         base = self._base_url(ctx)
         if not base:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no host/port in qBittorrent config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         creds = self._discover_credentials(ctx)
         if creds is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no qBittorrent credentials in env/secrets/config — "
                 f"cannot probe (operator must set {_QBIT_PASSWORD_ENV})",
                 evidence={"url": base},
-                evaluated_at=ctx.now(),
             )
         opener = self._build_opener()
         login_err = self._login(opener, base, creds)
         if login_err is not None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"qBittorrent login failed: {login_err}",
                 evidence={"url": base, "username": creds[0]},
-                evaluated_at=ctx.now(),
             )
         existing = self._list_categories(opener, base)
         if existing is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not list qBittorrent categories at {base}",
                 evidence={"url": base},
-                evaluated_at=ctx.now(),
             )
         missing = [c for c in self._desired if c not in existing]
         if missing:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"qBittorrent missing categories: {sorted(missing)}",
                 evidence={
                     "url": base,
                     "missing": sorted(missing),
                     "present": sorted(existing.keys()),
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.ok(
+        return self._probe_ok(
+            ctx,
             f"qBittorrent has all {len(self._desired)} desired categories",
             evidence={
                 "url": base,
                 "present": sorted(existing.keys()),
             },
-            evaluated_at=ctx.now(),
         )
 
     def ensure(self, ctx: OrchestrationContext) -> Outcome[None]:
         """Create any missing desired categories. Idempotent."""
         base = self._base_url(ctx)
         if not base:
-            return Outcome.failure(
+            return self._outcome_permanent(
                 "no host/port in qBittorrent config — cannot ensure",
-                transient=False,
                 evidence={"config_keys": sorted(ctx.config.keys())},
             )
         creds = self._discover_credentials(ctx)
         if creds is None:
-            return Outcome.failure(
+            return self._outcome_transient(
                 "no qBittorrent credentials in env/secrets/config — "
                 f"orchestrator will retry after {_QBIT_PASSWORD_ENV} is "
                 "set; the legacy handler logged-and-OK'd this same "
                 "shape (see ADR-0003 silent-error-as-ok bug class).",
-                transient=True,
                 evidence={"url": base},
             )
         opener = self._build_opener()
         login_err = self._login(opener, base, creds)
         if login_err is not None:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"qBittorrent login failed: {login_err}",
-                transient=True,
                 evidence={"url": base, "username": creds[0]},
             )
         existing = self._list_categories(opener, base)
         if existing is None:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"could not list existing qBittorrent categories at {base}",
-                transient=True,
                 evidence={"url": base},
             )
         created: list[str] = []
@@ -278,19 +270,22 @@ class CategoriesWirer(LifecycleWirerBase):
                 continue
             # err is a (transient, message, evidence_extra) triple
             transient, message, extra = err
-            return Outcome.failure(
-                f"qBittorrent createCategory({cat}): {message}",
-                transient=transient,
-                evidence={
-                    "url": base,
-                    "category": cat,
-                    "created": created,
-                    "skipped": skipped,
-                    **extra,
-                },
+            evidence = {
+                "url": base,
+                "category": cat,
+                "created": created,
+                "skipped": skipped,
+                **extra,
+            }
+            failure_message = f"qBittorrent createCategory({cat}): {message}"
+            if transient:
+                return self._outcome_transient(
+                    failure_message, evidence=evidence,
+                )
+            return self._outcome_permanent(
+                failure_message, evidence=evidence,
             )
-        return Outcome.success(
-            None,
+        return self._outcome_success(
             evidence={
                 "url": base,
                 "created": created,
