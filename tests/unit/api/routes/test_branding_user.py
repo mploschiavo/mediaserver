@@ -386,13 +386,25 @@ class TestRoutingIntegration:
         # NO_MATCH so the legacy POST chain handles it.
         assert outcome == DispatchOutcome.NO_MATCH
 
-    def test_post_to_discovery_lists_falls_through(self) -> None:
-        # Same shape — POST exists in the spec for discovery-lists
-        # but the GET-only route module doesn't register it.
-        from media_stack.api.routing import DispatchOutcome
+    def test_post_to_discovery_lists_now_handled_by_router(
+        self,
+    ) -> None:
+        # ADR-0007 Phase 2 wave 5 migrated POST /api/discovery-lists +
+        # POST /api/display-preferences off the legacy chain into
+        # routes/post_config_writes.py. The wave-3/4 boundary
+        # (POST falls through to handlers_post) has shifted — the
+        # Router now knows about both POST registrations. Asserting
+        # the path appears in the route registry (rather than
+        # dispatching) is the right boundary check for this GET-side
+        # test module: it pins the migration without coupling to
+        # wave-5's POST handler internals (_read_json_body etc.).
         harness = RouteDispatchHarness.with_default_router()
-        outcome, _ = harness.try_dispatch("POST", "/api/discovery-lists")
-        assert outcome == DispatchOutcome.NO_MATCH
+        registered = {
+            (r.verb, r.path)
+            for r in harness._dispatcher._router.registered_routes()
+        }
+        assert ("POST", "/api/discovery-lists") in registered
+        assert ("POST", "/api/display-preferences") in registered
 
     def test_delete_to_onboarding_returns_method_not_allowed(
         self,

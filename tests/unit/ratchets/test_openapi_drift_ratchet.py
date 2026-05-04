@@ -73,11 +73,9 @@ _HANDLER_ONLY_ALLOWLIST: frozenset[str] = frozenset({
     # response schemas; allowlisted here so the ratchet stays green
     # while the spec catches up.
     "/api/audit-log/stats",         # auth backlog admin counters
-    "/api/auth/oidc/probe",         # connectivity probe (auth admin)
     "/api/bazarr/subtitle-config",  # bazarr admin proxy
     "/api/bazarr/subtitle-languages",
     "/api/livetv-sources/probe",    # LiveTV connectivity probe
-    "/api/me/change-password",      # user-facing — TODO spec
     "/api/orchestrator/promises/state",  # ADR-0003 promise state
     "/api/routing/effective",       # routing diagnostics
     "/api/routing/preview",

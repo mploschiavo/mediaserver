@@ -557,22 +557,31 @@ class TestRoutingIntegration:
             f"Missing routing-admin routes: {expected - registered}"
         )
 
-    def test_post_to_routing_get_path_returns_method_not_allowed(
+    def test_post_to_routing_get_path_dispatched_by_router(
         self,
     ) -> None:
-        """``POST /api/routing`` is still served by the legacy
-        handlers_post chain (PR-5 mutation lands separately); the
-        Router only registers the GET, so a POST against this path
-        falls through to METHOD_NOT_ALLOWED in the harness which
-        only sees GET-tagged registrations.
+        """ADR-0007 Phase 2 wave 5 migrated the ``POST /api/routing``
+        + ``POST /api/routing/v2`` paths into
+        ``routes/post_config_writes.py``. The Router now knows about
+        those POSTs alongside the wave-4 GETs, so a POST hits the
+        Router's registration (the dispatch outcome is no longer
+        ``METHOD_NOT_ALLOWED`` here).
+
+        The body of the wave-5 POST handler reads
+        ``handler._read_json_body`` — not on the GET-side
+        ``MockControllerHandler``. Asserting that the path is
+        registered (rather than dispatching) is the right boundary
+        check for this wave-4 test module: it confirms the path has
+        moved off ``handlers_post`` without coupling this test to
+        wave-5's POST handler internals.
         """
         harness = RouteDispatchHarness.with_default_router()
-        # The harness's dispatcher only knows about GET registrations
-        # for this path — POST is handled by handlers_post in
-        # production but isn't registered on the Router yet, so the
-        # outcome is METHOD_NOT_ALLOWED.
-        outcome, _ = harness.try_dispatch("POST", "/api/routing/v2")
-        assert outcome == DispatchOutcome.METHOD_NOT_ALLOWED
+        registered = {
+            (r.verb, r.path)
+            for r in harness._dispatcher._router.registered_routes()
+        }
+        assert ("POST", "/api/routing") in registered
+        assert ("POST", "/api/routing/v2") in registered
 
     def test_unregistered_subpath_returns_no_match(self) -> None:
         """Sanity check: a sibling path under ``/api/routing/`` that

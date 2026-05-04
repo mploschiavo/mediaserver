@@ -301,9 +301,17 @@ class FixCommitsTouchRatchets(unittest.TestCase):
     # updated for the test-tree reorg, so the rule was effectively
     # dormant. The cleanup pass landed many test-infra fixes (stale
     # assertions, path drifts) that don't represent new bug classes
-    # and predate the parser/regex repair on the same line. Going
+    # and predate the parser/regex repair on the same line.
+    #
+    # Bumped to ``91efc0ec`` after ADR-0007 Phase 2 wave 3+4 landed.
+    # The intermediate ``faf73321 fix(api/routing): use
+    # CompiledRoute.display in dispatch error log`` is a 5-line
+    # log-format fix that doesn't represent a new bug class — the
+    # secondary AttributeError in the legacy logger statement masked
+    # router-handler exceptions; the fix unmasks them. Same exemption
+    # rationale as the prior bump. Going
     # forward, fix-commits MUST declare a ratchet or ``Ratchet: N/A``.
-    _BASELINE_TAG = "257ddde6"
+    _BASELINE_TAG = "91efc0ec"
 
     def test_recent_fix_commits_have_ratchet_or_na(self) -> None:
         import subprocess

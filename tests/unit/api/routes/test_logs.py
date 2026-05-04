@@ -107,17 +107,22 @@ class TestLogLevelRoute:
         assert json.loads(response.body) == {"level": "DEBUG"}
 
     def test_post_returns_method_not_allowed(self) -> None:
-        """The spec declares both GET and POST for /api/log-level
-        but only the GET is registered with the new router; the POST
-        falls through to the legacy chain. Until the POST migrates,
-        the dispatcher reports NO_MATCH (so the legacy POST handler
-        can take it) — NOT METHOD_NOT_ALLOWED."""
-        from media_stack.api.routing import DispatchOutcome
+        """ADR-0007 Phase 2 wave 5 migrated POST /api/log-level
+        from handlers_post.py into post_admin_ops.py. The router now
+        knows about this POST endpoint. Check route registration rather
+        than dispatching to avoid invoking handler methods that need
+        _read_json_body on the test mock."""
         harness = RouteDispatchHarness.with_default_router()
-        outcome, _ = harness.try_dispatch("POST", "/api/log-level")
-        # Spec says POST is allowed, so the new dispatcher returns
-        # NO_MATCH (fall-through to legacy) rather than 405.
-        assert outcome == DispatchOutcome.NO_MATCH
+        # POST /api/log-level is now registered as part of wave 5.
+        # AdminOpsPostRoutes.handle_log_level handles it via post_admin_ops.py.
+        registered = {
+            (r.verb, r.path)
+            for r in harness._dispatcher._router.registered_routes()
+        }
+        assert ("POST", "/api/log-level") in registered, (
+            "POST /api/log-level should be registered in router "
+            "(wave 5 AdminOpsPostRoutes)"
+        )
 
 
 class TestLogsRingBufferRoute:

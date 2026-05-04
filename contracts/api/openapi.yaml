@@ -2809,6 +2809,50 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
 
+  /api/guardrails/config:
+    post:
+      operationId: setGuardrailsEvaluationCadence
+      tags: [Guardrails]
+      summary: Set the cross-domain guardrail evaluation cadence
+      description: |
+        Operator override for how often the cross-domain guardrail
+        evaluation loop runs. Persists for the controller process'
+        lifetime via ``MEDIA_STACK_GUARDRAIL_INTERVAL_SECONDS``.
+        Floor 30s, ceiling 86400s (24h).
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [evaluation_interval_seconds]
+              properties:
+                evaluation_interval_seconds:
+                  type: integer
+                  minimum: 30
+                  maximum: 86400
+            example:
+              evaluation_interval_seconds: 300
+      responses:
+        "200":
+          description: New cadence accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evaluation_interval_seconds:
+                    type: integer
+              example:
+                evaluation_interval_seconds: 300
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
   # =========================================================================
   # Routing
   # =========================================================================
@@ -3022,6 +3066,78 @@ paths:
                       additionalProperties: true
         "500":
           description: Migration / validation pipeline failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+    post:
+      operationId: updateRoutingV2
+      tags: [Routing]
+      summary: Apply a partial v2 routing-config update
+      description: |
+        Accepts a partial ``RoutingConfigV2`` dict; deep-merges with the
+        current config (read via ``migrate_v1_to_v2``), validates against
+        the active service registry, and persists. v2-only fields
+        (``hosts``, ``path_aliases``, ``apex``, ``catch_all``,
+        ``defaults``, ``exposure``, ``certs``) write directly to the
+        overrides file; v1-compat fields (``gateway_host``, ``strategy``,
+        etc.) also flow through ``update_routing`` so the legacy Envoy
+        generator picks them up.
+
+        Returns 422 with a ``validation`` array when any VR-* rule
+        fails; the overrides file is NOT written in that case.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Update applied
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  config:
+                    type: object
+                    additionalProperties: true
+                  v1_legacy_result:
+                    type: object
+                    additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [validation_failed]
+                  validation:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "500":
+          description: Pipeline drift
           content:
             application/json:
               schema:
@@ -4532,6 +4648,77 @@ paths:
                 type: string
               example: 'attachment; filename="media-stack-backup-20260407-143022.json"'
 
+  /api/bazarr/subtitle-languages:
+    post:
+      operationId: updateBazarrSubtitleLanguages
+      tags: [Config]
+      summary: Overwrite the language list on a Bazarr profile
+      description: |
+        Overwrites the language list on the given Bazarr language profile.
+        The simple home-use case is "I want English + Spanish subs"; the
+        body is mapped into Bazarr's items array (one per language) with
+        sensible defaults (``forced=false``, ``hi=false``). Operators
+        wanting per-language flags use Bazarr's UI directly.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile_id, language_codes]
+              properties:
+                profile_id:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                language_codes:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                forced:
+                  type: boolean
+                  default: false
+                hi:
+                  type: boolean
+                  default: false
+            example:
+              profile_id: 1
+              language_codes: [en, es]
+              forced: false
+              hi: false
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "502":
+          description: Bazarr proxy returned an error
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "500":
+          description: Proxy call failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
   /api/sw-config:
     get:
       operationId: getServiceWorkerConfig
@@ -5731,6 +5918,55 @@ paths:
         "400":
           $ref: '#/components/responses/BadRequest'
 
+  /api/auth/oidc/probe:
+    post:
+      operationId: probeOidcDiscovery
+      tags: [Auth]
+      summary: Server-side fetch of an OIDC discovery document
+      description: |
+        Server-side fetch of an OIDC ``.well-known/openid-configuration``
+        document. The browser-side fetch hits CORS / rate limits with
+        major IdPs (Google in particular CORS-blocks third-party reads);
+        the controller probe does it server-side so the form auto-
+        populates without those constraints.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                discovery_url:
+                  type: string
+                  description: |
+                    Absolute http(s) URL pointing at the IdP's discovery
+                    document — typically ends in
+                    ``/.well-known/openid-configuration``.
+              required: [discovery_url]
+            example:
+              discovery_url: "https://accounts.google.com/.well-known/openid-configuration"
+      responses:
+        "200":
+          description: Parsed discovery summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                ok: true
+                summary:
+                  issuer: "https://accounts.google.com"
+                  authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth"
+                  token_endpoint: "https://oauth2.googleapis.com/token"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "502":
+          description: Upstream IdP unreachable / returned a non-JSON document.
+
   /api/auth/service-policies:
     get:
       operationId: getServiceAuthPolicies
@@ -5820,6 +6056,55 @@ paths:
                 source: env-legacy
                 last_login_at: ""
                 needs_rotation: true
+
+  /api/me/change-password:
+    post:
+      operationId: changeMyPassword
+      tags: [Me]
+      summary: Self-service password change
+      description: |
+        Verify ``current_password`` against the controller user store
+        and, on success, hand off to the same ``user_write_service``
+        method admins use for ``/api/users/{user_id}/reset-password``
+        — which propagates the new password to Authelia synchronously
+        and to downstream service admins (Sonarr / Radarr / qBittorrent)
+        in the background. Errors are intentionally generic — never
+        leak whether the username was unknown or only the old password
+        was wrong.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                current_password:
+                  type: string
+                  description: Operator's current password — re-auth proof.
+                new_password:
+                  type: string
+                  description: New password (>= 8 chars, distinct from current).
+              required: [current_password, new_password]
+            example:
+              current_password: "***"
+              new_password: "***"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: current_password did not verify.
 
   /api/me/mfa-state:
     get:
@@ -5961,6 +6246,45 @@ paths:
                       additionalProperties: true
               example:
                 tokens: []
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/me/login-history:
+    get:
+      operationId: getMyLoginHistory
+      tags: [Me]
+      summary: Caller's own login history (first-seen IPs, impossible-travel signal)
+      x-status: planned
+      x-target-release: v1.x-session-visibility
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 100
+      responses:
+        "200":
+          description: Login history entries scoped to the caller
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              example:
+                entries: []
+        "400":
+          $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
 
@@ -7362,6 +7686,36 @@ paths:
                 ts: "2026-04-25T08:59:41+00:00"
         "401":
           $ref: '#/components/responses/Unauthorized'
+
+  /api/audit-log/stats:
+    get:
+      operationId: getAuditLogStats
+      tags: [AuditLog]
+      summary: Audit-log retention stats — entry count, disk bytes, oldest/newest, archive count, rotation policy
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Retention stats
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              example:
+                entry_count: 14238
+                disk_bytes: 5242880
+                oldest_at: "2026-03-01T00:00:00+00:00"
+                newest_at: "2026-04-25T08:59:41+00:00"
+                archive_count: 3
+                rotation_policy:
+                  max_bytes: 10485760
+                  max_archives: 5
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Stats read raised (filesystem error)
 
   /api/audit-log/verify:
     get:

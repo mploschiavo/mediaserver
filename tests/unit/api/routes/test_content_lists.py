@@ -469,22 +469,27 @@ class TestRoutingIntegration:
         assert "/api/quality-profiles" in registered
         assert "/api/quality-profiles/{service}" in registered
 
-    def test_post_to_libraries_falls_through_to_legacy_chain(
+    def test_post_to_libraries_now_handled_by_router(
         self,
     ) -> None:
-        """``/api/libraries`` has a POST counterpart in the
-        OpenAPI spec, but Phase 2 wave 4 only migrates the GET.
-        POST is a spec-declared verb, so the Router returns
-        ``NO_MATCH`` (NOT 405) so the legacy ``handlers_post``
-        chain can serve it. This guards the migration boundary —
-        if we accidentally start advertising POST as 405,
-        anything trying to update libraries breaks.
-        """
-        from media_stack.api.routing import DispatchOutcome
+        """ADR-0007 Phase 2 wave 5 migrated the ``POST /api/libraries``
+        path into ``routes/post_config_writes.py``. The wave-4 boundary
+        (POST falls through to the legacy chain) has shifted — the
+        Router now knows about the POST registration alongside the GET.
 
+        Asserting that the path appears in the route registry (rather
+        than dispatching) is the right boundary check for this wave-4
+        test module: it confirms the POST has moved off
+        ``handlers_post`` without coupling this test to wave-5's POST
+        handler internals (which read ``handler._read_json_body``,
+        not on the wave-4 ``MockControllerHandler`` surface).
+        """
         harness = RouteDispatchHarness.with_default_router()
-        outcome, _ = harness.try_dispatch("POST", "/api/libraries")
-        assert outcome == DispatchOutcome.NO_MATCH
+        registered = {
+            (r.verb, r.path)
+            for r in harness._dispatcher._router.registered_routes()
+        }
+        assert ("POST", "/api/libraries") in registered
 
     def test_unsupported_verb_on_recent_returns_method_not_allowed(
         self,
