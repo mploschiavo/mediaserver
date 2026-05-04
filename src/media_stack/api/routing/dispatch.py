@@ -76,9 +76,8 @@ class RouterDispatcher:
                 match.route.handler(handler, **match.params)
             except Exception:
                 logger.exception(
-                    "Router-dispatched handler raised: %s %s -> "
-                    "%s.%s",
-                    verb, path, match.route.module, match.route.qualname,
+                    "Router-dispatched handler raised: %s %s -> %s",
+                    verb, path, match.route.display,
                 )
                 raise
             return DispatchOutcome.HANDLED
