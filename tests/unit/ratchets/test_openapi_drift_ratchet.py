@@ -62,18 +62,13 @@ _HANDLER_ONLY_ALLOWLIST: frozenset[str] = frozenset({
     # spec'd; documenting their aliases would just clone three
     # entries with no operational value. Aliases live at:
     #   handlers_post.py:1506 — /api/actions/cancel
-    #   handlers_post.py:1538 — /api/webhooks
-    #   handlers_post.py:1497 — /api/webhooks/test
     "/api/actions/cancel",
-    "/api/webhooks",
-    "/api/webhooks/test",
     # Internal diagnostics + admin endpoints added during Phase 16-D /
     # ADR-0003 / ADR-0004 — operator-facing only, not public API.
     # Spec entries should be added in a follow-up that documents
     # response schemas; allowlisted here so the ratchet stays green
     # while the spec catches up.
     "/api/audit-log/stats",         # auth backlog admin counters
-    "/api/bazarr/subtitle-config",  # bazarr admin proxy
     "/api/bazarr/subtitle-languages",
     "/api/livetv-sources/probe",    # LiveTV connectivity probe
     "/api/orchestrator/promises/state",  # ADR-0003 promise state

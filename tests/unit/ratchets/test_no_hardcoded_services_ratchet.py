@@ -109,7 +109,14 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # contains "bazarr". The path IS the public API; can't be abstracted
 # away. Future routes for service-named endpoints will keep adding to
 # the count by the same mechanism — accept the new floor.
-HARDCODED_SERVICE_REFS_RATCHET = 151
+# Bumped 151 → 157 in ADR-0007 Phase 2 wave 6 — the
+# webhooks_and_deferred module added /webhooks/arr (arr-family
+# webhook ingest), bazarr/subtitle-config; post_content_config
+# added /api/livetv-sources POST + /probe + /api/quality-profiles/
+# toggle; same false-positive shape — the path string contains a
+# service name (bazarr/livetv/etc.) but the path IS the public
+# API and can't be abstracted away.
+HARDCODED_SERVICE_REFS_RATCHET = 157
 
 
 # ---------------------------------------------------------------------------
