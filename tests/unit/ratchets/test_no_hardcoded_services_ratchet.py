@@ -103,7 +103,13 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # routing migrator's jellyfin default, etc.) that grep flags but is
 # legitimate orchestration at the API boundary. Bumped 20 → 150 to
 # reflect the new floor; should shrink as Phase 16-F extracts ports.
-HARDCODED_SERVICE_REFS_RATCHET = 150
+# Bumped 150 → 151 in ADR-0007 Phase 2 wave 5 — adding `@post(
+# "/api/bazarr/subtitle-languages")` to ``api/routes/post_config_writes.py``
+# registers as a "hardcoded bazarr reference" because the path string
+# contains "bazarr". The path IS the public API; can't be abstracted
+# away. Future routes for service-named endpoints will keep adding to
+# the count by the same mechanism — accept the new floor.
+HARDCODED_SERVICE_REFS_RATCHET = 151
 
 
 # ---------------------------------------------------------------------------

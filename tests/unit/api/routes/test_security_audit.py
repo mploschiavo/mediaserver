@@ -473,20 +473,25 @@ class TestRoutingIntegration:
     def test_post_to_credentials_returns_method_not_allowed_for_router(
         self,
     ) -> None:
-        """POST ``/api/credentials`` exists in the OpenAPI spec
-        (``revalidateCredentials``) but is NOT in the ADR-0007
-        Phase 2 wave 4 migration scope — so the router has only
-        the GET registered, and a POST should yield NO_MATCH (not
-        METHOD_NOT_ALLOWED) so the legacy chain can pick it up.
+        """ADR-0007 Phase 2 wave 5 migrated POST /api/credentials
+        (``revalidateCredentials``) from the legacy chain into
+        post_security_tls.py. The router now registers this endpoint.
+        Check route registration rather than dispatching to avoid
+        invoking handler methods that need _read_json_body on the test mock.
         """
-        from media_stack.api.routing import DispatchOutcome
         harness = RouteDispatchHarness.with_default_router()
-        outcome, _ = harness.try_dispatch("POST", "/api/credentials")
-        # Either NO_MATCH (legacy chain still owns POST) OR
-        # METHOD_NOT_ALLOWED (router is method-strict). Both are
-        # acceptable for the GET migration; we just assert it's
-        # not silently HANDLED'd by the router.
-        assert outcome != DispatchOutcome.HANDLED
+        # POST /api/credentials is now registered as part of wave 5.
+        # SecurityTlsPostRoutes.handle_revalidate_credentials handles it.
+        # Check route registration rather than dispatching to avoid
+        # invoking wave-5 handler methods that need _read_json_body.
+        registered = {
+            (r.verb, r.path)
+            for r in harness._dispatcher._router.registered_routes()
+        }
+        assert ("POST", "/api/credentials") in registered, (
+            "POST /api/credentials should be registered in router "
+            "(wave 5 SecurityTlsPostRoutes)"
+        )
 
     def test_post_to_audit_log_verify_returns_method_not_allowed(
         self,

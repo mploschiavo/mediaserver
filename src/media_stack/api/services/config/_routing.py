@@ -21,6 +21,20 @@ class RoutingConfigService:
     def __init__(self, profile: ProfileService):
         self._profile = profile
 
+    def overrides_path(self) -> Path:
+        """Resolve ``${CONFIG_ROOT}/.controller/routing-overrides.yaml``.
+
+        Centralised so the env-read happens in one place rather
+        than scattered across multiple methods (and external
+        writers like ``api/routes/post_config_writes.py``'s v2
+        overrides Command). Callers ``mkdir(parents=True,
+        exist_ok=True)`` on the parent before writing.
+        """
+        return (
+            Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+            / ".controller" / "routing-overrides.yaml"
+        )
+
     def get_profile(self) -> dict[str, Any]:
         """Read and return the profile YAML (slim — app config sections stripped)."""
         profile_data, path = self._profile.load()
@@ -58,8 +72,7 @@ class RoutingConfigService:
                 routing = dict(profile.get("routing") or {})
             except Exception as exc:
                 log_swallowed(exc)
-        config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
-        overrides_path = config_root / ".controller" / "routing-overrides.yaml"
+        overrides_path = self.overrides_path()
         if overrides_path.is_file():
             try:
                 overrides = yaml.safe_load(overrides_path.read_text(encoding="utf-8")) or {}
@@ -137,8 +150,7 @@ class RoutingConfigService:
                         changed.append("base_domain")
             if not changed:
                 return {"status": "no_changes", "routing": routing}
-            config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
-            overrides_path = config_root / ".controller" / "routing-overrides.yaml"
+            overrides_path = self.overrides_path()
             overrides_path.parent.mkdir(parents=True, exist_ok=True)
             with open(overrides_path, "w") as f:
                 yaml.dump({"routing": routing}, f, default_flow_style=False, sort_keys=False)

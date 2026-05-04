@@ -85,6 +85,24 @@ class MockControllerHandler:
         self.captured.status = 200
         self.captured.content_type = "text/event-stream"
 
+    def _read_json_body(self) -> dict[str, Any]:
+        """Parse ``self.rfile`` as JSON. Mirrors the production
+        ``ControllerAPIHandler._read_json_body`` so POST route
+        tests dispatching through the global Router fixture (cross-
+        wave integration tests) get a consistent shape. Empty body
+        or malformed JSON returns ``{}``."""
+        import json as _json
+        try:
+            data = self.rfile.read()
+        except Exception:  # noqa: BLE001 — test stub; never re-raise
+            return {}
+        if not data:
+            return {}
+        try:
+            return _json.loads(data)
+        except (_json.JSONDecodeError, ValueError):
+            return {}
+
 
 class _MockState:
     """Minimal stand-in for ``ControllerState`` used by handlers
