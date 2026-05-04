@@ -177,21 +177,21 @@ class BazarrConfigWirer(LifecycleWirerBase):
             return ok_or_unknown
         body = self._http_get_json(f"{url}{_PROFILES_PATH}", api_key or "")
         if body is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not list profiles at {url}{_PROFILES_PATH}",
                 evidence={"url": f"{url}{_PROFILES_PATH}"},
-                evaluated_at=ctx.now(),
             )
         if isinstance(body, list) and body:
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"language profile present (count={len(body)})",
                 evidence={"profile_count": len(body)},
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.failed(
+        return self._probe_failed(
+            ctx,
             "no language profile configured",
             evidence={"profile_count": 0},
-            evaluated_at=ctx.now(),
         )
 
     def probe_default_profile_toggles(
@@ -229,32 +229,32 @@ class BazarrConfigWirer(LifecycleWirerBase):
     ) -> ProbeResult:
         path = self._plugin_xml_path(ctx)
         if not path.is_file():
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"plugin XML not present at {path}",
                 evidence={"path": str(path)},
-                evaluated_at=ctx.now(),
             )
         try:
             data = path.read_text(encoding="utf-8")
         except OSError as exc:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"plugin XML unreadable: {exc}",
                 evidence={"path": str(path), "error": str(exc)},
-                evaluated_at=ctx.now(),
             )
         if "<BazarrUrl>http://bazarr:6767</BazarrUrl>" in data and (
             "<BazarrApiKey>" in data
             and "<BazarrApiKey></BazarrApiKey>" not in data
         ):
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 "plugin XML has expected URL + non-empty api key",
                 evidence={"path": str(path)},
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.failed(
+        return self._probe_failed(
+            ctx,
             "plugin XML missing expected URL or api-key tag",
             evidence={"path": str(path)},
-            evaluated_at=ctx.now(),
         )
 
     # === Ensurer =======================================================
@@ -277,9 +277,8 @@ class BazarrConfigWirer(LifecycleWirerBase):
         assert api_key
         existing = self._http_get_json(f"{url}{_PROFILES_PATH}", api_key)
         if existing is None:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"profile list failed at {url}{_PROFILES_PATH}",
-                transient=True,
                 evidence={"url": f"{url}{_PROFILES_PATH}"},
             )
         profile_id, profile_action = self._resolve_profile_id(existing)
@@ -292,8 +291,7 @@ class BazarrConfigWirer(LifecycleWirerBase):
         if not post_outcome.ok:
             return post_outcome
         plugin_written = self._write_jellyfin_plugin_xml(url, api_key, ctx)
-        return Outcome.success(
-            None,
+        return self._outcome_success(
             evidence={
                 "url": url,
                 "profile": (
@@ -324,22 +322,22 @@ class BazarrConfigWirer(LifecycleWirerBase):
             return ok_or_unknown
         body = self._http_get_json(f"{url}{_SETTINGS_PATH}", api_key or "")
         if not isinstance(body, dict):
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not load settings at {url}{_SETTINGS_PATH}",
                 evidence={"url": f"{url}{_SETTINGS_PATH}"},
-                evaluated_at=ctx.now(),
             )
         outcome = extract(body)
         if outcome["ok"]:
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 ok_detail,
                 evidence=outcome["evidence"],
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.failed(
+        return self._probe_failed(
+            ctx,
             fail_detail,
             evidence=outcome["evidence"],
-            evaluated_at=ctx.now(),
         )
 
     def _extract_default_toggles(self, body: Mapping[str, Any]) -> dict:
@@ -398,16 +396,14 @@ class BazarrConfigWirer(LifecycleWirerBase):
     ) -> tuple[str, Outcome[None] | None]:
         url = self._bazarr_base_url(ctx)
         if not url:
-            return "", Outcome.failure(
+            return "", self._outcome_permanent(
                 "no host/port in config — cannot ensure",
-                transient=False,
                 evidence={"config_keys": sorted(ctx.config.keys())},
             )
         if not api_key:
-            return url, Outcome.failure(
+            return url, self._outcome_transient(
                 "no bazarr api key — orchestrator will retry "
                 "after probe_has_api_key reaches ok",
-                transient=True,
                 evidence={"url": url},
             )
         return url, None
@@ -488,22 +484,14 @@ class BazarrConfigWirer(LifecycleWirerBase):
             with urllib.request.urlopen(
                 req, timeout=_BAZARR_HTTP_POST_TIMEOUT_SECONDS,
             ) as resp:
-                return Outcome.success(
-                    None,
+                return self._outcome_success(
                     evidence={"http_status": resp.status, "url": endpoint},
                 )
-        except urllib.error.HTTPError as exc:
-            return Outcome.failure(
-                f"settings POST failed (HTTP {exc.code})",
-                transient=False,
-                evidence={"http_status": exc.code, "url": endpoint},
-            )
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
-            return Outcome.failure(
-                f"unreachable at {endpoint}: {exc}",
-                transient=True,
-                evidence={"url": endpoint, "error": str(exc)},
-            )
+        except (
+            urllib.error.HTTPError, urllib.error.URLError,
+            OSError, TimeoutError,
+        ) as exc:
+            return self._classify_http_outcome(exc, url=endpoint)
 
     def _write_jellyfin_plugin_xml(
         self, url: str, api_key: str, ctx: OrchestrationContext,
@@ -548,16 +536,16 @@ class BazarrConfigWirer(LifecycleWirerBase):
     ) -> tuple[str, ProbeResult | None]:
         url = self._bazarr_base_url(ctx)
         if not url:
-            return "", ProbeResult.unknown(
+            return "", self._probe_unknown(
+                ctx,
                 "no host/port in config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         if not api_key:
-            return url, ProbeResult.unknown(
+            return url, self._probe_unknown(
+                ctx,
                 "no bazarr api key — cannot probe",
                 evidence={"url": url},
-                evaluated_at=ctx.now(),
             )
         return url, None
 

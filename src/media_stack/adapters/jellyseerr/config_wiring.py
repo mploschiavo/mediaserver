@@ -112,30 +112,31 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
         if the provider entries are present on disk."""
         url = self._public_settings_url(ctx)
         if not url:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no host/port in config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         body = self._fetch_public_settings(url)
         if body is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not fetch public settings at {url}",
                 evidence={"url": url},
-                evaluated_at=ctx.now(),
             )
         providers = body.get("openIdProviders")
         if not isinstance(providers, list) or not providers:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 "openIdProviders empty in public settings",
                 evidence={"url": url, "providers_count": 0},
-                evaluated_at=ctx.now(),
             )
         if not any(
             isinstance(p, dict) and p.get("slug") == self._provider_slug
             for p in providers
         ):
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"no provider with slug={self._provider_slug!r}",
                 evidence={
                     "url": url,
@@ -144,12 +145,11 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
                         p.get("slug") for p in providers if isinstance(p, dict)
                     ],
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.ok(
+        return self._probe_ok(
+            ctx,
             f"{self._provider_slug} provider live in public settings",
             evidence={"url": url, "providers_count": len(providers)},
-            evaluated_at=ctx.now(),
         )
 
     def ensure_oidc(
@@ -171,53 +171,53 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
     def probe_application_url(self, ctx: OrchestrationContext) -> ProbeResult:
         path = self._settings_path(ctx)
         if path is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no CONFIG_ROOT — cannot locate settings.json",
                 evidence={"rel_path": _SETTINGS_REL_PATH},
-                evaluated_at=ctx.now(),
             )
         if not path.is_file():
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"settings.json not yet generated at {path}",
                 evidence={"settings_path": str(path)},
-                evaluated_at=ctx.now(),
             )
         data = self._read_settings(path)
         if data is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"settings.json unparseable at {path}",
                 evidence={"settings_path": str(path)},
-                evaluated_at=ctx.now(),
             )
         application_url = str(
             (data.get("main") or {}).get("applicationUrl", "") or "",
         )
         trust_proxy = (data.get("network") or {}).get("trustProxy")
         if not application_url.startswith(_HTTPS_SCHEME_PREFIX):
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"main.applicationUrl not https: {application_url!r}",
                 evidence={
                     "settings_path": str(path),
                     "applicationUrl": application_url,
                 },
-                evaluated_at=ctx.now(),
             )
         if trust_proxy is not True:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"network.trustProxy not True: {trust_proxy!r}",
                 evidence={
                     "settings_path": str(path),
                     "trustProxy": trust_proxy,
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.ok(
+        return self._probe_ok(
+            ctx,
             "applicationUrl https + trustProxy true",
             evidence={
                 "settings_path": str(path),
                 "applicationUrl": application_url,
             },
-            evaluated_at=ctx.now(),
         )
 
     def ensure_application_url(
@@ -235,61 +235,61 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
     def probe_arr_servers(self, ctx: OrchestrationContext) -> ProbeResult:
         path = self._settings_path(ctx)
         if path is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no CONFIG_ROOT — cannot locate settings.json",
                 evidence={"rel_path": _SETTINGS_REL_PATH},
-                evaluated_at=ctx.now(),
             )
         if not path.is_file():
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"settings.json not yet generated at {path}",
                 evidence={"settings_path": str(path)},
-                evaluated_at=ctx.now(),
             )
         data = self._read_settings(path)
         if data is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"settings.json unparseable at {path}",
                 evidence={"settings_path": str(path)},
-                evaluated_at=ctx.now(),
             )
         for arr_name in _REQUIRED_ARR_NAMES:
             entries = data.get(arr_name) or []
             if not isinstance(entries, list) or not entries:
-                return ProbeResult.failed(
+                return self._probe_failed(
+                    ctx,
                     f"no {arr_name} entry in settings.json",
                     evidence={
                         "settings_path": str(path),
                         "missing": arr_name,
                     },
-                    evaluated_at=ctx.now(),
                 )
             if not any(
                 isinstance(e, dict) and (e.get("apiKey") or "").strip()
                 for e in entries
             ):
-                return ProbeResult.failed(
+                return self._probe_failed(
+                    ctx,
                     f"{arr_name} entry has no apiKey",
                     evidence={
                         "settings_path": str(path),
                         "missing_key_for": arr_name,
                     },
-                    evaluated_at=ctx.now(),
                 )
         jellyfin_block = data.get("jellyfin") or {}
         if not (jellyfin_block.get(_JELLYFIN_KEY_FIELD) or "").strip():
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 "jellyfin block has no apiKey",
                 evidence={
                     "settings_path": str(path),
                     "jellyfin_keys": sorted(jellyfin_block.keys()),
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.ok(
+        return self._probe_ok(
+            ctx,
             "all *arr + jellyfin entries have apiKey",
             evidence={"settings_path": str(path)},
-            evaluated_at=ctx.now(),
         )
 
     def ensure_arr_servers(
@@ -316,28 +316,24 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
         if path is not None and path.is_file():
             probe = self.probe_arr_servers(ctx)
             if probe.is_ok:
-                return Outcome.success(
-                    None,
+                return self._outcome_success(
                     evidence={"reason": "already_configured", "settings_path": str(path)},
                 )
         try:
             job_ctx = job_context_factory()
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"could not build JobContext: {exc}",
-                transient=True,
                 evidence={"error": str(exc)},
             )
         try:
             result = configure_handler(job_ctx)
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"configure_jellyseerr raised: {exc}",
-                transient=True,
                 evidence={"error": str(exc)},
             )
-        return Outcome.success(
-            None,
+        return self._outcome_success(
             evidence={
                 "result": result if isinstance(result, dict) else None,
                 "settings_path": str(path) if path else "",
@@ -351,22 +347,19 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
     ) -> Outcome[None]:
         path = self._settings_path(ctx)
         if path is None:
-            return Outcome.failure(
+            return self._outcome_permanent(
                 "no CONFIG_ROOT — cannot locate settings.json",
-                transient=False,
                 evidence={"rel_path": _SETTINGS_REL_PATH},
             )
         if not path.is_file():
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"settings.json not yet generated at {path}",
-                transient=True,
                 evidence={"settings_path": str(path)},
             )
         data = self._read_settings(path)
         if data is None:
-            return Outcome.failure(
+            return self._outcome_permanent(
                 f"settings.json unparseable at {path}",
-                transient=False,
                 evidence={"settings_path": str(path)},
             )
         resolved_routing = self._resolve_routing(routing)
@@ -405,8 +398,7 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
                 changed = True
 
         if not changed:
-            return Outcome.success(
-                None,
+            return self._outcome_success(
                 evidence={
                     "reason": "already_in_sync",
                     "settings_path": str(path),
@@ -418,14 +410,12 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
                 json.dumps(data, indent=2), encoding="utf-8",
             )
         except OSError as exc:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"could not write {path}: {exc}",
-                transient=True,
                 evidence={"settings_path": str(path), "error": str(exc)},
             )
         restarted = self._restart_jellyseerr()
-        return Outcome.success(
-            None,
+        return self._outcome_success(
             evidence={
                 "settings_written": True,
                 "settings_path": str(path),

@@ -55,7 +55,6 @@ auto-collections purpose.
 from __future__ import annotations
 
 import json
-import logging
 import urllib.error
 import urllib.request
 from typing import Any, Callable
@@ -68,9 +67,6 @@ from media_stack.domain.services import (
     Outcome,
     ProbeResult,
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 _COLLECTIONS_PATH = "/app/maintainerr/api/collections"
@@ -119,34 +115,35 @@ class MaintainerrCollectionsWirer(LifecycleWirerBase):
         """
         url = self._collections_url(ctx)
         if not url:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no host/port in config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         body = self._fetch_collections(url)
         if body is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not fetch collections at {url}",
                 evidence={"url": url},
-                evaluated_at=ctx.now(),
             )
         if not isinstance(body, list):
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"collections endpoint returned non-list at {url}",
                 evidence={"url": url, "type": type(body).__name__},
-                evaluated_at=ctx.now(),
             )
         if not body:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"collections endpoint empty at {url}",
                 evidence={"url": url, "collection_count": 0},
-                evaluated_at=ctx.now(),
             )
         linked = self._count_linked(body)
         total = len(body)
         if linked == 0:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"no movie/show collection links to radarr/sonarr "
                 f"({total} collection(s) all unlinked)",
                 evidence={
@@ -154,16 +151,15 @@ class MaintainerrCollectionsWirer(LifecycleWirerBase):
                     "collection_count": total,
                     "linked_count": 0,
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.ok(
+        return self._probe_ok(
+            ctx,
             f"{linked}/{total} collection(s) linked to radarr/sonarr",
             evidence={
                 "url": url,
                 "collection_count": total,
                 "linked_count": linked,
             },
-            evaluated_at=ctx.now(),
         )
 
     # --- ensurer (wide-handler delegation) --------------------------
@@ -193,8 +189,7 @@ class MaintainerrCollectionsWirer(LifecycleWirerBase):
         """
         probe = self.probe(ctx)
         if probe.is_ok:
-            return Outcome.success(
-                None,
+            return self._outcome_success(
                 evidence={
                     "reason": "already_linked",
                     "url": self._collections_url(ctx),
@@ -203,17 +198,15 @@ class MaintainerrCollectionsWirer(LifecycleWirerBase):
         try:
             job_ctx = job_context_factory()
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"could not build JobContext: {exc}",
-                transient=True,
                 evidence={"error": str(exc)},
             )
         cfg, config_root, arr_apps, wait_timeout = self._unpack_job_ctx(job_ctx)
         if cfg is None or config_root is None:
-            return Outcome.failure(
+            return self._outcome_transient(
                 "JobContext missing cfg / config_root — cannot dispatch "
                 "ensure_maintainerr_integrations",
-                transient=True,
                 evidence={
                     "has_cfg": cfg is not None,
                     "has_config_root": config_root is not None,
@@ -222,13 +215,11 @@ class MaintainerrCollectionsWirer(LifecycleWirerBase):
         try:
             configure_handler(cfg, config_root, arr_apps, wait_timeout)
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"ensure_maintainerr_integrations raised: {exc}",
-                transient=True,
                 evidence={"error": str(exc)},
             )
-        return Outcome.success(
-            None,
+        return self._outcome_success(
             evidence={
                 "delegated_to": "ensure_maintainerr_integrations",
                 "config_root": str(config_root),

@@ -42,7 +42,6 @@ key.
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from typing import Any
@@ -111,10 +110,10 @@ class IndexerPipelineWirer(LifecycleWirerBase):
         url = self._indexer_endpoint(service_id, ctx)
         existing = self._list_indexers(url, arr_api_key or "")
         if existing is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not list indexers at {url}",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         return self._classify_probe_result(existing, url, ctx)
 
@@ -129,23 +128,23 @@ class IndexerPipelineWirer(LifecycleWirerBase):
         should proceed. Folding these gates into one guard keeps
         the public ``probe()`` method's body narrow."""
         if service_id not in _ARR_API_VERSIONS:
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"{service_id} doesn't participate in indexer pipeline",
                 evidence={"reason": "unsupported_service"},
-                evaluated_at=ctx.now(),
             )
         url = self._indexer_endpoint(service_id, ctx)
         if not url:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no host/port in config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         if not arr_api_key:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no arr api key — cannot probe",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         return None
 
@@ -156,34 +155,29 @@ class IndexerPipelineWirer(LifecycleWirerBase):
         ctx: OrchestrationContext,
     ) -> Outcome[None]:
         if service_id not in _ARR_API_VERSIONS:
-            return Outcome.success(
-                None,
+            return self._outcome_success(
                 evidence={"reason": "unsupported_service"},
             )
         url = self._indexer_endpoint(service_id, ctx)
         if not url:
-            return Outcome.failure(
+            return self._outcome_permanent(
                 "no host/port in config — cannot ensure",
-                transient=False,
                 evidence={"config_keys": sorted(ctx.config.keys())},
             )
         if not arr_api_key:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"no {service_id} api key — orchestrator will retry "
                 "after probe_has_api_key reaches ok",
-                transient=True,
                 evidence={"url": url},
             )
         existing = self._list_indexers(url, arr_api_key)
         if existing is None:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"could not list existing indexers at {url}",
-                transient=True,
                 evidence={"url": url},
             )
         if self._has_indexers(existing):
-            return Outcome.success(
-                None,
+            return self._outcome_success(
                 evidence={
                     "reason": "already_configured",
                     "url": url,
@@ -192,10 +186,9 @@ class IndexerPipelineWirer(LifecycleWirerBase):
             )
         prowlarr_key = self._discover_prowlarr_key(ctx)
         if not prowlarr_key:
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"no {_PROWLARR_API_KEY_ENV} — orchestrator will retry "
                 "after prowlarr's probe_has_api_key reaches ok",
-                transient=True,
                 evidence={"url": url},
             )
         return self._trigger_prowlarr_sync(url, prowlarr_key, service_id)
@@ -266,22 +259,19 @@ class IndexerPipelineWirer(LifecycleWirerBase):
         self, existing: list[Any], url: str, ctx: OrchestrationContext,
     ) -> ProbeResult:
         if self._has_indexers(existing):
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"{len(existing)} indexer(s) configured",
                 evidence={"url": url, "indexer_count": len(existing)},
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.failed(
+        return self._probe_failed(
+            ctx,
             f"no indexers at {url}",
             evidence={"url": url, "indexer_count": 0},
-            evaluated_at=ctx.now(),
         )
 
     def _discover_prowlarr_key(self, ctx: OrchestrationContext) -> str:
-        return (
-            (ctx.secrets.get(_PROWLARR_API_KEY_ENV) or "").strip()
-            or os.environ.get(_PROWLARR_API_KEY_ENV, "").strip()
-        )
+        return self._discover_secret(ctx, _PROWLARR_API_KEY_ENV)
 
     def _trigger_prowlarr_sync(
         self,
@@ -314,8 +304,7 @@ class IndexerPipelineWirer(LifecycleWirerBase):
             with urllib.request.urlopen(
                 req, timeout=self._post_timeout_seconds,
             ) as resp:
-                return Outcome.success(
-                    None,
+                return self._outcome_success(
                     evidence={
                         "http_status": resp.status,
                         "command_url": command_url,
@@ -324,26 +313,11 @@ class IndexerPipelineWirer(LifecycleWirerBase):
                         "command": _PROWLARR_COMMAND_NAME,
                     },
                 )
-        except urllib.error.HTTPError as exc:
-            return Outcome.failure(
-                f"HTTP {exc.code} from {command_url}",
-                transient=False,
-                evidence={
-                    "http_status": exc.code,
-                    "command_url": command_url,
-                    "service_id": service_id,
-                },
-            )
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
-            return Outcome.failure(
-                f"prowlarr unreachable at {command_url}: {exc}",
-                transient=True,
-                evidence={
-                    "command_url": command_url,
-                    "service_id": service_id,
-                    "error": str(exc),
-                },
-            )
+        except (
+            urllib.error.HTTPError, urllib.error.URLError,
+            OSError, TimeoutError,
+        ) as exc:
+            return self._classify_http_outcome(exc, url=command_url)
 
 
 __all__ = ["IndexerPipelineWirer"]

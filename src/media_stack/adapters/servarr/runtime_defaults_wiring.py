@@ -152,21 +152,21 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
         url = self._quality_profile_url(service_id, ctx)
         body = self._http_get_json(url, arr_api_key or "")
         if body is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not list quality profiles at {url}",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         if isinstance(body, list) and body:
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"{len(body)} quality profile(s) configured",
                 evidence={"url": url, "profile_count": len(body)},
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.failed(
+        return self._probe_failed(
+            ctx,
             f"no quality profiles at {url}",
             evidence={"url": url, "profile_count": 0},
-            evaluated_at=ctx.now(),
         )
 
     def probe_import_lists_auto(
@@ -208,16 +208,16 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
         classification of enabled-vs-auto-flag invariants is
         delegated to ``_classify_import_list_auto_state``."""
         if body is None:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"could not list import lists at {url}",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         if not isinstance(body, list):
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"unexpected import-list shape at {url}",
                 evidence={"url": url, "service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         # Empty list ⇒ failed (fresh install hasn't seeded any lists
         # yet OR the seed handler hasn't run; the ensurer ultimately
@@ -225,10 +225,10 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
         # endpoint, but the promise asserts presence + auto-on, so
         # zero lists is the failed state).
         if not body:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"no import lists configured at {url}",
                 evidence={"url": url, "import_list_count": 0},
-                evaluated_at=ctx.now(),
             )
         return self._classify_import_list_auto_state(body, url, ctx)
 
@@ -244,21 +244,22 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
         ``patch_arr_import_lists_auto`` behaviour."""
         enabled = [il for il in body if il.get("enabled")]
         if not enabled:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"no enabled import lists at {url}",
                 evidence={
                     "url": url,
                     "import_list_count": len(body),
                     "enabled_count": 0,
                 },
-                evaluated_at=ctx.now(),
             )
         missing_auto = [
             (il.get("name") or "?") for il in enabled
             if il.get("enableAuto") is not True
         ]
         if missing_auto:
-            return ProbeResult.failed(
+            return self._probe_failed(
+                ctx,
                 f"{len(missing_auto)} enabled import list(s) missing "
                 f"enableAuto=True at {url}",
                 evidence={
@@ -266,15 +267,14 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
                     "enabled_count": len(enabled),
                     "missing_auto": missing_auto,
                 },
-                evaluated_at=ctx.now(),
             )
-        return ProbeResult.ok(
+        return self._probe_ok(
+            ctx,
             f"all {len(enabled)} enabled import lists have enableAuto=True",
             evidence={
                 "url": url,
                 "enabled_count": len(enabled),
             },
-            evaluated_at=ctx.now(),
         )
 
     # === Ensurer =======================================================
@@ -303,19 +303,17 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
         """
         configure_handler, job_context_factory = self._resolve_dependencies()
         if configure_handler is None or job_context_factory is None:
-            return Outcome.failure(
+            return self._outcome_permanent(
                 "runtime-defaults handler unavailable — could not "
                 "import legacy apply_arr_runtime_defaults",
-                transient=False,
                 evidence={"service_id": service_id},
             )
         try:
             job_ctx = job_context_factory()
             summary = configure_handler(job_ctx)
         except Exception as exc:  # noqa: BLE001
-            return Outcome.failure(
+            return self._outcome_transient(
                 f"runtime-defaults handler raised: {exc}",
-                transient=True,
                 evidence={"service_id": service_id, "error": str(exc)},
             )
         # Legacy handler returns a dict of action + per-arr counts;
@@ -323,7 +321,7 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
         evidence: dict[str, Any] = {"service_id": service_id}
         if isinstance(summary, Mapping):
             evidence["summary"] = dict(summary)
-        return Outcome.success(None, evidence=evidence)
+        return self._outcome_success(evidence=evidence)
 
     # === Probe helpers ================================================
 
@@ -342,30 +340,30 @@ class RuntimeDefaultsWirer(LifecycleWirerBase):
             # the orchestrator records "no signal here" rather than
             # bucketing into drift/broken (per the
             # unknown-as-actionable bug-class memo).
-            return ProbeResult.ok(
+            return self._probe_ok(
+                ctx,
                 f"{service_id} doesn't carry this promise",
                 evidence={"reason": "unsupported_service"},
-                evaluated_at=ctx.now(),
             )
         if service_id not in _ARR_API_VERSIONS:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 f"{service_id} not in api-version map",
                 evidence={"service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         host = (ctx.config.get("host") or "").strip()
         port = ctx.config.get("port")
         if not host or not port:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no host/port in config — cannot probe",
                 evidence={"config_keys": sorted(ctx.config.keys())},
-                evaluated_at=ctx.now(),
             )
         if not arr_api_key:
-            return ProbeResult.unknown(
+            return self._probe_unknown(
+                ctx,
                 "no arr api key — cannot probe",
                 evidence={"service_id": service_id},
-                evaluated_at=ctx.now(),
             )
         return None
 
