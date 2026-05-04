@@ -90,11 +90,31 @@ plugin:
       phase: media_server
       priority: 50
       requires: [media_server_reachable, media_server_api_key]
+    # ADR-0005 Phase 3 cutover (2026-05-03): ``phase: media_server``
+    # + ``priority: 60`` removed. The bootstrap-time path is now the
+    # orchestrator dispatching ``MaintainerrLifecycle.ensure_rules_linked_to_arr``
+    # via the ``maintainerr-rules-linked-to-arr`` promise in
+    # ``contracts/services/maintainerr.yaml``. Note that the legacy
+    # ``ensured_by: configure-collections`` reference was a misnomer
+    # (this Jellyfin job has nothing to do with Maintainerr's
+    # ``radarrSettingsId`` / ``sonarrSettingsId`` linkage); the
+    # lifecycle ensurer delegates to ``ensure_maintainerr_integrations``
+    # — the actual rule-arr-link handler.
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard + Jellyfin auto-collections plugin reconcile)
+    # keeps resolving it. Without ``phase``,
+    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
+    # bootstrap loader's ``phase_order`` never picks it up — exactly
+    # what we want, since the orchestrator is now the bootstrap-time
+    # path for the rule-link promise.
+    #
+    # Reverting = restore ``phase: media_server`` + ``priority: 60``;
+    # the orchestrator's lifecycle dispatch becomes redundant but
+    # harmless (idempotent ensurer + idempotent legacy handler).
     configure-collections:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_auto_collections_config
       label: "Update auto-collections"
-      phase: media_server
-      priority: 60
       requires: [media_server_reachable, media_server_api_key]
     refresh-media:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_prewarm

@@ -86,22 +86,42 @@ gives the same incremental rollout safety without the rewrite step.
 
 ### Phase 1 — Router foundation + first domain proof (1 day)
 
-Three deliverables, single commit:
+**Designed for Phase 2 parallel-agent friendliness.** Four design
+choices make Phase 2 a "copy this template, ship one new file" job
+per domain, with zero shared-file contention:
 
-1. **Fix the ``/metrics`` shadow** at ``handlers_get.py:1273``.
-   Either remove the unreachable branch or elevate it as the
-   canonical handler (whichever is operator-intended). Pin the
-   Prometheus shape with a regression test.
+1. **Auto-discovery routing** — Router imports every module under
+   ``api/routes/`` at startup (``pkgutil.iter_modules``). Decorator
+   side-effects do registration. No central registry list to merge.
+2. **Router-first dispatch with legacy fall-through** — ``server.py``
+   consults the router first; on no match, falls through to the
+   existing ``handlers_get.handle()`` / ``handlers_post.handle()``
+   chains unchanged. Phase 2 agents add NEW route modules but DO
+   NOT delete legacy ``elif`` branches. The chain stays alive as
+   a safety net until a final cleanup commit (after every domain
+   has migrated).
+3. **Startup-time drift check** — Router validates every
+   registration against the OpenAPI spec at startup. Bad work
+   (missing spec entry, duplicate registration, signature/spec
+   path-parameter mismatch) raises ``RouterMisconfigured`` before
+   the server binds. Surfaces drift fast, not silently at
+   dashboard-render time.
+4. **Shared test scaffolding** — ``tests/unit/api/routes/_helpers.py``
+   ships ``MockHandler`` + ``dispatch_route``. Each Phase 2 agent
+   imports the same helper; their tests look identical.
 
-2. **Ship the ``Router`` infrastructure**:
+Phase 1 deliverables, single commit:
+
+#### A. Router infrastructure
 
    - ``api/routing/router.py`` — ``Router`` class. Reads
      ``contracts/api/openapi.yaml`` at module load, compiles every
-     declared path to a regex (handles ``{user_id}``-style
-     parameters via spec ``parameters: [{in: path, ...}]``
-     declarations). Exact paths get a flat dict; parameterized
-     paths get a compiled-regex list. Lookup is O(1) for exact,
-     O(P) for parameterized.
+     declared path (handles ``{user_id}``-style parameters via
+     spec ``parameters: [{in: path, ...}]`` declarations). Exact
+     paths get a flat dict; parameterized paths get a compiled-
+     regex list. Lookup is O(1) for exact, O(P) for parameterized.
+     Auto-discovers route modules via ``pkgutil.iter_modules`` over
+     ``api/routes/``.
    - ``api/routing/registration.py`` — ``@get(path)`` /
      ``@post(path)`` / ``@delete(path)`` / ``@put(path)`` /
      ``@patch(path)`` decorators. Each captures (verb, path,
@@ -110,40 +130,103 @@ Three deliverables, single commit:
    - ``api/routing/dispatch.py`` — entry-point invoked by
      ``server.py``: looks up the route, parses path-params,
      validates the request body via ``contract_validator``,
-     invokes the handler, validates the response body. Returns
-     **405** when the path exists but the verb doesn't (today: 404).
-     Returns **404** with a ``no_matching_path`` body when the
-     path isn't in the spec at all.
-   - **Strict-mode startup check**: a spec path with no registered
-     handler raises ``RouterMisconfigured`` before the server
-     binds. Closes the spec/handler-drift loop at startup, not at
-     dashboard-render time.
+     invokes the handler. Returns **405** when the path exists in
+     the spec but the verb doesn't (today: 404). Returns **404**
+     with a ``no_matching_path`` body when the path isn't in the
+     spec at all. Returns **None** (no match) when the path isn't
+     registered with the router — caller falls through to legacy
+     chain.
+   - ``api/routing/exceptions.py`` — ``RouterMisconfigured`` raised
+     at startup for drift / duplicates / bad signatures.
 
-3. **Migrate one domain (Health) as the proof**:
+#### B. First migrated domain (proof + Phase 2 template)
 
+   - ``api/routes/__init__.py`` — empty; auto-discovery target.
    - ``api/routes/health.py`` — every health-domain route
      (``/api/health``, ``/api/health-history``,
      ``/api/health/config-integrity``, ``/api/health/crashloops``,
      ``/api/health/stories``, ``/healthz``, ``/readyz``,
-     ``/api/ops/health``) registered as ``@get``-decorated module-
-     level functions. Handler bodies lifted verbatim from the
-     ``handlers_get.handle()`` chain.
-   - ``handlers_get.GetRequestHandler.handle()`` checks the router
-     FIRST: ``if router.has_route(verb, path): router.dispatch(...)
-     return``. If no match, falls through to the legacy chain.
-     **Registered routes win; unregistered routes still work via
-     the legacy path** — same incremental rollout safety the
-     earlier draft proposed.
-   - The 8 health-domain ``elif`` branches in ``handlers_get`` are
-     deleted in this same commit. Net delta: 8 elif branches → 8
-     decorated functions in their own module.
+     ``/api/ops/health``) registered as ``@get``-decorated
+     functions. Handler bodies lifted verbatim from the legacy
+     chain. Phase 2 agents copy this file's structure verbatim
+     for their domain.
 
-- New ratchet at
-  ``tests/unit/contracts/test_router_route_burndown.py``:
-  - Total ``elif path == ...`` count in ``handlers_get.handle()``
-    + ``handlers_post.handle()`` only goes DOWN.
-  - Every spec path is registered with the router (uses the
-    router's startup check, run as a unit test).
+#### C. Server integration
+
+   - ``server.py`` ``do_GET`` / ``do_POST`` consult the router
+     first; on no match, fall through to ``handlers_get.handle()``
+     / ``handlers_post.handle()``. **The legacy chain is unchanged
+     during migration.** No ``elif`` branch deletions in this
+     phase.
+   - ``handlers_get.py:1273`` ``/metrics`` shadow fix shipped in
+     this commit (one-time fix; not part of the router infra).
+
+#### D. Test scaffolding
+
+   - ``tests/unit/api/routes/_helpers.py`` — ``MockHandler``
+     stand-in + ``dispatch_route(verb, path, body, headers)``
+     fixture. Each Phase 2 agent imports these.
+   - ``tests/unit/api/routes/test_health.py`` — example tests
+     covering each health route. Phase 2 agents copy this file's
+     shape.
+   - ``tests/unit/api/test_router_spec_parity.py`` — parameterized
+     over every spec path; permissive during migration (logs missing
+     handlers as expected fall-through), strict at Phase 2 end
+     (fails any unregistered spec path).
+   - ``tests/unit/api/test_router_basics.py`` — unit tests for
+     ``Router`` itself (path compilation, lookup, dispatch,
+     drift-check error modes).
+   - ``tests/unit/contracts/test_router_route_burndown.py`` — new
+     burndown ratchet: count of ``elif path`` branches in
+     ``handlers_{get,post}.handle()`` only goes DOWN. Phase 1 ships
+     the baseline. Each Phase 2 commit lowers it.
+
+#### E. Documentation
+
+   - This ADR's "Phase 2 agent-brief template" section (below)
+     gets populated so spawning agents is plug-and-play.
+
+### Phase 2 agent-brief template
+
+Once Phase 1 ships, every Phase 2 domain migration follows this
+brief. Agents customize only the domain name + route list +
+legacy-handler line numbers:
+
+```text
+You are migrating the <domain> domain to the Router (ADR-0007 Phase 2).
+
+Reference: api/routes/health.py is the template. Mirror its shape exactly.
+
+Scope: <N> routes, listed below with their existing locations:
+  - GET /api/X — handlers_get.py:LINE
+  - POST /api/Y — handlers_post.py:LINE
+  - ...
+
+Steps:
+  1. Create api/routes/<domain>.py.
+  2. For each route, write a @get(path)/@post(path)-decorated function.
+     Lift the body from the legacy handler verbatim.
+     If the spec declares path parameters, declare them as kwargs
+     with the same names as the spec's ``parameters: [{in: path, name: ...}]``.
+  3. Create tests/unit/api/routes/test_<domain>.py modeled on
+     test_health.py. Use MockHandler + dispatch_route from _helpers.
+  4. Validate: .venv/bin/python -m pytest tests/unit/api/routes/test_<domain>.py
+
+DO NOT touch:
+  - api/routing/* (router infrastructure — owned by parent)
+  - api/handlers_get.py / handlers_post.py (legacy chain stays as fallback)
+  - server.py (router integration is owned by parent)
+  - Other route modules (each agent owns one file)
+
+Constraints: OO discipline (memory rule), topic-descriptive names
+(no phase numbers / batch suffixes), no commits/pushes — parent
+integrates.
+```
+
+Each Phase 2 agent's commit:
+- TWO new files: ``api/routes/<domain>.py`` + ``tests/unit/api/routes/test_<domain>.py``
+- ZERO edits to existing files
+- ZERO shared-file contention with other agents
 
 ### Phase 2 — Domain-by-domain migration (1–2 weeks, one commit per domain)
 

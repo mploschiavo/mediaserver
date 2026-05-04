@@ -380,6 +380,57 @@ class PromisesRegistryConsistent(unittest.TestCase):
         # was retired) will pick it up. See
         # tests/unit/contracts/test_servarr_indexers_promise_driven.py.
         "push-indexers",
+        # ADR-0005 Phase 3 (wide-handler delegation, sonarr seed
+        # series): ServarrLifecycle.ensure_has_series's wirer
+        # delegates back to this legacy handler via injected
+        # callables — the wirer owns only the idempotent probe
+        # (count series >= 5). The job stays registered so
+        # ``run_job(name)`` keeps reaching the heavyweight Sonarr
+        # API roundtrip + tvdbId-lookup-per-title path. See
+        # tests/unit/contracts/test_servarr_seed_series_promise_driven.py.
+        "ensure-sonarr-seed-series",
+        # ADR-0005 Phase 3 (qBittorrent categories — single-promise,
+        # session-cookie auth). ``QbittorrentLifecycle.ensure_categories``
+        # delegates to ``CategoriesWirer`` (cookie-jar login + per-
+        # category POST). The legacy job stays registered so
+        # ``run_job(name)`` (auto-heal + operator dashboard) keeps
+        # resolving it; the bootstrap loader skips it because ``phase``
+        # is absent. The legacy handler is the canonical example in
+        # the silent-error-as-ok bug class — the wirer surfaces login
+        # failures as ``Outcome.failure(transient=True)`` so auto-heal
+        # sees them. See
+        # tests/unit/contracts/test_qbittorrent_categories_promise_driven.py.
+        "ensure-qbittorrent-categories",
+        # ADR-0005 Phase 3 (maintainerr rules-linked-to-arr — wide-
+        # handler delegation): the legacy
+        # ``ensured_by: configure-collections`` was a misnomer —
+        # ``configure-collections`` is the Jellyfin auto-collections
+        # job (lives in ``contracts/services/jellyfin.yaml``),
+        # unrelated to Maintainerr's ``radarrSettingsId`` /
+        # ``sonarrSettingsId`` linkage. The lifecycle ensurer
+        # ``MaintainerrLifecycle.ensure_rules_linked_to_arr`` wide-
+        # handler-delegates to ``ensure_maintainerr_integrations``
+        # (the real linker, runs ``MaintainerrRuleSyncService.sync_policy_rules``);
+        # ``configure-collections`` stays registered for its own
+        # Jellyfin auto-collections purpose but no longer claims a
+        # bootstrap phase. See
+        # tests/unit/contracts/test_maintainerr_rules_promise_driven.py.
+        "configure-collections",
+        # ADR-0005 Phase 3 (runtime-defaults — three promises share
+        # one ensurer because the legacy handler is monolithic: one
+        # call patches every *arr's quality-profile language /
+        # import-list enableAuto / SAB + delay-profile state in one
+        # pass). ``ServarrLifecycle.ensure_runtime_defaults``
+        # delegates back to this legacy handler via injected
+        # configure_handler + job_context_factory callables (wide-
+        # handler pattern from the Jellyseerr family). Three promises
+        # bind: sonarr-quality-profiles + radarr-quality-profiles +
+        # radarr-import-lists-auto. Listed here for cross-reference
+        # even though the orphan check only flags ``ensure-*`` names
+        # (this job's name doesn't match the prefix); future ratchet
+        # work that widens the check picks it up. See
+        # tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py.
+        "apply-arr-runtime-defaults",
     }
 
     def test_no_orphan_ensure_jobs(self):

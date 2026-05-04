@@ -309,7 +309,19 @@ class DispatcherSelectsConfiguredArrApps(unittest.TestCase):
 
 class ContractRegistration(unittest.TestCase):
     """Pin the contract entry so a refactor can't silently drop
-    the apply-arr-runtime-defaults job from the bootstrap DAG."""
+    the apply-arr-runtime-defaults job + handler reference from
+    core.yaml.
+
+    ADR-0005 Phase 3 cutover (three runtime-defaults promises
+    share ``ServarrLifecycle.ensure_runtime_defaults``): the job
+    no longer carries ``phase: post`` + ``priority: 55`` because
+    the orchestrator dispatches the same code path via lifecycle
+    ensurer. The job entry STAYS REGISTERED so ``run_job(name)``
+    (auto-heal + operator dashboard) keeps reaching the
+    heavyweight whole-family path. This ratchet pins handler-
+    name + job-name presence; the cutover invariants live in
+    ``tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py``.
+    """
 
     def test_apply_arr_runtime_defaults_in_contract(self) -> None:
         text = (ROOT / "contracts/services/core.yaml").read_text(encoding="utf-8")

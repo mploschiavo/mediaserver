@@ -175,11 +175,38 @@ plugin:
       # finish (which itself waits for discovery via the chain above).
       after: [reset-prowlarr-app-mappings]
 
+    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 84``
+    # removed. The bootstrap-time path is now the orchestrator
+    # dispatching ``QbittorrentLifecycle.ensure_categories`` via the
+    # ``qbittorrent-categories`` promise in
+    # ``contracts/services/qbittorrent.yaml`` (which delegates to
+    # ``CategoriesWirer`` — cookie-jar login + per-category POST).
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard) keeps resolving it. Without ``phase``,
+    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
+    # bootstrap loader's ``phase_order`` never picks it up — exactly
+    # what we want, since the orchestrator is now the bootstrap-time
+    # path.
+    #
+    # The legacy handler is the canonical case study in the
+    # silent-error-as-ok bug class — login failures logged ``err=…``
+    # while returning ``status=ok``. The lifecycle ensurer surfaces
+    # the same conditions as ``Outcome.failure(transient=…)`` so
+    # auto-heal sees them.
+    #
+    # Note: ``ensure-arr-download-client`` below preserves its
+    # ``after: [ensure-qbittorrent-categories]`` line. With ``phase``
+    # absent on this job, ``after`` is a no-op for the bootstrap DAG
+    # (the referenced job is no longer scheduled), but the line stays
+    # documenting the runtime ordering invariant for any future revert.
+    #
+    # Reverting = restore ``phase: post`` and ``priority: 84``; AND
+    # flip the ``qbittorrent-categories`` promise back to ``http_text``
+    # probe + string ``ensured_by``.
     ensure-qbittorrent-categories:
       handler: media_stack.services.apps.core.job_adapters:ensure_qbittorrent_categories
       label: "qBit categories (movies/tv/music/books)"
-      phase: post
-      priority: 84
       requires: []
 
     ensure-arr-download-client:
@@ -199,15 +226,26 @@ plugin:
       priority: 86
       requires: []
 
+    # ADR-0005 Phase 3 cutover (wide-handler delegation): ``phase: post``
+    # + ``priority: 87`` removed. The bootstrap-time path is now the
+    # orchestrator dispatching ``ServarrLifecycle.ensure_has_series``
+    # via the ``sonarr-has-series`` promise in
+    # ``contracts/services/sonarr.yaml``. The ``ensure_has_series``
+    # ensurer's wirer delegates back to this handler via injected
+    # callables, so the legacy implementation stays the single source
+    # of truth for seed-series mutation. The job stays REGISTERED so
+    # ``run_job(name)`` (auto-heal + operator dashboard) keeps
+    # resolving it; without ``phase`` the bootstrap loader never picks
+    # it up. Reverting = restore ``phase: post`` + ``priority: 87`` AND
+    # flip the ``sonarr-has-series`` promise back to ``ensured_by:
+    # ensure-sonarr-seed-series`` + http_json probe.
     ensure-sonarr-seed-series:
       handler: media_stack.services.apps.core.job_adapters:ensure_sonarr_seed_series
       label: "Seed Sonarr with starter series"
-      phase: post
       # Re-asserts the seed-series titles from arr.yaml after every
       # bootstrap. Previously a runtime hook side-effect; promoted
       # to its own job so it survives ``compose down -v`` cycles
       # (v1.0.146 systemic fix).
-      priority: 87
       requires: []
 
     # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 88``
@@ -372,10 +410,20 @@ plugin:
     apply-arr-runtime-defaults:
       handler: media_stack.services.apps.core.job_adapters:apply_arr_runtime_defaults
       label: "Update download settings"
-      phase: post
-      # Runs BEFORE validate-credentials so the patches affect any
-      # subsequent search/grab decisions in this same bootstrap run.
-      priority: 55
+      # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 55``
+      # were removed because the orchestrator now dispatches the
+      # same code path via lifecycle ensurer. Three promises bind:
+      #   * sonarr-quality-profiles    → ensure_runtime_defaults
+      #   * radarr-quality-profiles    → ensure_runtime_defaults
+      #   * radarr-import-lists-auto   → ensure_runtime_defaults
+      # The job entry stays REGISTERED so ``run_job(name)`` (auto-
+      # heal + operator dashboard) keeps reaching the heavyweight
+      # whole-family path. Reverting = restore ``phase: post`` +
+      # ``priority: 55`` and flip every *-quality-profiles +
+      # *-import-lists-auto promise back to http_json + string
+      # ``ensured_by``. See:
+      #   tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py
+      #   tests/unit/adapters/test_servarr_lifecycle_runtime_defaults.py
       requires: [arr_apps_reachable]
 
     validate-credentials:

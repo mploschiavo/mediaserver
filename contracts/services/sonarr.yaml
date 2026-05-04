@@ -124,16 +124,29 @@ plugin:
         method: ensure_indexers
 
     # --- Sonarr seed series -----------------------------------------------
+    # ADR-0005 Phase 3 cutover (wide-handler delegation): probe +
+    # ensurer dispatch through ServarrLifecycle.probe_has_series /
+    # ensure_has_series instead of the legacy
+    # ensure-sonarr-seed-series job. The wirer's probe owns the
+    # idempotent skip (count series >= 5); the ensurer delegates to
+    # the legacy handler in services.apps.core.job_adapters via
+    # injected configure_handler + job_context_factory callables —
+    # the legacy handler is wide enough (~100 LoC of Sonarr-API
+    # round-trips + per-title tvdbId lookups) that duplicating it
+    # inside the wirer would lose the existing test coverage.
+    # Reverting = restore the http_json probe + string ``ensured_by``.
     - id: sonarr-has-series
       description: Sonarr has the seed-series titles + the popular-TV CustomImport
-      ensured_by: ensure-sonarr-seed-series
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: sonarr
-        path: /app/sonarr/api/v3/series
-        auth: api_key
-        assert: "isinstance(response, list) and len(response) >= 5"
+        method: probe_has_series
+      ensured_by:
+        type: lifecycle
+        service: sonarr
+        method: ensure_has_series
 
     # --- qBittorrent download client wiring (Sonarr) ----------------------
     - id: sonarr-download-client
@@ -155,16 +168,30 @@ plugin:
           )
 
     # --- Quality profiles (Sonarr) ----------------------------------------
+    # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
+    # ServarrLifecycle.probe_quality_profiles /
+    # ensure_runtime_defaults instead of the legacy
+    # apply-arr-runtime-defaults job. The shared ensurer covers all
+    # three runtime-defaults promises (sonarr-quality-profiles +
+    # radarr-quality-profiles + radarr-import-lists-auto) because
+    # the legacy handler is monolithic — one call patches every
+    # *arr's quality / import-list / SAB / delay-profile state in
+    # one pass. Splitting into per-promise ensurers would mean three
+    # redundant runs that each clobber the shared *arr settings
+    # document (Bazarr monolithic-handler lesson). Reverting =
+    # restore the http_json probe + string ``ensured_by``.
     - id: sonarr-quality-profiles
       description: Sonarr has at least one quality profile available
-      ensured_by: apply-arr-runtime-defaults
       platforms: [compose, k8s]
+      bootstrap_blocking: true
       probe:
-        type: http_json
+        type: lifecycle
         service: sonarr
-        path: /app/sonarr/api/v3/qualityprofile
-        auth: api_key
-        assert: "isinstance(response, list) and len(response) >= 1"
+        method: probe_quality_profiles
+      ensured_by:
+        type: lifecycle
+        service: sonarr
+        method: ensure_runtime_defaults
 defaults:
   root_folder: /media/tv
   discovery_lists:
