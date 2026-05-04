@@ -1,0 +1,73 @@
+{
+  "config": {
+    "apex": {
+      "action": "none",
+      "code": 302,
+      "target": ""
+    },
+    "app_path_prefix": "/app",
+    "base_domain": "io",
+    "catch_all": {
+      "action": "404",
+      "code": 302,
+      "custom_404_body": "",
+      "target": ""
+    },
+    "certs": [],
+    "defaults": {
+      "body_limit_mb": 100,
+      "timeout_seconds": 60,
+      "websocket": false
+    },
+    "exposure": {
+      "bind_addresses": [],
+      "binding": "auto",
+      "enabled": true,
+      "public_hostnames": [
+        "auth.iomio.io",
+        "jf.iomio.io",
+        "m.iomio.io"
+      ]
+    },
+    "gateway_host": "m.iomio.io",
+    "gateway_port": 443,
+    "hosts": [
+      {
+        "aliases": [],
+        "auth": {
+          "gate": "none",
+          "provider": ""
+        },
+        "body_limit_mb": 0,
+        "canonical": "auth.iomio.io",
+        "maintenance": false,
+        "path_prefix": "",
+        "role": "auth",
+        "service_id": "authelia",
+        "timeout_seconds": 0,
+        "websocket": false
+      },
+      {
+        "aliases": [],
+        "auth": {
+          "gate": "required",
+          "provider": "authelia"
+        },
+        "body_limit_mb": 0,
+        "canonical": "jf.iomio.io",
+        "maintenance": false,
+        "path_prefix": "",
+        "role": "media_server",
+        "service_id": "jellyfin",
+        "timeout_seconds": 0,
+        "websocket": false
+      }
+    ],
+    "path_aliases": [],
+    "scheme": "",
+    "stack_subdomain": "iomio",
+    "strategy": "hybrid",
+    "version": 2
+  },
+  "validation": []
+}

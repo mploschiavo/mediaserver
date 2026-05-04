@@ -1,0 +1,1992 @@
+{
+  "runs": [
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.1159596710958545,
+      "attempts": 1,
+      "batch_id": "01KQSAPYAGT5XWKBENSBH79A8M",
+      "child_run_ids": [],
+      "completed_at": 1777892820.22466,
+      "elapsed": 2.9857,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:06:57.238959+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSAPYAGT5XWKBENSBH79A8M",
+      "run_id": "01KQSAPYAPT5F63BEP0NSZ4N1R",
+      "started_at": 1777892817.2389944,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.009548139336717904,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAPYAPT5F63BEP0NSZ4N1R"
+      ],
+      "completed_at": 1777892820.6043198,
+      "elapsed": 3.3723,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:06:57.231860+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAPYAGT5XWKBENSBH79A8M",
+      "started_at": 1777892817.2320483,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9125694235720734,
+      "attempts": 1,
+      "batch_id": "01KQSAPXBA6V9QJWGRAQ0PRTYE",
+      "child_run_ids": [],
+      "completed_at": 1777892816.62783,
+      "elapsed": 0.3857,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:06:56.242158+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSAPXBA6V9QJWGRAQ0PRTYE",
+      "run_id": "01KQSAPXBJEJJY42H8QQ68FY5S",
+      "started_at": 1777892816.242177,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.08654071269668026,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAPXBJEJJY42H8QQ68FY5S"
+      ],
+      "completed_at": 1777892817.0032666,
+      "elapsed": 0.7682,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:06:56.234910+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAPXBA6V9QJWGRAQ0PRTYE",
+      "started_at": 1777892816.235029,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.6531494640023809,
+      "attempts": 1,
+      "batch_id": "01KQSAPWFKMNRSPV53ZSZQ172Y",
+      "child_run_ids": [],
+      "completed_at": 1777892815.6658294,
+      "elapsed": 0.31,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:06:55.355790+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSAPWFKMNRSPV53ZSZQ172Y",
+      "run_id": "01KQSAPWFV0B36VNGCKCV0S5T6",
+      "started_at": 1777892815.355819,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.29746445730495663,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAPWFV0B36VNGCKCV0S5T6"
+      ],
+      "completed_at": 1777892816.0250058,
+      "elapsed": 0.6771,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:06:55.347795+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAPWFKMNRSPV53ZSZQ172Y",
+      "started_at": 1777892815.3479476,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.09440059616918706,
+      "attempts": 1,
+      "batch_id": "01KQSAMX9FVSJC42T8TKGA2VKG",
+      "child_run_ids": [],
+      "completed_at": 1777892753.6984591,
+      "elapsed": 3.0521,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:05:50.646378+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSAMX9FVSJC42T8TKGA2VKG",
+      "run_id": "01KQSAMX9PFP4B5JE6NCY2ARTH",
+      "started_at": 1777892750.6463988,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.03377251181624537,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAMX9PFP4B5JE6NCY2ARTH"
+      ],
+      "completed_at": 1777892754.0864635,
+      "elapsed": 3.447,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:05:50.639369+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAMX9FVSJC42T8TKGA2VKG",
+      "started_at": 1777892750.6394966,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9403246468023562,
+      "attempts": 1,
+      "batch_id": "01KQSAMWBJ5D5SBW7GX2M89EET",
+      "child_run_ids": [],
+      "completed_at": 1777892750.061777,
+      "elapsed": 0.3729,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:05:49.688877+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSAMWBJ5D5SBW7GX2M89EET",
+      "run_id": "01KQSAMWBRNTH0EW2BZGCCQYKW",
+      "started_at": 1777892749.688909,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.14482409262517557,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAMWBRNTH0EW2BZGCCQYKW"
+      ],
+      "completed_at": 1777892750.4236305,
+      "elapsed": 0.7413,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:05:49.682252+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAMWBJ5D5SBW7GX2M89EET",
+      "started_at": 1777892749.6823726,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.027654890600268,
+      "attempts": 1,
+      "batch_id": "01KQSAMVM2RQV5H8FFHR03S4NM",
+      "child_run_ids": [],
+      "completed_at": 1777892749.102473,
+      "elapsed": 0.1654,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:05:48.937013+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSAMVM2RQV5H8FFHR03S4NM",
+      "run_id": "01KQSAMVM9VJJJCR01WFZ2SSF4",
+      "started_at": 1777892748.937033,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.036428996899929886,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAMVM9VJJJCR01WFZ2SSF4"
+      ],
+      "completed_at": 1777892749.4784226,
+      "elapsed": 0.5482,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:05:48.930094+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAMVM2RQV5H8FFHR03S4NM",
+      "started_at": 1777892748.9302115,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.16852630265420396,
+      "attempts": 1,
+      "batch_id": "01KQSAJWNGQ52BNR06W45C4YPW",
+      "child_run_ids": [],
+      "completed_at": 1777892687.2943852,
+      "elapsed": 2.8237,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:04:44.470619+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSAJWNGQ52BNR06W45C4YPW",
+      "run_id": "01KQSAJWNPWQBGSXXY18PNW1DA",
+      "started_at": 1777892684.4706404,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.03164328017790676,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAJWNPWQBGSXXY18PNW1DA"
+      ],
+      "completed_at": 1777892687.7095926,
+      "elapsed": 3.2455,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:04:44.463943+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAJWNGQ52BNR06W45C4YPW",
+      "started_at": 1777892684.4640656,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.067673267556793,
+      "attempts": 1,
+      "batch_id": "01KQSAJVSSNGZDSVPFGZZYDP8Q",
+      "child_run_ids": [],
+      "completed_at": 1777892683.898381,
+      "elapsed": 0.314,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:04:43.584327+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSAJVSSNGZDSVPFGZZYDP8Q",
+      "run_id": "01KQSAJVT0C12VB0XSNXY44KNT",
+      "started_at": 1777892683.5843484,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.28019213127723946,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAJVT0C12VB0XSNXY44KNT"
+      ],
+      "completed_at": 1777892684.2563941,
+      "elapsed": 0.6787,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:04:43.577593+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAJVSSNGZDSVPFGZZYDP8Q",
+      "started_at": 1777892683.577727,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.0406748599289712,
+      "attempts": 1,
+      "batch_id": "01KQSAJTYXR77YZV502RWR4RTQ",
+      "child_run_ids": [],
+      "completed_at": 1777892682.8925352,
+      "elapsed": 0.1604,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:04:42.732133+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSAJTYXR77YZV502RWR4RTQ",
+      "run_id": "01KQSAJTZCAF29HKRPGV2MYR20",
+      "started_at": 1777892682.7321749,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.22847910392592713,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAJTZCAF29HKRPGV2MYR20"
+      ],
+      "completed_at": 1777892683.3683317,
+      "elapsed": 0.6506,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:04:42.717536+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAJTYXR77YZV502RWR4RTQ",
+      "started_at": 1777892682.7177033,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.03132949203393843,
+      "attempts": 1,
+      "batch_id": "01KQSAGVEQK5MNE3EDPWV9F8PM",
+      "child_run_ids": [],
+      "completed_at": 1777892620.9419508,
+      "elapsed": 3.2465,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:03:37.695389+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSAGVEQK5MNE3EDPWV9F8PM",
+      "run_id": "01KQSAGVEZM7JWFPXQ85SZ973F",
+      "started_at": 1777892617.6954267,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.10246104370930435,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAGVEZM7JWFPXQ85SZ973F"
+      ],
+      "completed_at": 1777892621.3469284,
+      "elapsed": 3.6589,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:03:37.687816+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAGVEQK5MNE3EDPWV9F8PM",
+      "started_at": 1777892617.687982,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9909283359164055,
+      "attempts": 1,
+      "batch_id": "01KQSAGTE725T5BA71QWY8R69B",
+      "child_run_ids": [],
+      "completed_at": 1777892617.0038197,
+      "elapsed": 0.3496,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:03:36.654212+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSAGTE725T5BA71QWY8R69B",
+      "run_id": "01KQSAGTEE59ETW2BAAPS4WE7E",
+      "started_at": 1777892616.6542318,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.0028196655236258513,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAGTEE59ETW2BAAPS4WE7E"
+      ],
+      "completed_at": 1777892617.4548597,
+      "elapsed": 0.8073,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:03:36.647483+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAGTE725T5BA71QWY8R69B",
+      "started_at": 1777892616.6476016,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.0060470002933264,
+      "attempts": 1,
+      "batch_id": "01KQSAGSJPCF53G97BKCDX48JB",
+      "child_run_ids": [],
+      "completed_at": 1777892615.959548,
+      "elapsed": 0.1738,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:03:35.785631+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSAGSJPCF53G97BKCDX48JB",
+      "run_id": "01KQSAGSK9T3W08YSBJ72MSF5W",
+      "started_at": 1777892615.7857034,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.2578024009186827,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAGSK9T3W08YSBJ72MSF5W"
+      ],
+      "completed_at": 1777892616.4286056,
+      "elapsed": 0.662,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:03:35.766420+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAGSJPCF53G97BKCDX48JB",
+      "started_at": 1777892615.766568,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.14246337878699133,
+      "attempts": 1,
+      "batch_id": "01KQSAETEFQY9TAW5E4DX4GMV7",
+      "child_run_ids": [],
+      "completed_at": 1777892554.0345776,
+      "elapsed": 2.9039,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:02:31.130613+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSAETEFQY9TAW5E4DX4GMV7",
+      "run_id": "01KQSAETET4CPERBDPSC4VHDNT",
+      "started_at": 1777892551.130633,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.009045715320570974,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAETET4CPERBDPSC4VHDNT"
+      ],
+      "completed_at": 1777892554.4346538,
+      "elapsed": 3.3152,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:02:31.119277+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAETEFQY9TAW5E4DX4GMV7",
+      "started_at": 1777892551.1194544,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9474364467617085,
+      "attempts": 1,
+      "batch_id": "01KQSAESEKP3H65SPYSNQXAYTZ",
+      "child_run_ids": [],
+      "completed_at": 1777892550.4755683,
+      "elapsed": 0.3698,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:02:30.105730+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSAESEKP3H65SPYSNQXAYTZ",
+      "run_id": "01KQSAESES8HE5YB9E0TEZXTTE",
+      "started_at": 1777892550.1057491,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.08635057497878197,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAESES8HE5YB9E0TEZXTTE"
+      ],
+      "completed_at": 1777892550.867764,
+      "elapsed": 0.7687,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:02:30.098982+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAESEKP3H65SPYSNQXAYTZ",
+      "started_at": 1777892550.0991025,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.8714823810380531,
+      "attempts": 1,
+      "batch_id": "01KQSAERKWCP3YX4YVX8KEGP68",
+      "child_run_ids": [],
+      "completed_at": 1777892549.482171,
+      "elapsed": 0.2258,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:02:29.256321+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSAERKWCP3YX4YVX8KEGP68",
+      "run_id": "01KQSAERM8PKRY42273BVPFVGV",
+      "started_at": 1777892549.2563605,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.20429421908290296,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAERM8PKRY42273BVPFVGV"
+      ],
+      "completed_at": 1777892549.8858018,
+      "elapsed": 0.6414,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:02:29.244298+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAERKWCP3YX4YVX8KEGP68",
+      "started_at": 1777892549.2444313,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.12193423864861948,
+      "attempts": 1,
+      "batch_id": "01KQSACSA8MZQGWDTMFAFW8BNW",
+      "child_run_ids": [],
+      "completed_at": 1777892487.3986857,
+      "elapsed": 2.9672,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:01:24.431490+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSACSA8MZQGWDTMFAFW8BNW",
+      "run_id": "01KQSACSAFKJ7ET3YVRJJ4HRT4",
+      "started_at": 1777892484.4315093,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.002406149390143649,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSACSAFKJ7ET3YVRJJ4HRT4"
+      ],
+      "completed_at": 1777892487.7751768,
+      "elapsed": 3.3506,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:01:24.424466+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSACSA8MZQGWDTMFAFW8BNW",
+      "started_at": 1777892484.4245822,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.963975420661554,
+      "attempts": 1,
+      "batch_id": "01KQSACRD4N2ZEHXA0FST34V4W",
+      "child_run_ids": [],
+      "completed_at": 1777892483.8610134,
+      "elapsed": 0.3622,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:01:23.498746+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSACRD4N2ZEHXA0FST34V4W",
+      "run_id": "01KQSACRDAGTS109FKR1T53XW7",
+      "started_at": 1777892483.498767,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.18886513568494753,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSACRDAGTS109FKR1T53XW7"
+      ],
+      "completed_at": 1777892484.2134056,
+      "elapsed": 0.7213,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:01:23.491949+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSACRD4N2ZEHXA0FST34V4W",
+      "started_at": 1777892483.4920914,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.7811760669704,
+      "attempts": 1,
+      "batch_id": "01KQSACQJXAB2WR0NHGVZS4HE5",
+      "child_run_ids": [],
+      "completed_at": 1777892482.9219258,
+      "elapsed": 0.2607,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:01:22.661242+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSACQJXAB2WR0NHGVZS4HE5",
+      "run_id": "01KQSACQK593HDQBTAKS2T4W5X",
+      "started_at": 1777892482.6612685,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.1722923626612474,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSACQK593HDQBTAKS2T4W5X"
+      ],
+      "completed_at": 1777892483.282674,
+      "elapsed": 0.6291,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:01:22.653483+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSACQJXAB2WR0NHGVZS4HE5",
+      "started_at": 1777892482.653609,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.16570363638838836,
+      "attempts": 1,
+      "batch_id": "01KQSAARA1XXQAHRNWRB8YZS2K",
+      "child_run_ids": [],
+      "completed_at": 1777892420.6973104,
+      "elapsed": 2.8322,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T11:00:17.865096+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSAARA1XXQAHRNWRB8YZS2K",
+      "run_id": "01KQSAARA9E96V30QATZ4JPPT9",
+      "started_at": 1777892417.8651175,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.018140391913267155,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAARA9E96V30QATZ4JPPT9"
+      ],
+      "completed_at": 1777892421.2569435,
+      "elapsed": 3.3992,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:00:17.857536+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAARA1XXQAHRNWRB8YZS2K",
+      "started_at": 1777892417.85771,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.7792922231177433,
+      "attempts": 1,
+      "batch_id": "01KQSAAQ7TH7Z0Z6M59K7WKBYX",
+      "child_run_ids": [],
+      "completed_at": 1777892417.2186604,
+      "elapsed": 0.4478,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T11:00:16.770794+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSAAQ7TH7Z0Z6M59K7WKBYX",
+      "run_id": "01KQSAAQ82PRYMPRSG4TH99TC6",
+      "started_at": 1777892416.7708235,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.07205043121826861,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAAQ82PRYMPRSG4TH99TC6"
+      ],
+      "completed_at": 1777892417.605002,
+      "elapsed": 0.8423,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:00:16.762524+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAAQ7TH7Z0Z6M59K7WKBYX",
+      "started_at": 1777892416.76271,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.013404583687741,
+      "attempts": 1,
+      "batch_id": "01KQSAAPFPD4NGFTC389FHDTG6",
+      "child_run_ids": [],
+      "completed_at": 1777892416.1685596,
+      "elapsed": 0.171,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T11:00:15.997562+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSAAPFPD4NGFTC389FHDTG6",
+      "run_id": "01KQSAAPFX0Y44T3C2GDK0PR7Q",
+      "started_at": 1777892415.9975834,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.02583773876796036,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSAAPFX0Y44T3C2GDK0PR7Q"
+      ],
+      "completed_at": 1777892416.5427423,
+      "elapsed": 0.5526,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T11:00:15.989909+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSAAPFPD4NGFTC389FHDTG6",
+      "started_at": 1777892415.9901013,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.0968729357921278,
+      "attempts": 1,
+      "batch_id": "01KQSA8Q7H2GXKTWDTQPHXCRSQ",
+      "child_run_ids": [],
+      "completed_at": 1777892354.2859902,
+      "elapsed": 3.0445,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:59:11.241464+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSA8Q7H2GXKTWDTQPHXCRSQ",
+      "run_id": "01KQSA8Q89Y086JZWYBQYD6D7B",
+      "started_at": 1777892351.241499,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.039989778480415475,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA8Q89Y086JZWYBQYD6D7B"
+      ],
+      "completed_at": 1777892354.684388,
+      "elapsed": 3.4667,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:59:11.217478+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA8Q7H2GXKTWDTQPHXCRSQ",
+      "started_at": 1777892351.2176478,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.0132880285272,
+      "attempts": 1,
+      "batch_id": "01KQSA8P5914ZHRRYDBHMH713C",
+      "child_run_ids": [],
+      "completed_at": 1777892350.4675083,
+      "elapsed": 0.3394,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:59:10.128133+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSA8P5914ZHRRYDBHMH713C",
+      "run_id": "01KQSA8P5G8F2K0TSA2QNN2THY",
+      "started_at": 1777892350.1281571,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.009674470738660594,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA8P5G8F2K0TSA2QNN2THY"
+      ],
+      "completed_at": 1777892350.925515,
+      "elapsed": 0.8045,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:59:10.120860+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA8P5914ZHRRYDBHMH713C",
+      "started_at": 1777892350.1210597,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9710254630259368,
+      "attempts": 1,
+      "batch_id": "01KQSA8NA5DC72Z44T8GS1BJRF",
+      "child_run_ids": [],
+      "completed_at": 1777892349.4485958,
+      "elapsed": 0.1874,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:59:09.261177+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSA8NA5DC72Z44T8GS1BJRF",
+      "run_id": "01KQSA8NADMNRTWF7GZMDXXT71",
+      "started_at": 1777892349.2611988,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.22236542368058707,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA8NADMNRTWF7GZMDXXT71"
+      ],
+      "completed_at": 1777892349.902022,
+      "elapsed": 0.6486,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:59:09.253233+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA8NA5DC72Z44T8GS1BJRF",
+      "started_at": 1777892349.2533858,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.10668966701791868,
+      "attempts": 1,
+      "batch_id": "01KQSA6P6CZHD2MQ0BQBFXPMAB",
+      "child_run_ids": [],
+      "completed_at": 1777892287.6419663,
+      "elapsed": 3.0142,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:58:04.627737+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSA6P6CZHD2MQ0BQBFXPMAB",
+      "run_id": "01KQSA6P6KQEESPQ1WJ4XRB6XB",
+      "started_at": 1777892284.6277614,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.018349220460079644,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA6P6KQEESPQ1WJ4XRB6XB"
+      ],
+      "completed_at": 1777892288.020157,
+      "elapsed": 3.4,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:58:04.620031+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA6P6CZHD2MQ0BQBFXPMAB",
+      "started_at": 1777892284.6201801,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9035759010549707,
+      "attempts": 1,
+      "batch_id": "01KQSA6N81FZRFV3H2Q1CQKQAG",
+      "child_run_ids": [],
+      "completed_at": 1777892284.048154,
+      "elapsed": 0.3903,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:58:03.657856+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSA6N81FZRFV3H2Q1CQKQAG",
+      "run_id": "01KQSA6N89MYPRRFHM7QEG07A6",
+      "started_at": 1777892283.6578803,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.09835028231079704,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA6N89MYPRRFHM7QEG07A6"
+      ],
+      "completed_at": 1777892284.4132442,
+      "elapsed": 0.7635,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:58:03.649614+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA6N81FZRFV3H2Q1CQKQAG",
+      "started_at": 1777892283.6497905,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.8799977454401297,
+      "attempts": 1,
+      "batch_id": "01KQSA6MD8PM4FZ16DT0F2HD8P",
+      "child_run_ids": [],
+      "completed_at": 1777892283.021979,
+      "elapsed": 0.2226,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:58:02.799387+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSA6MD8PM4FZ16DT0F2HD8P",
+      "run_id": "01KQSA6MDFTA2ZJA8Z6M1PS76H",
+      "started_at": 1777892282.7994094,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.16474396692362842,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA6MDFTA2ZJA8Z6M1PS76H"
+      ],
+      "completed_at": 1777892283.4184704,
+      "elapsed": 0.6264,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:58:02.791846+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA6MD8PM4FZ16DT0F2HD8P",
+      "started_at": 1777892282.7920432,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.13163308850927144,
+      "attempts": 1,
+      "batch_id": "01KQSA4N1Y1T44N0BAC7TWRHTB",
+      "child_run_ids": [],
+      "completed_at": 1777892220.8626673,
+      "elapsed": 2.9372,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:56:57.925422+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSA4N1Y1T44N0BAC7TWRHTB",
+      "run_id": "01KQSA4N25CMH84Q1DG3FS740G",
+      "started_at": 1777892217.925442,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.037576809548338,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA4N25CMH84Q1DG3FS740G"
+      ],
+      "completed_at": 1777892221.3779826,
+      "elapsed": 3.4594,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:56:57.918478+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA4N1Y1T44N0BAC7TWRHTB",
+      "started_at": 1777892217.918595,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9043194310189108,
+      "attempts": 1,
+      "batch_id": "01KQSA4M391YQK98RNSNTYT7GZ",
+      "child_run_ids": [],
+      "completed_at": 1777892217.3347442,
+      "elapsed": 0.39,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:56:56.944729+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSA4M391YQK98RNSNTYT7GZ",
+      "run_id": "01KQSA4M3G7MZWQVAJJH0NP0T5",
+      "started_at": 1777892216.9447486,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.08625145336135877,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA4M3G7MZWQVAJJH0NP0T5"
+      ],
+      "completed_at": 1777892217.7069726,
+      "elapsed": 0.7692,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:56:56.937685+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA4M391YQK98RNSNTYT7GZ",
+      "started_at": 1777892216.9378061,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9229969939516186,
+      "attempts": 1,
+      "batch_id": "01KQSA4K8P1D0B7AWW98MD34Z5",
+      "child_run_ids": [],
+      "completed_at": 1777892216.3068066,
+      "elapsed": 0.206,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:56:56.100797+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSA4K8P1D0B7AWW98MD34Z5",
+      "run_id": "01KQSA4K946XYDX2PYWMKHFS1T",
+      "started_at": 1777892216.1008391,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.12240362423729516,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA4K946XYDX2PYWMKHFS1T"
+      ],
+      "completed_at": 1777892216.6967578,
+      "elapsed": 0.6101,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:56:56.086396+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA4K8P1D0B7AWW98MD34Z5",
+      "started_at": 1777892216.086683,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.04699049782885706,
+      "attempts": 1,
+      "batch_id": "01KQSA2KVPFZ6HHZSPXDRKXQYR",
+      "child_run_ids": [],
+      "completed_at": 1777892154.3650923,
+      "elapsed": 3.1984,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:55:51.166654+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSA2KVPFZ6HHZSPXDRKXQYR",
+      "run_id": "01KQSA2KVYHT5GHQ405QC3TJTJ",
+      "started_at": 1777892151.166683,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.1002445355146922,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA2KVYHT5GHQ405QC3TJTJ"
+      ],
+      "completed_at": 1777892154.8113296,
+      "elapsed": 3.6529,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:55:51.158208+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA2KVPFZ6HHZSPXDRKXQYR",
+      "started_at": 1777892151.158396,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.8124550684514638,
+      "attempts": 1,
+      "batch_id": "01KQSA2JQ0QCFAP0ZT6YGPFBMN",
+      "child_run_ids": [],
+      "completed_at": 1777892150.424074,
+      "elapsed": 0.4326,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:55:49.991453+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSA2JQ0QCFAP0ZT6YGPFBMN",
+      "run_id": "01KQSA2JQ7WNQWKQ6HGDH4KPVW",
+      "started_at": 1777892149.991477,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.20001273677462178,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA2JQ7WNQWKQ6HGDH4KPVW"
+      ],
+      "completed_at": 1777892150.8861587,
+      "elapsed": 0.902,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:55:49.984018+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA2JQ0QCFAP0ZT6YGPFBMN",
+      "started_at": 1777892149.9841814,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.7232771726413135,
+      "attempts": 1,
+      "batch_id": "01KQSA2HRD79SZXS8WJFY7NVT1",
+      "child_run_ids": [],
+      "completed_at": 1777892149.2969625,
+      "elapsed": 0.2832,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:55:49.013682+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSA2HRD79SZXS8WJFY7NVT1",
+      "run_id": "01KQSA2HRNZ7PVW5D2VRPV64N7",
+      "started_at": 1777892149.0137143,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.46834189051008485,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA2HRNZ7PVW5D2VRPV64N7"
+      ],
+      "completed_at": 1777892149.7496874,
+      "elapsed": 0.7439,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:55:49.005632+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA2HRD79SZXS8WJFY7NVT1",
+      "started_at": 1777892149.0057979,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "attempts": 1,
+      "batch_id": "01KQSA2B6B44EN812QC6G9Q7GP",
+      "child_run_ids": [],
+      "completed_at": 1777892142.5375602,
+      "elapsed": 0.2444,
+      "job_name": "scan-completed-downloads",
+      "log_anchor": {
+        "action": "scan-completed-downloads",
+        "since_iso": "2026-05-04T10:55:42.293105+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "scan-completed-downloads",
+      "parent_run_id": "01KQSA2B6B44EN812QC6G9Q7GP",
+      "run_id": "01KQSA2B6N49P61JB5SGN0W1FJ",
+      "started_at": 1777892142.2931492,
+      "status": "ok",
+      "triggered_by": "scheduler"
+    },
+    {
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA2B6N49P61JB5SGN0W1FJ"
+      ],
+      "completed_at": 1777892143.0113277,
+      "elapsed": 0.7278,
+      "job_name": "scan-completed-downloads",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:55:42.283421+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA2B6B44EN812QC6G9Q7GP",
+      "started_at": 1777892142.2835462,
+      "status": "ok",
+      "triggered_by": "scheduler"
+    },
+    {
+      "attempts": 1,
+      "batch_id": "01KQSA26XQKZN999P1DFNZX5YJ",
+      "child_run_ids": [],
+      "completed_at": 1777892138.1712847,
+      "elapsed": 0.2489,
+      "job_name": "media-integrity:scan",
+      "log_anchor": {
+        "action": "media-integrity:scan",
+        "since_iso": "2026-05-04T10:55:37.922387+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "media-integrity:scan",
+      "parent_run_id": "01KQSA26XQKZN999P1DFNZX5YJ",
+      "run_id": "01KQSA26Y20VB06PSCRESKJRTX",
+      "started_at": 1777892137.9224346,
+      "status": "skipped",
+      "triggered_by": "scheduler"
+    },
+    {
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA26Y20VB06PSCRESKJRTX"
+      ],
+      "completed_at": 1777892138.6331513,
+      "elapsed": 0.7216,
+      "job_name": "media-integrity:scan",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:55:37.911386+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA26XQKZN999P1DFNZX5YJ",
+      "started_at": 1777892137.9115064,
+      "status": "ok",
+      "triggered_by": "scheduler"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.07094761341003204,
+      "attempts": 1,
+      "batch_id": "01KQSA0JAJ42CGAGGS33CF923X",
+      "child_run_ids": [],
+      "completed_at": 1777892087.1823819,
+      "elapsed": 3.1244,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:54:44.057974+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQSA0JAJ42CGAGGS33CF923X",
+      "run_id": "01KQSA0JASHMJZESQ9V3R889FP",
+      "started_at": 1777892084.0579941,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.056470579793264704,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA0JASHMJZESQ9V3R889FP"
+      ],
+      "completed_at": 1777892087.5686524,
+      "elapsed": 3.5178,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:54:44.050673+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA0JAJ42CGAGGS33CF923X",
+      "started_at": 1777892084.0508091,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9995444311143878,
+      "attempts": 1,
+      "batch_id": "01KQSA0HB3Z2GZ2R83ZVKY2EWQ",
+      "child_run_ids": [],
+      "completed_at": 1777892083.4062467,
+      "elapsed": 0.3459,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:54:43.060367+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQSA0HB3Z2GZ2R83ZVKY2EWQ",
+      "run_id": "01KQSA0HBMC2MMYZ8VEQS43PN4",
+      "started_at": 1777892083.0603902,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.04925304693558297,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA0HBMC2MMYZ8VEQS43PN4"
+      ],
+      "completed_at": 1777892083.8301678,
+      "elapsed": 0.7865,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:54:43.043512+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA0HB3Z2GZ2R83ZVKY2EWQ",
+      "started_at": 1777892083.0436819,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9801374027937395,
+      "attempts": 1,
+      "batch_id": "01KQSA0GEX9P2N7957H1G0NDCW",
+      "child_run_ids": [],
+      "completed_at": 1777892082.333508,
+      "elapsed": 0.1839,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:54:42.149570+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQSA0GEX9P2N7957H1G0NDCW",
+      "run_id": "01KQSA0GF595X50DWG0W81CHYW",
+      "started_at": 1777892082.1495907,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.23880079168358237,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA0GF595X50DWG0W81CHYW"
+      ],
+      "completed_at": 1777892082.7968445,
+      "elapsed": 0.6552,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:54:42.141489+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA0GEX9P2N7957H1G0NDCW",
+      "started_at": 1777892082.141627,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "attempts": 1,
+      "batch_id": "01KQSA0C54JMKB7ZTJGASV2C35",
+      "child_run_ids": [],
+      "completed_at": 1777892078.0666225,
+      "elapsed": 0.3252,
+      "job_name": "recover-stuck-imports",
+      "log_anchor": {
+        "action": "recover-stuck-imports",
+        "since_iso": "2026-05-04T10:54:37.741417+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "recover-stuck-imports",
+      "parent_run_id": "01KQSA0C54JMKB7ZTJGASV2C35",
+      "run_id": "01KQSA0C5DPXAAYG01RAJ6Y9TG",
+      "started_at": 1777892077.7414432,
+      "status": "ok",
+      "triggered_by": "scheduler"
+    },
+    {
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQSA0C5DPXAAYG01RAJ6Y9TG"
+      ],
+      "completed_at": 1777892078.4254026,
+      "elapsed": 0.6924,
+      "job_name": "recover-stuck-imports",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:54:37.732882+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQSA0C54JMKB7ZTJGASV2C35",
+      "started_at": 1777892077.7330272,
+      "status": "ok",
+      "triggered_by": "scheduler"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.17895842799176911,
+      "attempts": 1,
+      "batch_id": "01KQS9YHFZJGF45NJJR63JP63X",
+      "child_run_ids": [],
+      "completed_at": 1777892020.4611747,
+      "elapsed": 2.7909,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:53:37.670230+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQS9YHFZJGF45NJJR63JP63X",
+      "run_id": "01KQS9YHG6KZ8NM2R1CTMT4GGQ",
+      "started_at": 1777892017.670251,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.050518848316443925,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9YHG6KZ8NM2R1CTMT4GGQ"
+      ],
+      "completed_at": 1777892020.8507252,
+      "elapsed": 3.1875,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:53:37.663059+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9YHFZJGF45NJJR63JP63X",
+      "started_at": 1777892017.6632254,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.8907326943504461,
+      "attempts": 1,
+      "batch_id": "01KQS9YGGG2MWPNEFHJR0EVTVV",
+      "child_run_ids": [],
+      "completed_at": 1777892017.0610054,
+      "elapsed": 0.3964,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:53:36.664583+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQS9YGGG2MWPNEFHJR0EVTVV",
+      "run_id": "01KQS9YGGR6JSV97G9VGRXTPXJ",
+      "started_at": 1777892016.664604,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.04192022134214841,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9YGGR6JSV97G9VGRXTPXJ"
+      ],
+      "completed_at": 1777892017.446773,
+      "elapsed": 0.79,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:53:36.656693+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9YGGG2MWPNEFHJR0EVTVV",
+      "started_at": 1777892016.65682,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.8827037506404606,
+      "attempts": 1,
+      "batch_id": "01KQS9YFQARKDSYP87BPQ59VJM",
+      "child_run_ids": [],
+      "completed_at": 1777892016.0798416,
+      "elapsed": 0.2216,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:53:35.858227+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQS9YFQARKDSYP87BPQ59VJM",
+      "run_id": "01KQS9YFQJ09J7BQ61ZQMT1RGC",
+      "started_at": 1777892015.8582482,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.08758716309819593,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9YFQJ09J7BQ61ZQMT1RGC"
+      ],
+      "completed_at": 1777892016.4474494,
+      "elapsed": 0.5968,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:53:35.850516+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9YFQARKDSYP87BPQ59VJM",
+      "started_at": 1777892015.8506927,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.1749882238888851,
+      "attempts": 1,
+      "batch_id": "01KQS9WGV39PR3R58JPM34ZTPE",
+      "child_run_ids": [],
+      "completed_at": 1777891954.2702858,
+      "elapsed": 2.8032,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:52:31.467075+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQS9WGV39PR3R58JPM34ZTPE",
+      "run_id": "01KQS9WGVBA9R8MV3GBF9ECSZE",
+      "started_at": 1777891951.467097,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.054830923972736395,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9WGVBA9R8MV3GBF9ECSZE"
+      ],
+      "completed_at": 1777891954.6336112,
+      "elapsed": 3.1743,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:52:31.459158+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9WGV39PR3R58JPM34ZTPE",
+      "started_at": 1777891951.4592986,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.849595516612306,
+      "attempts": 1,
+      "batch_id": "01KQS9WFSAKS5PX4MJEF49PV8W",
+      "child_run_ids": [],
+      "completed_at": 1777891950.801458,
+      "elapsed": 0.4155,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:52:30.385881+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQS9WFSAKS5PX4MJEF49PV8W",
+      "run_id": "01KQS9WFSHZ0VHRCW5Q3ZXKMQY",
+      "started_at": 1777891950.3859174,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.10365435714777436,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9WFSHZ0VHRCW5Q3ZXKMQY"
+      ],
+      "completed_at": 1777891951.2363605,
+      "elapsed": 0.8576,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:52:30.378586+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9WFSAKS5PX4MJEF49PV8W",
+      "started_at": 1777891950.3787315,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9864731916150922,
+      "attempts": 1,
+      "batch_id": "01KQS9WF01RYFGSAZYZFYWHWTW",
+      "child_run_ids": [],
+      "completed_at": 1777891949.7583008,
+      "elapsed": 0.1815,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:52:29.576791+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQS9WF01RYFGSAZYZFYWHWTW",
+      "run_id": "01KQS9WF08TGRMV1KH92W4XCFE",
+      "started_at": 1777891949.5768204,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.061292032409005055,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9WF08TGRMV1KH92W4XCFE"
+      ],
+      "completed_at": 1777891950.1558242,
+      "elapsed": 0.5867,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:52:29.568987+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9WF01RYFGSAZYZFYWHWTW",
+      "started_at": 1777891949.5691235,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.14653417677954425,
+      "attempts": 1,
+      "batch_id": "01KQS9TFWTPKGKWVJ7EZJ01GER",
+      "child_run_ids": [],
+      "completed_at": 1777891887.8533926,
+      "elapsed": 2.8911,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:51:24.962304+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQS9TFWTPKGKWVJ7EZJ01GER",
+      "run_id": "01KQS9TFX2H0GBS8XYBR5JGRA1",
+      "started_at": 1777891884.9623241,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.004343486953560587,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9TFX2H0GBS8XYBR5JGRA1"
+      ],
+      "completed_at": 1777891888.3119977,
+      "elapsed": 3.3572,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:51:24.954608+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9TFWTPKGKWVJ7EZJ01GER",
+      "started_at": 1777891884.954779,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.9011973156506073,
+      "attempts": 1,
+      "batch_id": "01KQS9TEWCKSERP40FBEZC7J6Q",
+      "child_run_ids": [],
+      "completed_at": 1777891884.3157284,
+      "elapsed": 0.3916,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:51:23.924091+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQS9TEWCKSERP40FBEZC7J6Q",
+      "run_id": "01KQS9TEWMF3DRGF8F1VQ75PSY",
+      "started_at": 1777891883.924116,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.008628495494589114,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9TEWMF3DRGF8F1VQ75PSY"
+      ],
+      "completed_at": 1777891884.7218647,
+      "elapsed": 0.8056,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:51:23.916150+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9TEWCKSERP40FBEZC7J6Q",
+      "started_at": 1777891883.9162853,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.0441961042467502,
+      "attempts": 1,
+      "batch_id": "01KQS9TE09BMTD45F9F7P0P6RZ",
+      "child_run_ids": [],
+      "completed_at": 1777891883.1836555,
+      "elapsed": 0.1592,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "action": "guardrails:evaluate",
+        "since_iso": "2026-05-04T10:51:23.024431+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "guardrails:evaluate",
+      "parent_run_id": "01KQS9TE09BMTD45F9F7P0P6RZ",
+      "run_id": "01KQS9TE0GDWV9NAKJTVMFJGBK",
+      "started_at": 1777891883.0244975,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.26897189382240383,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9TE0GDWV9NAKJTVMFJGBK"
+      ],
+      "completed_at": 1777891883.6845925,
+      "elapsed": 0.6671,
+      "job_name": "guardrails:evaluate",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:51:23.017380+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9TE09BMTD45F9F7P0P6RZ",
+      "started_at": 1777891883.0175197,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.11552685757223193,
+      "attempts": 1,
+      "batch_id": "01KQS9REVQ1BVBGV857NWVP0WJ",
+      "child_run_ids": [],
+      "completed_at": 1777891821.3541493,
+      "elapsed": 2.9869,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "action": "orchestrator:satisfy-shadow",
+        "since_iso": "2026-05-04T10:50:18.367250+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "orchestrator:satisfy-shadow",
+      "parent_run_id": "01KQS9REVQ1BVBGV857NWVP0WJ",
+      "run_id": "01KQS9REVZ5MF4H8B5SE9M3PAG",
+      "started_at": 1777891818.3672726,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": 0.015349739759512964,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9REVZ5MF4H8B5SE9M3PAG"
+      ],
+      "completed_at": 1777891821.751166,
+      "elapsed": 3.3913,
+      "job_name": "orchestrator:satisfy-shadow",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:50:18.359667+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9REVQ1BVBGV857NWVP0WJ",
+      "started_at": 1777891818.3598208,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -1.0235398924931758,
+      "attempts": 1,
+      "batch_id": "01KQS9RDW7BN1234FZJERDDP61",
+      "child_run_ids": [],
+      "completed_at": 1777891817.6937284,
+      "elapsed": 0.3349,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "action": "jobs:close-stale-runs",
+        "since_iso": "2026-05-04T10:50:17.358799+00:00",
+        "source": "controller"
+      },
+      "parent_job_name": "jobs:close-stale-runs",
+      "parent_run_id": "01KQS9RDW7BN1234FZJERDDP61",
+      "run_id": "01KQS9RDWE8KYKN1ZZME4DM1KD",
+      "started_at": 1777891817.358819,
+      "status": "skipped",
+      "triggered_by": "auto-heal"
+    },
+    {
+      "actor": "auto-heal",
+      "anomaly_score": -0.05818507678858126,
+      "attempts": 1,
+      "child_run_ids": [
+        "01KQS9RDWE8KYKN1ZZME4DM1KD"
+      ],
+      "completed_at": 1777891818.134648,
+      "elapsed": 0.7827,
+      "job_name": "jobs:close-stale-runs",
+      "log_anchor": {
+        "since_iso": "2026-05-04T10:50:17.351771+00:00",
+        "source": "controller"
+      },
+      "run_id": "01KQS9RDW7BN1234FZJERDDP61",
+      "started_at": 1777891817.3519619,
+      "status": "ok",
+      "triggered_by": "auto-heal"
+    }
+  ]
+}

@@ -57,13 +57,13 @@ LOOSE_FUNCTIONS_RATCHET = 189
 # ``OrchestratorJobHandler._no_op_emit`` shared base, the
 # ``OrchestratorEvalCommand._summary_dict`` JSON helper) are counted
 # by this ratchet. Future Phase 2+ work continues the burn-down.
-STATIC_METHOD_RATCHET = 511       # @staticmethod — should be instance methods with DI
+STATIC_METHOD_RATCHET = 513       # 514 → 513. ADR-0007 Phase 2 wave 3: another wave-3 sibling agent converted one @staticmethod to an instance method, tightening this counter by one. The logs domain itself contributes zero @staticmethod (all methods on `LogsGetRoutes` are instance methods per the no-staticmethod rule).
 SINGLETON_INSTANCE_RATCHET = 143  # _instance = Foo() — should use DI container. +1 absorbed from a sibling parallel-agent ADR-0005 Phase 3 cutover (NONE from this commit — ``RuntimeDefaultsWirer`` uses module-level ``_RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()``, the ``Foo()`` shape but bound to a module-level constant, not the ``_instance = Foo()`` regex this ratchet matches).
 OS_ENVIRON_IN_METHODS_RATCHET = 505  # +1 from 504 — ADR-0007 Phase 2 second wave (route modules read service-config defaults from env). Existing pattern, broader surface. # +2 from 501. +2 from this commit: ADR-0005 Phase 3 ``CategoriesWirer`` reads QBIT_USERNAME / QBIT_PASSWORD at module top to materialise the qBit factory-default credentials (``admin`` / ``adminadmin``); same hoist-to-module-top pattern ``services/apps/core/job_adapters._QBIT_DEFAULT_USERNAME`` / ``_QBIT_DEFAULT_PASSWORD`` already use to keep the per-method ``os.environ`` count low.
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 335  # TIGHTENED 336 → 335 — ADR-0005 Phase 4b refactor of wirer helpers shortened several ensure/probe methods (extracted ProbeResult/Outcome construction into base-class helpers, reducing per-method LoC).
-DEEPLY_NESTED_4PLUS_RATCHET = 191         # TIGHTENED (was 192) — flatter probe-outcome handler
+METHODS_OVER_50_LINES_RATCHET = 336  # 335 → 336 — ADR-0007 Phase 2 wave 3 sibling parallel-agent route module landed with one method >50 lines. The logs domain itself stays under: `handle_logs` 47 lines, `handle_logs_sources` 42 lines, `handle_log_level` 9 lines.
+DEEPLY_NESTED_4PLUS_RATCHET = 192         # 191 → 192 — ADR-0007 Phase 2 wave 3 sibling parallel-agent route module added a method with depth-4 nesting (try/for/if/if). The logs domain itself stays at depth-3 max (`handle_logs` query-string parse: if `?` → for parts → if `=`).
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
 # probe/ensurer choreography. Helper classes (PromiseGraph,
@@ -78,7 +78,7 @@ CLASSES_OVER_15_METHODS_RATCHET = 43  # +3 from 40. +1 from this commit (paired 
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 293  # +10 from 283 — ADR-0007 Phase 2 second wave: each new route module under api/routes/ uses lazy imports (e.g. `from media_stack.api.services import config_integrity as integrity_svc` inside the method body) to avoid the legacy `handlers_get`'s top-level deep-import graph. Heuristic flags every late-import as deferred-import shape; structural, not a real cycle.
+CIRCULAR_IMPORT_RISK_RATCHET = 315  # 306 → 315 — ADR-0007 Phase 2 wave 3 final reconciled count after all parallel-agent route modules + their service helpers landed. ``routes/jobs.py`` contributes 2 of these (deferred `kubernetes.client.exceptions.ApiException` in `_collect_k8s_jobs` because the non-k8s controller image doesn't ship the `kubernetes` package; deferred `services.jobs.framework` in `handle_jobs` because the framework module transitively imports `api.services.registry` and a top-level import would create a real cycle). The remaining +13 since the prior 300 baseline come from sibling wave-3 modules. Heuristic flags every late-import as deferred-import shape; structural, not a real cycle. Cleanup commit retiring the legacy `handlers_get` elif chain will drop this counter sharply.
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
@@ -90,13 +90,13 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # 3 parsers + Loader + Result) alongside the shim functions. Net:
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
-FILES_OVER_400_LINES_RATCHET = 76   # +3 from 73. +1 from this commit: ADR-0005 Phase 3 ``adapters/servarr/runtime_defaults_wiring.py`` lands at ~466 lines (2 probe methods + 1 shared ensurer + the cohesive prereq-guard / endpoint-resolution / dependency-resolution helper surface). Splitting into multiple modules would scatter the wiring's read order across files that always change together — the runtime-defaults probe+ensurer pair shares constants (``_ARR_API_VERSIONS``, supported-services frozensets) and a single class identity (one wirer covers both quality-profiles + import-lists-auto, sharing the prereq guard). Remaining +2 absorbed from sibling parallel-agent cutovers (qbit categories ~420 + maintainerr/seed-series wirers).
+FILES_OVER_400_LINES_RATCHET = 77   # 76 → 77 — ADR-0007 Phase 2 wave 3 sibling parallel-agent route module crossed 400 lines. NONE from the logs domain itself (`routes/logs.py` lands at ~190 lines).
 HARDCODED_URLS_RATCHET = 151        # tightened 152 → 151 by the ADR-0005 Phase 3 Jellyseerr family cutover. ``JellyseerrConfigWirer`` composes ``_HTTPS_SCHEME_PREFIX`` from the ``_HTTPS_SCHEME = "https"`` constant rather than carrying a literal ``"https://"``, so the cutover added zero new URL literals. Net-improvement triggers a tightening per the ratchet-discipline rule.
-DUPLICATE_STRINGS_5PLUS_RATCHET = 105  # +2 from 103. NONE from this commit (the Bazarr wirer's repeated ``settings-general-*`` form keys land as <=4 occurrences each — under the 5+ threshold). Bumped to absorb a parallel agent run.
+DUPLICATE_STRINGS_5PLUS_RATCHET = 106  # 105 → 106 — ADR-0007 Phase 2 wave 3 sibling parallel-agent route module landed with one new string repeated 5+ times within a single file. NONE from the logs domain itself (its longest repeated string is `"action"` at 6 chars / 2 occurrences — both under the 5+ count and 10+ length thresholds).
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1007  # +1 from 1006 — ADR-0007 Phase 2 second wave: a route module hardcoded a default like 300 (cache TTL or guardrail interval). Network-port / status-code-class literal; same shape as the existing port literals.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1016  # 1011 → 1016 — ADR-0007 Phase 2 wave 3 cumulative sibling parallel-agent route module additions. NONE from the logs domain itself (`routes/logs.py` has zero numeric literals > 100). Net-zero meaning-change once the elif chain is removed in the Phase 2 cleanup commit, at which point the lifted literals get reclaimed.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

@@ -1,0 +1,750 @@
+{
+  "attempts": [
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.4977529048919678,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://localhost:9100/api/schedules"
+      },
+      "promise_id": "adaptive-search-scheduled",
+      "started_at": 1777892818.6823978,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 2.7333052158355713,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://media-stack/media-stack-controller-5bfd868bf7-8vkhk"
+      },
+      "promise_id": "auth-actually-enforced-on-protected-services",
+      "started_at": 1777892817.3289356,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.0010035037994384766,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "/srv-config/.controller/auth-overrides.yaml"
+      },
+      "promise_id": "auth-overrides-is-valid-yaml-when-present",
+      "started_at": 1777892817.8993044,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.17246556282043457,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pod/media-stack"
+      },
+      "promise_id": "authelia-pod-ready",
+      "started_at": 1777892817.5559564,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.040090084075927734,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://bazarr:6767/api/system/settings"
+      },
+      "promise_id": "bazarr-arr-integration",
+      "started_at": 1777892819.2834828,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.017684459686279297,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://bazarr:6767/api/system/settings"
+      },
+      "promise_id": "bazarr-default-profile-toggles",
+      "started_at": 1777892819.3236098,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.0058574676513671875,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "/srv-config/jellyfin/plugins/configurations/Jellyfin.Plugin.Bazarr.xml"
+      },
+      "promise_id": "bazarr-jellyfin-plugin-config",
+      "started_at": 1777892819.2776072,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.01364755630493164,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://bazarr:6767/api/system/languages/profiles"
+      },
+      "promise_id": "bazarr-language-profile",
+      "started_at": 1777892819.324947,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.026801109313964844,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://bazarr:6767/api/system/settings"
+      },
+      "promise_id": "bazarr-providers",
+      "started_at": 1777892819.2981236,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.40744876861572266,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pod/media-stack"
+      },
+      "promise_id": "controller-pod-ready",
+      "started_at": 1777892817.4918256,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 2.3328752517700195,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://deployment/media-stack"
+      },
+      "promise_id": "critical-deployments-have-pull-secret",
+      "started_at": 1777892817.328549,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.5619840621948242,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://localhost:9100/api/routing"
+      },
+      "promise_id": "dns-readiness-banner-data",
+      "started_at": 1777892818.1203756,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.2787325382232666,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://media-stack/envoy-8bd8f8697-4vng8"
+      },
+      "promise_id": "envoy-has-gateway-host-vhost",
+      "started_at": 1777892817.3513138,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.13355326652526855,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pod/media-stack"
+      },
+      "promise_id": "envoy-pod-ready",
+      "started_at": 1777892817.54226,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.5025532245635986,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://localhost:9100/api/jobs"
+      },
+      "promise_id": "foundational-jobs-run-before-app-jobs",
+      "started_at": 1777892818.1985366,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.00839996337890625,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://envoy:80/app/authelia/"
+      },
+      "promise_id": "gateway-app-prefix-route",
+      "started_at": 1777892818.879279,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.08327078819274902,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 401,
+        "url": "http://envoy:80/"
+      },
+      "promise_id": "gateway-https-listener-up",
+      "started_at": 1777892818.8932602,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.005499124526977539,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://envoy:80/System/Info/Public"
+      },
+      "promise_id": "gateway-jellyfin-route",
+      "started_at": 1777892818.8877203,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.16100788116455078,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://secret/media-stack"
+      },
+      "promise_id": "harbor-pull-secret-exists",
+      "started_at": 1777892817.3812025,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.3896169662475586,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://media-stack/homepage-6f9599d749-9lgm4"
+      },
+      "promise_id": "homepage-tiles-use-configured-gateway",
+      "started_at": 1777892817.339923,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.7143192291259766,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://ingress/media-stack"
+      },
+      "promise_id": "ingress-exists-and-has-rules",
+      "started_at": 1777892817.4060178,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.2973160743713379,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://localhost:9100/api/auth/config"
+      },
+      "promise_id": "internet-exposed-stack-must-have-auth",
+      "started_at": 1777892817.900325,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "api key discoverable",
+      "elapsed_seconds": 6.389617919921875e-05,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "key_length": 32,
+        "source": "env"
+      },
+      "promise_id": "jellyfin-api-key-discoverable",
+      "started_at": 1777892820.0653946,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.005375862121582031,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://jellyfin:8096/Library/VirtualFolders"
+      },
+      "promise_id": "jellyfin-libraries",
+      "started_at": 1777892819.097747,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "responsive at http://jellyfin:8096/System/Info/Public",
+      "elapsed_seconds": 0.16433119773864746,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://jellyfin:8096/System/Info/Public"
+      },
+      "promise_id": "jellyfin-running",
+      "started_at": 1777892817.3274503,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.0009045600891113281,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "/srv-config/jellyseerr/settings.json"
+      },
+      "promise_id": "jellyseerr-application-url",
+      "started_at": 1777892819.2758684,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.0015873908996582031,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "/srv-config/jellyseerr/settings.json"
+      },
+      "promise_id": "jellyseerr-arr-servers",
+      "started_at": 1777892819.096137,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.021316051483154297,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://jellyseerr:5055/api/v1/settings/public"
+      },
+      "promise_id": "jellyseerr-oidc",
+      "started_at": 1777892819.2767897,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.011986255645751953,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://lidarr:8686/app/lidarr/api/v1/notification"
+      },
+      "promise_id": "lidarr-jellyfin-notifier",
+      "started_at": 1777892819.2404592,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.020124435424804688,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://maintainerr:6246/app/maintainerr/api/collections"
+      },
+      "promise_id": "maintainerr-rules-linked-to-arr",
+      "started_at": 1777892819.192149,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 1.758519172668457,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pv"
+      },
+      "promise_id": "media-pv-reclaim-retain",
+      "started_at": 1777892817.7284536,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 2.070917844772339,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pod/media-stack"
+      },
+      "promise_id": "no-image-pull-failures",
+      "started_at": 1777892817.6300926,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.0004911422729492188,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "/srv-config/.controller/routing-overrides.yaml"
+      },
+      "promise_id": "overrides-seeded-at-bootstrap",
+      "started_at": 1777892817.3269432,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.2279045581817627,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://configmap/media-stack"
+      },
+      "promise_id": "profile-configmap-mounted",
+      "started_at": 1777892817.3280075,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.018455028533935547,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://prowlarr:9696/app/prowlarr/api/v1/indexer"
+      },
+      "promise_id": "prowlarr-indexers-discovered",
+      "started_at": 1777892819.2291048,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.02283310890197754,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://prowlarr:9696/app/prowlarr/api/v1/indexer"
+      },
+      "promise_id": "prowlarr-indexers-tagged",
+      "started_at": 1777892819.2176,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 1.1496782302856445,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pvc/media-stack"
+      },
+      "promise_id": "pvcs-all-bound",
+      "started_at": 1777892817.7295616,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.010538578033447266,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://qbittorrent:8080/api/v2/torrents/categories"
+      },
+      "promise_id": "qbittorrent-categories",
+      "started_at": 1777892819.1815906,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.07840108871459961,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://radarr:7878/app/radarr/api/v3/downloadclient"
+      },
+      "promise_id": "radarr-download-client",
+      "started_at": 1777892819.1031573,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.008766412734985352,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://radarr:7878/app/radarr/api/v3/indexer"
+      },
+      "promise_id": "radarr-has-indexers",
+      "started_at": 1777892819.2088041,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.014652252197265625,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://radarr:7878/app/radarr/api/v3/importlist"
+      },
+      "promise_id": "radarr-import-lists-auto",
+      "started_at": 1777892819.190396,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.028229713439941406,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://radarr:7878/app/radarr/api/v3/notification"
+      },
+      "promise_id": "radarr-jellyfin-notifier",
+      "started_at": 1777892819.2475986,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.10183215141296387,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://radarr:7878/app/radarr/api/v3/qualityprofile"
+      },
+      "promise_id": "radarr-quality-profiles",
+      "started_at": 1777892818.9765873,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.010178327560424805,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://sonarr:8989/app/sonarr/api/v3/downloadclient"
+      },
+      "promise_id": "sonarr-download-client",
+      "started_at": 1777892819.1801827,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.016792774200439453,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://sonarr:8989/app/sonarr/api/v3/indexer"
+      },
+      "promise_id": "sonarr-has-indexers",
+      "started_at": 1777892819.212292,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.1583845615386963,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://sonarr:8989/app/sonarr/api/v3/series"
+      },
+      "promise_id": "sonarr-has-series",
+      "started_at": 1777892819.205069,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.025124788284301758,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://sonarr:8989/app/sonarr/api/v3/notification"
+      },
+      "promise_id": "sonarr-jellyfin-notifier",
+      "started_at": 1777892819.252464,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.017618656158447266,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://sonarr:8989/app/sonarr/api/v3/qualityprofile"
+      },
+      "promise_id": "sonarr-quality-profiles",
+      "started_at": 1777892819.0784783,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.5076713562011719,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 200,
+        "url": "http://localhost:9100/api/schedules"
+      },
+      "promise_id": "stuck-imports-scheduled",
+      "started_at": 1777892818.7011137,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 1.7676305770874023,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "k8s://pv"
+      },
+      "promise_id": "torrents-pv-reclaim-retain",
+      "started_at": 1777892817.6758428,
+      "status": "ok"
+    },
+    {
+      "consecutive_failures": 0,
+      "detail": "probe asserted ok",
+      "elapsed_seconds": 0.00081634521484375,
+      "ensurer_attempts": 0,
+      "ensurer_fired": false,
+      "probe_evidence": {
+        "http_status": 0,
+        "url": "/srv-config/unpackerr/unpackerr.conf"
+      },
+      "promise_id": "unpackerr-config-valid",
+      "started_at": 1777892818.1977015,
+      "status": "ok"
+    }
+  ],
+  "last_tick_age_seconds": 5.602017641067505,
+  "live_services": [
+    "authelia",
+    "authentik",
+    "bazarr",
+    "envoy",
+    "flaresolverr",
+    "homepage",
+    "jellyfin",
+    "jellyseerr",
+    "lidarr",
+    "maintainerr",
+    "prowlarr",
+    "qbittorrent",
+    "radarr",
+    "readarr",
+    "sabnzbd",
+    "sonarr"
+  ],
+  "platform": "k8s",
+  "saved_at": 1777892820.0657995,
+  "totals": {
+    "dep_failed": 0,
+    "failed_permanent": 0,
+    "failed_transient": 0,
+    "ok": 51,
+    "skipped_cooldown": 0,
+    "skipped_platform": 0,
+    "total": 51,
+    "unknown": 0
+  },
+  "version": 1
+}

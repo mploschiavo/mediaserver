@@ -1,0 +1,224 @@
+{
+  "active_connections": {
+    "ext_authz_authelia": 2,
+    "service_authelia": 1,
+    "service_authentik": 0,
+    "service_bazarr": 0,
+    "service_emby": 0,
+    "service_envoy": 0,
+    "service_flaresolverr": 0,
+    "service_homepage": 0,
+    "service_jdownloader": 0,
+    "service_jellyfin": 2,
+    "service_jellyseerr": 0,
+    "service_lidarr": 0,
+    "service_maintainerr": 0,
+    "service_media_stack_controller": 0,
+    "service_media_stack_ui": 0,
+    "service_mythtv": 0,
+    "service_nzbget": 0,
+    "service_plex": 0,
+    "service_prowlarr": 0,
+    "service_qbittorrent": 0,
+    "service_radarr": 0,
+    "service_readarr": 0,
+    "service_sabnzbd": 0,
+    "service_sonarr": 0,
+    "service_tautulli": 0,
+    "service_traefik": 0
+  },
+  "clusters": [
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_flaresolverr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_jdownloader"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_authentik"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_emby"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_jellyseerr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_readarr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_authelia"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_radarr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_envoy"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_media_stack_controller"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_jellyfin"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_media_stack_ui"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_mythtv"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_nzbget"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_plex"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_maintainerr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_homepage"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_prowlarr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_sabnzbd"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_sonarr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_tautulli"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 0,
+      "hosts": 0,
+      "name": "service_traefik"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "ext_authz_authelia"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_bazarr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_lidarr"
+    },
+    {
+      "added_via_api": false,
+      "healthy": 1,
+      "hosts": 1,
+      "name": "service_qbittorrent"
+    }
+  ],
+  "downstream_breakdown": {
+    "rq_2xx": 56910,
+    "rq_4xx": 11108,
+    "rq_5xx": 252,
+    "total": 34517
+  },
+  "request_p_latency_ms": {},
+  "request_totals": {
+    "ext_authz_authelia": 6231,
+    "service_authelia": 2394,
+    "service_authentik": 0,
+    "service_bazarr": 0,
+    "service_emby": 0,
+    "service_envoy": 0,
+    "service_flaresolverr": 0,
+    "service_homepage": 97,
+    "service_jdownloader": 0,
+    "service_jellyfin": 4380,
+    "service_jellyseerr": 0,
+    "service_lidarr": 0,
+    "service_maintainerr": 0,
+    "service_media_stack_controller": 0,
+    "service_media_stack_ui": 169,
+    "service_mythtv": 0,
+    "service_nzbget": 0,
+    "service_plex": 0,
+    "service_prowlarr": 0,
+    "service_qbittorrent": 934,
+    "service_radarr": 0,
+    "service_readarr": 0,
+    "service_sabnzbd": 0,
+    "service_sonarr": 0,
+    "service_tautulli": 0,
+    "service_traefik": 0
+  },
+  "tls_handshake_errors": 0
+}

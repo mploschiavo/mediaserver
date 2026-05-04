@@ -76,10 +76,6 @@ _HANDLER_ONLY_ALLOWLIST: frozenset[str] = frozenset({
     "/api/auth/oidc/probe",         # connectivity probe (auth admin)
     "/api/bazarr/subtitle-config",  # bazarr admin proxy
     "/api/bazarr/subtitle-languages",
-    "/api/envoy/access-log",        # edge-router diagnostics
-    "/api/envoy/admin-summary",
-    "/api/envoy/timeseries",
-    "/api/jobs/running",            # in-flight jobs poll
     "/api/livetv-sources/probe",    # LiveTV connectivity probe
     "/api/me/change-password",      # user-facing — TODO spec
     "/api/orchestrator/promises/state",  # ADR-0003 promise state

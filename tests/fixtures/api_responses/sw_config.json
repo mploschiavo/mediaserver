@@ -1,0 +1,41 @@
+{
+  "allowed_app_prefixes": [
+    "/app/media-stack-ui"
+  ],
+  "basepath": "/app/media-stack-ui",
+  "denylist_patterns": [
+    "^/api/",
+    "^/app/(?!media\\-stack\\-ui(?:/|$))"
+  ],
+  "sister_app_prefixes": [
+    "/app/authelia",
+    "/app/authentik",
+    "/app/bazarr",
+    "/app/core",
+    "/app/emby",
+    "/app/envoy",
+    "/app/flaresolverr",
+    "/app/grabit",
+    "/app/guardrails",
+    "/app/homepage",
+    "/app/jdownloader",
+    "/app/jellyfin",
+    "/app/jellyseerr",
+    "/app/lidarr",
+    "/app/maintainerr",
+    "/app/media_integrity",
+    "/app/mythtv",
+    "/app/nzbget",
+    "/app/plex",
+    "/app/prowlarr",
+    "/app/qbittorrent",
+    "/app/radarr",
+    "/app/readarr",
+    "/app/sabnzbd",
+    "/app/sonarr",
+    "/app/tautulli",
+    "/app/traefik",
+    "/app/unpackerr"
+  ],
+  "version": 1
+}

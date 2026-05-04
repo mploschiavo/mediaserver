@@ -57,8 +57,14 @@ class CertDownloadEndpointTests(unittest.TestCase):
         if cert_present:
             cert_path.write_bytes(_DUMMY_PEM)
         svc.cert_path = cert_path
+        # Patch the canonical symbol on ``tls_factory``. Both the
+        # legacy ``handlers_get`` chain (which does
+        # ``from media_stack.api.tls_factory import …``) and the
+        # ADR-0007 router-registered ``probes_dns_tls`` route
+        # resolve through this attribute, so a single patch covers
+        # both code paths during the migration window.
         return mock.patch(
-            "media_stack.api.handlers_get.build_default_tls_service",
+            "media_stack.api.tls_factory.build_default_tls_service",
             return_value=svc,
         )
 
