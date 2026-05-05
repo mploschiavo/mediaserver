@@ -41,6 +41,7 @@ def _state(
     trigger: str | None = None,
     paused_clients: list[str] | None = None,
     threshold_override: dict[str, float] | None = None,
+    auto_check_paused_until: float | None = None,
 ) -> dict[str, Any]:
     """Hand-roll the snapshot the rule + dispatcher see."""
     state: dict[str, Any] = {
@@ -49,6 +50,7 @@ def _state(
             "engaged": engaged,
             "trigger": trigger,
             "paused_clients": list(paused_clients or []),
+            "auto_check_paused_until": auto_check_paused_until,
         },
     }
     if threshold_override is not None:
@@ -412,3 +414,48 @@ class TestEvaluationLoopDispatch:
         ]
         assert engage_acts[0]["ok"] is True
         assert "already engaged" in engage_acts[0]["detail"]
+
+
+# ---------------------------------------------------------------------------
+# ADR-0008 Phase 2: auto-side TTL bypass via auto_check_paused_until
+# ---------------------------------------------------------------------------
+
+
+class TestAutoCheckPausedUntilBypass:
+    def test_evaluate_short_circuits_when_paused_until_in_future(self) -> None:
+        import time as _time
+        rule = _LockdownThreshold()
+        # Disk is over the lockdown bar but the bypass is active.
+        state = _state(
+            disks={"media": {"percent_used": 90.0}},
+            auto_check_paused_until=_time.time() + 3600.0,
+        )
+        assert rule.evaluate(state) is None
+
+    def test_evaluate_resumes_after_paused_until_expires(self) -> None:
+        rule = _LockdownThreshold()
+        # Bypass is in the past — full evaluation runs.
+        state = _state(
+            disks={"media": {"percent_used": 90.0}},
+            auto_check_paused_until=1.0,  # epoch in 1970
+        )
+        assert rule.evaluate(state) == "critical"
+
+    def test_remediate_short_circuits_during_bypass(self) -> None:
+        import time as _time
+        rule = _LockdownThreshold()
+        # Disk over lockdown bar; bypass active. No engage action.
+        state = _state(
+            disks={"media": {"percent_used": 90.0}},
+            auto_check_paused_until=_time.time() + 3600.0,
+        )
+        assert rule.remediate(state) is None
+
+    def test_paused_until_none_does_not_short_circuit(self) -> None:
+        rule = _LockdownThreshold()
+        # Explicit None — no bypass.
+        state = _state(
+            disks={"media": {"percent_used": 90.0}},
+            auto_check_paused_until=None,
+        )
+        assert rule.evaluate(state) == "critical"

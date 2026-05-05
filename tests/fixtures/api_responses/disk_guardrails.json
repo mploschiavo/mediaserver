@@ -1,0 +1,18 @@
+{
+  "auto_check_paused_until": null,
+  "engaged_at": 0,
+  "engaged_by": "",
+  "last_failures": [],
+  "paused_clients": [],
+  "state": "NORMAL",
+  "thresholds": {
+    "lockdown_percent": 75,
+    "release_percent": 60
+  },
+  "transitions": [],
+  "trigger": null,
+  "used_percent_by_mount": {
+    "config": 42.1,
+    "data": 65.8
+  }
+}

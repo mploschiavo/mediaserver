@@ -374,3 +374,68 @@ class TestConfigRootResolution:
         monkeypatch.delenv("CONFIG_ROOT", raising=False)
         resolved = LOCKDOWN_STATE_FILE.default_path()
         assert str(resolved) == "/srv-config/.controller/disk-lockdown.state.json"
+
+
+# ---------------------------------------------------------------------------
+# ADR-0008 Phase 2: pause_auto coverage
+# ---------------------------------------------------------------------------
+
+
+class TestPauseAuto:
+    def test_pause_auto_sets_ttl(self, state_path: Path) -> None:
+        svc = _make_service(state_path, [_FakeAdapter("qbittorrent")])
+        result = svc.pause_auto(hours=2, by="operator:matthew")
+        # 2 hours from the deterministic clock 1_700_000_000.
+        expected = 1_700_000_000.0 + 7200.0
+        assert result["auto_check_paused_until"] == expected
+        assert result["hours"] == 2
+        # State file persisted.
+        on_disk = json.loads(state_path.read_text())
+        assert on_disk["auto_check_paused_until"] == expected
+
+    def test_pause_auto_idempotent_extends_only(
+        self, state_path: Path,
+    ) -> None:
+        """Later call cannot DECREMENT an existing TTL — it can only
+        extend it. Two ``pause_auto`` calls with the same clock and
+        the second one with a smaller hours value must keep the
+        first TTL."""
+        svc = _make_service(state_path, [_FakeAdapter("qbittorrent")])
+        first = svc.pause_auto(hours=4, by="operator:matthew")
+        second = svc.pause_auto(hours=1, by="operator:matthew")
+        assert second["auto_check_paused_until"] == first["auto_check_paused_until"]
+
+    def test_pause_auto_extends_with_larger_hours(
+        self, state_path: Path,
+    ) -> None:
+        svc = _make_service(state_path, [_FakeAdapter("qbittorrent")])
+        first = svc.pause_auto(hours=1, by="operator:matthew")
+        second = svc.pause_auto(hours=6, by="operator:matthew")
+        assert (
+            second["auto_check_paused_until"]
+            > first["auto_check_paused_until"]
+        )
+
+    def test_pause_auto_zero_clears_ttl(self, state_path: Path) -> None:
+        svc = _make_service(state_path, [_FakeAdapter("qbittorrent")])
+        svc.pause_auto(hours=4, by="operator:matthew")
+        cleared = svc.pause_auto(hours=0, by="operator:matthew")
+        assert cleared["auto_check_paused_until"] is None
+        on_disk = json.loads(state_path.read_text())
+        assert on_disk["auto_check_paused_until"] is None
+
+    def test_pause_auto_does_not_resume_paused_clients(
+        self, state_path: Path,
+    ) -> None:
+        """Per ADR: already-paused clients stay paused during a TTL
+        bypass — release is an explicit operator action."""
+        adapter = _FakeAdapter("qbittorrent")
+        svc = _make_service(state_path, [adapter])
+        svc.engage(trigger="auto", by="auto:disk-78%")
+        adapter.resume_calls = 0
+        svc.pause_auto(hours=2, by="operator:matthew")
+        assert adapter.resume_calls == 0
+        # State retains paused_clients.
+        on_disk = json.loads(state_path.read_text())
+        assert on_disk["paused_clients"] == ["qbittorrent"]
+        assert on_disk["engaged"] is True

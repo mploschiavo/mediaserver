@@ -103,6 +103,7 @@ ENDPOINTS_OVERRIDES: dict[str, str] = {
     "sw_config": "/api/sw-config",
     "sw_config_json": "/sw-config.json",
     "audit_log_stats": "/api/audit-log/stats",
+    "disk_guardrails": "/api/disk-guardrails",
 }
 
 

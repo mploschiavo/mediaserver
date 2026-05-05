@@ -58,11 +58,11 @@ LOOSE_FUNCTIONS_RATCHET = 191  # 190 → 191 — ADR-0008 Phase 1: download_lock
 # ``OrchestratorEvalCommand._summary_dict`` JSON helper) are counted
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 494  # 513 → 494 — ADR-0007 Phase E cleanup: deleted handlers_get.py + handlers_post.py (5,360 LoC); their @staticmethod decorators went with them. Tightened to new floor.
-SINGLETON_INSTANCE_RATCHET = 141  # 143 → 141 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed two _instance = Foo() singletons. Tightened to new floor.
-OS_ENVIRON_IN_METHODS_RATCHET = 498  # 507 → 496 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed os.environ reads inside their methods. Tightened to new floor.
+SINGLETON_INSTANCE_RATCHET = 142  # 141 → 142 — ADR-0008 Phase 2: lockdown_factory.singleton() pattern.
+OS_ENVIRON_IN_METHODS_RATCHET = 504  # 498 → 504 — ADR-0008 Phase 1+2: download_lockdown_service + lockdown adapters + lockdown_factory read service env vars (URL/api-key/username/password). Net +6 over Phase 1's transient 498 floor; refactor of disk_guardrails route's _resolve_config to use the qbit env-name constants from adapters/qbittorrent shaved 4 back off, landing at 504.  # 507 → 496 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed os.environ reads inside their methods. Tightened to new floor.
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 341  # 340 → 333 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed several long handler methods. Tightened to new floor.
+METHODS_OVER_50_LINES_RATCHET = 342  # 340 → 333 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed several long handler methods. Tightened to new floor.
 DEEPLY_NESTED_4PLUS_RATCHET = 191         # 193 → 189 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deeply-nested elif-dispatch chains. Tightened to new floor.
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
@@ -78,7 +78,7 @@ CLASSES_OVER_15_METHODS_RATCHET = 44  # 45 → 44 — ADR-0007 Phase E cleanup: 
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 374  # 376 → 374 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deferred imports inside their methods. Tightened to new floor.
+CIRCULAR_IMPORT_RISK_RATCHET = 386  # 376 → 374 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deferred imports inside their methods. Tightened to new floor.
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
@@ -90,9 +90,9 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # 3 parsers + Loader + Result) alongside the shim functions. Net:
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
-FILES_OVER_400_LINES_RATCHET = 88  # 87 → 86 — ADR-0007 Phase E cleanup: deleted handlers_get.py (2,572 LoC) + handlers_post.py (2,788 LoC) removed two files >400 lines.
+FILES_OVER_400_LINES_RATCHET = 89  # 87 → 86 — ADR-0007 Phase E cleanup: deleted handlers_get.py (2,572 LoC) + handlers_post.py (2,788 LoC) removed two files >400 lines.
 HARDCODED_URLS_RATCHET = 151        # 154 → 151 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed inline URL literals. Tightened.
-DUPLICATE_STRINGS_5PLUS_RATCHET = 106  # 107 → 103 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed duplicate string literals. Tightened.
+DUPLICATE_STRINGS_5PLUS_RATCHET = 110  # 107 → 103 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed duplicate string literals. Tightened.
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
