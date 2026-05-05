@@ -1112,9 +1112,18 @@ class _ProbeHttpClient:
         Used by ``http_status`` probes whose assert inspects the
         redirect itself. The no-op handler turns 30x into HTTPError;
         we translate that back into the canonical 3-tuple.
+
+        ``OpenerDirector.open()`` does NOT accept ``context=`` (only
+        ``urlopen()`` does). When the request needs a custom SSL
+        context, we install an ``HTTPSHandler(context=ctx)`` on the
+        opener instead so the per-call signature stays plain.
         """
         req, kwargs = self._build_request(url, headers)
-        opener = urllib.request.build_opener(_NoRedirectHandler)
+        ssl_context = kwargs.pop("context", None)
+        handlers: list[Any] = [_NoRedirectHandler]
+        if ssl_context is not None:
+            handlers.append(urllib.request.HTTPSHandler(context=ssl_context))
+        opener = urllib.request.build_opener(*handlers)
         try:
             with opener.open(req, **kwargs) as resp:
                 return self._extract(resp)

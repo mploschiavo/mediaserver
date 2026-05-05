@@ -286,6 +286,14 @@ def _run_serve(args: argparse.Namespace) -> None:
     try:
         from media_stack.api.preflight.api_keys import run_preflight as _discover_keys
         config_root = getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config"))
+        # Plumb the resolved value into ``os.environ`` so downstream
+        # probes/ensurers that fall through to ``os.environ.get("CONFIG_ROOT")``
+        # — notably ``adapters/jellyseerr/config_wiring.py::_settings_path`` —
+        # see the same value the CLI was given. Compose passes
+        # ``--config-root /srv-config`` as a flag (no env), and pre-Phase-E
+        # the legacy chain compensated for the gap; post-cleanup the
+        # probe path is the only consumer and was reading "" forever.
+        os.environ["CONFIG_ROOT"] = config_root
         runtime_platform.log(f"[INFO] Config root discovery starting (configured: {config_root})")
         discovered = _discover_keys(config_root=config_root, log=runtime_platform.log)
         # Update CONFIG_ROOT in case discovery changed it

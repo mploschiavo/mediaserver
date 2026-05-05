@@ -171,7 +171,14 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
     def probe_application_url(self, ctx: OrchestrationContext) -> ProbeResult:
         path = self._settings_path(ctx)
         if path is None:
-            return self._probe_unknown(
+            # Operator-config gap (CONFIG_ROOT unresolvable), not a
+            # transient signal. ``_probe_unknown`` would loop the
+            # orchestrator forever ("transient failure attempt N");
+            # ``_probe_failed`` lets the ensurer escalate to permanent
+            # so the dashboard surfaces a single ERROR instead of
+            # WARN-spam every 60s. Mirrors ``ensure_application_url``'s
+            # ``_outcome_permanent`` for the same root cause.
+            return self._probe_failed(
                 ctx,
                 "no CONFIG_ROOT — cannot locate settings.json",
                 evidence={"rel_path": _SETTINGS_REL_PATH},
@@ -235,7 +242,11 @@ class JellyseerrConfigWirer(LifecycleWirerBase):
     def probe_arr_servers(self, ctx: OrchestrationContext) -> ProbeResult:
         path = self._settings_path(ctx)
         if path is None:
-            return self._probe_unknown(
+            # Same operator-config gap reasoning as
+            # ``probe_application_url`` — escalate to ``failed`` so the
+            # ensurer can return permanent and the orchestrator stops
+            # logging WARN every tick.
+            return self._probe_failed(
                 ctx,
                 "no CONFIG_ROOT — cannot locate settings.json",
                 evidence={"rel_path": _SETTINGS_REL_PATH},
