@@ -1,327 +1,442 @@
-# ADR-0008 — Disk-pressure guardrails: state machine, manual controls, and UI
+# ADR-0008 — Disk-pressure guardrails: lockdown + manual controls + UI
 
-**Status:** Draft (2026-05-05). Operational hardening; not architecturally
-load-bearing. The current `disk_guardrails` config exists but is silently
-no-op'd on compose (broken `monitor_path`), can't be tuned per-install
-without forking contracts, and has no manual override surface — operators
-can only watch the auto-cleanup decide for itself, not invoke or block
-actions. This ADR formalizes the four fixes surfaced during a
-laptop-deploy live-soak (2026-05-05): broken probe, missing profile
-overrides, no manual controls, and no UI surface.
+**Status:** Draft (2026-05-05). Operational hardening. Adds the **lockdown
+tier** and the **manual-action surface** to an already-substantial
+guardrail framework that the codebase already ships. This ADR explicitly
+INTEGRATES with `application.guardrails.GuardrailRegistry` and the legacy
+`services.disk_guardrails_service.DiskGuardrailsService` rather than
+inventing a parallel system.
 
 ## Context
 
-The media stack writes to disk continuously: qBittorrent stages torrents
-to `/data/torrents/`, Sonarr/Radarr import to `/media/...`, Jellyfin
-transcodes to `/data/transcode/`. On a sub-500GB laptop a fresh install
-fills 60GB+ within a few hours of seeding indexers. Without a working
-guardrail the operator finds out when the OS reports `ENOSPC`.
+A 2026-05-05 laptop live-soak surfaced an inability to stop new
+content from arriving when disk pressure spikes faster than cleanup
+can keep up. Initial inspection suggested four bugs; **a careful read
+of the existing code shows three of them are already solved** and only
+one is genuinely missing.
 
-A guardrail framework exists today in
-`contracts/defaults/operations.yaml` (`disk_guardrails:` block plus
-`media_hygiene:` block) and
-`src/media_stack/adapters/compose/services/container_runtime.py`
-(`disk_allocation_gb` budget check). What it does NOT have:
+### What already exists in the codebase (DO NOT reinvent)
 
-1. **Working probe path on compose.** `monitor_path: /srv-stack` resolves
-   to a non-existent path inside the controller container on compose
-   (`/srv-config` is the actual mount). The threshold check has been
-   reading `df` of a missing dir and silently bailing — the guardrail
-   has been off in practice for an unknown number of releases.
+`src/media_stack/application/guardrails/` — a full **`GuardrailRegistry`**
+framework:
 
-2. **No per-install threshold tuning.** Defaults at 65% / 58% are
-   reasonable on a 50TB NAS and dangerous on a 467GB laptop. The only
-   override surface is editing
-   `contracts/defaults/operations.yaml` directly, which contaminates
-   the contracts dir with per-install state.
+* Decorator-based rule registration (`@register_guardrail`) on a
+  process-wide singleton.
+* Per-rule operator overrides persisted atomically to
+  `/srv-config/.controller/guardrails.json` (the `_override_path()`
+  resolver honors `CONFIG_ROOT`).
+* `evaluate_all()` returns `Trigger` objects sorted by severity;
+  `remediate_all()` returns `Action` objects.
+* History ring (last 20 evaluations per rule), consecutive-tick
+  streak tracking, severity-monotonic sorting.
+* `tick()` in `services/guardrails/evaluation_loop.py` runs one
+  evaluation cycle and writes to the existing job-history table
+  with `actor="auto-heal"` so guardrail fires render alongside
+  cron + manual jobs in the dashboard's job-history view.
+* Eight domain modules already split out:
+  `auth, bandwidth, cost, dependency, external_api, job_health,
+  media_quality, storage`.
 
-3. **No manual operator surface.** An operator who wants to invoke
-   cleanup on demand, lock down all downloads while ripping a Blu-ray,
-   or release an auto-engaged lockdown early has no API or UI for any
-   of it. The dashboard shows usage but offers no actions.
+`src/media_stack/application/guardrails/domains/storage.py` — seven
+storage rules already registered:
 
-4. **One-tier policy.** Existing `disk_guardrails` only reacts at one
-   threshold (`max_used_percent` triggers cleanup). There's no
-   tier-2 "stop new content from arriving" lockdown when cleanup
-   alone can't keep up — the operator's options are watch the disk
-   fill or pull the plug.
+* `_PerMountThreshold` — per-mount used-percent thresholds with
+  per-mount overrides; emits `qbit_cleanup` Action on breach.
+* `_FreeSpaceFloor` — absolute byte floor; works on big volumes
+  where percent-used is misleading.
+* `_PerContentTypeQuota` — operator-defined GB ceilings for
+  movies/tv/music/books folders. **This is the closest thing the
+  codebase has to "library retention"** — `_PerContentTypeQuota`
+  detects breach; Maintainerr's rules engine does the actual
+  pruning (controller wires the integration via
+  `adapters/maintainerr/rules_wiring.MaintainerrCollectionsWirer`,
+  ADR-0005 Phase 3).
+* `_InodeFloor` — `os.statvfs`-driven inode-pressure rule. State
+  collector at `state_collector.py:111-130` already calls
+  `os.statvfs` and populates `state["mount_inodes"]`.
+* `_UnpackerScratchFloor` — Unpackerr scratch-headroom rule
+  (related to "orphan/incomplete" file detection).
+* `_TrashRetention` — arr recycle-bin age cap.
+* `_SnapshotRetention` — snapshot age cap.
 
-The 2026-05-05 live-soak on a 467GB laptop made all four gaps visible
-within an hour. This ADR specifies the durable fix.
+`src/media_stack/services/disk_guardrails_service.py` — legacy
+210-line `DiskGuardrailsService` with `enforce()` entry point:
+
+* **Already has the monitor_path fallback chain** (lines 56-80):
+  if the configured `monitor_path` doesn't exist, walks 9 candidate
+  paths (`DISK_GUARDRAILS_MONITOR_PATH` env, `STACK_ROOT` env,
+  `/srv-stack`, `/srv-stack/media`, `/srv-stack/data`, `/srv-stack/data/torrents`,
+  `/srv-stack/data/usenet`, `MEDIA_ROOT` env, `DATA_ROOT` env, `config_root`)
+  and uses the first that exists. **Also already emits the WARN line**
+  on a missing configured path.
+* `qbit_cleanup` candidate selection by category, age, ratio,
+  seeding-time. Sort order is `(completion_on, size)` ascending —
+  effectively FIFO by completion timestamp. Wired into
+  `infrastructure/servarr/runtime/hygiene_ops.py:170` as the
+  `media-hygiene` job's cleanup action.
+* The monitor_path is `compose-standard.yaml`'s `/srv-stack` literal;
+  it doesn't exist on compose, so the WARN fires and the fallback
+  chain takes over — silently using `config_root` (`/srv-config`)
+  in practice. Behavior IS happening; we just weren't reading the
+  log.
+
+`adapters/maintainerr/rules_wiring.py::MaintainerrCollectionsWirer`
+— full Maintainerr integration (ADR-0005 Phase 3):
+
+* Probes `/app/maintainerr/api/collections` for non-None
+  `radarrSettingsId` / `sonarrSettingsId` linkage.
+* Heavy-handler delegation to
+  `MaintainerrService.ensure_integrations` for the actual
+  rule sync.
+* Operator-configured retention rules in Maintainerr's UI drive
+  the actual /media pruning. **This is the answer for library
+  retention; we DO NOT reinvent it.**
+
+### What is genuinely missing
+
+After the audit, only one of the originally-suggested bugs is real,
+and three architectural gaps remain:
+
+| Originally proposed | Actual status |
+|---|---|
+| Fix `monitor_path` silent no-op | **Already fixed** (services/disk_guardrails_service.py:56-80). The 9-candidate fallback chain handles `/srv-stack`-missing on compose. |
+| Profile-level `disk_guardrails:` override schema | **Partially exists**: `GuardrailRegistry` has per-rule overrides in `guardrails.json`. Legacy `DiskGuardrailsService` reads from `cfg["disk_guardrails"]` which feeds from `media-stack.config.json`. Both surfaces exist; profile-level layering is the only gap. |
+| Inode-pressure monitoring | **Already exists** as `_InodeFloor` rule. |
+| Library retention | **Maintainerr handles this**, plus `_PerContentTypeQuota` covers the detection side. |
+| **Lockdown tier** ("stop new content from arriving") | **Genuinely missing**. No rule, no service, no API. |
+| **AUTO + MANUAL trigger separation** | **Genuinely missing**. The Registry's `tick()` is auto-only. No code path for "operator clicks Engage Lockdown at 30% disk". |
+| **Manual API endpoints** | **Genuinely missing**. No `POST /api/disk-guardrails/{cleanup,lockdown,release,pause-auto,evaluate}`. Today's only path is the auto-heal tick. |
+| **Smart cleanup ordering** | **Genuinely missing**. Current sort is FIFO by `(completion_on, size)`; no largest-first or watched-first option. |
 
 ## Decision
 
-Adopt a **state machine with AUTO and MANUAL triggers**, where the
-thresholds gate the auto-trigger but every state transition is also
-invokable ad-hoc by the operator.
+Add the lockdown layer **on top of** the existing `GuardrailRegistry`,
+plus the manual-action surface, plus a small set of cleanup-ordering
+options. Three new pieces of code, no parallel system.
 
-### Four states
+### 1. New Registry rule: `storage:lockdown_threshold`
 
-```
-NORMAL       used < watch_percent           no action
-WATCH        watch <= used < cleanup        UI banner; logging; no behavior change
-CLEANUP      cleanup <= used < lockdown     existing qbit_cleanup runs; arr-failed-queue
-                                            cleanup runs; auto-grabs still allowed
-LOCKDOWN     used >= lockdown_percent       all download clients paused; arr RSS sync
-                                            disabled; cleanup keeps running
-```
-
-Default thresholds: `watch=50` / `cleanup=65` / `lockdown=75` /
-`release=60`. The 15% gap between `lockdown` (entry) and `release`
-(exit) provides hysteresis so the system can't flap.
-
-### AUTO vs MANUAL trigger separation
-
-The same backing actions (`pause_all_downloads`, `release_all_downloads`,
-`run_cleanup_now`) are wired to two trigger paths:
-
-* **AUTO**: the orchestrator's 60s tick reads `df`, computes
-  `used_percent`, transitions state per the threshold table. AUTO
-  states release automatically when disk recovers.
-* **MANUAL**: explicit operator action via dashboard button or API
-  call. MANUAL states do NOT auto-release — the operator is in
-  control until they explicitly release.
-
-Distinguished by `state` value:
+A new rule in `application/guardrails/domains/storage.py` alongside
+the seven existing rules:
 
 ```
-NORMAL | WATCH | CLEANUP | AUTO_LOCKDOWN | MANUAL_LOCKDOWN
+_LockdownThreshold(
+    id="storage:lockdown_threshold",
+    default_threshold={
+        "lockdown_percent": 75.0,
+        "release_percent": 60.0,
+    },
+)
 ```
 
-### Five ad-hoc actions, all valid at any time
+* `evaluate(state)`: returns `"critical"` when any monitored mount
+  exceeds `lockdown_percent` AND the lockdown isn't already engaged;
+  returns `"warning"` if engaged-and-still-over; returns `None`
+  otherwise.
+* `remediate(state)`: returns `Action(action="lockdown_engage", ...)`
+  when newly-critical, or `Action(action="lockdown_release", ...)`
+  when previously-engaged AND `state["disk"][label].percent_used` is
+  now under `release_percent`.
+* Registry persistence and overrides come for free — operator can
+  edit thresholds via the existing `update_threshold()` API.
 
-| Action | API | Effect | Valid when |
-|---|---|---|---|
-| Run cleanup now | `POST /api/disk-guardrails/cleanup` | Synchronous qbit_cleanup; returns `{deleted, freed_gb}` | always |
-| Engage lockdown | `POST /api/disk-guardrails/lockdown` | Pauses every client; state → `MANUAL_LOCKDOWN`; persists | always |
-| Release lockdown | `POST /api/disk-guardrails/release` | Resumes everything; state → `NORMAL`; next tick re-evaluates | state in {AUTO_LOCKDOWN, MANUAL_LOCKDOWN} |
-| Pause guardrails (TTL) | `POST /api/disk-guardrails/pause-auto?hours=1` | Auto-threshold loop becomes no-op for N hours; current state stays | always |
-| Force evaluate now | `POST /api/disk-guardrails/evaluate` | Force one immediate probe + transition (for "I just freed 50GB") | always |
+The 15-percentage-point gap between `lockdown_percent` (75) and
+`release_percent` (60) is hysteresis — prevents flapping.
 
-A `GET /api/disk-guardrails` returns `{state, used_percent, thresholds,
-engaged_at, engaged_by, paused_clients, transitions[]}` for the UI.
+### 2. New `DownloadLockdownService` (action implementer)
 
-### Trigger-interaction rules
+`src/media_stack/services/download_lockdown_service.py` — a new
+service that the registry's remediation phase dispatches to when it
+sees `action="lockdown_engage"` or `"lockdown_release"`:
 
-These rules cover every corner case so the state machine can never
-deadlock or drift:
+* `engage()` — pause every download client + disable arr RSS sync +
+  disable arr download clients. Per-client failure isolation: a
+  failed pause logs `[WARN]` and doesn't block the rest. Idempotent
+  re-engage is a no-op.
+* `release()` — resume everything that was paused. State persisted
+  separately (see below) so a release-without-engage is safe.
 
-* **Operator engages lockdown at 30% disk** → `MANUAL_LOCKDOWN`.
-  Auto-thresholds keep evaluating but they cannot auto-release a
-  manual lockdown. Stays paused until operator releases.
-* **State is `AUTO_LOCKDOWN`, operator clicks Engage** → upgrades to
-  `MANUAL_LOCKDOWN`. Auto-release at the recovery threshold no longer
-  fires. Operator deliberately wants it locked.
-* **State is `MANUAL_LOCKDOWN`, operator clicks Release** → state
-  becomes `NORMAL`. Next tick re-evaluates: if disk is still over
-  the lockdown threshold, the auto-system immediately re-engages as
-  `AUTO_LOCKDOWN`. Won't loop because `AUTO_LOCKDOWN`'s release at
-  the recovery threshold fires normally once disk drops.
-* **State is `AUTO_LOCKDOWN`, operator clicks Release** → forces
-  release. If disk is still over `lockdown_percent`, the next tick
-  re-engages it. Useful for "let it through for 30 seconds while
-  I cancel something."
-* **Pause guardrails 1h** → `auto_check_paused_until` is set to
-  `now + 3600`. The threshold check becomes a no-op for 1 hour.
-  Already-paused clients stay paused. After 1h, normal evaluation
-  resumes. The TTL is extended by clicking again or cancelled by
-  clicking "Resume guardrails."
+Per-client adapters live in
+`adapters/_shared/download_client_lockdown.py` to keep the per-API-
+shape code (qBittorrent, SABnzbd, Sonarr, Radarr, Lidarr, Readarr)
+out of the orchestration layer.
 
-### Three-tier configuration override
+### 3. Lockdown state file (persistence + AUTO/MANUAL flag)
 
-Profile-level `disk_guardrails:` block overrides
-`contracts/defaults/operations.yaml`. UI-saved values override the
-profile. Effective config is the merged result, top-down:
+`/srv-config/.controller/disk-lockdown.state.json`:
 
-```
-contracts/defaults/operations.yaml      (built-in defaults, lowest priority)
-   ↓ merge
-deploy/examples/bootstrap-profiles/<profile>.yaml   (per-platform tuning)
-   ↓ merge
-/srv-config/.controller/disk-guardrails.yaml        (UI-edited overrides, highest)
-```
-
-Profile schema gains a `disk_guardrails:` block with the same shape as
-the operations.yaml defaults (selective override, not full replacement).
-
-### Persistence and restart-safety
-
-State lives at `/srv-config/.controller/disk-guardrails.state.json`:
-
-```
+```json
 {
-  "state": "MANUAL_LOCKDOWN",
-  "engaged_at": 1746400000.0,
-  "engaged_by": "operator:matthew",
-  "auto_check_paused_until": null,
-  "paused_clients": ["qbittorrent", "sabnzbd", "sonarr", "radarr"],
-  "last_transitions": [...]
+  "engaged": true,
+  "trigger": "auto",                    /* "auto" or "manual" */
+  "engaged_at": 1746460000.0,
+  "engaged_by": "auto:disk-78%",        /* or "operator:matthew" */
+  "auto_check_paused_until": null,      /* epoch when "pause guardrails" TTL expires */
+  "paused_clients": ["qbittorrent", "sabnzbd", "sonarr", "radarr"]
 }
 ```
 
-After a controller restart mid-lockdown, the state file is loaded; each
-client in `paused_clients` is re-confirmed paused (idempotent re-pause
-is a no-op); the UI shows the same state. Manual flag survives
-restarts.
+* AUTO trigger releases automatically when `_LockdownThreshold`'s
+  evaluate returns to `None` (disk dropped below `release_percent`).
+* MANUAL trigger does NOT auto-release — operator must explicitly
+  release via the API. Distinguished by the `trigger` field.
+* After controller restart mid-lockdown, the file is loaded; each
+  client in `paused_clients` is re-confirmed paused (idempotent).
+* `auto_check_paused_until` is a separate TTL bypass for the
+  "pause guardrails 1h" use case (rip a Blu-ray without the system
+  fighting back).
 
-### Audit-logged transitions
+### 4. Five manual API endpoints
 
-Every state change writes a row to the existing audit log:
+New `RouteModule` `routes/disk_guardrails.py`:
+
+| Endpoint | Effect |
+|---|---|
+| `GET /api/disk-guardrails` | Return current state, thresholds (from registry), recent transitions, paused_clients |
+| `POST /api/disk-guardrails/cleanup` | Run `DiskGuardrailsService.enforce()` synchronously regardless of disk %; returns `{deleted, freed_gb}` |
+| `POST /api/disk-guardrails/lockdown` | `DownloadLockdownService.engage()`; trigger=`manual`; persists |
+| `POST /api/disk-guardrails/release` | `DownloadLockdownService.release()`; clears state |
+| `POST /api/disk-guardrails/pause-auto?hours=N` | Sets `auto_check_paused_until = now + 3600*N` |
+| `POST /api/disk-guardrails/evaluate` | Force one immediate `tick()` of the registry (bypasses the 60s cadence) |
+
+OpenAPI spec entries for all six. Auth-gated identical to other
+mutating endpoints (CSRF + role check).
+
+### 5. Smart cleanup ordering
+
+Add an `order_strategy` knob to `cfg["disk_guardrails"]["qbit_cleanup"]`:
+
+```yaml
+disk_guardrails:
+  qbit_cleanup:
+    order_strategy: oldest_first   # default = current behavior (FIFO by completion_on)
+    # also: largest_first | poor_ratio_first | watched_first
+```
+
+`watched_first` reads Jellyfin's `UserData.Played` table via the
+existing `media_server_adapters` to weight torrents whose mapped
+media files have been finished. Cheap query — single SQLite SELECT
+across the playstate table, joined to qbit's tracked hashes by
+filename.
+
+The sort lives in `DiskGuardrailsService.enforce()` (currently lines
+173-176, FIFO). Strategy chosen via a small dispatch table. Defaults
+to `oldest_first` so existing operators see no behavior change.
+
+### 6. Profile-level override schema (small)
+
+The Registry already persists overrides at
+`/srv-config/.controller/guardrails.json`. The legacy
+`DiskGuardrailsService` reads from `cfg["disk_guardrails"]` which
+flows from `media-stack.config.json` (built from profile.yaml at
+boot). Two existing surfaces; the gap is per-install **defaults**
+in profile.yaml.
+
+Add a `disk_guardrails:` block to the profile schema mirroring the
+`operations.yaml` shape, merged in at `media-stack.config.json`
+generation time. Three-tier:
 
 ```
-disk_guardrail_lockdown_engaged    actor=operator:matthew   detail={used_percent: 62, manual: true}
-disk_guardrail_cleanup_invoked     actor=operator:matthew   detail={deleted: 14, freed_gb: 32.5}
-disk_guardrail_lockdown_released   actor=auto               detail={used_percent: 59}
+operations.yaml defaults
+   ↓ merge
+profile.yaml disk_guardrails:
+   ↓ merge
+guardrails.json (UI-saved overrides; per-rule)
 ```
 
-The transition feed in the UI reads from this audit stream.
+Existing `operations.yaml` shape stays as-is; profile.yaml gets a
+new optional block; UI saves still go through the registry's
+`update_threshold` path (single source of truth at runtime).
+
+### 7. UI: Ops → Storage card (Phase 3)
+
+A new card on the Ops page:
+
+* **Status header** — usage bar, state badge (`NORMAL` /
+  `AT-WATCH` / `CLEANUP-FIRED-RECENTLY` / `AUTO_LOCKDOWN` /
+  `MANUAL_LOCKDOWN`), "since X minutes ago", paused-client count.
+* **Threshold inputs** — bound to the registry's `_LockdownThreshold`
+  rule. Save invokes `update_threshold` which writes
+  `guardrails.json`.
+* **Action buttons** — `[Run cleanup now]`, `[Engage lockdown]`,
+  `[Release lockdown]`, `[Pause guardrails 1h]`, `[Force evaluate]`.
+  Confirmation dialogs on destructive actions.
+* **Cleanup-policy section** (collapsed) — the existing
+  `qbit_cleanup` knobs (categories, min_age, min_ratio,
+  min_seeding_time, max_delete_per_run, ordering strategy) bound
+  to a new `POST /api/disk-guardrails/cleanup-policy` that writes
+  to `media-stack.config.json` overrides.
+* **Transition feed** — pulled from the existing job-history table
+  filtered to `actor="auto-heal:guardrail:storage:*"` rows.
+* **SSE-fed live updates** — when state changes server-side, badge
+  + button enabled-state updates without a refresh. Hooks into the
+  existing `EventBus`.
 
 ## Phases
 
-### Phase 1 — Foundations (probe fix + override schema + laptop tuning)
+### Phase 1 — Lockdown rule + state file + DownloadLockdownService
 
-No behavior change, no UI; pure correctness + tuning.
+No UI; no new manual endpoints. Adds the auto-only lockdown layer
+on top of the existing registry tick.
 
-* Fix `monitor_path` resolution: at startup, validate the configured
-  path exists. If not, fall back in priority order (`/srv-config` →
-  `/srv-stack` → `/`) and log a `[WARN]` line citing the configured
-  vs effective path.
-* Add a runtime invariants ratchet
-  `disk_guardrails_monitor_path_resolves` that fails fast at boot if
-  the effective path doesn't resolve (catches future regressions).
-* Add `disk_guardrails:` block to the profile schema. Write the
-  three-tier merge in `services/profile_config.py` (or wherever the
-  profile→effective-config translation lives today).
-* Update `media-compose-standard.yaml` with laptop-tuned values:
-  `monitor_path: /srv-config`, `max_used_percent: 50`,
-  `target_used_percent: 40`, `lockdown_threshold: 75`,
-  `lockdown_release_threshold: 60`.
-* Smoke-test on compose: log line confirming the resolved path, no
-  silent NXDOMAIN-style failure.
+* New `_LockdownThreshold` rule registered in
+  `domains/storage.py` (alongside the seven existing rules).
+* New `DownloadLockdownService` with `engage()` / `release()`.
+* Per-client adapters in `_shared/download_client_lockdown.py`.
+* State file at `/srv-config/.controller/disk-lockdown.state.json`
+  with load + save; idempotent re-engage on controller restart.
+* Registry's `remediate_all` learns to dispatch
+  `action="lockdown_engage"` and `action="lockdown_release"` to the
+  service. Existing `Action` protocol unchanged; new action names
+  are additive.
+* Restore-after-restart test: kill the controller mid-lockdown,
+  bring it back, confirm clients are re-paused without operator
+  intervention.
 
-**Deliverables**: 4 source-file edits, 1 new ratchet test, 1 profile
-update. Net behavior: existing single-tier cleanup actually fires
-(was silently off); no new actions or UI yet.
+**Deliverables**: 1 new rule, 1 new service, 1 new adapter module, 1
+state file, ~25 unit tests covering engage/release/restart/idempotency.
+Behavior: when disk crosses 75% the system pauses every download
+client automatically; releases at 60%. No operator surface yet.
 
-### Phase 2 — State machine and lockdown service
+### Phase 2 — Manual API endpoints + AUTO/MANUAL trigger separation
 
-The core architecture lift. Behind-the-scenes wiring; UI lives in
-Phase 3.
+Adds the operator surface on top of Phase 1.
 
-* New module `src/media_stack/api/services/disk_guardrails_service.py`:
-  * State machine implementation (5 states, AUTO + MANUAL trigger
-    separation, the interaction rules above).
-  * Persistence: load + save state file.
-  * Audit-log integration via the existing audit chain.
-* New module `src/media_stack/api/services/download_lockdown_service.py`:
-  * Per-client pause/resume actions (qBittorrent, SABnzbd, Sonarr,
-    Radarr, Lidarr, Readarr, Prowlarr).
-  * Idempotent: re-engaging when already engaged is a no-op; same
-    for re-release.
-  * Per-client failure isolation: a failed pause on one client logs
-    `[WARN]` and does not block the other clients.
-* New promise `disk-usage-within-budget` in
-  `contracts/services/_core.yaml` (cross-cutting block):
-  * Probe: read `df` of effective `monitor_path`; pass when
-    `used_percent < lockdown_threshold`.
-  * Ensurer: when probe fails, call
-    `disk_guardrails_service.evaluate_and_transition()` which dispatches
-    to `download_lockdown_service.engage()`.
-  * Reverse path: when probe passes after being failed AND state is
-    `AUTO_LOCKDOWN`, call `release()`. `MANUAL_LOCKDOWN` is unaffected.
-* New `RouteModule` `routes/disk_guardrails.py`:
-  * `GET /api/disk-guardrails` (status)
-  * `POST /api/disk-guardrails/cleanup`
-  * `POST /api/disk-guardrails/lockdown`
-  * `POST /api/disk-guardrails/release`
-  * `POST /api/disk-guardrails/pause-auto?hours=N`
-  * `POST /api/disk-guardrails/evaluate`
-* OpenAPI spec entries for the 6 endpoints.
-* Unit tests covering every interaction rule.
+* New `routes/disk_guardrails.py` `RouteModule` with the six
+  endpoints listed above.
+* OpenAPI spec entries for all six (`contracts/api/openapi.yaml`).
+* `trigger` field added to the lockdown state file. Manual lockdown
+  does not auto-release; auto-thresholds in `_LockdownThreshold` do
+  not transition `trigger="manual"` state to `NORMAL`.
+* `auto_check_paused_until` TTL bypass for `pause-auto`.
+* Force-evaluate endpoint calls `evaluation_loop.tick()` directly
+  for the "I just freed 50GB, release now" use case.
+* Smart-cleanup-ordering knob added to
+  `DiskGuardrailsService.enforce()` (single dispatch table).
 
-**Deliverables**: 2 new services, 1 new RouteModule, 1 new promise, 6
-new spec entries, ~80 unit tests. Manual control from `curl` works;
-auto-system functional at the new thresholds; UI still old.
+**Deliverables**: 1 new route module, 6 spec entries, ~40 unit
+tests covering each interaction-rule corner case from the table
+below. Manual control via `curl` works end-to-end.
 
-### Phase 3 — UI surface
+### Phase 3 — UI Ops → Storage card
 
-Dashboard work; no controller changes.
+Pure dashboard work; no controller changes.
 
-* New **Ops → Storage** card (or expanded existing storage card) with:
-  * Status header: usage bar, state badge, "since X minutes ago"
-  * Threshold inputs (4 sliders or numeric inputs): `WATCH` /
-    `CLEANUP` / `LOCKDOWN` / `RELEASE`. Save button persists to
-    `disk-guardrails.yaml`.
-  * Action buttons: `[Run cleanup now]` `[Engage lockdown]`
-    `[Release lockdown]` `[Pause guardrails 1h]` `[Force evaluate]`.
-    Confirmation dialogs on the destructive ones.
-  * Cleanup-policy section (collapsed by default): per-category
-    seeding/age/ratio knobs.
-  * Audit-style transition log: last 20 state changes, with actor
-    column distinguishing AUTO from operator-by-name.
-* SSE-fed live updates: when state changes server-side, dashboard
-  badge updates without a page refresh. (Hooks into the existing
-  `EventBus`.)
-* Tests: rendering, action wiring, threshold-validation regex (range
-  + ordering: `watch <= cleanup <= lockdown`).
+* New feature dir under `ui/src/features/storage/`.
+* Status header + threshold inputs + 5 action buttons +
+  cleanup-policy section + transition feed.
+* SSE subscription on the existing EventBus for state-change
+  push-updates.
+* React Query hooks for the six API endpoints.
+* Component tests for rendering, confirmation-dialog wiring,
+  threshold-validation regex (range + ordering).
 
-**Deliverables**: 1 new feature dir under `ui/src/features/storage/`,
-6 new query/mutation hooks, ~30 component tests. Operator can do
-everything from the browser.
+**Deliverables**: 1 new feature dir, 6 hook files, 1 page route,
+~30 component tests.
 
-### Phase 4 — Cleanup + retire
+### Phase 4 — Profile-schema override + Maintainerr cross-link
 
-Once Phase 1-3 are in production for ~2 weeks and stable:
+* Add `disk_guardrails:` block to the profile schema. Wire the
+  three-tier merge (operations.yaml → profile → guardrails.json)
+  into `media-stack.config.json` generation. Lowest priority of
+  the four phases — most operators will set thresholds via the
+  UI, not by editing profile.yaml.
+* Document the interaction with Maintainerr in
+  `docs/operator/storage-guardrails.md`: "lockdown handles
+  download-side pressure; Maintainerr handles library-side
+  retention; they don't fight each other because lockdown's
+  release threshold (60%) is well above the typical breakpoint
+  for Maintainerr collection-rule firing."
+* Optional follow-up (separate ADR if pursued): notification
+  channels (email + webhook for "lockdown engaged" transitions).
+  Out of scope here — deserves its own design around stack-wide
+  alerting that subsumes audit-log webhooks too.
 
-* Document the legacy `media_hygiene.required` flag's interaction
-  with the new state machine; if no observable difference, mark
-  deprecated and retire next minor.
-* Decide whether to fold `media_hygiene.qbit_ipfilter` and
-  `media_hygiene.cleanup_arr_failed_queue` into the new
-  `disk_guardrails` config block (they're related; today they're
-  parallel branches of operations.yaml).
-* Optional follow-up (out of scope for this ADR): Maintainerr-style
-  library-quota retention for the `/media` tree, separate from
-  download-pressure guardrails. Different feature, separate ADR if
-  pursued.
+## Trigger-interaction rules (every corner case the state machine handles)
+
+* **Operator engages lockdown at 30% disk** → state file's
+  `trigger="manual"`. `_LockdownThreshold` keeps evaluating but
+  cannot transition manual state to release.
+* **Auto-engaged, then operator clicks Engage** → upgrades
+  `trigger` from `auto` → `manual`. Auto-release at 60% no longer
+  fires (manual is sticky).
+* **Manual-engaged, operator clicks Release** → state cleared.
+  Next registry tick re-evaluates. If disk still over 75%, the
+  rule re-engages with `trigger="auto"`. The auto-system's release
+  at 60% will fire normally once disk drops.
+* **Auto-engaged, operator clicks Release** → forces release. If
+  disk still over 75%, next tick re-engages auto. Useful for
+  "let it through for 30 seconds while I cancel something."
+* **`auto_check_paused_until > now`** → registry's lockdown rule
+  evaluation is short-circuited to return `None`. Already-paused
+  clients stay paused (we don't auto-release during a TTL bypass —
+  unlocking is an explicit operator action). After TTL, normal
+  evaluation resumes.
+* **Restart mid-lockdown** → state file loaded, paused clients
+  re-confirmed (idempotent), UI shows the same state.
+* **Single download client API fails during engage** → log `[WARN]`,
+  record in `paused_clients` only the successes, continue with the
+  rest. Next tick retries the failed client (engage is idempotent).
+* **Maintainerr fires a collection-rule deletion during lockdown**
+  → no conflict. Lockdown pauses incoming; Maintainerr deletes
+  outgoing. Both contribute to disk recovery.
+
+## Audit-logged transitions
+
+Every state transition writes a row via the existing audit chain:
+
+```
+disk_guardrail_lockdown_engaged    actor=operator:matthew  detail={used_percent: 62, trigger: manual}
+disk_guardrail_cleanup_invoked     actor=operator:matthew  detail={deleted: 14, freed_gb: 32.5, strategy: oldest_first}
+disk_guardrail_lockdown_released   actor=auto              detail={used_percent: 59, trigger_was: auto}
+```
+
+The transition feed in the UI reads from the same audit stream
+that powers the existing health-stories panel.
 
 ## Alternatives considered
 
-### Single tier, threshold + cleanup only
+### Stand up a new parallel system instead of integrating with `GuardrailRegistry`
 
-Status quo plus the monitor_path fix. Rejected: when cleanup can't
-keep up (e.g., recently-added torrents not yet eligible for deletion
-by age/seeding rules), nothing prevents disk fill. The lockdown tier
-exists exactly for that case.
+Rejected. The Registry already provides everything we need (rule
+registration, override persistence, history tracking, evaluation
+loop, action dispatch, dashboard hooks). A parallel system would
+duplicate ~400 LoC of well-tested infrastructure and create a second
+"is this rule firing?" answer surface. The integration cost is one
+new rule plus one new action name in the existing protocol.
 
-### Single threshold for everything (cleanup + lockdown at same %)
+### Single threshold for cleanup + lockdown (one knob, simpler config)
 
-Simpler config, but loses the "give cleanup a head start before
-locking" pattern. With only one threshold the system either over-
-reacts (locking down at 65% when cleanup alone would suffice) or
-under-reacts (locking at 80% by which time cleanup is way behind).
-The two-tier design lets cleanup work for 10 percentage points
-before the heavier hammer comes out.
+Rejected. The existing `_PerMountThreshold` (cleanup at 75%) and
+the new `_LockdownThreshold` (lockdown at 75%) target different
+actions: cleanup deletes, lockdown pauses. Conflating them either
+over-reacts (locking down at 65% when cleanup alone would suffice)
+or under-reacts (locking at 80% by which time cleanup is way
+behind). The two-tier design lets cleanup work for 10 percentage
+points before the heavier hammer comes out.
 
-### Operator-set static lockdown without auto-thresholds
+### Operator-set static lockdown without auto thresholds
 
-What was originally suggested in conversation. Rejected: requires
-the operator to babysit the disk meter or write their own watchdog.
+Originally suggested in conversation. Rejected: requires the
+operator to babysit the disk meter or write their own watchdog.
 The whole point of a guardrail is to do nothing when nothing's
-needed and act when it is.
+needed and act when it is. The MANUAL trigger preserves the
+operator's ability to lock independently — they don't need to
+sacrifice automation to get manual control.
 
 ### Hard-stop downloads at any disk pressure (sledgehammer)
 
 Pause everything when used > 70%, release at 60%. Rejected: too
-aggressive. Cleanup alone often resolves the pressure within one or
-two ticks; if every spike triggered a full lockdown, operators would
-see "downloads stopped" notifications constantly.
+aggressive. Cleanup alone often resolves the pressure within one
+or two ticks; if every spike triggered a full lockdown, operators
+would see "downloads stopped" notifications constantly.
 
-### Just exposing the existing `media_hygiene.qbit_cleanup` enable
-flag in the UI
+### Just expose the existing `_PerContentTypeQuota` enable flag
 
-Doesn't solve the lockdown gap, doesn't solve the silent-no-op
-monitor_path bug, doesn't give operators ad-hoc control. Half-fix.
+Doesn't solve the lockdown gap, doesn't give operators ad-hoc
+control, doesn't address the FIFO cleanup-ordering limitation. The
+existing rule fires `Action(action="notify")` only — it doesn't
+actually pause anything. Half-fix.
 
 ## Consequences
 
@@ -332,63 +447,74 @@ monitor_path bug, doesn't give operators ad-hoc control. Half-fix.
 * Operators get the controls they actually need (run cleanup,
   pause downloads, override thresholds) instead of a black-box
   "we'll figure it out" automation.
-* `monitor_path` regression is caught at boot by the new ratchet,
-  not silently after operators wonder why their disk filled.
-* Profile-level overrides remove the "fork the contracts dir to
-  tune thresholds" anti-pattern.
+* Single source of truth for guardrail config — the Registry's
+  override file. No parallel state stores to keep coherent.
+* Maintainerr stays the answer for library retention; this ADR
+  doesn't compete with it.
 
 ### Negative
 
-* New service module + new promise + new route module + new UI
-  card + state file + audit-log integration. Phase 2 is the largest
-  single-feature commit since ADR-0007 wave 6 (~1500 LoC including
-  tests).
-* `MANUAL_LOCKDOWN` introduces a state the operator has to remember
-  to release. We mitigate via TTL on `pause-auto` and prominent UI
-  badge, but the failure mode "operator engaged lockdown weeks ago
-  and forgot" is real.
-* Audit-log volume increases. Every state transition writes one row.
-  At 60s ticks and a flapping system that's at most 1440 rows/day
-  but typical operation will be near zero. Acceptable.
-* The `disk-usage-within-budget` promise adds one more probe to the
-  orchestrator's tick. Probe is cheap (one `statfs` syscall) but it's
-  one more entry to count toward future tick-time budgets.
+* New service module + new rule + new route module + new UI card.
+  Phase 1 + Phase 2 combined are ~600 LoC of code + ~80 unit
+  tests. Phase 3 UI adds another ~300 LoC.
+* `MANUAL_LOCKDOWN` introduces a state the operator has to
+  remember to release. Mitigated via the dashboard's prominent
+  state badge and the `pause-auto` TTL for short-lived overrides.
+* One more action name in the `Action` protocol. Existing
+  consumers (notification adapters, audit-log writers) need to
+  recognize `lockdown_engage` / `lockdown_release` as valid
+  actions. Backward-compatible additions.
 
 ### Neutral
 
-* No data migration. New state file is created on first probe.
-* No backwards-compat concerns: the existing `disk_guardrails` config
-  block continues to work; new keys are additive.
+* The existing seven storage rules continue to work unchanged.
+  This ADR only adds an eighth.
+* The existing `DiskGuardrailsService.enforce()` continues to be
+  the cleanup engine. This ADR adds an `order_strategy` knob and
+  a manual invocation endpoint; the rest of the implementation
+  stays.
 * Compose and k8s use the same code path. Profile-level overrides
   let each install tune independently.
 
 ## Stewardship
 
 Owner: storage / orchestrator subgraph. Reviewed alongside the
-existing `media_hygiene` and `qbit_cleanup` paths. New audit-log
-fields land in the same audit chain so existing log-reading tools
-continue to work.
+existing `media_hygiene` and `qbit_cleanup` paths, the
+`GuardrailRegistry` infrastructure, and the Maintainerr integration.
+New audit-log fields land in the same audit chain; existing
+log-reading tools continue to work without modification.
 
-Rollback: each phase is its own commit. Phase 1 reverts to silent-
-no-op (no worse than current). Phase 2 reverts removes the new
-endpoints + state machine; the existing `qbit_cleanup` path reverts
-to its single-tier behavior. Phase 3 reverts removes the UI card;
-the API endpoints stay for `curl` use until Phase 2 is also reverted.
+Rollback: each phase is its own commit. Phase 1 reverts removes the
+lockdown rule + service; the existing seven rules + cleanup engine
+revert to today's behavior. Phase 2 reverts removes the manual
+endpoints + AUTO/MANUAL trigger separation. Phase 3 reverts removes
+the UI card; the API endpoints stay for `curl` use until Phase 2 is
+also reverted.
 
 ## Relationship to other ADRs
 
-* **ADR-0003 (orchestrator)**: this ADR's `disk-usage-within-budget`
-  promise is registered through the same orchestrator framework as
-  every other service-lifecycle promise. The state machine lives
-  outside the orchestrator (operator-facing concept) but its
-  AUTO trigger fires off the orchestrator's 60s tick.
-* **ADR-0006 (per-service promise registries)**: the new promise
-  lives in the cross-cutting registry (`contracts/services/_core.yaml`)
-  alongside other stack-wide concerns.
-* **ADR-0007 (OpenAPI-driven routing)**: the 6 new endpoints are
+* **ADR-0003 (orchestrator)**: this ADR's `_LockdownThreshold` rule
+  is registered through the same `GuardrailRegistry` framework as
+  every other guardrail. The auto-trigger fires off the same
+  `evaluation_loop.tick()` the existing rules use.
+* **ADR-0005 (orchestrator-driven bootstrap)**: the
+  `DownloadLockdownService` engage/release uses the same
+  download-client API surface (qBittorrent / SABnzbd / arr) the
+  existing wirers use. No new HTTP shapes; reuses
+  `categories_wiring`, `qbittorrent/admin_ops`, etc.
+* **ADR-0006 (per-service promise registries)**: the lockdown rule
+  is registered in `application/guardrails/domains/storage.py` —
+  the cross-cutting domain registry, not a per-service contract
+  YAML. The shape matches the existing seven storage rules.
+* **ADR-0007 (OpenAPI-driven routing)**: the six new endpoints are
   registered as `RouteModule` subclasses per the standard pattern;
-  the OpenAPI spec gains 6 new entries.
-* **Out of scope**: Maintainerr-style library retention (different
-  domain — pruning watched/old content from /media), Docker build-
-  cache pruning (CI/CD concern, not runtime), per-app size quotas
-  (Sonarr-side feature). Each is its own potential ADR.
+  the OpenAPI spec gains six new entries.
+* **Maintainerr integration** (ADR-0005 Phase 3): unchanged.
+  `MaintainerrCollectionsWirer` continues to be the answer for
+  library-side retention. The new lockdown handles only the
+  download-arrival side.
+* **Out of scope** (each its own potential ADR if pursued):
+  notification channels (email/webhook for state transitions —
+  belongs in a stack-wide alerting ADR), Docker build-cache
+  pruning (CI/CD concern, not runtime), per-app size quotas
+  (Sonarr-side feature).
