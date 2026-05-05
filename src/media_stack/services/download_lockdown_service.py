@@ -199,6 +199,43 @@ class DownloadLockdownService:
             "already_engaged": False,
         }
 
+    def pause_auto(self, *, hours: int, by: str) -> dict[str, Any]:
+        """Set the auto-check pause TTL on the state file.
+
+        While ``auto_check_paused_until`` is in the future, the
+        ``_LockdownThreshold`` rule's ``evaluate()`` short-circuits to
+        ``None`` so AUTO-side engages stop firing. Already-paused
+        clients stay paused — release is an explicit operator action.
+
+        Idempotent / monotonic: a later call extends the TTL but never
+        decrements it. Callers can clear the bypass by passing
+        ``hours=0`` (which sets the field back to ``None``).
+        """
+        hours_int = int(hours)
+        state = self._load_state()
+        now = float(self._clock())
+        if hours_int <= 0:
+            state["auto_check_paused_until"] = None
+            new_until: float | None = None
+        else:
+            requested_until = now + 3600.0 * float(hours_int)
+            existing = state.get("auto_check_paused_until")
+            try:
+                existing_f = float(existing) if existing is not None else 0.0
+            except (TypeError, ValueError):
+                existing_f = 0.0
+            # Monotonic: never decrement an already-extended TTL.
+            new_until = max(requested_until, existing_f)
+            state["auto_check_paused_until"] = new_until
+        # Record actor in last_failures audit slot? No — keep the
+        # state shape clean; the audit row writes elsewhere.
+        self._save_state(state)
+        return {
+            "auto_check_paused_until": new_until,
+            "hours": hours_int,
+            "by": by,
+        }
+
     def release(self, *, by: str) -> dict[str, Any]:
         """Resume previously-paused clients. Idempotent.
 

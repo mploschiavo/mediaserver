@@ -23,6 +23,7 @@ State expected on the ``state`` mapping:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
@@ -377,6 +378,20 @@ class _LockdownThreshold:
         lockdown_state = state.get("_lockdown_state") or {}
         if not isinstance(lockdown_state, Mapping):
             lockdown_state = {}
+        # AUTO-side TTL bypass: when an operator clicks "pause
+        # guardrails 1h" the state file's ``auto_check_paused_until``
+        # holds an epoch in the future. Until that passes we
+        # short-circuit to None so the rule never auto-engages or
+        # auto-releases. Already-paused clients stay paused — release
+        # is an explicit operator action even during a TTL bypass.
+        paused_until = lockdown_state.get("auto_check_paused_until")
+        if paused_until is not None:
+            try:
+                paused_until_f = float(paused_until)
+            except (TypeError, ValueError):
+                paused_until_f = 0.0
+            if paused_until_f > time.time():
+                return None
         engaged = bool(lockdown_state.get("engaged"))
         trigger = lockdown_state.get("trigger")
 
@@ -428,6 +443,18 @@ class _LockdownThreshold:
         lockdown_state = state.get("_lockdown_state") or {}
         if not isinstance(lockdown_state, Mapping):
             lockdown_state = {}
+        # Honour the same TTL bypass the evaluate() side checks —
+        # remediate is called with the same state dict so the AUTO
+        # action surface stays consistent (no engage/release while
+        # the operator-requested pause is in effect).
+        paused_until = lockdown_state.get("auto_check_paused_until")
+        if paused_until is not None:
+            try:
+                paused_until_f = float(paused_until)
+            except (TypeError, ValueError):
+                paused_until_f = 0.0
+            if paused_until_f > time.time():
+                return None
         engaged = bool(lockdown_state.get("engaged"))
         trigger = lockdown_state.get("trigger")
 

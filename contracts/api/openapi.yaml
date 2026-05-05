@@ -2854,6 +2854,315 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   # =========================================================================
+  # Disk-guardrails (ADR-0008 Phase 2)
+  # =========================================================================
+
+  /api/disk-guardrails:
+    get:
+      operationId: getDiskGuardrailsStatus
+      tags: [Guardrails]
+      summary: Disk-guardrails merged status view
+      description: |
+        Returns the current lockdown state, registry-resolved
+        thresholds, per-mount used-percent snapshot, paused-client
+        list, last per-client failures, and a recent-transitions
+        feed pulled from the audit log. Read-only; admits any
+        authenticated user.
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |
+            curl -s http://localhost:9100/api/disk-guardrails | jq .
+      responses:
+        "200":
+          description: Disk-guardrails status snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum: [NORMAL, AUTO_LOCKDOWN, MANUAL_LOCKDOWN]
+                  used_percent_by_mount:
+                    type: object
+                    additionalProperties:
+                      type: number
+                  thresholds:
+                    type: object
+                    additionalProperties: true
+                  engaged_at:
+                    type: number
+                  engaged_by:
+                    type: string
+                  trigger:
+                    type: string
+                    nullable: true
+                  auto_check_paused_until:
+                    type: number
+                    nullable: true
+                  paused_clients:
+                    type: array
+                    items:
+                      type: string
+                  last_failures:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  transitions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              example:
+                state: NORMAL
+                used_percent_by_mount:
+                  config: 42.1
+                  data: 65.8
+                thresholds:
+                  lockdown_percent: 75
+                  release_percent: 60
+                engaged_at: 0
+                engaged_by: ""
+                trigger: null
+                auto_check_paused_until: null
+                paused_clients: []
+                last_failures: []
+                transitions: []
+
+  /api/disk-guardrails/cleanup:
+    post:
+      operationId: runDiskGuardrailsCleanup
+      tags: [Guardrails]
+      summary: Run cleanup synchronously (force, ignores disk %)
+      description: |
+        Invokes ``DiskGuardrailsService.enforce(force=True)``
+        synchronously. Body fields are optional one-shot overrides
+        for the configured ``categories`` / ``max_delete_per_run``
+        knobs. Requires CSRF (header ``X-CSRF-Token``) and
+        ``controller_admin`` role.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categories:
+                  type: array
+                  items:
+                    type: string
+                max_delete:
+                  type: integer
+            example:
+              categories: [tv-sonarr, movies-radarr]
+              max_delete: 25
+      responses:
+        "200":
+          description: Cleanup report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                  freed_gb:
+                    type: number
+                  kept:
+                    type: integer
+                  candidates_evaluated:
+                    type: integer
+                  strategy:
+                    type: string
+              example:
+                deleted: 14
+                freed_gb: 32.5
+                kept: 0
+                candidates_evaluated: 14
+                strategy: oldest_first
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: CSRF token missing or admin role required
+
+  /api/disk-guardrails/lockdown:
+    post:
+      operationId: engageDiskGuardrailsLockdown
+      tags: [Guardrails]
+      summary: Engage manual download-client lockdown
+      description: |
+        Pauses every download client (qBittorrent + SABnzbd + arr
+        RSS-sync). ``trigger`` is recorded as ``"manual"`` so the
+        auto-loop never auto-releases. Requires CSRF + admin role.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Engaged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum: [MANUAL_LOCKDOWN]
+                  paused_clients:
+                    type: array
+                    items:
+                      type: string
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              example:
+                state: MANUAL_LOCKDOWN
+                paused_clients: [qbittorrent, sabnzbd, sonarr, radarr]
+                failures: []
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: CSRF token missing or admin role required
+
+  /api/disk-guardrails/release:
+    post:
+      operationId: releaseDiskGuardrailsLockdown
+      tags: [Guardrails]
+      summary: Release lockdown
+      description: |
+        Resumes previously-paused download clients. Safe to call
+        when no lockdown is engaged (returns the same envelope
+        with an empty released_clients list). Requires CSRF +
+        admin role.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Released
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum: [NORMAL]
+                  released_clients:
+                    type: array
+                    items:
+                      type: string
+              example:
+                state: NORMAL
+                released_clients: [qbittorrent, sabnzbd]
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: CSRF token missing or admin role required
+
+  /api/disk-guardrails/pause-auto:
+    post:
+      operationId: pauseDiskGuardrailsAutoEvaluation
+      tags: [Guardrails]
+      summary: Pause auto-evaluation for N hours (1-24)
+      description: |
+        Sets the lockdown rule's auto-side TTL bypass. While the
+        TTL is active, the rule's evaluate() short-circuits to None
+        so AUTO-side engages stop firing. Already-paused clients
+        stay paused. ``hours`` is the only query parameter; values
+        below 1 are rejected with 400; values above 24 are clamped
+        server-side to 24. Requires CSRF + admin role.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: hours
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 24
+      responses:
+        "200":
+          description: TTL set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paused_until:
+                    type: number
+                    nullable: true
+                  hours:
+                    type: integer
+              example:
+                paused_until: 1746463600.0
+                hours: 1
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: CSRF token missing or admin role required
+
+  /api/disk-guardrails/evaluate:
+    post:
+      operationId: evaluateDiskGuardrails
+      tags: [Guardrails]
+      summary: Force one immediate guardrail tick
+      description: |
+        Bypasses the cadence floor and runs one evaluate cycle
+        right now. Useful after a manual cleanup ("I just freed
+        50 GB, release the lockdown now"). Returns the same
+        ``triggers`` / ``actions`` shape the auto-loop emits but
+        does NOT write a history row (the audit-log row for the
+        manual evaluate IS recorded). Requires CSRF + admin role.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Evaluation snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ran_at:
+                    type: number
+                  elapsed:
+                    type: number
+                  triggers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              example:
+                ran_at: 1746463600.5
+                elapsed: 0.012
+                triggers: []
+                actions: []
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: CSRF token missing or admin role required
+
+  # =========================================================================
   # Routing
   # =========================================================================
 

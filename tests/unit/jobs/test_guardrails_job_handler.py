@@ -68,7 +68,15 @@ def test_handler_returns_skipped_marker_when_tick_throttles(
     assert out.get("skipped") == "throttled"
     # JobRunner records history; the handler MUST suppress the
     # legacy in-tick history write so we don't double-write.
-    assert fake_tick_calls == [{"record_history": False}]
+    # ADR-0008 Phase 2 also threads ``lockdown_service`` into the
+    # tick call so the disk-pressure rule's Action(action="lockdown_*")
+    # results dispatch to the engage/release implementer. The kwargs
+    # always include ``record_history=False``; the lockdown_service
+    # is whatever LockdownFactory.singleton() returned (may be None
+    # in environments where no clients are configured).
+    assert len(fake_tick_calls) == 1
+    call = fake_tick_calls[0]
+    assert call.get("record_history") is False
 
 
 def test_handler_passes_through_triggers_when_tick_runs(

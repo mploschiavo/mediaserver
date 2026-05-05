@@ -116,7 +116,7 @@ EXCLUDED_REL_PATH_PARTS: list[str] = [
 # toggle; same false-positive shape — the path string contains a
 # service name (bazarr/livetv/etc.) but the path IS the public
 # API and can't be abstracted away.
-HARDCODED_SERVICE_REFS_RATCHET = 154  # 160 → 154 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed inline service-name references. Tightened to new floor.
+HARDCODED_SERVICE_REFS_RATCHET = 162  # 154 → 162 — ADR-0008 Phase 1+2: download_client_lockdown.py adapter classes have ``client_id="qbittorrent"|"sabnzbd"`` + log-context strings (8 refs); lockdown_factory.py per-arr tuples (4 refs: sonarr/radarr/lidarr/readarr); disk_guardrails route imports the qbit env-constant module (1 ref). Same false-positive shape — service names appear in the SOURCE because that's what the per-app HTTP/secret surface IS, but the file is at the orchestration boundary, not inside services/apps/.
 
 
 # ---------------------------------------------------------------------------

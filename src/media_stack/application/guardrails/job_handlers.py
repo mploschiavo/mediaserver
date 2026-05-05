@@ -44,14 +44,30 @@ def guardrails_evaluate(_ctx: JobContext) -> dict[str, Any]:
 
     Errors raised by ``tick()`` propagate; JobRunner catches and
     records terminal status ``error`` with the exception message.
+
+    ADR-0008 Phase 2: pulls the process-wide
+    ``DownloadLockdownService`` singleton from
+    ``LockdownFactory.singleton()`` and threads it into ``tick()``
+    so the rule's ``lockdown_engage`` / ``lockdown_release`` actions
+    actually pause / resume download clients in production. The
+    factory's lazy-build is failure-isolated per-adapter so a
+    missing qbit / sab / arr in the deployment doesn't break the
+    auto-heal loop. ``LockdownFactory.singleton()`` is the same
+    instance the manual ``/api/disk-guardrails`` route module
+    pulls — both code paths share state.
     """
     # Lazy import keeps the framework's bootstrap path free of
     # the guardrails registry — tests that construct a stub
     # ``JobRunner`` without the live registry don't accidentally
     # pull in the rule modules.
     from media_stack.application.guardrails.evaluation_loop import tick
+    from media_stack.services.lockdown_factory import LockdownFactory
 
-    result = tick(record_history=False)
+    lockdown_service = LockdownFactory.singleton()
+    result = tick(
+        record_history=False,
+        lockdown_service=lockdown_service,
+    )
     if result.get("skipped"):
         # Surface the throttle/state-skip as a terminal-skipped
         # outcome so the framework records it as ``skipped``
