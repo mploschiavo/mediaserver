@@ -30,9 +30,26 @@ bootstrap:
   #  - Sonarr's seed_series list auto-adds a few popular titles
   #  - Jellyseerr's "prevent_search" is left off so requests grab
   # The dashboard's "Auto-Downloads" toggle flips this at runtime.
-  # Defaulting to true gives the OTB experience users expect; flip
-  # to false for dry-run / test-only deploys. (v1.0.141.)
-  auto_download_content: true
+  # Aligned with the k8s-standard default (false) so a fresh standard
+  # install doesn't grab content before the operator's seen the
+  # dashboard. Operators who want OTB downloads flip the dashboard
+  # toggle or use ``media-compose-full``.
+  auto_download_content: false
+  trigger_indexer_sync: true
+  refresh_health_after_setup: true
+chaos:
+  enabled: false
+  duration_minutes: 5
+  interval_seconds: 60
+  actions:
+  - restart_container
+  - pause_container
+  - network_disconnect
+live_tv_defaults:
+  tuner_url: https://iptv-org.github.io/iptv/countries/us.m3u
+  guide_url: https://iptv-epg.org/files/epg-us.xml
+  default_program_icon_urls:
+  - https://raw.githubusercontent.com/iptv-org/logo/master/tv.png
 install_profile: standard
 kind: media_stack_profile
 metadata:
@@ -48,8 +65,13 @@ resources:
 routing:
   app_path_prefix: /app
   base_domain: local
+  # Empty media_server lets the envoy generator auto-derive
+  # ``<media_server>.<stack_subdomain>.<base_domain>``
+  # (e.g. ``jellyfin.media-stack.local``). Operators who terminate
+  # TLS at a real domain set this to ``jellyfin.media.example.com``
+  # — see ``media-compose-full.yaml``.
   direct_hosts:
-    media_server: true
+    media_server: ""
   gateway_host: apps.media-stack.local
   gateway_port: 443
   internet_exposed: false

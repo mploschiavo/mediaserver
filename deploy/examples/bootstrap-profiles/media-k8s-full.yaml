@@ -4,6 +4,9 @@ metadata:
   name: media-stack
   platform: k8s
   purpose: prod
+  country: US
+  description: Full k8s production stack profile
+  language: en
 resources:
   disk_space_gb: 1000
   network_cidr: 10.42.0.0/24

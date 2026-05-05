@@ -245,7 +245,18 @@ class GenerateEnvoyConfigCommand:
             parts = [p for p in ["apps", stack_subdomain, base_domain] if p]
             gateway_host = ".".join(parts).lower()
         internet_exposed = bool(routing.get("internet_exposed")) or os.environ.get("INTERNET_EXPOSED", "0") == "1"
-        media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", "")) or os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
+        # ``direct_hosts.media_server`` accepts two shapes:
+        #   * string FQDN — used verbatim (k8s-standard, k8s-full,
+        #     compose-full all set this).
+        #   * boolean True — "auto-derive from stack_subdomain +
+        #     base_domain". Pre-fix: ``str(True)`` produced the
+        #     literal "True" which then leaked into Envoy routes as
+        #     a hostname. Treat boolean as a request for the auto-
+        #     derive path (line 249 below) by leaving the value empty.
+        _direct_raw = (routing.get("direct_hosts") or {}).get("media_server", "")
+        if isinstance(_direct_raw, bool):
+            _direct_raw = ""
+        media_server_direct_host = str(_direct_raw) or os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
         if not media_server_direct_host and stack_subdomain and base_domain:
             from media_stack.api.services.registry import SERVICES as _reg_services
             _ms_ids = [s.id for s in _reg_services if s.category == "media" and s.host]
