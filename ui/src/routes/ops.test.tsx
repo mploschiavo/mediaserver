@@ -66,6 +66,41 @@ vi.mock("@/features/ops-detail/hooks", () => ({
   }),
 }));
 
+// Stub the storage feature hooks — the StorageCard is composed onto
+// the Ops page and would otherwise reach out to /api/disk-guardrails
+// and /api/me. We mock the read hook to a NORMAL state so the card
+// renders with its empty defaults and structural assertions pass.
+vi.mock("@/features/storage/hooks", () => ({
+  storageQueryKeys: { root: ["storage"], status: ["storage", "status"] },
+  useDiskGuardrailsStatus: () => ({
+    data: {
+      state: "NORMAL",
+      used_percent_by_mount: { config: 30 },
+      thresholds: { lockdown_percent: 75, release_percent: 60 },
+      engaged_at: 0,
+      engaged_by: "",
+      trigger: null,
+      auto_check_paused_until: null,
+      paused_clients: [],
+      last_failures: [],
+      transitions: [],
+    },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useRunCleanup: () => ({ mutate: vi.fn(), isPending: false }),
+  useEngageLockdown: () => ({ mutate: vi.fn(), isPending: false }),
+  useReleaseLockdown: () => ({ mutate: vi.fn(), isPending: false }),
+  usePauseGuardrails: () => ({ mutate: vi.fn(), isPending: false }),
+  useForceEvaluate: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateThresholds: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock("@/features/me/hooks", () => ({
+  useMe: () => ({ data: { role: "controller_admin" } }),
+}));
+
 // Stub the infra-detail feature hooks too — same rationale: keep the
 // route render purely structural so tests don't depend on real fetch.
 vi.mock("@/features/infra-detail/hooks", () => ({

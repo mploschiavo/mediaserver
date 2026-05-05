@@ -19,9 +19,12 @@
 // Skipped fixtures (no GET 200 schema, or x-status: planned):
 //   apps.json — no GET 200 schema for /api/apps (or x-status: planned)
 //   audit-log_head.json — no GET 200 schema for /api/audit-log/head (or x-status: planned)
+//   audit_log_stats.json — no GET 200 schema for /api/audit/log/stats (or x-status: planned)
 //   bans_ips.json — no GET 200 schema for /api/bans/ips (or x-status: planned)
 //   bans_users.json — no GET 200 schema for /api/bans/users (or x-status: planned)
 //   config.json — no GET 200 schema for /api/config (or x-status: planned)
+//   disk_guardrails.json — no GET 200 schema for /api/disk/guardrails (or x-status: planned)
+//   envoy_admin_summary.json — no GET 200 schema for /api/envoy/admin/summary (or x-status: planned)
 //   healthz.json — no GET 200 schema for /api/healthz (or x-status: planned)
 //   me_mfa-state.json — no GET 200 schema for /api/me/mfa-state (or x-status: planned)
 //   me_sessions.json — no GET 200 schema for /api/me/sessions (or x-status: planned)
@@ -34,6 +37,8 @@
 //   security_new-locations.json — no GET 200 schema for /api/security/new-locations (or x-status: planned)
 //   sessions_active.json — no GET 200 schema for /api/sessions/active (or x-status: planned)
 //   status.json — no GET 200 schema for /api/status (or x-status: planned)
+//   sw_config.json — no GET 200 schema for /api/sw/config (or x-status: planned)
+//   sw_config_json.json — no GET 200 schema for /api/sw/config/json (or x-status: planned)
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable unused-imports/no-unused-vars */
@@ -367,6 +372,18 @@ type T_fx_jobs = paths["/api/jobs"]["get"]["responses"][200]["content"]["applica
 const _check_fx_jobs: Loosen<T_fx_jobs> = fx_jobs;
 void _check_fx_jobs;
 
+// /api/jobs/queue
+import fx_jobs_queue from "../../../tests/fixtures/api_responses/jobs_queue.json";
+type T_fx_jobs_queue = paths["/api/jobs/queue"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_jobs_queue: Loosen<T_fx_jobs_queue> = fx_jobs_queue;
+void _check_fx_jobs_queue;
+
+// /api/jobs/running
+import fx_jobs_running from "../../../tests/fixtures/api_responses/jobs_running.json";
+type T_fx_jobs_running = paths["/api/jobs/running"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_jobs_running: Loosen<T_fx_jobs_running> = fx_jobs_running;
+void _check_fx_jobs_running;
+
 // /api/keys
 import fx_keys from "../../../tests/fixtures/api_responses/keys.json";
 type T_fx_keys = paths["/api/keys"]["get"]["responses"][200]["content"]["application/json"];
@@ -396,6 +413,12 @@ import fx_logs from "../../../tests/fixtures/api_responses/logs.json";
 type T_fx_logs = paths["/api/logs"]["get"]["responses"][200]["content"]["application/json"];
 const _check_fx_logs: Loosen<T_fx_logs> = fx_logs;
 void _check_fx_logs;
+
+// /api/logs/sources
+import fx_logs_sources from "../../../tests/fixtures/api_responses/logs_sources.json";
+type T_fx_logs_sources = paths["/api/logs/sources"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_logs_sources: Loosen<T_fx_logs_sources> = fx_logs_sources;
+void _check_fx_logs_sources;
 
 // /api/manifests
 import fx_manifests from "../../../tests/fixtures/api_responses/manifests.json";
@@ -444,6 +467,12 @@ import fx_ops_health from "../../../tests/fixtures/api_responses/ops_health.json
 type T_fx_ops_health = paths["/api/ops/health"]["get"]["responses"][200]["content"]["application/json"];
 const _check_fx_ops_health: Loosen<T_fx_ops_health> = fx_ops_health;
 void _check_fx_ops_health;
+
+// /api/orchestrator/promises/state
+import fx_orchestrator_promises_state from "../../../tests/fixtures/api_responses/orchestrator_promises_state.json";
+type T_fx_orchestrator_promises_state = paths["/api/orchestrator/promises/state"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_orchestrator_promises_state: Loosen<T_fx_orchestrator_promises_state> = fx_orchestrator_promises_state;
+void _check_fx_orchestrator_promises_state;
 
 // /api/password-policy
 import fx_password_policy from "../../../tests/fixtures/api_responses/password-policy.json";
@@ -504,6 +533,36 @@ import fx_routing from "../../../tests/fixtures/api_responses/routing.json";
 type T_fx_routing = paths["/api/routing"]["get"]["responses"][200]["content"]["application/json"];
 const _check_fx_routing: Loosen<T_fx_routing> = fx_routing;
 void _check_fx_routing;
+
+// /api/routing/effective
+import fx_routing_effective from "../../../tests/fixtures/api_responses/routing_effective.json";
+type T_fx_routing_effective = paths["/api/routing/effective"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_routing_effective: Loosen<T_fx_routing_effective> = fx_routing_effective;
+void _check_fx_routing_effective;
+
+// /api/routing/preview
+import fx_routing_preview from "../../../tests/fixtures/api_responses/routing_preview.json";
+type T_fx_routing_preview = paths["/api/routing/preview"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_routing_preview: Loosen<T_fx_routing_preview> = fx_routing_preview;
+void _check_fx_routing_preview;
+
+// /api/routing/routes
+import fx_routing_routes from "../../../tests/fixtures/api_responses/routing_routes.json";
+type T_fx_routing_routes = paths["/api/routing/routes"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_routing_routes: Loosen<T_fx_routing_routes> = fx_routing_routes;
+void _check_fx_routing_routes;
+
+// /api/routing/v2
+import fx_routing_v2 from "../../../tests/fixtures/api_responses/routing_v2.json";
+type T_fx_routing_v2 = paths["/api/routing/v2"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_routing_v2: Loosen<T_fx_routing_v2> = fx_routing_v2;
+void _check_fx_routing_v2;
+
+// /api/runs
+import fx_runs from "../../../tests/fixtures/api_responses/runs.json";
+type T_fx_runs = paths["/api/runs"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_runs: Loosen<T_fx_runs> = fx_runs;
+void _check_fx_runs;
 
 // /api/schedules
 import fx_schedules from "../../../tests/fixtures/api_responses/schedules.json";

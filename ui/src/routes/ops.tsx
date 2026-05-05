@@ -25,6 +25,7 @@ import { GpuCard } from "@/features/infra-detail/GpuCard";
 import { ImageUpdatesCard } from "@/features/infra-detail/ImageUpdatesCard";
 import { MountsCard } from "@/features/infra-detail/MountsCard";
 import { StorageBreakdownCard } from "@/features/infra-detail/StorageBreakdownCard";
+import { StorageCard } from "@/features/storage";
 import { ConfigIntegrityCard } from "@/features/ops-detail/ConfigIntegrityCard";
 import { CrashloopsCard } from "@/features/ops-detail/CrashloopsCard";
 import { FailedServicesCard } from "@/features/ops-detail/FailedServicesCard";
@@ -202,6 +203,13 @@ function OpsPage() {
         <FailedServicesCard />
         <ConfigIntegrityCard />
         <HealthHistorySparkline />
+      </section>
+
+      <section
+        aria-label="Storage guardrails"
+        data-testid="storage-section"
+      >
+        <StorageCard />
       </section>
 
       <section
