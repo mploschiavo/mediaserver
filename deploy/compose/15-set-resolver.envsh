@@ -60,17 +60,39 @@ echo "[15-set-resolver.envsh] RESOLVER=${RESOLVER}"
 export RESOLVER
 
 # Detect first search domain. On k8s this is typically
-# ``<namespace>.svc.cluster.local``; on compose this is empty.
+# ``<namespace>.svc.cluster.local``; on compose this is whatever the
+# host's resolv.conf carries (often the home-network suffix like
+# ``lan`` or ``home.arpa``).
 # ``awk`` trims everything past the first whitespace token so a
 # multi-domain search list (``search a.b c.d``) yields just ``a.b``.
 SEARCH_DOMAIN=$(awk '/^search/ {print $2; exit}' /etc/resolv.conf 2>/dev/null || true)
 
-# If API_UPSTREAM's host part has no dots AND a search domain
-# exists, rewrite to FQDN so nginx's resolver doesn't NXDOMAIN.
+# Only rewrite ``API_UPSTREAM`` to FQDN form when we're confident
+# we're on k8s. Two convergent signals:
+#
+#   * ``KUBERNETES_SERVICE_HOST`` env is set ONLY by the kubelet on
+#     every pod inside a cluster; no compose context defines it.
+#   * The search-domain ends in ``cluster.local`` (the k8s default).
+#
+# Either signal alone is sufficient — both is belt + suspenders. On
+# compose ``KUBERNETES_SERVICE_HOST`` is unset AND the search-domain
+# is the host's home-network suffix (``lan``, ``home.arpa``, etc.) —
+# rewriting would produce ``media-stack-controller.lan`` which
+# Docker's embedded DNS NXDOMAINs (Docker only resolves the bare
+# service name).
+#
 # Operator-supplied API_UPSTREAM with an explicit dot in the host
-# (e.g. an IP, or already-FQDN, or external DNS) bypasses the
-# rewrite.
-if [ -n "$API_UPSTREAM" ] && [ -n "$SEARCH_DOMAIN" ]; then
+# (an IP, an already-FQDN, or external DNS) bypasses the rewrite
+# regardless of platform.
+IS_K8S=""
+if [ -n "${KUBERNETES_SERVICE_HOST:-}" ]; then
+    IS_K8S=1
+fi
+case "$SEARCH_DOMAIN" in
+    *cluster.local) IS_K8S=1 ;;
+esac
+
+if [ -n "$IS_K8S" ] && [ -n "$API_UPSTREAM" ] && [ -n "$SEARCH_DOMAIN" ]; then
     HOST_PART="${API_UPSTREAM%%:*}"
     PORT_PART=""
     case "$API_UPSTREAM" in
@@ -80,7 +102,7 @@ if [ -n "$API_UPSTREAM" ] && [ -n "$SEARCH_DOMAIN" ]; then
         *.*) ;;  # already has a dot — leave alone
         *)
             API_UPSTREAM="${HOST_PART}.${SEARCH_DOMAIN}${PORT_PART}"
-            echo "[15-set-resolver.envsh] API_UPSTREAM rewritten to FQDN: ${API_UPSTREAM}"
+            echo "[15-set-resolver.envsh] API_UPSTREAM rewritten to FQDN (k8s): ${API_UPSTREAM}"
             export API_UPSTREAM
             ;;
     esac
