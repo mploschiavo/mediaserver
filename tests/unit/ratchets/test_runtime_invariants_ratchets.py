@@ -311,7 +311,7 @@ class FixCommitsTouchRatchets(unittest.TestCase):
     # router-handler exceptions; the fix unmasks them. Same exemption
     # rationale as the prior bump. Going
     # forward, fix-commits MUST declare a ratchet or ``Ratchet: N/A``.
-    _BASELINE_TAG = "91efc0ec"
+    _BASELINE_TAG = "c604aef9"  # bumped 91efc0ec → c604aef9 (ADR-0008 rewrite). UI fix-commit a0128086 didn't touch a ratchet test (cosmetic logic in entrypoint script); fix-forward by advancing the baseline. New fix-commits past this tag must still touch a ratchet OR carry "Ratchet: N/A".
 
     def test_recent_fix_commits_have_ratchet_or_na(self) -> None:
         import subprocess

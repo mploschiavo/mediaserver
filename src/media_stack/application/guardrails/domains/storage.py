@@ -315,6 +315,185 @@ class _SnapshotRetention:
                       detail="prune snapshots older than retention horizon")
 
 
+@dataclass
+class _LockdownThreshold:
+    """ADR-0008 Phase 1 — download-client lockdown tier.
+
+    Sits ABOVE the existing ``_PerMountThreshold`` / ``_FreeSpaceFloor``
+    cleanup rules. When any monitored mount crosses
+    ``lockdown_percent`` (default 75%), the rule emits an
+    ``Action(action="lockdown_engage", ...)`` which the evaluation
+    loop's dispatcher hands to ``DownloadLockdownService.engage()``.
+    The 15-percentage-point gap to ``release_percent`` (default 60%)
+    is hysteresis — prevents engage/release flapping when usage
+    hovers near the line.
+
+    The rule reads two pieces of state beyond the standard
+    ``state["disk"]`` mount info:
+
+      * ``state["_threshold:storage:lockdown_threshold"]`` — operator
+        override (lockdown_percent / release_percent), merged in by
+        the evaluation loop before each tick.
+      * ``state["_lockdown_state"]`` — current persisted state from
+        ``DownloadLockdownService.get_state()`` (populated by the
+        state collector). Without this the rule can't avoid
+        re-engaging-while-already-engaged or honor the manual flag.
+
+    Manual stickiness: if ``state["_lockdown_state"]["trigger"]`` is
+    ``"manual"``, the rule never fires the auto-release path even
+    when disk drops below ``release_percent``. The rule signals
+    "still engaged, awaiting operator" via ``"warning"`` instead.
+    """
+
+    id: str = "storage:lockdown_threshold"
+    domain: str = _DOMAIN
+    description: str = (
+        "Engages a download-client lockdown when any monitored mount "
+        "exceeds the lockdown threshold. Releases automatically when "
+        "usage drops below the release threshold (hysteresis). "
+        "Operator can also engage/release manually via the API."
+    )
+    default_threshold: Mapping[str, Any] = field(
+        default_factory=lambda: {
+            "lockdown_percent": 75.0,
+            "release_percent": 60.0,
+        }
+    )
+
+    def evaluate(self, state: Mapping[str, Any]) -> Severity | None:
+        threshold = state.get("_threshold:" + self.id) or self.default_threshold
+        lockdown_pct = float(threshold.get("lockdown_percent", 75.0))
+        release_pct = float(threshold.get("release_percent", 60.0))
+        # If the operator misconfigures these (release >= lockdown),
+        # widen the gap by clamping release down — never engage and
+        # immediately release on the same evaluation.
+        if release_pct >= lockdown_pct:
+            release_pct = max(0.0, lockdown_pct - 1.0)
+
+        disks = state.get("disk") or {}
+        if not isinstance(disks, dict) or not disks:
+            return None
+
+        lockdown_state = state.get("_lockdown_state") or {}
+        if not isinstance(lockdown_state, Mapping):
+            lockdown_state = {}
+        engaged = bool(lockdown_state.get("engaged"))
+        trigger = lockdown_state.get("trigger")
+
+        any_over_lockdown = False
+        any_over_release = False
+        for info in disks.values():
+            if not isinstance(info, dict):
+                continue
+            try:
+                pct = float(info.get("percent_used") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if pct > lockdown_pct:
+                any_over_lockdown = True
+            if pct > release_pct:
+                any_over_release = True
+
+        if not engaged:
+            # Cleanly under both bars — silent.
+            if any_over_lockdown:
+                return "critical"
+            return None
+
+        # engaged == True from here on.
+        # Manual stickiness: never auto-release; signal "still
+        # engaged, awaiting operator" via warning when disk recovers,
+        # critical when disk is still over the lockdown bar.
+        if trigger == "manual":
+            if any_over_lockdown:
+                return "critical"
+            return "warning"
+
+        # Auto-engaged: release when ALL mounts dropped under the
+        # release bar; otherwise stay engaged (warning).
+        if not any_over_release:
+            return "info"
+        return "warning"
+
+    def remediate(self, state: Mapping[str, Any]) -> Action | None:
+        threshold = state.get("_threshold:" + self.id) or self.default_threshold
+        lockdown_pct = float(threshold.get("lockdown_percent", 75.0))
+        release_pct = float(threshold.get("release_percent", 60.0))
+        if release_pct >= lockdown_pct:
+            release_pct = max(0.0, lockdown_pct - 1.0)
+
+        disks = state.get("disk") or {}
+        if not isinstance(disks, dict):
+            disks = {}
+        lockdown_state = state.get("_lockdown_state") or {}
+        if not isinstance(lockdown_state, Mapping):
+            lockdown_state = {}
+        engaged = bool(lockdown_state.get("engaged"))
+        trigger = lockdown_state.get("trigger")
+
+        any_over_lockdown = False
+        any_over_release = False
+        worst_label = ""
+        worst_pct = 0.0
+        for label, info in disks.items():
+            if not isinstance(info, dict):
+                continue
+            try:
+                pct = float(info.get("percent_used") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if pct > worst_pct:
+                worst_pct = pct
+                worst_label = str(label)
+            if pct > lockdown_pct:
+                any_over_lockdown = True
+            if pct > release_pct:
+                any_over_release = True
+
+        if not engaged and any_over_lockdown:
+            return Action(
+                rule_id=self.id,
+                action="lockdown_engage",
+                ok=False,
+                detail=(
+                    f"engage lockdown — {worst_label} at "
+                    f"{worst_pct:.1f}% (> {lockdown_pct:.1f}%)"
+                ),
+            )
+
+        # Auto-release path: engaged via auto + every mount dropped
+        # under release_percent. Manual lockdowns never reach here.
+        if engaged and trigger == "auto" and not any_over_release:
+            return Action(
+                rule_id=self.id,
+                action="lockdown_release",
+                ok=False,
+                detail=(
+                    f"release lockdown — disk recovered "
+                    f"(worst {worst_pct:.1f}% < {release_pct:.1f}%)"
+                ),
+            )
+        return None
+
+    def current_value(self, state: Mapping[str, Any]) -> dict[str, Any]:
+        disks = state.get("disk") or {}
+        lockdown_state = state.get("_lockdown_state") or {}
+        out: dict[str, Any] = {
+            "engaged": bool(lockdown_state.get("engaged")),
+            "trigger": lockdown_state.get("trigger"),
+        }
+        if isinstance(disks, dict):
+            out["worst_percent"] = max(
+                (
+                    float(info.get("percent_used") or 0.0)
+                    for info in disks.values()
+                    if isinstance(info, dict)
+                ),
+                default=0.0,
+            )
+        return out
+
+
 # Side-effect register every rule on import.
 register_guardrail(_PerMountThreshold())
 register_guardrail(_FreeSpaceFloor())
@@ -323,3 +502,4 @@ register_guardrail(_InodeFloor())
 register_guardrail(_UnpackerScratchFloor())
 register_guardrail(_TrashRetention())
 register_guardrail(_SnapshotRetention())
+register_guardrail(_LockdownThreshold())

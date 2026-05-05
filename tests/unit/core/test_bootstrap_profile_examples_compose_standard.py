@@ -21,23 +21,53 @@ class ComposeStandardProfileExampleTests(unittest.TestCase):
         self.assertEqual(str(routing.get("gateway_port") or "").strip(), "443")
         self.assertEqual(str(routing.get("app_path_prefix") or "").strip(), "/app")
         direct_hosts = routing.get("direct_hosts") or {}
-        self.assertTrue(
-            bool(direct_hosts.get("media_server")),
-            "hybrid profile must declare a direct media-server host for native device clients",
+        # ``direct_hosts.media_server`` MUST be present in the profile —
+        # the field is the operator's surface for tuning. Either an
+        # explicit FQDN ("jellyfin.media.example.com") OR the empty
+        # string is acceptable: empty triggers the envoy generator's
+        # auto-derive path, which yields
+        # ``<media_server>.<stack_subdomain>.<base_domain>``
+        # (e.g. ``jellyfin.media-stack.local``). The boolean ``true``
+        # form was retired (commit e121b40e) because ``str(True)`` was
+        # leaking the literal "True" into Envoy routes as a hostname.
+        self.assertIn(
+            "media_server", direct_hosts,
+            "hybrid profile must declare media_server under direct_hosts "
+            "(empty string OK; triggers auto-derive in envoy generator)",
+        )
+        media_server = direct_hosts.get("media_server")
+        self.assertNotIsInstance(
+            media_server, bool,
+            "media_server boolean form retired in v1.0.320 — use "
+            "an explicit FQDN string or empty string for auto-derive",
         )
 
-    def test_compose_standard_profile_bootstrap_flags_enable_otb_experience(self):
+    def test_compose_standard_profile_bootstrap_flags(self):
         profile_path = ROOT / "deploy" / "examples" / "bootstrap-profiles" / "media-compose-standard.yaml"
         payload = yaml.safe_load(profile_path.read_text(encoding="utf-8")) or {}
         bootstrap_cfg = payload.get("bootstrap") or {}
         self.assertTrue(bool(bootstrap_cfg.get("preconfigure_apps")))
         self.assertTrue(bool(bootstrap_cfg.get("preconfigure_api_keys")))
         self.assertTrue(bool(bootstrap_cfg.get("apply_initial_preferences")))
-        # Since v1.0.141 the standard profile defaults
-        # ``auto_download_content`` to true so a fresh bootstrap matches
-        # the OTB experience users expect; dry-run / test-only deploys
-        # flip the flag.
-        self.assertTrue(bool(bootstrap_cfg.get("auto_download_content")))
+        # ``auto_download_content`` was true on compose-standard from
+        # v1.0.141 through v1.0.319 (OTB experience). v1.0.320 aligned
+        # the compose-standard default with k8s-standard
+        # (``auto_download_content: false``) so a fresh standard
+        # install doesn't grab content before the operator has reviewed
+        # the dashboard. Operators wanting OTB downloads use
+        # ``media-compose-full`` (still true there) or flip the
+        # dashboard toggle. See commit e121b40e.
+        self.assertFalse(
+            bool(bootstrap_cfg.get("auto_download_content")),
+            "compose-standard now matches k8s-standard "
+            "(auto_download_content: false). Use media-compose-full "
+            "for the OTB-downloading variant.",
+        )
+        # Indexer-sync + health-refresh toggles were missing on
+        # compose-standard (v1.0.320 added them to match every other
+        # profile). Both should be true.
+        self.assertTrue(bool(bootstrap_cfg.get("trigger_indexer_sync")))
+        self.assertTrue(bool(bootstrap_cfg.get("refresh_health_after_setup")))
 
 
 if __name__ == "__main__":
