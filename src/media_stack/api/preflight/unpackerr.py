@@ -21,13 +21,32 @@ class UnpackerrPreflightService:
 
     def write_config_and_restart(
         self,
-        *,
+        *args: Any,
         config_root: str = "/srv-config",
         container_name: str = "unpackerr",
         log: Any = None,
         **kwargs: Any,
     ) -> None:
-        """Write Unpackerr config with discovered API keys and restart."""
+        """Write Unpackerr config with discovered API keys and restart.
+
+        Two callers, two invocation shapes — both are supported:
+
+        * Legacy preflight pipeline (``_run_handler_specs`` in
+          ``application/jobs/controller_handlers.py``) calls with kwargs:
+          ``handler_fn(config_root=..., admin_username=..., log=...)``.
+        * JobRunner contract-discovered jobs (``_make_handler_wrapper``
+          in ``application/jobs/framework.py``) call positionally:
+          ``handler_fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)``.
+
+        The positional path passes ``(cfg, config_root, timeout)`` —
+        ``cfg`` and ``timeout`` are the orchestrator's plumbing
+        (we don't need them); ``config_root`` is the only positional
+        we care about. Pull it out of ``args`` if present so the
+        positional caller works without a separate wrapper.
+        """
+        # Positional path: (cfg, config_root, timeout)
+        if len(args) >= 2 and isinstance(args[1], str) and args[1]:
+            config_root = args[1]
 
         def info(msg: str) -> None:
             if log:

@@ -186,8 +186,13 @@ class TestProbeApplicationUrl:
         assert result.status == "failed"
         assert "not yet generated" in result.detail
 
-    def test_unknown_when_no_config_root(self, monkeypatch) -> None:
+    def test_failed_when_no_config_root(self, monkeypatch) -> None:
         # Strip CONFIG_ROOT from env so the wirer can't fall back to it.
+        # When CONFIG_ROOT is genuinely unresolvable, the probe must
+        # return ``failed`` — NOT ``unknown`` — so the ensurer can
+        # escalate to permanent and stop the orchestrator's transient-
+        # retry loop. (Pre-fix: ``unknown`` made the orchestrator log
+        # WARN every tick at "failed_transient attempt N".)
         monkeypatch.delenv("CONFIG_ROOT", raising=False)
         ctx = OrchestrationContext(
             service_id="jellyseerr",
@@ -196,7 +201,8 @@ class TestProbeApplicationUrl:
             now=lambda: 0.0,
         )
         sl = JellyseerrLifecycle()
-        assert sl.probe_application_url(ctx).status == "unknown"
+        assert sl.probe_application_url(ctx).status == "failed"
+        assert "no CONFIG_ROOT" in sl.probe_application_url(ctx).detail
 
 
 # --- arr-servers probe ------------------------------------------------
