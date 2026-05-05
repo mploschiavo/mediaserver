@@ -4,6 +4,9 @@ metadata:
   name: media-stack
   platform: k8s
   purpose: dev
+  country: US
+  description: Minimal k8s dev stack profile
+  language: en
 resources:
   disk_space_gb: 500
   network_cidr: 192.168.1.0/24
