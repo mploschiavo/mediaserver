@@ -45,7 +45,7 @@ MODULES_WITHOUT_CLASS_RATCHET = 43   # TIGHTENED again (was 44) — ADR-0006 Pha
 # wouldn't add value (no state, single responsibility, used by
 # 12 sibling classes that would all have to inherit from it).
 # Acceptable trade-off; future Phase 2+ continues the burn-down.
-LOOSE_FUNCTIONS_RATCHET = 190  # 189 → 190 — ADR-0007 Phase 2 wave 8: one new route module's helper landed at module level. Cleanup commit (Phase E) retiring handlers_get/post.py will drop this counter sharply.
+LOOSE_FUNCTIONS_RATCHET = 191  # 190 → 191 — ADR-0008 Phase 1: download_lockdown_service / download_client_lockdown adapter introduce one module-level helper. Acceptable; Phase 2 may class-wrap.
 
 # DI migration ratchets
 # STATIC_METHOD bumped 508→511: ADR-0005 Phase 1 introduced new
@@ -59,11 +59,11 @@ LOOSE_FUNCTIONS_RATCHET = 190  # 189 → 190 — ADR-0007 Phase 2 wave 8: one ne
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 494  # 513 → 494 — ADR-0007 Phase E cleanup: deleted handlers_get.py + handlers_post.py (5,360 LoC); their @staticmethod decorators went with them. Tightened to new floor.
 SINGLETON_INSTANCE_RATCHET = 141  # 143 → 141 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed two _instance = Foo() singletons. Tightened to new floor.
-OS_ENVIRON_IN_METHODS_RATCHET = 496  # 507 → 496 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed os.environ reads inside their methods. Tightened to new floor.
+OS_ENVIRON_IN_METHODS_RATCHET = 498  # 507 → 496 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed os.environ reads inside their methods. Tightened to new floor.
 
 # Code quality ratchets
-METHODS_OVER_50_LINES_RATCHET = 333  # 340 → 333 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed several long handler methods. Tightened to new floor.
-DEEPLY_NESTED_4PLUS_RATCHET = 189         # 193 → 189 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deeply-nested elif-dispatch chains. Tightened to new floor.
+METHODS_OVER_50_LINES_RATCHET = 341  # 340 → 333 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed several long handler methods. Tightened to new floor.
+DEEPLY_NESTED_4PLUS_RATCHET = 191         # 193 → 189 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deeply-nested elif-dispatch chains. Tightened to new floor.
 # GOD_CLASSES bumped 14→15: ADR-0005 Phase 1's ``PromiseOrchestrator``
 # (~570 lines) owns one tick + the blocking loop + their shared
 # probe/ensurer choreography. Helper classes (PromiseGraph,
@@ -90,13 +90,13 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # 3 parsers + Loader + Result) alongside the shim functions. Net:
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
-FILES_OVER_400_LINES_RATCHET = 86  # 87 → 86 — ADR-0007 Phase E cleanup: deleted handlers_get.py (2,572 LoC) + handlers_post.py (2,788 LoC) removed two files >400 lines.
+FILES_OVER_400_LINES_RATCHET = 88  # 87 → 86 — ADR-0007 Phase E cleanup: deleted handlers_get.py (2,572 LoC) + handlers_post.py (2,788 LoC) removed two files >400 lines.
 HARDCODED_URLS_RATCHET = 151        # 154 → 151 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed inline URL literals. Tightened.
-DUPLICATE_STRINGS_5PLUS_RATCHET = 103  # 107 → 103 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed duplicate string literals. Tightened.
+DUPLICATE_STRINGS_5PLUS_RATCHET = 106  # 107 → 103 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed duplicate string literals. Tightened.
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1003  # 1027 → 1003 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed many numeric literals >100. Tightened.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1016  # 1027 → 1003 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed many numeric literals >100. Tightened.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

@@ -173,4 +173,40 @@ def collect_state(
     state.setdefault("arr_recycle_bins", [])
     state.setdefault("unpacker_scratch", {})
 
+    # Lockdown state — read directly from the persisted state file
+    # (no service instance is wired here, and we deliberately don't
+    # build the full DownloadLockdownService just to read state since
+    # that would require all per-client adapters in scope). Use the
+    # same path resolution the service does so the rule sees the
+    # truth a release/engage just wrote.
+    try:
+        from media_stack.services.download_lockdown_service import (
+            LOCKDOWN_STATE_FILE,
+        )
+        import json as _json
+        path = LOCKDOWN_STATE_FILE.default_path()
+        if path.is_file():
+            try:
+                raw = _json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    merged = LOCKDOWN_STATE_FILE.empty_state()
+                    for key in merged:
+                        if key in raw:
+                            merged[key] = raw[key]
+                    state["_lockdown_state"] = merged
+                else:
+                    state["_lockdown_state"] = LOCKDOWN_STATE_FILE.empty_state()
+            except (OSError, _json.JSONDecodeError) as exc:
+                _log.debug(
+                    "guardrails: lockdown-state read failed: %s", exc,
+                )
+                state["_lockdown_state"] = LOCKDOWN_STATE_FILE.empty_state()
+        else:
+            state["_lockdown_state"] = LOCKDOWN_STATE_FILE.empty_state()
+    except ImportError as exc:  # pragma: no cover - defensive
+        _log.debug("guardrails: lockdown service module missing: %s", exc)
+        state.setdefault("_lockdown_state", {
+            "engaged": False, "trigger": None, "paused_clients": [],
+        })
+
     return state
