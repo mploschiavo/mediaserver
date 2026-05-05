@@ -137,6 +137,19 @@ export function handleEvent(
     void qc.invalidateQueries({ queryKey: ["media-integrity"] });
     return;
   }
+  if (
+    eventType.startsWith("storage.lockdown") ||
+    eventType.startsWith("storage.cleanup")
+  ) {
+    // Disk-guardrails (ADR-0008 Phase 3) — refresh the merged
+    // status query so the Ops → Storage card flips state without
+    // waiting on its 30 s poll. Phase 4 will teach
+    // `DownloadLockdownService` to publish these topics; until
+    // then this branch is dormant (filtered out before reaching
+    // here because ``storage`` isn't a default subscribed topic).
+    void qc.invalidateQueries({ queryKey: ["storage"] });
+    return;
+  }
   // Unknown event types are silently ignored — the SSE handler
   // already filtered to topics we asked for, so an unmapped name
   // here is a future-feature signal we don't need to act on.
