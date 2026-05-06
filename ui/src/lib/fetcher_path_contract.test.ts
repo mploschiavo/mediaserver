@@ -87,6 +87,14 @@ function collectOffenses(): Offense[] {
       const ALLOWED_NON_API = new Set([
         "healthz",
         "metrics",
+        // ``/status`` is the controller's bare-path runtime-state
+        // endpoint (registered in ``api/routes/state.py`` as
+        // ``@get("/status")``, NOT under ``/api/``). The compose +
+        // k8s nginx configs proxy it directly to the controller
+        // pod alongside the ``/api/*`` map. Adding ``/api/status``
+        // would require duplicating the route — keeping the bare
+        // form in this allowlist is the cheaper consistency.
+        "status",
       ]);
       if (ALLOWED_NON_API.has(trimmed)) continue;
       const before = text.slice(0, m.index);

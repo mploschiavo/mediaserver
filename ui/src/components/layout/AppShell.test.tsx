@@ -67,6 +67,18 @@ vi.mock("@/features/guardrails", () => ({
   TriggeredBanner: () => <div data-testid="guardrails-banner-stub" />,
 }));
 
+// RunningJobsBanner / BootstrapProgressBanner both run `useQuery`
+// chains; the AppShell tests render without a QueryClientProvider, so
+// stub these to inert divs to keep the shell test isolated.
+vi.mock("@/features/jobs/RunningJobsBanner", () => ({
+  RunningJobsBanner: () => <div data-testid="running-jobs-banner-stub" />,
+}));
+vi.mock("@/features/onboarding/BootstrapProgressBanner", () => ({
+  BootstrapProgressBanner: () => (
+    <div data-testid="bootstrap-progress-banner-stub" />
+  ),
+}));
+
 // useHealth() drives the AlertEngine's poll callback. Stub a quiet
 // snapshot so the engine has nothing to fire on; the AlertEngine
 // itself is unit-tested separately.

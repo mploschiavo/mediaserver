@@ -52,10 +52,13 @@ function getLogRows(): HTMLElement[] {
   );
 }
 
+// Bracketed level prefixes — the parser anchors level extraction on a
+// leading `[TOKEN]` (case-insensitive). Free-text "INFO:" / "ERROR:"
+// substrings inside the message body are intentionally NOT promoted.
 const sampleLines = [
-  "[2026-04-07 12:00:01] INFO: boot ok",
-  "[2026-04-07 12:00:02] ERROR: boom",
-  "[2026-04-07 12:00:03] WARN slow",
+  "[2026-04-07 12:00:01] [INFO] boot ok",
+  "[2026-04-07 12:00:02] [ERROR] boom",
+  "[2026-04-07 12:00:03] [WARN] slow",
 ];
 
 describe("LogsPage", () => {
@@ -123,7 +126,10 @@ describe("LogsPage", () => {
 
   it("filters by regex when the input starts with /…/", async () => {
     renderWithProviders(<LogsPage />);
-    await userEvent.type(screen.getByTestId("logs-search"), "/^ERROR/");
+    // Sample messages are now bracketed: "[INFO] boot ok",
+    // "[ERROR] boom", "[WARN] slow". The regex matches the [ERROR]
+    // line (and nothing else) so we expect exactly one visible row.
+    await userEvent.type(screen.getByTestId("logs-search"), "/ERROR/");
     await waitFor(() => {
       expect(getLogRows().length).toBe(1);
     });
@@ -138,8 +144,8 @@ describe("LogsPage", () => {
 
   it("renders the multi-source aggregate (one row per bucket)", () => {
     multiState.data = [
-      { source: "controller", lines: ["[2026-04-07 12:00:01] INFO: a"] },
-      { source: "sonarr", lines: ["[2026-04-07 12:00:02] INFO: b"] },
+      { source: "controller", lines: ["[2026-04-07 12:00:01] [INFO] a"] },
+      { source: "sonarr", lines: ["[2026-04-07 12:00:02] [INFO] b"] },
     ];
     renderWithProviders(<LogsPage />);
     const sources = getLogRows().map((r) => r.getAttribute("data-source"));

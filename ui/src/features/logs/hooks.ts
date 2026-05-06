@@ -92,6 +92,55 @@ const LEVEL_CLASSES: Record<LevelTag, string> = {
   "[LOG]": "text-fg-muted",
 };
 
+// Bracketed-token vocabulary, case-insensitive, anchored to the start
+// of the message. Mapping a token to a `LevelTag` is the single
+// source-of-truth for the parser. Adding a new token here keeps the
+// per-row tone routing automatic.
+const BRACKET_TOKEN_TO_LEVEL: Record<string, LevelTag> = {
+  ERROR: "[ERR]",
+  ERR: "[ERR]",
+  FATAL: "[ERR]",
+  CRIT: "[ERR]",
+  CRITICAL: "[ERR]",
+  WARN: "[WARN]",
+  WARNING: "[WARN]",
+  INFO: "[INFO]",
+  NOTICE: "[INFO]",
+  OK: "[INFO]",
+  JOB: "[INFO]",
+  ACTION: "[INFO]",
+  DEBUG: "[DBG]",
+  DBG: "[DBG]",
+  TRACE: "[DBG]",
+};
+
+/**
+ * Extract a level tag from the leading bracketed token of a
+ * (timestamp-stripped) log line. Free-text matches inside the
+ * message body are NOT considered — see the comment in
+ * `parseLogLine` for the bug class this avoids.
+ *
+ * Examples:
+ *   "[ERROR] kaboom"          -> [ERR]
+ *   "[OK] reconcile complete" -> [INFO]
+ *   "retrying after err=..."  -> [LOG]   (no leading bracket)
+ *   "Stack trace: Error: ..." -> [LOG]   (no leading bracket)
+ */
+export function extractLevelFromBracketedPrefix(message: string): LevelTag {
+  // Trim only leading whitespace; the bracket must immediately follow
+  // any whitespace at the start of the timestamp-stripped line.
+  let i = 0;
+  while (i < message.length && (message[i] === " " || message[i] === "\t")) {
+    i++;
+  }
+  if (message[i] !== "[") return "[LOG]";
+  const close = message.indexOf("]", i + 1);
+  if (close < 0) return "[LOG]";
+  const token = message.slice(i + 1, close).trim().toUpperCase();
+  if (!token) return "[LOG]";
+  return BRACKET_TOKEN_TO_LEVEL[token] ?? "[LOG]";
+}
+
 /**
  * Parse one raw or structured log line into a `ParsedLine`. The
  * controller emits arrays of raw strings today (`fetcher` returns
@@ -124,17 +173,21 @@ export function parseLogLine(
       insertion,
     };
   }
-  const upper = line.toUpperCase();
-  const tag: LevelTag = /\b(ERROR|ERR|FATAL|CRIT|CRITICAL)\b/.test(upper)
-    ? "[ERR]"
-    : /\b(WARN|WARNING)\b/.test(upper)
-      ? "[WARN]"
-      : /\b(INFO|NOTICE)\b/.test(upper)
-        ? "[INFO]"
-        : /\b(DEBUG|DBG|TRACE)\b/.test(upper)
-          ? "[DBG]"
-          : "[LOG]";
   const { ts, rest } = extractTimestamp(line);
+  // Level extraction is anchored to the START of the line (after the
+  // timestamp prefix is stripped) and only looks at a BRACKETED token.
+  // Free-text "error=" / "Error:" / "Exception" substrings inside the
+  // message body are intentionally NOT promoted — retry-loop messages
+  // legitimately embed the prior attempt's error string for context,
+  // and the previous \b…\b matcher misclassified ~180/184 lines as
+  // [ERR] on a typical controller boot, breaking the level filter.
+  // Recognised tokens (case-insensitive):
+  //   [ERROR] / [ERR] / [FATAL] / [CRIT] / [CRITICAL]   -> [ERR]
+  //   [WARN]  / [WARNING]                               -> [WARN]
+  //   [INFO]  / [NOTICE] / [OK] / [JOB] / [ACTION]      -> [INFO]
+  //   [DEBUG] / [DBG] / [TRACE]                         -> [DBG]
+  //   anything else (or no leading bracket)             -> [LOG]
+  const tag = extractLevelFromBracketedPrefix(rest);
   // Date.parse on a SQL-ish "2026-04-07 12:00:01" returns NaN in some
   // engines; replace the space with a "T" before falling through.
   const parsed = ts

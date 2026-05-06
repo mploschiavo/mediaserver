@@ -22,6 +22,20 @@ vi.mock("@/features/audit-log/hooks", () => ({
     mutate: vi.fn(),
     isPending: false,
   }),
+  useAuditLogStats: () => ({
+    data: {
+      entry_count: 0,
+      disk_bytes: 0,
+      oldest_ts: "",
+      newest_ts: "",
+      archive_count: 0,
+      max_size_bytes: 1048576,
+      keep_archives: 5,
+      max_disk_bytes: 6291456,
+    },
+    isLoading: false,
+    error: null,
+  }),
 }));
 
 // AuditLogTable imports useAuditLog from `@/api/hooks` directly to
