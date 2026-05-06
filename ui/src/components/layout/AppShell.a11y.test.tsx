@@ -71,6 +71,16 @@ vi.mock("@/features/guardrails", () => ({
   TriggeredBanner: () => null,
 }));
 
+// RunningJobsBanner / BootstrapProgressBanner both run `useQuery`
+// chains; the a11y test renders without a QueryClientProvider, so
+// stub these out so the shell chrome stays self-contained.
+vi.mock("@/features/jobs/RunningJobsBanner", () => ({
+  RunningJobsBanner: () => null,
+}));
+vi.mock("@/features/onboarding/BootstrapProgressBanner", () => ({
+  BootstrapProgressBanner: () => null,
+}));
+
 // AppShell now wires the AlertEngine via `useHealth()` (wave 5);
 // stub the hook so the a11y test doesn't need a QueryClient.
 vi.mock("@/api", () => ({

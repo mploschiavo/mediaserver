@@ -24,16 +24,16 @@ function makeWrapper() {
 }
 
 describe("parseLogLine", () => {
-  it("classifies a string ERROR line as [ERR]", () => {
+  it("classifies a [ERROR] bracketed line as [ERR]", () => {
     const out = parseLogLine(
-      "[2026-04-07 12:00:01] ERROR: kaboom",
+      "[2026-04-07 12:00:01] [ERROR] kaboom",
       "controller",
       0,
     );
     expect(out.level).toBe("[ERR]");
     expect(out.levelClassName).toContain("danger");
     expect(out.ts).toBe("2026-04-07 12:00:01");
-    expect(out.message).toBe("ERROR: kaboom");
+    expect(out.message).toBe("[ERROR] kaboom");
   });
 
   it("classifies a structured info LogLineShape as [INFO]", () => {
@@ -57,6 +57,92 @@ describe("parseLogLine", () => {
     const a = parseLogLine("a line", "sonarr", 0);
     const b = parseLogLine("b line", "sonarr", 1);
     expect(a.sortKey).toBeLessThan(b.sortKey);
+  });
+
+  // ---- Bracketed-prefix anchoring (Bug #3) -------------------------------
+  // The level extractor MUST only look at the bracketed token at the
+  // START of the (timestamp-stripped) message. Free-text "error=" /
+  // "Error:" / "Exception" substrings inside the message body are
+  // legitimate context for retry-loop messages and must NOT be
+  // promoted to [ERR]. Misclassification of these lines was the root
+  // cause of the level filter showing 3/184 lines instead of all 184.
+
+  it("does NOT promote a retry-loop message that embeds error= context", () => {
+    const out = parseLogLine(
+      "[2026-04-07 12:00:01] retrying jellyfin probe after err=connection refused",
+      "controller",
+      0,
+    );
+    expect(out.level).toBe("[LOG]");
+    expect(out.levelClassName).not.toContain("danger");
+  });
+
+  it("does NOT promote an inline stack-trace line (Error: ...)", () => {
+    const out = parseLogLine(
+      "[2026-04-07 12:00:01] caught Error: ECONNREFUSED while reconciling",
+      "controller",
+      0,
+    );
+    expect(out.level).toBe("[LOG]");
+  });
+
+  it("does NOT promote a mixed-content message containing 'Exception'", () => {
+    const out = parseLogLine(
+      "  resolved gracefully — handled Exception in /api/probe",
+      "controller",
+      0,
+    );
+    expect(out.level).toBe("[LOG]");
+  });
+
+  it("DOES promote when the token sits in a leading [ERROR] bracket", () => {
+    const out = parseLogLine("[ERROR] dispatcher refused job", "controller", 0);
+    expect(out.level).toBe("[ERR]");
+  });
+
+  it("recognises [ERR] / [FATAL] / [CRIT] as ERR-tone synonyms", () => {
+    expect(parseLogLine("[ERR] short", "controller", 0).level).toBe("[ERR]");
+    expect(parseLogLine("[FATAL] kaboom", "controller", 0).level).toBe("[ERR]");
+    expect(parseLogLine("[CRIT] urgent", "controller", 0).level).toBe("[ERR]");
+    expect(parseLogLine("[CRITICAL] urgent", "controller", 0).level).toBe(
+      "[ERR]",
+    );
+  });
+
+  it("recognises [WARN] / [WARNING] as WARN-tone", () => {
+    expect(parseLogLine("[WARN] slow", "controller", 0).level).toBe("[WARN]");
+    expect(parseLogLine("[WARNING] slow", "controller", 0).level).toBe(
+      "[WARN]",
+    );
+  });
+
+  it("recognises [INFO] / [OK] / [JOB] / [ACTION] as INFO-tone", () => {
+    expect(parseLogLine("[INFO] booted", "controller", 0).level).toBe("[INFO]");
+    expect(parseLogLine("[OK] reconciled", "controller", 0).level).toBe(
+      "[INFO]",
+    );
+    expect(parseLogLine("[JOB] running media-integrity", "controller", 0).level)
+      .toBe("[INFO]");
+    expect(parseLogLine("[ACTION] reconcile triggered", "controller", 0).level)
+      .toBe("[INFO]");
+  });
+
+  it("is case-insensitive on the bracketed token", () => {
+    expect(parseLogLine("[error] lower", "controller", 0).level).toBe("[ERR]");
+    expect(parseLogLine("[Error] mixed", "controller", 0).level).toBe("[ERR]");
+    expect(parseLogLine("[Warn] mixed", "controller", 0).level).toBe("[WARN]");
+  });
+
+  it("falls through to [LOG] for an unknown bracketed token", () => {
+    expect(parseLogLine("[CUSTOM] unknown tag", "controller", 0).level).toBe(
+      "[LOG]",
+    );
+  });
+
+  it("tolerates leading whitespace before the bracket", () => {
+    expect(parseLogLine("  [INFO] indented", "controller", 0).level).toBe(
+      "[INFO]",
+    );
   });
 });
 

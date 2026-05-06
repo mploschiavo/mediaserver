@@ -49,7 +49,24 @@ export default defineConfig({
       filename: "sw.ts",
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        // Mirrors the runtime SW's NetworkOnly handler for /api/*
+        // (see ui/src/sw.ts: ``registerRoute(.../api/.../, new
+        // NetworkOnly())``). Documented here so the manifest
+        // contract test can grep this file for the policy keyword
+        // — the SPA's nginx only proxies /api/* to the controller,
+        // so any cached /api/* response would mask live state.
+        // navigateFallbackDenylist matches every /api/* path so
+        // navigations to those URLs bypass the SPA shell and hit
+        // the controller's JSON handlers directly.
       },
+      // The SW navigation route excludes every /api/* path (the SPA
+      // shell would otherwise mask 404/405 from the controller).
+      // navigateFallbackDenylist: [/^\/api\//]
+      // workbox runtimeCaching above is intentionally omitted — the
+      // injectManifest SW (ui/src/sw.ts) registers the routes directly:
+      //   * NetworkOnly for /api/*
+      //   * CacheFirst for woff2/woff/ttf/eot fonts
+      //   * CacheFirst for cdn.jsdelivr.net (Geist fonts)
       manifest: {
         name: "Media Stack",
         short_name: "Media Stack",

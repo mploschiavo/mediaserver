@@ -95,6 +95,7 @@ vi.mock("@/features/storage/hooks", () => ({
   usePauseGuardrails: () => ({ mutate: vi.fn(), isPending: false }),
   useForceEvaluate: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateThresholds: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateCleanupPolicy: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/features/me/hooks", () => ({

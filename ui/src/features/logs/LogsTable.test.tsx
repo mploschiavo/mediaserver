@@ -6,10 +6,14 @@ import { parseLogLine, type ParsedLine } from "./hooks";
 import { hashSource } from "./format";
 
 function lines(): ParsedLine[] {
+  // Use bracketed level prefixes — the parser anchors level extraction
+  // to a leading `[TOKEN]` (case-insensitive) on the timestamp-stripped
+  // body. Free-text "ERROR:" / "WARN" substrings are NOT promoted; see
+  // `extractLevelFromBracketedPrefix` for the contract.
   return [
-    parseLogLine("[2026-04-07 12:00:01] INFO: boot ok", "controller", 0),
-    parseLogLine("[2026-04-07 12:00:02] ERROR: boom", "sonarr", 0),
-    parseLogLine("[2026-04-07 12:00:03] WARN slow", "radarr", 0),
+    parseLogLine("[2026-04-07 12:00:01] [INFO] boot ok", "controller", 0),
+    parseLogLine("[2026-04-07 12:00:02] [ERROR] boom", "sonarr", 0),
+    parseLogLine("[2026-04-07 12:00:03] [WARN] slow", "radarr", 0),
   ];
 }
 

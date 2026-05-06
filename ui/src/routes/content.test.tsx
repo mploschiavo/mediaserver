@@ -31,6 +31,13 @@ vi.mock("@/api", async () => {
 
 vi.mock("@/features/library/hooks", () => ({
   useLibraries: () => librariesState,
+  useRecentLibraryAdditions: () => ({
+    data: { recent: {} },
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  flattenRecent: () => [],
 }));
 
 // Stub each feature component out — content.test focuses on the
