@@ -41,3 +41,6 @@ dist/media/
 # Templates baked into the controller image — must be tracked
 !/config/defaults/
 !/config/defaults/**
+
+# Vitest scratch — vitest.config.ts.timestamp-<epoch>-<hash>.mjs leaks when a test run is interrupted
+ui/*.timestamp-*.mjs
