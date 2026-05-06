@@ -1,6 +1,6 @@
-"""Disk-guardrails routes (ADR-0008 Phase 2).
+"""Disk-guardrails routes (ADR-0008 Phase 2 + Phase 4).
 
-Six operator-facing endpoints sitting on top of the Phase 1
+Seven operator-facing endpoints sitting on top of the Phase 1
 ``DownloadLockdownService`` + the legacy ``DiskGuardrailsService``
 cleanup engine + the cross-domain ``GuardrailRegistry`` rule loop:
 
@@ -11,6 +11,9 @@ cleanup engine + the cross-domain ``GuardrailRegistry`` rule loop:
 * ``POST /api/disk-guardrails/pause-auto``    -- TTL bypass for the
    auto-evaluation side (``hours`` query-string, clamped to [1, 24]).
 * ``POST /api/disk-guardrails/evaluate``      -- force-tick the registry.
+* ``POST /api/disk-guardrails/cleanup-policy`` -- (Phase 4) write the
+   on-disk cleanup-policy override file consumed by
+   ``DiskGuardrailsService.enforce()``.
 
 OO discipline:
 
@@ -82,12 +85,14 @@ _AUDIT_LOCKDOWN_RELEASED = "disk_guardrail_lockdown_released"
 _AUDIT_CLEANUP_INVOKED = "disk_guardrail_cleanup_invoked"
 _AUDIT_PAUSE_AUTO = "disk_guardrail_pause_auto"
 _AUDIT_EVALUATE = "disk_guardrail_evaluate"
+_AUDIT_CLEANUP_POLICY_UPDATED = "disk_guardrail_cleanup_policy_updated"
 
 _AUDIT_ACTIONS_TRANSITIONS = (
     _AUDIT_LOCKDOWN_ENGAGED,
     _AUDIT_LOCKDOWN_RELEASED,
     _AUDIT_CLEANUP_INVOKED,
     _AUDIT_PAUSE_AUTO,
+    _AUDIT_CLEANUP_POLICY_UPDATED,
 )
 
 # How many recent transition rows to surface on GET /api/disk-guardrails.
@@ -484,6 +489,12 @@ class HoursQueryParser:
         return hours, ""
 
 
+from media_stack.api.routes.disk_guardrails_cleanup_policy import (  # noqa: E402
+    CleanupPolicyValidator,
+    CleanupPolicyWriter,
+)
+
+
 class DiskGuardrailsRoutes(RouteModule):
     """Six disk-guardrails endpoints registered against the OpenAPI
     Router. The Router auto-discovers + instantiates this class at
@@ -506,6 +517,8 @@ class DiskGuardrailsRoutes(RouteModule):
         audit_appender: AuditAppender | None = None,
         hours_parser: HoursQueryParser | None = None,
         mutation_gate: PostMutationGate | None = None,
+        cleanup_policy_validator: CleanupPolicyValidator | None = None,
+        cleanup_policy_writer: CleanupPolicyWriter | None = None,
     ) -> None:
         self._lockdown_explicit = lockdown_service
         self._cleanup = cleanup_runner or CleanupRunner()
@@ -517,6 +530,12 @@ class DiskGuardrailsRoutes(RouteModule):
         self._audit = audit_appender or AuditAppender()
         self._hours_parser = hours_parser or HoursQueryParser()
         self._gate = mutation_gate or PostMutationGate()
+        self._cleanup_policy_validator = (
+            cleanup_policy_validator or CleanupPolicyValidator()
+        )
+        self._cleanup_policy_writer = (
+            cleanup_policy_writer or CleanupPolicyWriter()
+        )
 
     # -- collaborator accessors --------------------------------------
 
@@ -810,6 +829,51 @@ class DiskGuardrailsRoutes(RouteModule):
             "actions": result.get("actions") or [],
         })
 
+    @post("/api/disk-guardrails/cleanup-policy")
+    def handle_cleanup_policy(self, handler: Any) -> None:
+        """Persist a cleanup-policy override JSON file (Phase 4).
+
+        Body fields are all optional and form a selective overlay over
+        the controller's persisted ``cfg["disk_guardrails"]["qbit_cleanup"]``
+        defaults — every key the body sets overrides the default; every
+        key it omits passes through.
+
+        Validates: ``order_strategy`` must be one of the four canonical
+        ordering names; numeric fields must be positive; max_delete_per_run
+        is server-side capped at 1000.
+        """
+        if not self._gated(handler):
+            return
+        ok, actor = self._admin_gated(handler)
+        if not ok:
+            return
+        body = handler._read_json_body() or {}
+        cleaned, error = self._cleanup_policy_validator.validate(body)
+        if error:
+            handler._json_response(
+                HTTPStatus.BAD_REQUEST, {"error": error},
+            )
+            return
+        try:
+            persisted = self._cleanup_policy_writer.write(cleaned)
+        except (OSError, ValueError) as exc:
+            log_swallowed(exc, context="disk-guardrails-cleanup-policy-write")
+            handler._json_response(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": f"persist failed: {exc}"},
+            )
+            return
+        actor_label = f"operator:{actor}" if actor else "operator:anonymous"
+        self._audit.append(
+            actor=actor_label,
+            action=_AUDIT_CLEANUP_POLICY_UPDATED,
+            result="ok",
+            detail={"keys": sorted(persisted.keys())},
+        )
+        handler._json_response(HTTPStatus.OK, {
+            "policy": persisted,
+        })
+
     # -- helpers -----------------------------------------------------
 
     def _collect_used_percent_by_mount(self) -> dict[str, float]:
@@ -841,6 +905,8 @@ __all__ = [
     "ActorResolver",
     "AdminGate",
     "AuditAppender",
+    "CleanupPolicyValidator",
+    "CleanupPolicyWriter",
     "CleanupRunner",
     "DiskGuardrailsRoutes",
     "HoursQueryParser",

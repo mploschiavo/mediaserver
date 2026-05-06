@@ -1,43 +1,21 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Info } from "lucide-react";
+import { useState, type JSX } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-
-/** Order strategies surfaced by `DiskGuardrailsService.enforce()` —
- *  see ADR-0008 §5 (Smart cleanup ordering). */
-const ORDER_STRATEGIES: ReadonlyArray<{
-  key: string;
-  label: string;
-  description: string;
-}> = [
-  {
-    key: "oldest_first",
-    label: "Oldest first",
-    description: "FIFO by completion timestamp (default)",
-  },
-  {
-    key: "largest_first",
-    label: "Largest first",
-    description: "Free disk fastest by deleting bulky completed torrents",
-  },
-  {
-    key: "poor_ratio_first",
-    label: "Poor ratio first",
-    description: "Delete torrents whose seed ratio is well below the floor",
-  },
-  {
-    key: "watched_first",
-    label: "Watched first",
-    description: "Prefer torrents whose mapped files Jellyfin shows as played",
-  },
-];
+import {
+  useUpdateCleanupPolicy,
+  type UpdateCleanupPolicyInput,
+} from "./hooks";
+import {
+  StorageCleanupPolicyForm,
+  type StrategyKey,
+} from "./StorageCleanupPolicyForm";
 
 interface StorageCleanupPolicyProps {
   /** When the controller already exposes a writable cleanup-policy
-   *  endpoint, the parent passes the merged config here. The
-   *  component renders the values whether or not a write surface
-   *  exists; today, no write endpoint exists yet — so we render
-   *  read-only with an "edit profile.yaml" hint per the brief. */
+   *  endpoint, the parent passes the merged config here. ADR-0008
+   *  Phase 4 added the write surface — `useUpdateCleanupPolicy`
+   *  POSTs to `/api/disk-guardrails/cleanup-policy` and persists the
+   *  override JSON. */
   policy?: {
     categories?: readonly string[];
     min_age_hours?: number;
@@ -54,14 +32,63 @@ const DEFAULT_POLICY = {
   min_seeding_time_minutes: 1440,
   min_ratio: 1,
   max_delete_per_run: 25,
-  order_strategy: "oldest_first",
+  order_strategy: "oldest_first" as const,
 };
+
+const STRATEGY_KEYS = new Set<string>([
+  "oldest_first",
+  "largest_first",
+  "poor_ratio_first",
+  "watched_first",
+]);
+
+function coerceStrategy(value: string): StrategyKey {
+  return STRATEGY_KEYS.has(value) ? (value as StrategyKey) : "oldest_first";
+}
 
 export function StorageCleanupPolicy({
   policy,
-}: StorageCleanupPolicyProps) {
+}: StorageCleanupPolicyProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const merged = { ...DEFAULT_POLICY, ...(policy ?? {}) };
+  const [categoriesText, setCategoriesText] = useState<string>(
+    (merged.categories ?? []).join(", "),
+  );
+  const [minAgeHours, setMinAgeHours] = useState<string>(
+    String(merged.min_age_hours ?? DEFAULT_POLICY.min_age_hours),
+  );
+  const [minSeedingMinutes, setMinSeedingMinutes] = useState<string>(
+    String(
+      merged.min_seeding_time_minutes ??
+        DEFAULT_POLICY.min_seeding_time_minutes,
+    ),
+  );
+  const [minRatio, setMinRatio] = useState<string>(
+    String(merged.min_ratio ?? DEFAULT_POLICY.min_ratio),
+  );
+  const [maxDeletePerRun, setMaxDeletePerRun] = useState<string>(
+    String(merged.max_delete_per_run ?? DEFAULT_POLICY.max_delete_per_run),
+  );
+  const [orderStrategy, setOrderStrategy] = useState<StrategyKey>(
+    coerceStrategy(merged.order_strategy ?? DEFAULT_POLICY.order_strategy),
+  );
+  const updatePolicy = useUpdateCleanupPolicy();
+
+  const onSave = () => {
+    const parsedCategories = categoriesText
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    const body: UpdateCleanupPolicyInput = {
+      categories: parsedCategories,
+      min_completion_age_hours: Number(minAgeHours) || 0,
+      min_seeding_time_minutes: Number(minSeedingMinutes) || 0,
+      min_ratio: Number(minRatio) || 0,
+      max_delete_per_run: Number(maxDeletePerRun) || 1,
+      order_strategy: orderStrategy,
+    };
+    updatePolicy.mutate(body);
+  };
 
   return (
     <div
@@ -83,107 +110,39 @@ export function StorageCleanupPolicy({
           )}
           <span className="font-medium">Cleanup policy</span>
           <Badge variant="outline" className="text-xs">
-            {merged.order_strategy}
+            {orderStrategy}
           </Badge>
         </span>
         <span className="text-xs text-fg-faint">
-          {merged.max_delete_per_run} max / run · ratio ≥ {merged.min_ratio}
+          {maxDeletePerRun} max / run · ratio ≥ {minRatio}
         </span>
       </button>
       {open ? (
-        <div
-          className="flex flex-col gap-3 border-t border-border px-3 py-3 text-sm"
-          data-testid="storage-cleanup-policy-body"
-        >
-          <div
-            role="note"
-            className="flex items-start gap-2 rounded-md border border-border bg-bg-2 p-2 text-xs text-fg-muted"
-            data-testid="storage-cleanup-policy-readonly-note"
-          >
-            <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              Read-only for now — edit{" "}
-              <span className="font-mono">profile.yaml</span> →{" "}
-              <span className="font-mono">disk_guardrails.qbit_cleanup</span>{" "}
-              to change these values until the write endpoint lands.
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <Label>Categories</Label>
-              <div className="flex flex-wrap gap-1">
-                {merged.categories && merged.categories.length > 0 ? (
-                  merged.categories.map((c) => (
-                    <Badge key={c} variant="default">
-                      {c}
-                    </Badge>
-                  ))
-                ) : (
-                  <span
-                    className="text-xs text-fg-faint"
-                    data-testid="storage-cleanup-policy-categories-empty"
-                  >
-                    none configured
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Label>Order strategy</Label>
-              <span
-                className="text-sm font-mono"
-                data-testid="storage-cleanup-policy-order"
-              >
-                {merged.order_strategy}
-              </span>
-              <span className="text-xs text-fg-muted">
-                {ORDER_STRATEGIES.find((o) => o.key === merged.order_strategy)
-                  ?.description ?? "Custom strategy"}
-              </span>
-            </div>
-
-            <Field
-              label="Min age (hours)"
-              testId="storage-cleanup-policy-min-age"
-              value={String(merged.min_age_hours)}
-            />
-            <Field
-              label="Min seeding time (minutes)"
-              testId="storage-cleanup-policy-min-seeding"
-              value={String(merged.min_seeding_time_minutes)}
-            />
-            <Field
-              label="Min ratio"
-              testId="storage-cleanup-policy-min-ratio"
-              value={String(merged.min_ratio)}
-            />
-            <Field
-              label="Max delete per run"
-              testId="storage-cleanup-policy-max-delete"
-              value={String(merged.max_delete_per_run)}
-            />
-          </div>
-        </div>
+        <StorageCleanupPolicyForm
+          state={{
+            categoriesText,
+            setCategoriesText,
+            minAgeHours,
+            setMinAgeHours,
+            minSeedingMinutes,
+            setMinSeedingMinutes,
+            minRatio,
+            setMinRatio,
+            maxDeletePerRun,
+            setMaxDeletePerRun,
+            orderStrategy,
+            setOrderStrategy,
+          }}
+          status={{
+            onSave,
+            isPending: updatePolicy.isPending,
+            errorMessage: updatePolicy.isError
+              ? (updatePolicy.error as Error)?.message ?? "Save failed"
+              : null,
+            isSuccess: updatePolicy.isSuccess,
+          }}
+        />
       ) : null}
-    </div>
-  );
-}
-
-interface FieldProps {
-  label: string;
-  testId: string;
-  value: string;
-}
-
-function Field({ label, testId, value }: FieldProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <Label>{label}</Label>
-      <span className="font-mono text-sm" data-testid={testId}>
-        {value}
-      </span>
     </div>
   );
 }

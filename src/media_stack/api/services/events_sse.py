@@ -39,6 +39,7 @@ EVENT_TYPE_TO_TOPIC: Mapping[str, str] = {
     "password": "sessions",
     "security": "sessions",
     "media_integrity": "media_integrity",
+    "storage": "storage",
 }
 
 # Topics callers may request. Used to validate the ``topics=`` query

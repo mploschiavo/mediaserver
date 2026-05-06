@@ -30,6 +30,12 @@ const DEFAULT_TOPICS: readonly EventTopic[] = [
   "jobs",
   "sessions",
   "media_integrity",
+  // ADR-0008 Phase 4: Disk-guardrails events. The publishers in
+  // ``DownloadLockdownService`` and ``DiskGuardrailsService`` fire
+  // ``storage.lockdown_engaged`` / ``storage.lockdown_released`` /
+  // ``storage.cleanup_invoked`` so the Storage card flips state
+  // without waiting on its 30 s poll.
+  "storage",
 ];
 
 const EventStreamContext = createContext<EventStreamState>({

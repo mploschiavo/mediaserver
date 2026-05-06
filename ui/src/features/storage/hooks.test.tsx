@@ -16,6 +16,7 @@ import {
   usePauseGuardrails,
   useReleaseLockdown,
   useRunCleanup,
+  useUpdateCleanupPolicy,
   useUpdateThresholds,
 } from "./hooks";
 
@@ -183,6 +184,40 @@ describe("storage feature hooks", () => {
       (b) => b.threshold && "cleanup_percent" in b.threshold,
     );
     expect(cleanupBody.threshold).toMatchObject({ cleanup_percent: 70 });
+  });
+
+  it("useUpdateCleanupPolicy POSTs to /cleanup-policy with snake_case body", async () => {
+    fetcherMock.mockResolvedValue({
+      policy: {
+        categories: ["tv", "movies"],
+        order_strategy: "largest_first",
+      },
+    });
+    const { result } = renderHook(() => useUpdateCleanupPolicy(), {
+      wrapper: makeWrapper(),
+    });
+    await result.current.mutateAsync({
+      categories: ["tv", "movies"],
+      min_completion_age_hours: 24,
+      min_seeding_time_minutes: 480,
+      min_ratio: 1.0,
+      max_delete_per_run: 100,
+      order_strategy: "largest_first",
+    });
+    expect(fetcherMock).toHaveBeenCalledWith(
+      "api/disk-guardrails/cleanup-policy",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          categories: ["tv", "movies"],
+          min_completion_age_hours: 24,
+          min_seeding_time_minutes: 480,
+          min_ratio: 1.0,
+          max_delete_per_run: 100,
+          order_strategy: "largest_first",
+        }),
+      }),
+    );
   });
 
   it("useUpdateThresholds resolves when one branch fails (partial save)", async () => {

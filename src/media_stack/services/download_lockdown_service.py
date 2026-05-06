@@ -30,16 +30,16 @@ The service does NOT:
 
 from __future__ import annotations
 
-import json
 import logging
-import os
-import tempfile
 import time
-from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from media_stack.adapters._shared.download_client_lockdown import (
     DownloadClientLockdown,
+)
+from media_stack.core.events import (
+    StorageLockdownEngaged,
+    StorageLockdownReleased,
 )
 from media_stack.core.logging_utils import log_swallowed
 
@@ -47,53 +47,20 @@ from media_stack.core.logging_utils import log_swallowed
 _log = logging.getLogger("media_stack.lockdown")
 
 
-_STATE_FILE_DEFAULT = "/srv-config/.controller/disk-lockdown.state.json"
-
 _TRIGGER_AUTO = "auto"
 _TRIGGER_MANUAL = "manual"
 _VALID_TRIGGERS = (_TRIGGER_AUTO, _TRIGGER_MANUAL)
 
 
-class LockdownStateFile:
-    """Path resolver + canonical empty-state shape for the lockdown
-    state file.
-
-    Lives as a class so the no-loose-functions ratchet stays clean
-    and so the state-collector can call into the same resolver the
-    ``DownloadLockdownService`` uses (single source of truth for
-    where the state file lives).
-    """
-
-    _FILE_DEFAULT = _STATE_FILE_DEFAULT
-
-    def default_path(self) -> Path:
-        """Resolve the lockdown-state JSON path. Honours
-        ``CONFIG_ROOT``, matching ``GuardrailRegistry``'s
-        ``_override_path`` semantics so operators only have one root
-        knob to set."""
-        config_root = os.environ.get("CONFIG_ROOT", "")
-        if config_root:
-            return Path(config_root) / ".controller" / "disk-lockdown.state.json"
-        return Path(self._FILE_DEFAULT)
-
-    def empty_state(self) -> dict[str, Any]:
-        """Canonical "not-engaged" state shape. Centralised so both
-        the service's first-load, ``release()``'s reset path, and the
-        state collector's snapshot all produce identical JSON."""
-        return {
-            "engaged": False,
-            "trigger": None,
-            "engaged_at": 0.0,
-            "engaged_by": "",
-            "auto_check_paused_until": None,
-            "paused_clients": [],
-            "last_failures": [],
-        }
-
-
-# Module-level singleton — the state-collector and the service both
-# reach for the same instance.
-LOCKDOWN_STATE_FILE = LockdownStateFile()
+# Re-exported so existing import sites keep working after the class
+# moved to its own module (Phase 4 refactor for the 400-line ratchet).
+from media_stack.services.lockdown_state_file import (  # noqa: E402
+    LockdownStateFile,
+    LOCKDOWN_STATE_FILE,
+)
+from media_stack.services.storage_event_publisher import (  # noqa: E402
+    STORAGE_EVENT_PUBLISHER,
+)
 
 
 class DownloadLockdownService:
@@ -191,6 +158,19 @@ class DownloadLockdownService:
             "last_failures": failures,
         }
         self._save_state(new_state)
+        # Phase 4: publish to the EventBus so the UI's
+        # ``EventStreamProvider`` storage branch can flip the Storage
+        # card to MANUAL/AUTO_LOCKDOWN without waiting on the 30 s
+        # poll. Bus-side failures must NEVER block the lockdown
+        # action: a missing/raising bus is logged and swallowed.
+        self._publish_lockdown_engaged(
+            StorageLockdownEngaged(
+                trigger=trigger,
+                engaged_by=by,
+                paused_clients=tuple(paused),
+                engaged_at=now,
+            ),
+        )
         return {
             "paused_clients": paused,
             "failures": failures,
@@ -286,6 +266,14 @@ class DownloadLockdownService:
         cleared = LOCKDOWN_STATE_FILE.empty_state()
         cleared["last_failures"] = failures
         self._save_state(cleared)
+        now = float(self._clock())
+        self._publish_lockdown_released(
+            StorageLockdownReleased(
+                released_by=by,
+                released_clients=tuple(released),
+                released_at=now,
+            ),
+        )
         return {
             "released_clients": released,
             "failures": failures,
@@ -295,6 +283,20 @@ class DownloadLockdownService:
         }
 
     # -- internals ---------------------------------------------------
+
+    def _publish_lockdown_engaged(
+        self,
+        event: "StorageLockdownEngaged",
+    ) -> None:
+        """Delegate to the shared ``StorageEventPublisher`` (Phase 4)."""
+        STORAGE_EVENT_PUBLISHER.publish_lockdown_engaged(event)
+
+    def _publish_lockdown_released(
+        self,
+        event: "StorageLockdownReleased",
+    ) -> None:
+        """Delegate to the shared ``StorageEventPublisher`` (Phase 4)."""
+        STORAGE_EVENT_PUBLISHER.publish_lockdown_released(event)
 
     def _per_client_pause(self, adapter: DownloadClientLockdown) -> bool:
         try:
@@ -323,73 +325,10 @@ class DownloadLockdownService:
             return False
 
     def _load_state(self) -> dict[str, Any]:
-        path = self._state_path_fn()
-        if not path.is_file():
-            return LOCKDOWN_STATE_FILE.empty_state()
-        try:
-            raw = path.read_text(encoding="utf-8")
-            parsed = json.loads(raw)
-        except (OSError, json.JSONDecodeError) as exc:
-            _log.warning(
-                "lockdown: state file at %s unreadable (%s); "
-                "starting fresh", path, exc,
-            )
-            return LOCKDOWN_STATE_FILE.empty_state()
-        if not isinstance(parsed, dict):
-            _log.warning(
-                "lockdown: state file at %s not a JSON object; "
-                "starting fresh", path,
-            )
-            return LOCKDOWN_STATE_FILE.empty_state()
-        # Merge into the canonical shape so missing keys default
-        # rather than KeyError-ing the rule's evaluate().
-        out = LOCKDOWN_STATE_FILE.empty_state()
-        for key in out:
-            if key in parsed:
-                out[key] = parsed[key]
-        # Coerce paused_clients to a clean list of strings.
-        out["paused_clients"] = [
-            str(c) for c in (out.get("paused_clients") or [])
-            if isinstance(c, (str, int))
-        ]
-        # Validate trigger: drop bogus values rather than carry them
-        # forward (the rule's evaluate switches on this string).
-        if out.get("trigger") not in (None, _TRIGGER_AUTO, _TRIGGER_MANUAL):
-            out["trigger"] = None
-        return out
+        return LOCKDOWN_STATE_FILE.load_state(self._state_path_fn())
 
     def _save_state(self, state: Mapping[str, Any]) -> None:
-        path = self._state_path_fn()
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            log_swallowed(exc, context="lockdown_state_mkdir")
-            _log.warning(
-                "lockdown: could not create state directory %s: %s",
-                path.parent, exc,
-            )
-            return
-        # Atomic replace via NamedTemporaryFile in the same dir so
-        # ``os.replace`` stays on one filesystem.
-        try:
-            with tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8",
-                dir=str(path.parent),
-                prefix=path.name + ".",
-                suffix=".tmp",
-                delete=False,
-            ) as tmp:
-                _json_dump = json.dumps(dict(state), indent=2, sort_keys=True)
-                tmp.write(_json_dump + "\n")
-                tmp.flush()
-                os.fsync(tmp.fileno())
-                tmp_path = tmp.name
-            os.replace(tmp_path, path)
-        except OSError as exc:
-            log_swallowed(exc, context="lockdown_state_save")
-            _log.warning(
-                "lockdown: failed to persist state at %s: %s", path, exc,
-            )
+        LOCKDOWN_STATE_FILE.save_state(self._state_path_fn(), state)
 
 
 __all__ = [

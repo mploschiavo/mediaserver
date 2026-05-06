@@ -130,6 +130,26 @@ export interface UpdateThresholdsInput {
   releasePercent: number;
 }
 
+/** Phase 4 cleanup-policy POST body. Snake_case wire keys match the
+ *  controller's validator. Every field is optional — the body is a
+ *  selective overlay over the controller's persisted defaults. */
+export interface UpdateCleanupPolicyInput {
+  categories?: readonly string[];
+  min_completion_age_hours?: number;
+  min_seeding_time_minutes?: number;
+  min_ratio?: number;
+  max_delete_per_run?: number;
+  order_strategy?:
+    | "oldest_first"
+    | "largest_first"
+    | "poor_ratio_first"
+    | "watched_first";
+}
+
+export interface UpdateCleanupPolicyResponse {
+  policy: UpdateCleanupPolicyInput;
+}
+
 // ---- Read hook ----------------------------------------------------------
 
 /**
@@ -262,6 +282,32 @@ export function useForceEvaluate(): UseMutationResult<
  * fanning out two POSTs and awaiting both before resolving — the
  * registry has no batched-update shape.
  */
+/**
+ * Persists cleanup-policy overrides via the Phase 4
+ * `POST /api/disk-guardrails/cleanup-policy` endpoint. The body is
+ * a partial overlay — every field is optional. The controller writes
+ * the JSON file at `/srv-config/.controller/disk-cleanup-policy.json`;
+ * the next `DiskGuardrailsService.enforce()` pass reads from it.
+ */
+export function useUpdateCleanupPolicy(): UseMutationResult<
+  UpdateCleanupPolicyResponse,
+  Error,
+  UpdateCleanupPolicyInput
+> {
+  const invalidate = useInvalidateStatus();
+  return useMutation<UpdateCleanupPolicyResponse, Error, UpdateCleanupPolicyInput>({
+    mutationFn: (input) =>
+      fetcher<UpdateCleanupPolicyResponse>(
+        "api/disk-guardrails/cleanup-policy",
+        {
+          method: "POST",
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: () => invalidate(),
+  });
+}
+
 export function useUpdateThresholds(): UseMutationResult<
   unknown,
   Error,
