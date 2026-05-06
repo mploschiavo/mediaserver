@@ -59,3 +59,16 @@ app_auth:
   fail_on_error: false
   username_env: STACK_ADMIN_USERNAME
   password_env: STACK_ADMIN_PASSWORD
+# ADR-0008 disk-guardrails: per-install pressure thresholds.
+# Uncomment and override any keys from
+# contracts/defaults/operations.yaml::disk_guardrails. The values
+# below are the laptop-tuned defaults from ADR-0008 Phase 4; remove
+# or adjust for bigger servers. Three-tier merge order at runtime:
+# operations.yaml defaults -> profile.yaml -> guardrails.json
+# (UI-saved, highest priority). The Registry's UI overrides at
+# /srv-config/.controller/guardrails.json always win at runtime.
+# disk_guardrails:
+#   max_used_percent: 50
+#   target_used_percent: 40
+#   lockdown_percent: 75
+#   release_percent: 60

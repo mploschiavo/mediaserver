@@ -3162,6 +3162,86 @@ paths:
         "403":
           description: CSRF token missing or admin role required
 
+  /api/disk-guardrails/cleanup-policy:
+    post:
+      operationId: updateDiskGuardrailsCleanupPolicy
+      tags: [Guardrails]
+      summary: Persist cleanup-policy overrides (Phase 4)
+      description: |
+        Writes the on-disk cleanup-policy override file consumed by
+        ``DiskGuardrailsService.enforce()``. Every body field is
+        optional; the file is a selective overlay over the controller
+        defaults at ``cfg["disk_guardrails"]["qbit_cleanup"]``.
+
+        ``order_strategy`` must be one of the four canonical names
+        (``oldest_first``, ``largest_first``, ``poor_ratio_first``,
+        ``watched_first``). Numeric fields must be positive;
+        ``max_delete_per_run`` is server-side capped at 1000.
+        Requires CSRF + admin role.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categories:
+                  type: array
+                  items:
+                    type: string
+                min_completion_age_hours:
+                  type: integer
+                  minimum: 0
+                min_seeding_time_minutes:
+                  type: integer
+                  minimum: 0
+                min_ratio:
+                  type: number
+                  minimum: 0
+                max_delete_per_run:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                order_strategy:
+                  type: string
+                  enum:
+                    - oldest_first
+                    - largest_first
+                    - poor_ratio_first
+                    - watched_first
+            example:
+              categories: [tv, movies]
+              min_completion_age_hours: 24
+              min_seeding_time_minutes: 480
+              min_ratio: 1.0
+              max_delete_per_run: 100
+              order_strategy: largest_first
+      responses:
+        "200":
+          description: Policy persisted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy:
+                    type: object
+                    additionalProperties: true
+              example:
+                policy:
+                  categories: [tv, movies]
+                  min_completion_age_hours: 24
+                  order_strategy: largest_first
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: CSRF token missing or admin role required
+
   # =========================================================================
   # Routing
   # =========================================================================

@@ -17,8 +17,11 @@ export {
   usePauseGuardrails,
   useForceEvaluate,
   useUpdateThresholds,
+  useUpdateCleanupPolicy,
   type DiskGuardrailStatus,
   type DiskGuardrailState,
   type DiskGuardrailTransition,
+  type UpdateCleanupPolicyInput,
+  type UpdateCleanupPolicyResponse,
 } from "./hooks";
 export { storageQueryKeys } from "./queryKeys";

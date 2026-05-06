@@ -43,6 +43,17 @@ class GenerateBootstrapConfigCommand:
         for key in ("technology_bindings", "app_auth"):
             if key in profile:
                 config[key] = profile[key]
+        # ADR-0008 Phase 4: capture the profile's optional
+        # ``disk_guardrails:`` block for tier-2 overlay over the
+        # operations.yaml defaults loaded from contracts/defaults/.
+        # The merge happens in step 6 below, after the defaults are
+        # loaded; we hold the profile overlay here so the order stays
+        # explicit (defaults first, profile overlay second, guardrails.json
+        # at runtime last).
+        profile_disk_guardrails: dict = {}
+        candidate = profile.get("disk_guardrails")
+        if isinstance(candidate, dict):
+            profile_disk_guardrails = candidate
 
         # 2. Load service contract defaults
         svc_dir = contracts_dir / "services"
@@ -142,6 +153,29 @@ class GenerateBootstrapConfigCommand:
                 config["app_capability_defaults"] = json.loads(defaults_json.read_text(encoding="utf-8"))
             except Exception as exc:
                 log_swallowed(exc)
+
+        # 4b. ADR-0008 Phase 4: deep-merge profile.disk_guardrails over
+        # the operations.yaml defaults (loaded later by
+        # ``ControllerConfigLoader._load_yaml_defaults``). The generator
+        # writes the per-install overlay verbatim into config.json; the
+        # runtime loader's ``yaml_defaults.update(loaded)`` line then
+        # composes ``operations.yaml -> config.json -> profile overlay``
+        # for ``DiskGuardrailsService``. The Registry's UI-saved file
+        # at ``/srv-config/.controller/guardrails.json`` still wins at
+        # runtime as the third tier.
+        if profile_disk_guardrails:
+            existing = config.get("disk_guardrails")
+            if not isinstance(existing, dict):
+                existing = {}
+            merged: dict[str, Any] = dict(existing)
+            for key, value in profile_disk_guardrails.items():
+                if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                    sub = dict(merged[key])
+                    sub.update(value)
+                    merged[key] = sub
+                else:
+                    merged[key] = value
+            config["disk_guardrails"] = merged
 
         # 5. Write output
         if output_path:

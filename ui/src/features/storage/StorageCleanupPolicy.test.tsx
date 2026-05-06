@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/render";
+
+const fetcherMock = vi.hoisted(() => vi.fn());
+vi.mock("@/api/client", () => ({
+  fetcher: fetcherMock,
+  getBaseUrl: () => "",
+  ApiError: class ApiError extends Error {},
+}));
 
 import { StorageCleanupPolicy } from "./StorageCleanupPolicy";
 
@@ -22,8 +29,10 @@ describe("StorageCleanupPolicy", () => {
     expect(
       screen.getByTestId("storage-cleanup-policy-body"),
     ).toBeInTheDocument();
+    // Phase 4 made this writable; the read-only note is gone, replaced
+    // by the Save button.
     expect(
-      screen.getByTestId("storage-cleanup-policy-readonly-note"),
+      screen.getByTestId("storage-cleanup-policy-save"),
     ).toBeInTheDocument();
   });
 
@@ -42,10 +51,12 @@ describe("StorageCleanupPolicy", () => {
     );
     fireEvent.click(screen.getByTestId("storage-cleanup-policy-toggle"));
     expect(
-      screen.getByTestId("storage-cleanup-policy-min-age").textContent,
+      (screen.getByTestId("storage-cleanup-policy-min-age") as HTMLInputElement)
+        .value,
     ).toBe("48");
     expect(
-      screen.getByTestId("storage-cleanup-policy-order").textContent,
+      (screen.getByTestId("storage-cleanup-policy-order") as HTMLSelectElement)
+        .value,
     ).toBe("largest_first");
   });
 
@@ -55,5 +66,32 @@ describe("StorageCleanupPolicy", () => {
     expect(
       screen.getByTestId("storage-cleanup-policy-categories-empty"),
     ).toBeInTheDocument();
+  });
+
+  it("Save button POSTs the cleaned body to the controller", async () => {
+    fetcherMock.mockReset();
+    fetcherMock.mockResolvedValue({ policy: {} });
+    renderWithProviders(
+      <StorageCleanupPolicy
+        policy={{
+          categories: ["tv-sonarr"],
+          min_age_hours: 24,
+          min_seeding_time_minutes: 480,
+          min_ratio: 1,
+          max_delete_per_run: 100,
+          order_strategy: "largest_first",
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("storage-cleanup-policy-toggle"));
+    fireEvent.click(screen.getByTestId("storage-cleanup-policy-save"));
+    // The mutation runs async; we just check fetcher was called with
+    // the correct URL + body shape on the next microtask.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetcherMock).toHaveBeenCalledWith(
+      "api/disk-guardrails/cleanup-policy",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

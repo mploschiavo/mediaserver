@@ -24,7 +24,12 @@
 import { useEffect, useRef, useState } from "react";
 import { getBaseUrl } from "@/api/client";
 
-export type EventTopic = "jobs" | "sessions" | "media_integrity";
+export type EventTopic =
+  | "jobs"
+  | "sessions"
+  | "media_integrity"
+  // ADR-0008 Phase 4: disk-pressure guardrail topic.
+  | "storage";
 
 export interface EventStreamPayload {
   /** Dotted event-type string (e.g. ``"job.started"``). */

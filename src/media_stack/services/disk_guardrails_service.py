@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from media_stack.core.events import StorageCleanupInvoked
 from media_stack.services.apps.download_clients.registry_helpers import default_torrent_client_url
 
 
@@ -54,83 +55,24 @@ _ORDER_STRATEGIES: dict[str, Callable[[dict[str, Any]], tuple]] = {
 
 _DEFAULT_ORDER_STRATEGY = "oldest_first"
 
+# ADR-0008 Phase 4: cleanup-policy override file. Re-exported so
+# existing import sites that read ``CLEANUP_POLICY_FILE`` from this
+# module keep working after the class moved to its own module.
+from media_stack.services.cleanup_policy_file import (  # noqa: E402
+    CleanupPolicyFile,
+    CLEANUP_POLICY_FILE,
+)
+from media_stack.services.storage_event_publisher import (  # noqa: E402
+    STORAGE_EVENT_PUBLISHER,
+)
 
-class WatchedLookupAdapter:
-    """Adapter that decorates a candidate list with a ``_watched``
-    bool by querying Jellyfin's ``UserData.Played`` table.
 
-    Class-based so the no-loose-functions ratchet stays clean and
-    so tests can swap in a deterministic stub. Constructor-injects
-    the lookup function; default path resolves to a Jellyfin
-    media-server adapter at call time, and on any failure (no
-    Jellyfin reachable, no api key, lookup raises) returns the
-    candidates untouched + emits a single INFO line so the cleanup
-    pass continues with ``oldest_first`` semantics.
-    """
+# Re-exported so existing import sites keep working after the class
+# moved to its own module (Phase 4 refactor for the 400-line ratchet).
+from media_stack.services.watched_lookup_adapter import (  # noqa: E402
+    WatchedLookupAdapter,
+)
 
-    def __init__(
-        self,
-        *,
-        lookup_fn: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
-        log_fn: Callable[[str], None] | None = None,
-    ) -> None:
-        self._lookup = lookup_fn
-        self._log = log_fn
-
-    def decorate(
-        self, candidates: list[dict[str, Any]],
-    ) -> tuple[list[dict[str, Any]], bool]:
-        """Return ``(candidates_with_watched, ok)``.
-
-        ``ok=True`` means every candidate received a ``_watched``
-        bool; the caller can sort with the ``watched_first`` strategy
-        safely. ``ok=False`` means the lookup failed wholesale and
-        the caller should fall back to ``oldest_first``.
-        """
-        if self._lookup is None:
-            # Production path: lazy-import the Jellyfin adapter so
-            # tests that don't exercise watched_first don't pull in
-            # the media-server module. Failure isolation: any error
-            # from the adapter falls through to the False branch.
-            try:
-                from media_stack.services.media_server_adapters.factory import (
-                    get_media_server_adapter,
-                )
-                adapter = get_media_server_adapter("jellyfin")
-                played_lookup = getattr(adapter, "is_played_for_paths", None)
-            except (ImportError, AttributeError, OSError, ValueError) as exc:
-                self._emit_log(
-                    f"[INFO] watched_first lookup failed; falling back to "
-                    f"oldest_first ({exc})"
-                )
-                return candidates, False
-            if played_lookup is None:
-                self._emit_log(
-                    "[INFO] watched_first lookup failed; falling back to "
-                    "oldest_first (jellyfin adapter has no is_played_for_paths)"
-                )
-                return candidates, False
-            lookup = played_lookup
-        else:
-            lookup = self._lookup
-        try:
-            decorated = lookup(candidates)
-        except (OSError, ValueError, RuntimeError) as exc:
-            log_swallowed(exc, context="watched_first_lookup")
-            self._emit_log(
-                f"[INFO] watched_first lookup failed; falling back to "
-                f"oldest_first ({exc})"
-            )
-            return candidates, False
-        if not isinstance(decorated, list):
-            return candidates, False
-        return decorated, True
-
-    def _emit_log(self, message: str) -> None:
-        if self._log is not None:
-            self._log(message)
-            return
-        _log.info(message)
 
 LogFn = Callable[[str], None]
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
@@ -245,6 +187,19 @@ class DiskGuardrailsService:
         qbit_cleanup_cfg = guard_cfg.get("qbit_cleanup")
         if not isinstance(qbit_cleanup_cfg, dict):
             qbit_cleanup_cfg = {}
+        # Phase 4: overlay the on-disk cleanup-policy file (if any).
+        # Operator writes through ``POST /api/disk-guardrails/cleanup-policy``
+        # land here as a selective overlay over the controller defaults.
+        try:
+            policy_overrides = CLEANUP_POLICY_FILE.load()
+        except (OSError, ValueError) as exc:
+            log_swallowed(exc, context="cleanup-policy-load")
+            policy_overrides = {}
+        if policy_overrides:
+            merged = dict(qbit_cleanup_cfg)
+            for key, value in policy_overrides.items():
+                merged[key] = value
+            qbit_cleanup_cfg = merged
         if not self.bool_cfg(qbit_cleanup_cfg, "enabled", True):
             self.log(
                 "[WARN] Disk guardrails: usage above threshold but qB cleanup is disabled "
@@ -354,6 +309,21 @@ class DiskGuardrailsService:
             f"(count={len(to_delete)}, delete_files={delete_files}, "
             f"estimated_bytes={self.fmt_bytes(reclaimed_est)})"
         )
+        # Phase 4: publish a ``storage.cleanup_invoked`` event so the
+        # UI's storage card refreshes on every cleanup pass without
+        # waiting on its 30 s poll. Failure isolation: any
+        # bus/event-type wiring problem must NOT block a successful
+        # cleanup — log + continue.
+        kept_count = max(0, candidates_evaluated - len(to_delete))
+        self._publish_cleanup_invoked(
+            StorageCleanupInvoked(
+                deleted=len(to_delete),
+                freed_bytes=int(reclaimed_est),
+                kept=kept_count,
+                strategy=active_strategy,
+                force=bool(force),
+            ),
+        )
 
         try:
             used_after, _, avail_after = self.disk_usage_percent(monitor_path)
@@ -377,3 +347,10 @@ class DiskGuardrailsService:
             "candidates_evaluated": candidates_evaluated,
             "strategy": active_strategy,
         }
+
+    def _publish_cleanup_invoked(
+        self,
+        event: "StorageCleanupInvoked",
+    ) -> None:
+        """Delegate to the shared ``StorageEventPublisher`` (Phase 4)."""
+        STORAGE_EVENT_PUBLISHER.publish_cleanup_invoked(event)

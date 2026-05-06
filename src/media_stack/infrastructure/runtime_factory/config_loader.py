@@ -158,7 +158,15 @@ class ControllerConfigLoader:
             "routing": ("routing",),
         }
         missing_keys = [k for k in _profile_keys_needed if k not in loaded]
-        if missing_keys:
+        # ADR-0008 Phase 4: profile-level ``disk_guardrails:`` block is
+        # always considered for a deep-merge over the operations.yaml
+        # defaults (tier 2 of the three-tier override stack:
+        # operations.yaml defaults → profile.yaml → guardrails.json).
+        # The Registry's UI-saved overrides at
+        # ``/srv-config/.controller/guardrails.json`` continue to win
+        # at runtime (highest tier).
+        profile_disk_guardrails: dict[str, object] | None = None
+        if missing_keys or True:
             import yaml
             profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE", "")
             for pf in [Path(profile_file) if profile_file else None,
@@ -178,9 +186,22 @@ class ControllerConfigLoader:
                                     break
                             if value is not None:
                                 loaded[cfg_key] = value
+                        # Phase 4: capture profile.disk_guardrails for
+                        # the deep-merge over operations.yaml defaults.
+                        candidate = profile.get("disk_guardrails")
+                        if isinstance(candidate, dict):
+                            profile_disk_guardrails = candidate
                         break
                     except Exception as exc:
                         log_swallowed(exc)
+        if profile_disk_guardrails:
+            existing = loaded.get("disk_guardrails")
+            if not isinstance(existing, dict):
+                existing = {}
+            merged_dg = self._deep_merge_objects(
+                dict(existing), dict(profile_disk_guardrails),
+            )
+            loaded["disk_guardrails"] = merged_dg
 
         # Merge platform-specific adapter hooks from YAML (e.g. adapter-hooks.k8s.yaml)
         loaded = self._merge_platform_adapter_hooks(loaded, config_file.parent)
