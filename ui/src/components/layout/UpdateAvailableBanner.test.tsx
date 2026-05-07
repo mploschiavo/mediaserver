@@ -28,16 +28,20 @@ vi.mock("@/features/stack-lifecycle/hooks", () => ({
 
 import { UpdateAvailableBanner } from "./UpdateAvailableBanner";
 
-// Vitest rewrites `import.meta.env` to a writable object on the test
-// runner, so we can flip VITE_BUILD_VERSION per-test. Saving + restoring
-// across the suite keeps tests order-independent.
-const ORIGINAL_BUILD_VERSION = import.meta.env.VITE_BUILD_VERSION;
-
+// Use Vitest's official ``stubEnv`` API for ``import.meta.env`` —
+// direct assignment to an env key with ``undefined`` doesn't clear
+// the slot (the property stays defined with value ``undefined``,
+// AND the trim/?? chain in the component reads back the prior
+// non-empty value in some happy-dom builds), so the
+// "build version isn't injected" branch couldn't be exercised.
+// ``unstubAllEnvs`` in afterEach restores the runner's pristine
+// view across tests.
 function setBuildVersion(v: string | undefined): void {
-  // Cast through `Record<string, unknown>` so we can set a typed
-  // env field at runtime; the readonly modifier is a TS-only concern.
-  (import.meta.env as unknown as Record<string, string | undefined>)
-    .VITE_BUILD_VERSION = v;
+  if (v === undefined) {
+    vi.unstubAllEnvs();
+  } else {
+    vi.stubEnv("VITE_BUILD_VERSION", v);
+  }
 }
 
 describe("UpdateAvailableBanner", () => {
@@ -51,7 +55,7 @@ describe("UpdateAvailableBanner", () => {
   });
 
   afterEach(() => {
-    setBuildVersion(ORIGINAL_BUILD_VERSION);
+    vi.unstubAllEnvs();
   });
 
   it("renders nothing while the update probe is loading", () => {
@@ -69,8 +73,10 @@ describe("UpdateAvailableBanner", () => {
   it("renders nothing when the build version isn't injected", () => {
     setBuildVersion(undefined);
     updateState.data = { available: false, current_version: "1.0.234" };
-    const { container } = renderWithProviders(<UpdateAvailableBanner />);
-    expect(container.firstChild).toBeNull();
+    renderWithProviders(<UpdateAvailableBanner />);
+    // Provider wrappers (TooltipProvider) can emit shadow DOM nodes,
+    // so assert on the banner's own test-id rather than container.firstChild.
+    expect(screen.queryByTestId("update-available-banner")).toBeNull();
   });
 
   it("renders nothing when the controller's running version is missing", () => {

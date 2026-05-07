@@ -53,7 +53,9 @@ describe("ProfileEditorCard", () => {
   it("renders the error banner on failure", () => {
     profileState.error = new Error("read failed");
     renderWithProviders(<ProfileEditorCard />);
-    expect(screen.getByTestId("profile-editor-error")).toHaveTextContent(
+    // ProfileEditorCard now delegates to the shared ApiErrorTile; the
+    // generic (non-ApiError) variant renders under api-error-tile-generic.
+    expect(screen.getByTestId("api-error-tile-generic")).toHaveTextContent(
       "read failed",
     );
   });

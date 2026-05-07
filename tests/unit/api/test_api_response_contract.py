@@ -96,6 +96,11 @@ ENDPOINTS_OVERRIDES: dict[str, str] = {
     "apps": "/apps",
     "config": "/config",
     "status": "/status",
+    # ADR-0005 Phase 5a added ``/api/status`` as the dashboard-facing
+    # alias of ``/status`` (SPA's nginx only proxies ``/api/*`` to
+    # the controller). The default ``api_status`` → ``/api/api/status``
+    # would double-prefix, so override.
+    "api_status": "/api/status",
     # Hyphenated API paths whose underscore-named fixtures collide
     # with the slash-substitution default. Added during ADR-0007
     # Phase 2 wave 3+4 fixture capture.

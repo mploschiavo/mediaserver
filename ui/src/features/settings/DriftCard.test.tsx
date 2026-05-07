@@ -37,7 +37,9 @@ describe("DriftCard", () => {
   it("renders the error banner", () => {
     driftState.error = new Error("api down");
     renderWithProviders(<DriftCard />);
-    expect(screen.getByTestId("drift-card-error")).toHaveTextContent(
+    // DriftCard now delegates to the shared ApiErrorTile; the generic
+    // (non-ApiError) variant renders under api-error-tile-generic.
+    expect(screen.getByTestId("api-error-tile-generic")).toHaveTextContent(
       "api down",
     );
   });

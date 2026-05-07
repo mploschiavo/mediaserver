@@ -76,6 +76,11 @@ describe("Sidebar", () => {
   // ui/.ratchets/notes/API-RESPONSE-SHAPES-2026-04-25.txt). The
   // controller emits `brand.name` + `brand.icon` (URL); the previous
   // hand-typed shape used `product_name`/`logo_url` which never match.
+  //
+  // Production note: BrandMark redirects any `/api/static/...` icon
+  // URL to the bundled SPA asset (`/icons/iomio-icon.svg`) because
+  // the controller now returns 410 Gone for that path (since
+  // v1.0.175). The SPA-served bundled icon is what actually renders.
   it("renders brand.name + brand.icon from the real /api/branding payload", () => {
     locationState.pathname = "/";
     brandingState.data = {
@@ -95,7 +100,8 @@ describe("Sidebar", () => {
     const icon = screen.getByTestId(
       "sidebar-brand-icon",
     ) as HTMLImageElement;
-    expect(icon.src).toContain("/api/static/iomio-icon.svg");
+    // /api/static/* is rewritten to the bundled SPA asset.
+    expect(icon.src).toContain("/icons/iomio-icon.svg");
   });
 
   it("renders every section heading", () => {

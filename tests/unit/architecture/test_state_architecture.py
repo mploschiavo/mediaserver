@@ -203,5 +203,77 @@ class TestControllerStateFailedServices(unittest.TestCase):
         self.assertNotIn("current_action", d)
 
 
+class TestInitialBootstrapDonePersistence(unittest.TestCase):
+    """``initial_bootstrap_done`` rides the same ``runtime-config.json``
+    sidecar as ``runtime_config`` so a controller restart on an
+    already-bootstrapped install doesn't wedge the dashboard banner.
+
+    Pins the regression: prior to this work, the flag was
+    in-memory only; every redeploy reset it to ``False`` and the
+    UI banner showed Queued indefinitely until a re-bootstrap
+    completed."""
+
+    def _state_with_isolated_persistence(self, tmp_path: Path) -> ControllerState:
+        s = ControllerState()
+        # Redirect the persistence file to a temp location for test
+        # isolation — the production constant is an absolute path
+        # under ``/srv-config/.controller``.
+        s._RUNTIME_CONFIG_FILE = str(tmp_path / "runtime-config.json")
+        return s
+
+    def test_mark_initial_bootstrap_done_persists_flag(self):
+        import tempfile, json
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            s = self._state_with_isolated_persistence(tmp)
+            self.assertFalse(s.initial_bootstrap_done)
+            s.mark_initial_bootstrap_done()
+            self.assertTrue(s.initial_bootstrap_done)
+            # The on-disk sidecar carries the flag.
+            saved = json.loads(Path(s._RUNTIME_CONFIG_FILE).read_text())
+            self.assertIs(saved.get("_initial_bootstrap_done"), True)
+
+    def test_load_persisted_config_restores_flag_after_restart(self):
+        import tempfile, json
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            # Simulate a prior controller life that successfully
+            # bootstrapped.
+            s_prev = self._state_with_isolated_persistence(tmp)
+            s_prev.mark_initial_bootstrap_done()
+
+            # New ControllerState (simulates restart). Flag starts at
+            # False; load_persisted_config reads the sidecar.
+            s_new = self._state_with_isolated_persistence(tmp)
+            self.assertFalse(s_new.initial_bootstrap_done)
+            s_new.load_persisted_config()
+            self.assertTrue(s_new.initial_bootstrap_done)
+
+    def test_finish_without_error_persists_flag(self):
+        import tempfile, json
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            s = self._state_with_isolated_persistence(tmp)
+            s.finish()  # success path
+            self.assertTrue(s.initial_bootstrap_done)
+            saved = json.loads(Path(s._RUNTIME_CONFIG_FILE).read_text())
+            self.assertIs(saved.get("_initial_bootstrap_done"), True)
+
+    def test_finish_with_error_does_not_persist_flag(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            s = self._state_with_isolated_persistence(tmp)
+            s.finish(error="kaboom")  # error path
+            self.assertFalse(s.initial_bootstrap_done)
+            # Sidecar wasn't written (or, if it was for some other
+            # reason, doesn't carry the flag).
+            sidecar = Path(s._RUNTIME_CONFIG_FILE)
+            if sidecar.is_file():
+                import json
+                saved = json.loads(sidecar.read_text())
+                self.assertNotIn("_initial_bootstrap_done", saved)
+
+
 if __name__ == "__main__":
     unittest.main()

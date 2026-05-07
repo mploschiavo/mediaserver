@@ -736,7 +736,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                 runtime_platform.log(f"[ERR] Action {action_name} failed: {error_msg}")
 
                 if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                    state.initial_bootstrap_done = True
+                    state.mark_initial_bootstrap_done()
                     runtime_platform.log(
                         "[WARN] Initial bootstrap had errors but service is marked ready"
                     )
@@ -794,7 +794,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                 })
 
                 if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                    state.initial_bootstrap_done = True
+                    state.mark_initial_bootstrap_done()
                     runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
                     # Historical: this used to auto-queue
                     # ``configure-media-server / post-setup / envoy-config /

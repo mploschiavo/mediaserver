@@ -63,7 +63,9 @@ describe("EffectiveProfileCard", () => {
   it("renders the error state when the hook errors", () => {
     profileState.error = new Error("kaboom");
     renderWithProviders(<EffectiveProfileCard />);
-    expect(screen.getByTestId("effective-profile-error")).toHaveTextContent(
+    // EffectiveProfileCard now delegates to the shared ApiErrorTile;
+    // the generic (non-ApiError) variant renders under api-error-tile-generic.
+    expect(screen.getByTestId("api-error-tile-generic")).toHaveTextContent(
       "kaboom",
     );
   });

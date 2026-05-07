@@ -176,8 +176,28 @@ class ControllerState:
             self.completed_at = time.time()
             self.phase = "error" if error else "complete"
             self.error = error
-            if not error:
-                self.initial_bootstrap_done = True
+        # ``mark_initial_bootstrap_done`` re-acquires the lock to set
+        # the flag AND persist it to the runtime-config sidecar, so a
+        # controller restart on an already-bootstrapped install
+        # restores the flag instead of resetting to ``False``.
+        if not error:
+            self.mark_initial_bootstrap_done()
+
+    def mark_initial_bootstrap_done(self) -> None:
+        """Flip ``initial_bootstrap_done`` to True AND persist it.
+
+        Persistence rides the existing ``runtime-config.json`` file
+        (same disk write as ``set_config``) — the flag stores under a
+        leading-underscore key so ``runtime_config`` stays pure
+        operator-tunable values. On startup, ``load_persisted_config``
+        restores the flag, which means a controller restart on an
+        already-bootstrapped install no longer wedges the dashboard
+        banner on Queued waiting for a re-bootstrap that doesn't
+        happen.
+        """
+        with self._lock:
+            self.initial_bootstrap_done = True
+            self._persist_runtime_config()
 
     def record_preflight(self, name: str, result: dict[str, Any]) -> None:
         with self._lock:
@@ -344,7 +364,10 @@ class ControllerState:
     def load_persisted_config(self) -> None:
         """Load runtime_config from disk (call at startup).
 
-        Also restores webhook_urls and log level from persisted config.
+        Also restores webhook_urls, log level, and
+        ``initial_bootstrap_done`` from persisted config — all stored
+        under leading-underscore keys to distinguish them from
+        operator-tunable runtime_config values.
         """
         import json
         path = Path(self._RUNTIME_CONFIG_FILE)
@@ -361,16 +384,36 @@ class ControllerState:
                 if saved_level:
                     from media_stack.services.runtime_platform import set_log_level
                     set_log_level(saved_level)
+                # Restore the first-run-done flag — ``initial_bootstrap
+                # _done`` is in-memory by default, so a controller
+                # restart would wedge the dashboard banner on Queued.
+                # Once an install has ever bootstrapped successfully,
+                # ``mark_initial_bootstrap_done`` writes
+                # ``_initial_bootstrap_done: true`` here and we read it
+                # back at startup.
+                if data.get("_initial_bootstrap_done") is True:
+                    self.initial_bootstrap_done = True
             except Exception as exc:
                 log_swallowed(exc)
 
     def _persist_runtime_config(self) -> None:
-        """Write runtime_config to disk (called on every update)."""
+        """Write runtime_config to disk (called on every update).
+
+        Also writes the leading-underscore sidecar fields
+        (``_webhook_urls``, ``_log_level``, ``_initial_bootstrap_done``)
+        alongside ``runtime_config`` so a single file holds every
+        piece of restart-resilient ControllerState.
+        """
         import json
         path = Path(self._RUNTIME_CONFIG_FILE)
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(self.runtime_config), encoding="utf-8")
+            payload: dict[str, Any] = dict(self.runtime_config)
+            if self.webhook_urls:
+                payload["_webhook_urls"] = list(self.webhook_urls)
+            if self.initial_bootstrap_done:
+                payload["_initial_bootstrap_done"] = True
+            path.write_text(json.dumps(payload), encoding="utf-8")
         except Exception as exc:
             log_swallowed(exc)
 

@@ -36,7 +36,6 @@
 //   security_failed-logins.json — no GET 200 schema for /api/security/failed-logins (or x-status: planned)
 //   security_new-locations.json — no GET 200 schema for /api/security/new-locations (or x-status: planned)
 //   sessions_active.json — no GET 200 schema for /api/sessions/active (or x-status: planned)
-//   status.json — no GET 200 schema for /api/status (or x-status: planned)
 //   sw_config.json — no GET 200 schema for /api/sw/config (or x-status: planned)
 //   sw_config_json.json — no GET 200 schema for /api/sw/config/json (or x-status: planned)
 
@@ -605,6 +604,12 @@ import fx_stats from "../../../tests/fixtures/api_responses/stats.json";
 type T_fx_stats = paths["/api/stats"]["get"]["responses"][200]["content"]["application/json"];
 const _check_fx_stats: Loosen<T_fx_stats> = fx_stats;
 void _check_fx_stats;
+
+// /api/status
+import fx_status from "../../../tests/fixtures/api_responses/status.json";
+type T_fx_status = paths["/api/status"]["get"]["responses"][200]["content"]["application/json"];
+const _check_fx_status: Loosen<T_fx_status> = fx_status;
+void _check_fx_status;
 
 // /api/storage-breakdown
 import fx_storage_breakdown from "../../../tests/fixtures/api_responses/storage-breakdown.json";

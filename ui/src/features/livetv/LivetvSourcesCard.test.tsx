@@ -152,9 +152,11 @@ describe("LivetvSourcesCard", () => {
       tuner_url: "https://a.example/p.m3u",
     };
     renderWithProviders(<LivetvSourcesCard />);
-    // Only the non-active row exposes the Use button.
+    // Only the non-active row exposes the Use button. ResponsiveTable
+    // mounts both desktop + mobile branches under happy-dom; click the
+    // first match — the handler is identical across layouts.
     await userEvent.click(
-      screen.getByTestId("livetv-tuner-activate-B"),
+      screen.getAllByTestId("livetv-tuner-activate-B")[0]!,
     );
     expect(saveMutate).toHaveBeenCalledOnce();
     const [body] = saveMutate.mock.calls[0]!;
@@ -168,7 +170,10 @@ describe("LivetvSourcesCard", () => {
     };
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<LivetvSourcesCard />);
-    await userEvent.click(screen.getByTestId("livetv-tuner-delete-A"));
+    // ResponsiveTable doubles up testids in happy-dom; pick the first.
+    await userEvent.click(
+      screen.getAllByTestId("livetv-tuner-delete-A")[0]!,
+    );
     expect(confirmSpy).toHaveBeenCalledOnce();
     expect(saveMutate).toHaveBeenCalledOnce();
     const [body] = saveMutate.mock.calls[0]!;
@@ -183,7 +188,10 @@ describe("LivetvSourcesCard", () => {
     };
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderWithProviders(<LivetvSourcesCard />);
-    await userEvent.click(screen.getByTestId("livetv-tuner-delete-A"));
+    // ResponsiveTable doubles up testids in happy-dom; pick the first.
+    await userEvent.click(
+      screen.getAllByTestId("livetv-tuner-delete-A")[0]!,
+    );
     expect(saveMutate).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
