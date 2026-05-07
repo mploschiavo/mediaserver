@@ -33,6 +33,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import logging
+from urllib.parse import unquote
 import pkgutil
 import re
 from dataclasses import dataclass
@@ -392,7 +393,15 @@ class Router:
             assert route.pattern is not None
             m = route.pattern.match(path)
             if m is not None:
-                return RouteMatch(route=route, params=m.groupdict())
+                # Path-param values are URL-decoded once here so
+                # handlers and downstream lookups (registry IDs,
+                # service-name keys) receive the semantic value.
+                # Without this, an ID containing ``:`` (e.g. the
+                # guardrail rule id ``storage:free_space_floor``)
+                # arrives at the handler as ``storage%3Afree_space
+                # _floor`` and registry lookups silently miss.
+                params = {k: unquote(v) for k, v in m.groupdict().items()}
+                return RouteMatch(route=route, params=params)
         return None
 
     def spec_paths(self) -> Mapping[str, frozenset[str]]:
