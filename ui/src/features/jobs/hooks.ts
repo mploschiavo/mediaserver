@@ -558,6 +558,139 @@ export function useRun(
   });
 }
 
+// ---- Lifecycle ensurer dispatch (ADR-0005 Phase 5b step 3) -------------
+
+/**
+ * Body for ``POST /api/lifecycle-ensurers/{service}/{method}``. Both
+ * fields are optional; the controller defaults ``source`` to
+ * ``"operator"`` when omitted.
+ *
+ * Mirrors ``paths["/api/lifecycle-ensurers/{service}/{method}"]
+ * ["post"]["requestBody"]["content"]["application/json"]`` from
+ * ``src/api/types.ts``. We don't import that path directly because the
+ * codegen union is awkward to spell here and the surface is a single
+ * request body shape — duplicating two narrow fields is cheaper than
+ * dragging the operations[] type through.
+ */
+export interface LifecycleEnsurerInvokeInput {
+  /**
+   * Caller tag. Defaults to ``"operator"`` server-side. The dispatcher
+   * recognizes ``"operator"`` (dashboard "Run now"), ``"auto-heal"``
+   * (recovery loop), and ``"orchestrator-tick"`` (reserved — the
+   * orchestrator never goes through this endpoint).
+   */
+  source?: "operator" | "auto-heal" | "orchestrator-tick";
+  /**
+   * Per-call config overrides. Reserved — today the dispatcher reads
+   * config from the contract YAML.
+   */
+  overrides?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Outcome envelope returned by the lifecycle-ensurer endpoint. The
+ * HTTP status is 200 when the dispatcher RAN; the ``status`` field
+ * carries the ensurer's outcome.
+ *
+ *   - ``success``    — ensurer reached the desired state.
+ *   - ``transient``  — failed but worth retrying.
+ *   - ``permanent``  — failed; operator must intervene.
+ *
+ * 404 → ApiError with ``status: 404`` (unknown ``(service, method)``
+ * pair). The mutation surfaces that to the caller via ``error``.
+ */
+export interface LifecycleEnsurerInvokeResult {
+  status: "success" | "transient" | "permanent";
+  message: string;
+  source: string;
+  evidence: Readonly<Record<string, unknown>>;
+  attempts?: number;
+  elapsed_seconds?: number;
+}
+
+/**
+ * Optional extra React Query keys to invalidate after a successful
+ * dispatch. Always invalidates the jobs query (``["jobs"]``) and the
+ * running-jobs query (``["jobs","running"]``) — those are unconditional
+ * because every ensurer dispatch may surface in the running tree
+ * mid-flight and in the next batch history poll.
+ *
+ * Pass per-feature keys (``["indexers"]``, ``["jellyfin","libraries"]``)
+ * when the ensurer mutates data the operator is currently viewing so
+ * the affected card refetches without a manual reload.
+ */
+export interface UseRunLifecycleEnsurerOptions {
+  invalidateKeys?: ReadonlyArray<readonly unknown[]>;
+}
+
+/**
+ * ADR-0005 Phase 5b step 3: dispatch a single lifecycle ensurer by
+ * ``(service, method)``. Replaces ``useRunAction("ensure-X")`` for
+ * ensurer-shaped names — those resolve through the legacy
+ * ``run_job(name)`` path, which Phase 5b step 5 deletes.
+ *
+ * Hits ``POST /api/lifecycle-ensurers/{service}/{method}`` (single
+ * dispatch entry point shared with the orchestrator and auto-heal).
+ * The mutation completes synchronously: the response carries the
+ * outcome (``success`` / ``transient`` / ``permanent``) inline rather
+ * than a ``task_id`` to poll on. Callers branch on ``data.status``
+ * to render the post-dispatch toast.
+ *
+ *   - 200 + ``status: "success"``   → ensurer succeeded.
+ *   - 200 + ``status: "transient"`` → ensurer failed; retry is safe.
+ *   - 200 + ``status: "permanent"`` → ensurer failed; operator must
+ *                                     intervene (read ``message`` /
+ *                                     ``evidence`` for why).
+ *   - 404                           → unknown ``(service, method)``;
+ *                                     surfaces as an ``ApiError`` on
+ *                                     the mutation's ``error`` field.
+ *   - 403                           → CSRF / admin gate; ``ApiError``.
+ *
+ * On success, invalidates the jobs queries (``["jobs"]`` +
+ * ``["jobs","running"]``) so the next poll picks up any history
+ * record the dispatcher persisted, plus any caller-supplied
+ * ``invalidateKeys`` for per-feature refetch.
+ */
+export function useRunLifecycleEnsurer(
+  service: string,
+  method: string,
+  options: UseRunLifecycleEnsurerOptions = {},
+): UseMutationResult<
+  LifecycleEnsurerInvokeResult,
+  Error,
+  LifecycleEnsurerInvokeInput | void
+> {
+  const qc = useQueryClient();
+  const { invalidateKeys } = options;
+  return useMutation<
+    LifecycleEnsurerInvokeResult,
+    Error,
+    LifecycleEnsurerInvokeInput | void
+  >({
+    mutationFn: (input) => {
+      const path = `api/lifecycle-ensurers/${encodeURIComponent(
+        service,
+      )}/${encodeURIComponent(method)}`;
+      const body =
+        input && (input.source !== undefined || input.overrides !== undefined)
+          ? JSON.stringify(input)
+          : undefined;
+      const init: { method: "POST"; body?: string } = { method: "POST" };
+      if (body !== undefined) init.body = body;
+      return fetcher<LifecycleEnsurerInvokeResult>(path, init);
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: JOBS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: ["jobs", "running"] });
+      if (invalidateKeys) {
+        for (const key of invalidateKeys) {
+          void qc.invalidateQueries({ queryKey: key });
+        }
+      }
+    },
+  });
+}
+
 /** Filtered list of runs. Useful for the Run history tab. */
 export function useRuns(
   filters: {
