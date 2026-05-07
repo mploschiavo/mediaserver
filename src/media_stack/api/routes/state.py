@@ -39,10 +39,31 @@ class StateGetRoutes(RouteModule):
 
     @get("/status")
     def handle_status(self, handler: Any) -> None:
-        """Full controller state — phase, action history, runtime
-        config, app statuses, webhook URLs.
+        """Full controller state — action history, runtime config,
+        app statuses, webhook URLs, ``initial_bootstrap_done``.
 
-        Primary endpoint for the dashboard's lifecycle view.
+        Bare-path endpoint historically used by ``kubectl exec``
+        health probes and the CLI wait service (``ControllerJobWait
+        Service`` / ``BootstrapPodHttpClient``).
+
+        SPA consumers should hit ``/api/status`` instead — the SPA's
+        nginx config (``deploy/compose/ui-nginx.conf``,
+        ``deploy/k8s/.../ui-nginx.conf``) only proxies ``/api/*`` to
+        the controller; a bare ``/status`` falls into the SPA
+        ``try_files`` fallback and returns ``index.html``.
+        ``handle_status_api`` below is the dashboard-facing alias.
+        """
+        handler._json_response(HTTPStatus.OK, handler.state.to_dict())
+
+    @get("/api/status")
+    def handle_status_api(self, handler: Any) -> None:
+        """Dashboard-facing alias of ``handle_status``.
+
+        Same response body as ``GET /status``. The alias exists so
+        the SPA's ``location /api/ { proxy_pass ... }`` block reaches
+        the controller without needing a separate ``location =
+        /status`` rule per nginx config. See ``handle_status`` above
+        for context.
         """
         handler._json_response(HTTPStatus.OK, handler.state.to_dict())
 

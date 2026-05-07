@@ -252,6 +252,10 @@ class TestGetReadyz(unittest.TestCase):
 
 class TestGetStatus(unittest.TestCase):
     def test_status_returns_full_state_dict(self):
+        # ADR-0005 Phase 5a: ``/status`` no longer ships the legacy
+        # bootstrap-progress fields (``phase`` / ``phases_completed``
+        # / ``current_action``). Live progress reads through the Job
+        # framework; this test verifies the canonical fields stay.
         state = ControllerState()
         state.phase = "running"
         h = make_handler("GET", "/status", state=state)
@@ -259,11 +263,10 @@ class TestGetStatus(unittest.TestCase):
             h.do_GET()
         body = _get_json_written(h)
         self.assertEqual(_get_response_code(h), 200)
-        self.assertEqual(body["phase"], "running")
-        # Verify it matches state.to_dict() keys
-        state_dict = state.to_dict()
-        for key in ("phase", "initial_bootstrap_done", "runtime_config"):
+        for key in ("initial_bootstrap_done", "runtime_config", "action_history"):
             self.assertIn(key, body)
+        for legacy_key in ("phase", "phases_completed", "current_action"):
+            self.assertNotIn(legacy_key, body)
 
 
 class TestGetOpenAPI(unittest.TestCase):

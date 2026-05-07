@@ -31,6 +31,74 @@ class ControllerJobWaitConfig:
 
 
 @dataclass
+class BootstrapPodHttpClient:
+    """``kubectl exec``-driven HTTP probes against the controller pod.
+
+    Two endpoints are interesting to the CLI wait flow:
+
+    - ``GET /status`` — deployment-state flags
+      (``initial_bootstrap_done``, ``error``, ``action_history``).
+    - ``GET /api/jobs/running`` — Job framework's live tree, used
+      to detect a still-in-flight action by ``job_name``.
+
+    Extracted from ``ControllerJobWaitService`` so the wait service
+    keeps a coherent (sub-500-line) shape.
+    """
+
+    kube: KubernetesClient
+    namespace: str
+    service_port: int
+
+    def _exec_http(self, pod_name: str, path: str) -> str | None:
+        result = self.kube.run(
+            [
+                "-n", self.namespace, "exec", pod_name, "--",
+                "python3", "-c",
+                "import urllib.request,json; "
+                f"r=urllib.request.urlopen('http://127.0.0.1:{self.service_port}{path}'); "
+                "print(r.read().decode())",
+            ],
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout or ""
+
+    def query_status(self, pod_name: str) -> dict[str, Any] | None:
+        body = self._exec_http(pod_name, "/status")
+        if body is None:
+            return None
+        try:
+            return json.loads(body or "{}")
+        except json.JSONDecodeError:
+            return None
+
+    def query_running_action_names(self, pod_name: str) -> set[str]:
+        body = self._exec_http(pod_name, "/api/jobs/running")
+        if body is None:
+            return set()
+        try:
+            payload = json.loads(body or "{}")
+        except json.JSONDecodeError:
+            return set()
+
+        running: set[str] = set()
+
+        def walk(node: dict[str, Any]) -> None:
+            name = node.get("job_name")
+            if isinstance(name, str) and name:
+                running.add(name)
+            for child in node.get("children") or []:
+                if isinstance(child, dict):
+                    walk(child)
+
+        for top in payload.get("tree") or []:
+            if isinstance(top, dict):
+                walk(top)
+        return running
+
+
+@dataclass
 class ControllerJobWaitService:
     cfg: ControllerJobWaitConfig
     kube: KubernetesClient
@@ -42,6 +110,13 @@ class ControllerJobWaitService:
         "[OK] Bootstrap completed successfully",
         "[OK] Bootstrap complete.",
     )
+
+    def __post_init__(self) -> None:
+        self._pod_http = BootstrapPodHttpClient(
+            kube=self.kube,
+            namespace=self.cfg.namespace,
+            service_port=self.cfg.service_port,
+        )
 
     def _get_job(self, job_name: str) -> dict[str, Any] | None:
         result = self.kube.run(
@@ -370,24 +445,10 @@ class ControllerJobWaitService:
         return None
 
     def _query_bootstrap_status(self, pod_name: str) -> dict[str, Any] | None:
-        """Query GET /status from the bootstrap service via kubectl exec."""
-        result = self.kube.run(
-            [
-                "-n", self.cfg.namespace,
-                "exec", pod_name, "--",
-                "python3", "-c",
-                "import urllib.request,json; "
-                f"r=urllib.request.urlopen('http://127.0.0.1:{self.cfg.service_port}/status'); "
-                "print(r.read().decode())",
-            ],
-            check=False,
-        )
-        if result.returncode != 0:
-            return None
-        try:
-            return json.loads(result.stdout or "{}")
-        except json.JSONDecodeError:
-            return None
+        return self._pod_http.query_status(pod_name)
+
+    def _query_running_action_names(self, pod_name: str) -> set[str]:
+        return self._pod_http.query_running_action_names(pod_name)
 
     def wait_for_bootstrap_service(
         self,
@@ -398,8 +459,15 @@ class ControllerJobWaitService:
         """Wait for the bootstrap Deployment's HTTP service to report completion.
 
         Polls GET /status until:
-        - phase == "complete" and error is None (initial bootstrap)
-        - current_action is None (if wait_for_action specified, wait until that action finishes)
+        - ``initial_bootstrap_done`` is True and ``error`` is None
+          (initial bootstrap)
+        - ``wait_for_action`` (when specified) no longer appears in
+          ``GET /api/jobs/running`` — i.e. the action has finished.
+
+        ADR-0005 Phase 5a: terminal-state and current-action checks
+        no longer consume the legacy ``phase`` / ``current_action``
+        fields. ``initial_bootstrap_done`` + ``error`` + the Job
+        framework's running-tree are the canonical signals.
         """
         start = self.now()
         last_heartbeat = -self.cfg.heartbeat_interval
@@ -444,30 +512,18 @@ class ControllerJobWaitService:
                 self.sleep(3)
                 continue
 
-            phase = str(status.get("phase") or "")
             error = status.get("error")
-            current_action = status.get("current_action")
             initial_done = bool(status.get("initial_bootstrap_done"))
-
-            # Log progress.
-            action_info = ""
-            if isinstance(current_action, dict):
-                action_info = f", action={current_action.get('name', '?')}"
-            elif current_action:
-                action_info = f", action={current_action}"
-            logger.debug(
-                "Status: phase=%s, initial_done=%s, error=%s%s",
-                phase, initial_done, error, action_info,
-            )
 
             # Check if we're waiting for a specific action to finish.
             if wait_for_action:
-                if isinstance(current_action, dict):
-                    current_name = current_action.get("name", "")
-                else:
-                    current_name = str(current_action or "")
+                running_actions = self._query_running_action_names(pod_name)
+                logger.debug(
+                    "Status: initial_done=%s, error=%s, running=%s",
+                    initial_done, error, sorted(running_actions),
+                )
                 # Action is running — keep waiting.
-                if current_name == wait_for_action:
+                if wait_for_action in running_actions:
                     if elapsed >= self.cfg.timeout_seconds:
                         raise KubernetesError(
                             f"Action '{wait_for_action}' did not complete within timeout"
@@ -496,14 +552,18 @@ class ControllerJobWaitService:
                 continue
 
             # Default: wait for initial bootstrap to complete.
-            if phase == "complete" and error is None:
+            logger.debug(
+                "Status: initial_done=%s, error=%s",
+                initial_done, error,
+            )
+            if initial_done and error is None:
                 self.info(
                     f"Bootstrap service reports complete "
                     f"(elapsed={status.get('elapsed_seconds', '?')}s)"
                 )
                 return
 
-            if phase == "error" and error:
+            if error:
                 self.warn(f"Bootstrap service reports error: {error}")
                 # Print pod logs for diagnostics.
                 if pod_name:
@@ -513,7 +573,7 @@ class ControllerJobWaitService:
             if elapsed >= self.cfg.timeout_seconds:
                 self.warn(
                     f"Bootstrap service did not complete within {self.cfg.timeout_raw} "
-                    f"(last phase={phase})"
+                    f"(initial_done={initial_done})"
                 )
                 if pod_name:
                     self._tail_pod_logs(pod_name, lines=30)

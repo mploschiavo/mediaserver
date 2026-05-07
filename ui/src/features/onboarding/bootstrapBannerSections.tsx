@@ -147,11 +147,19 @@ export function BannerCtas({
   phase,
   onRetry,
   retryDisabled,
+  onClose,
 }: {
   ctas: readonly SetupCta[];
   phase: SetupExperienceState["phase"];
   onRetry: () => void;
   retryDisabled: boolean;
+  /**
+   * Wrapper passes this when the current phase warrants a labeled
+   * Close button (Complete-state acknowledgement). Renders trailing
+   * the action CTAs as a ghost-variant button so it reads as
+   * secondary to the primary "Open apps" / "Verify health" actions.
+   */
+  onClose?: () => void;
 }): JSX.Element {
   return (
     <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -190,6 +198,17 @@ export function BannerCtas({
           </Button>
         );
       })}
+      {onClose ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={onClose}
+          data-testid="bootstrap-progress-banner-close"
+        >
+          Close
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -52,21 +52,29 @@ class TestBootstrapState(unittest.TestCase):
         self.assertEqual(state.preflight_results["jellyfin"]["status"], "ok")
 
     def test_to_dict(self):
+        # ADR-0005 Phase 5a: ``phase`` / ``phases_completed`` /
+        # ``current_action`` were retired from the ``/status``
+        # wire shape; the dataclass fields stay for internal
+        # bookkeeping but no longer ship in ``to_dict()``.
         state = BootstrapState()
         state.start()
         state.complete_phase("test")
         state.record_preflight("jf", {"status": "ok"})
         state.finish()
         d = state.to_dict()
-        self.assertEqual(d["phase"], "complete")
+        self.assertNotIn("phase", d)
+        self.assertNotIn("phases_completed", d)
+        self.assertNotIn("current_action", d)
         self.assertIsNotNone(d["elapsed_seconds"])
-        self.assertIn("test", d["phases_completed"])
         self.assertIn("jf", d["preflight_results"])
+        # Internal bookkeeping intact.
+        self.assertEqual(state.phase, "complete")
+        self.assertIn("test", state.phases_completed)
 
     def test_to_dict_idle(self):
         state = BootstrapState()
         d = state.to_dict()
-        self.assertEqual(d["phase"], "idle")
+        self.assertNotIn("phase", d)
         self.assertIsNone(d["elapsed_seconds"])
 
 

@@ -35,6 +35,9 @@ class TestBootstrapAPIServerHealthz(unittest.TestCase):
 
 class TestBootstrapAPIServerStatus(unittest.TestCase):
     def test_status_idle(self):
+        # ADR-0005 Phase 5a: ``/status`` no longer ships the legacy
+        # bootstrap ``phase`` field. Idle state is signaled by
+        # ``initial_bootstrap_done: false`` + absent ``error``.
         state = BootstrapState()
         server, port = _start(state)
         try:
@@ -42,7 +45,9 @@ class TestBootstrapAPIServerStatus(unittest.TestCase):
             conn.request("GET", "/status")
             resp = conn.getresponse()
             body = json.loads(resp.read())
-            self.assertEqual(body["phase"], "idle")
+            self.assertNotIn("phase", body)
+            self.assertFalse(body.get("initial_bootstrap_done"))
+            self.assertIsNone(body.get("error"))
             conn.close()
         finally:
             server.shutdown()

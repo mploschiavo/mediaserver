@@ -188,12 +188,19 @@ class TestControllerStateFailedServices(unittest.TestCase):
         self.assertEqual(len(s.get_failed_services()), 0)
 
     def test_to_dict_serialization(self):
+        # ADR-0005 Phase 5a: legacy bootstrap-progress fields
+        # (``phase`` / ``phases_completed`` / ``current_action``)
+        # are no longer serialized — Job framework provides the
+        # canonical view via ``/api/jobs/running`` + history.
         s = ControllerState()
         s.start_action("test")
         s.append_log("hello")
         d = s.to_dict()
-        self.assertIn("phase", d)
-        self.assertIn("current_action", d)
+        self.assertIn("initial_bootstrap_done", d)
+        self.assertIn("action_history", d)
+        self.assertNotIn("phase", d)
+        self.assertNotIn("phases_completed", d)
+        self.assertNotIn("current_action", d)
 
 
 if __name__ == "__main__":

@@ -346,12 +346,15 @@ components:
           example: admin
 
     ControllerState:
+      # ADR-0005 Phase 5a removed the legacy bootstrap-progress
+      # fields (``phase``, ``phases_completed``, ``current_action``)
+      # — they duplicated the Job framework's running-tree + history
+      # view and caused multi-source tearing in UI consumers. Use
+      # ``GET /api/jobs/running`` and ``GET /api/jobs?history`` for
+      # live progress; ``initial_bootstrap_done`` + ``error`` are
+      # the canonical terminal-state signals.
       type: object
       properties:
-        phase:
-          type: string
-          enum: [idle, running, complete, error]
-          example: complete
         started_at:
           type: number
           nullable: true
@@ -364,11 +367,6 @@ components:
         error:
           type: string
           nullable: true
-        phases_completed:
-          type: array
-          items:
-            type: string
-          example: [preflight, containers, post-setup, envoy]
         preflight_results:
           type: object
           additionalProperties: true
@@ -388,12 +386,6 @@ components:
           type: array
           items:
             type: string
-        current_action:
-          # null when no action is running. JSON Schema 2020-12
-          # doesn't combine $ref + nullable directly — use oneOf.
-          oneOf:
-            - $ref: '#/components/schemas/ActionRecord'
-            - type: 'null'
         action_history:
           type: array
           items:
@@ -1171,34 +1163,38 @@ paths:
   # =========================================================================
 
   /status:
+    # Bare-path endpoint historically used by ``kubectl exec`` /
+    # CLI wait flows. Dashboard consumers should use
+    # ``/api/status`` (below) since the SPA's nginx config only
+    # proxies ``/api/*`` to the controller.
     get:
       operationId: getStatus
       tags: [State]
       summary: Full controller state
       description: |
-        Returns the complete controller state: current phase, action history,
-        pending queue, app status, preflight results, runtime config, and
-        webhook URLs. This is the primary endpoint for monitoring the
-        controller's lifecycle.
+        Returns the complete controller state: action history,
+        pending queue, app status, preflight results, runtime config,
+        webhook URLs, and ``initial_bootstrap_done``. Primary
+        endpoint for monitoring the controller's lifecycle.
       x-codeSamples:
         - lang: curl
           label: cURL
           source: |
-            curl -s http://localhost:9100/status | jq .phase
+            curl -s http://localhost:9100/status | jq .initial_bootstrap_done
         - lang: Python
           label: Python
           source: |
             import requests
             r = requests.get("http://localhost:9100/status")
             state = r.json()
-            print(f"Phase: {state['phase']}")
+            print(f"First-run done: {state['initial_bootstrap_done']}")
             print(f"Actions completed: {len(state.get('action_history', []))}")
         - lang: JavaScript
           label: JavaScript
           source: |
             const r = await fetch("http://localhost:9100/status");
             const state = await r.json();
-            console.log(`Phase: ${state.phase}`);
+            console.log(`First-run done: ${state.initial_bootstrap_done}`);
             console.log(`Queue: ${state.pending_actions?.length ?? 0} pending`);
       responses:
         "200":
@@ -1208,16 +1204,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/ControllerState'
               example:
-                phase: complete
                 started_at: 1712505600.0
                 completed_at: 1712505660.5
                 elapsed_seconds: 60.5
                 error: null
-                phases_completed:
-                  - preflight
-                  - containers
-                  - post-setup
-                  - envoy
                 preflight_results:
                   docker: ok
                   config_root: ok
@@ -1238,7 +1228,6 @@ paths:
                   dry_run: false
                 webhook_urls:
                   - "https://hooks.example.com/media-stack"
-                current_action: null
                 action_history:
                   - id: bootstrap-1
                     name: bootstrap
@@ -1251,6 +1240,27 @@ paths:
                     timeout_seconds: 600
                     triggered_by: admin
                 pending_actions: []
+
+  /api/status:
+    # Dashboard-facing alias of ``/status``. Same response shape;
+    # exists so the SPA's nginx ``location /api/`` block reaches
+    # the controller without a separate per-config rule for
+    # ``/status``. ADR-0005 Phase 5a.
+    get:
+      operationId: getApiStatus
+      tags: [State]
+      summary: Full controller state (dashboard alias)
+      description: |
+        Same response as ``GET /status``. Use this path from the
+        SPA — the dashboard's nginx only proxies ``/api/*`` to the
+        controller.
+      responses:
+        "200":
+          description: Complete controller state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllerState'
 
   /apps:
     get:
@@ -4938,7 +4948,7 @@ paths:
                   - name: jellyfin
                     image: jellyfin/jellyfin@sha256:333b647716631443a43c7fabac4b0c46b4e2f036bad19547e00958f10f721b85
                   - name: media-stack-controller
-                    image: harbor.iomio.io/library/media-stack-controller:v1.0.320
+                    image: harbor.iomio.io/library/media-stack-controller:v1.0.324
 
   /api/backup:
     get:

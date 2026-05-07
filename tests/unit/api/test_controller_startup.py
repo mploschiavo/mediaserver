@@ -155,14 +155,18 @@ class TestActionProgressVisibility(unittest.TestCase):
     """Verify action progress is visible through the API."""
 
     def test_running_action_has_elapsed(self):
+        # ADR-0005 Phase 5a: ``current_action`` no longer ships in
+        # ``/status``; the dataclass field stays for internal
+        # bookkeeping. Action visibility flows through the Job
+        # framework (``/api/jobs/running``) for live consumers.
         from media_stack.api.state import ControllerState
         state = ControllerState()
         action = state.start_action("discover-indexers")
         self.assertIsNotNone(action.elapsed_seconds)
         self.assertGreaterEqual(action.elapsed_seconds, 0)
         d = state.to_dict()
-        self.assertEqual(d["current_action"]["name"], "discover-indexers")
-        self.assertIn("elapsed_seconds", d["current_action"])
+        self.assertNotIn("current_action", d)
+        self.assertEqual(state.current_action.name, "discover-indexers")
 
     def test_pending_actions_visible(self):
         from media_stack.api.state import ControllerState

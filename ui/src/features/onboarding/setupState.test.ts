@@ -130,30 +130,22 @@ describe("buildSetupExperienceState", () => {
     expect(state.activePath).toEqual(["bootstrap", "mass-search-throttled"]);
   });
 
-  it("falls back to current_action when running tree is empty", () => {
+  it("treats history-derived 'first-run done' so a controller restart doesn't wedge the banner in Queued", () => {
+    // Regression: ``initial_bootstrap_done`` is in-memory only on
+    // the controller — every restart (e.g. image bake/redeploy)
+    // resets it to ``false``. Without this fallback, the banner
+    // shows "Waiting for the controller…" indefinitely on an
+    // already-bootstrapped install. History is the durable signal.
     const state = buildSetupExperienceState({
-      status: {
-        initial_bootstrap_done: false,
-        phase: SetupStatus.Running,
-        current_action: {
-          id: "a-12",
-          name: "configure_sonarr",
-          status: SetupStatus.Running,
-          started_at: 10,
-          elapsed_seconds: 30,
-        },
-        phases_completed: ["preflight", "prepare_host"],
-      },
+      status: { initial_bootstrap_done: false },
       statusReachable: true,
       runningTree: [],
-      history: [],
+      history: [
+        { jobs: { bootstrap: { status: SetupStatus.Ok } }, errors: 0 },
+      ],
     });
-    expect(state.phase).toBe(SetupStatus.Running);
-    expect(state.activeStepLabel).toBe("Configuring Sonarr");
-    expect(state.summary.completed).toBe(2);
-    expect(state.summary.running).toBe(1);
-    expect(state.timeline.length).toBe(3);
-    expect(state.timeline[2]?.label).toMatch(/sonarr/i);
+    expect(state.phase).toBe(SetupStatus.Complete);
+    expect(state.title).toMatch(/ready/i);
   });
 
   it("returns failed when bootstrap history status is error", () => {
@@ -172,10 +164,7 @@ describe("buildSetupExperienceState", () => {
 
   it("returns complete on strict-ready success path", () => {
     const state = buildSetupExperienceState({
-      status: {
-        initial_bootstrap_done: true,
-        phase: SetupStatus.Complete,
-      },
+      status: { initial_bootstrap_done: true },
       statusReachable: true,
       runningTree: [],
       history: [

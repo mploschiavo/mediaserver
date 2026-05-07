@@ -377,25 +377,34 @@ class ControllerState:
     # --- serialization ---
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the public ``/status`` response.
+
+        ADR-0005 Phase 5a retired the legacy bootstrap-progress
+        fields (``phase``, ``phases_completed``, ``current_action``)
+        — they duplicated the Job framework's running-tree + history
+        view. Consumers that need live progress now read from
+        ``/api/jobs/running`` + ``/api/jobs?history`` instead.
+
+        The dataclass fields themselves stay for internal
+        bookkeeping (``set_phase`` / ``begin_action`` / etc. still
+        write them); they're just no longer part of the wire shape.
+        """
         with self._lock:
             elapsed = None
             if self.started_at is not None:
                 end = self.completed_at or time.time()
                 elapsed = round(end - self.started_at, 1)
             return {
-                "phase": self.phase,
                 "started_at": self.started_at,
                 "completed_at": self.completed_at,
                 "elapsed_seconds": elapsed,
                 "error": self.error,
-                "phases_completed": list(self.phases_completed),
                 "preflight_results": dict(self.preflight_results),
                 "app_status": dict(self.app_status),
                 "run_overrides": dict(self.run_overrides),
                 "initial_bootstrap_done": self.initial_bootstrap_done,
                 "runtime_config": dict(self.runtime_config),
                 "webhook_urls": list(self.webhook_urls),
-                "current_action": self.current_action.to_dict() if self.current_action else None,
                 "action_history": [a.to_dict() for a in self.action_history],
                 "pending_actions": [dict(p) for p in self.pending_actions],
                 "failed_services": dict(self.failed_services),

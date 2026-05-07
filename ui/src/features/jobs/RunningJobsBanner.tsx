@@ -82,7 +82,7 @@ export function RunningJobsBanner() {
   const status = useQuery<ControllerStatusShape>({
     queryKey: ["controller", "status"],
     queryFn: () =>
-      fetcher<ControllerStatusShape>("status", {
+      fetcher<ControllerStatusShape>("api/status", {
         silenceAuthEvent: true,
       }),
     staleTime: 30_000,

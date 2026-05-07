@@ -93,10 +93,7 @@ describe("BootstrapProgressBanner", () => {
 
   it("renders queued copy while waiting for bootstrap pickup", () => {
     reset();
-    statusState.data = {
-      initial_bootstrap_done: false,
-      phase: SetupStatus.Starting,
-    };
+    statusState.data = { initial_bootstrap_done: false };
     renderWithProviders(<BootstrapProgressBanner />);
     expect(screen.getByTestId("bootstrap-progress-banner")).toBeInTheDocument();
     expect(screen.getByText(/waiting for the controller/i)).toBeInTheDocument();
@@ -104,7 +101,7 @@ describe("BootstrapProgressBanner", () => {
 
   it("renders the live bootstrap path + step summary from the running tree", () => {
     reset();
-    statusState.data = { initial_bootstrap_done: false, phase: SetupStatus.Running };
+    statusState.data = { initial_bootstrap_done: false };
     runningState.data = {
       tree: [
         {
@@ -141,35 +138,9 @@ describe("BootstrapProgressBanner", () => {
     expect(screen.getByText(/discovering api keys/i)).toBeInTheDocument();
   });
 
-  it("falls back to current_action when the running tree is empty", () => {
-    reset();
-    statusState.data = {
-      initial_bootstrap_done: false,
-      phase: SetupStatus.Running,
-      current_action: {
-        id: "a-12",
-        name: "configure_sonarr",
-        status: SetupStatus.Running,
-        started_at: 1,
-        elapsed_seconds: 12,
-      },
-      phases_completed: ["preflight"],
-    };
-    renderWithProviders(<BootstrapProgressBanner />);
-    expect(
-      screen.getByTestId("bootstrap-progress-banner-description"),
-    ).toHaveTextContent(/configuring sonarr/i);
-    expect(
-      screen.getByTestId("bootstrap-progress-banner-timeline"),
-    ).toBeInTheDocument();
-  });
-
   it("renders a failed terminal state with retry CTA", () => {
     reset();
-    statusState.data = {
-      initial_bootstrap_done: true,
-      phase: SetupStatus.Error,
-    };
+    statusState.data = { initial_bootstrap_done: true };
     jobsState.data = {
       history: [
         { jobs: { bootstrap: { status: SetupStatus.Error } }, errors: 2 },
@@ -184,10 +155,7 @@ describe("BootstrapProgressBanner", () => {
 
   it("renders the celebration state with next-steps CTAs when ready", () => {
     reset();
-    statusState.data = {
-      initial_bootstrap_done: true,
-      phase: SetupStatus.Complete,
-    };
+    statusState.data = { initial_bootstrap_done: true };
     jobsState.data = {
       history: [
         { jobs: { bootstrap: { status: SetupStatus.Ok } }, errors: 0 },
@@ -201,5 +169,121 @@ describe("BootstrapProgressBanner", () => {
       "href",
       "/apps",
     );
+  });
+
+  it("keeps the progress bar visible at 100% on Complete (no auto-hide)", () => {
+    reset();
+    statusState.data = { initial_bootstrap_done: true };
+    jobsState.data = {
+      history: [
+        {
+          ts: 1700000000,
+          jobs: { bootstrap: { status: SetupStatus.Ok } },
+          errors: 0,
+        },
+      ],
+    };
+    renderWithProviders(<BootstrapProgressBanner />);
+    const bar = screen.getByTestId("bootstrap-progress-banner-bar");
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveAttribute("aria-valuenow", "100");
+  });
+
+  it("renders an explicit Close button on Complete; clicking dismisses the current run", async () => {
+    const { userEvent } = await import("@testing-library/user-event");
+    reset();
+    statusState.data = { initial_bootstrap_done: true };
+    jobsState.data = {
+      history: [
+        {
+          ts: 1700000000,
+          jobs: { bootstrap: { status: SetupStatus.Ok } },
+          errors: 0,
+        },
+      ],
+    };
+    const { unmount } = renderWithProviders(<BootstrapProgressBanner />);
+    const closeBtn = screen.getByTestId("bootstrap-progress-banner-close");
+    expect(closeBtn).toBeInTheDocument();
+    await userEvent.click(closeBtn);
+    expect(
+      screen.queryByTestId("bootstrap-progress-banner"),
+    ).not.toBeInTheDocument();
+    // Persisted to localStorage keyed on the run's ts.
+    expect(window.localStorage.getItem("media-stack:bootstrap-dismissed-run"))
+      .toBe("ts:1700000000");
+    unmount();
+
+    // A NEW bootstrap run (different ts) re-shows the banner because
+    // the dismissal key no longer matches the current run.
+    jobsState.data = {
+      history: [
+        {
+          ts: 1700001000,
+          jobs: { bootstrap: { status: SetupStatus.Ok } },
+          errors: 0,
+        },
+      ],
+    };
+    renderWithProviders(<BootstrapProgressBanner />);
+    expect(
+      screen.getByTestId("bootstrap-progress-banner"),
+    ).toBeInTheDocument();
+  });
+
+  it("dismisses Complete state via the Close button when only action_history identifies the run (legacy bootstrap path)", async () => {
+    // Regression: the bootstrap action runs through the controller's
+    // legacy ``action_trigger`` path, NOT the Job framework, so it
+    // never appears in ``/api/jobs/running`` or ``/api/jobs?history``.
+    // ``state.action_history`` (on /status) is the only durable
+    // per-run identifier — the Close button must derive its key
+    // from there or it's a no-op.
+    const { userEvent } = await import("@testing-library/user-event");
+    reset();
+    statusState.data = {
+      initial_bootstrap_done: true,
+      action_history: [
+        { id: "bootstrap-1", name: "bootstrap", status: "complete" },
+      ],
+    };
+    jobsState.data = {
+      // Empty Job-framework history — only the legacy path ran.
+      history: [],
+    };
+    renderWithProviders(<BootstrapProgressBanner />);
+    const closeBtn = screen.getByTestId("bootstrap-progress-banner-close");
+    await userEvent.click(closeBtn);
+    expect(
+      screen.queryByTestId("bootstrap-progress-banner"),
+    ).not.toBeInTheDocument();
+    // Persisted as action:<id> so a subsequent re-bootstrap (new
+    // action id) re-shows the banner automatically.
+    expect(window.localStorage.getItem("media-stack:bootstrap-dismissed-run"))
+      .toBe("action:bootstrap-1");
+  });
+
+  it("does NOT render a Close button while bootstrap is Running", () => {
+    reset();
+    statusState.data = { initial_bootstrap_done: false };
+    runningState.data = {
+      tree: [
+        {
+          run_id: "r1",
+          job_name: "bootstrap",
+          status: SetupStatus.Running,
+          started_at: 100,
+          elapsed_seconds: 30,
+          triggered_by: "manual",
+          actor: "",
+          parent_run_id: "",
+          batch_id: "",
+          children: [],
+        },
+      ],
+    };
+    renderWithProviders(<BootstrapProgressBanner />);
+    expect(
+      screen.queryByTestId("bootstrap-progress-banner-close"),
+    ).not.toBeInTheDocument();
   });
 });

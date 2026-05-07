@@ -57,22 +57,43 @@ export interface SetupCta {
   actionName?: string;
 }
 
-interface ActionRecord {
+/**
+ * One entry in ``state.action_history`` — kept on ``/status`` as
+ * the authoritative record of every bootstrap-class action run.
+ * The bootstrap action runs through the controller's legacy
+ * ``action_trigger`` path (NOT the Job framework's runner), so it
+ * never appears in ``/api/jobs/running`` or ``/api/jobs?history``.
+ * ``action_history`` is the only durable per-run identifier the
+ * banner has for the bootstrap action — used as a per-run
+ * dismissal key in the wrapper.
+ */
+export interface ActionHistoryEntry {
   id?: string;
   name?: string;
   status?: string;
-  started_at?: number;
+  started_at?: number | null;
   completed_at?: number | null;
-  elapsed_seconds?: number | null;
-  error?: string | null;
 }
 
+/**
+ * Slice of the controller's ``/status`` response that the bootstrap
+ * banner consumes. ADR-0005 Phase 5a retired the legacy
+ * ``current_action`` / ``phases_completed`` / ``phase`` fields —
+ * those duplicated the Job framework's running-tree + history view
+ * and caused multi-source tearing in this derivation.
+ *
+ * ``initial_bootstrap_done`` is a deployment-state flag (has this
+ * install ever bootstrapped successfully?), not runtime state, so
+ * it stays on ``/status`` with no Job-framework equivalent.
+ *
+ * ``action_history`` is needed by the wrapper for per-run
+ * dismissal keying — the legacy ``bootstrap`` action doesn't
+ * register with the Job framework, so it has no ``run_id`` in
+ * ``/api/jobs/running`` or history entry in ``/api/jobs?history``.
+ */
 export interface BootstrapStatus {
-  phase?: string;
   initial_bootstrap_done?: boolean;
-  current_action?: ActionRecord | null;
-  action_history?: ActionRecord[];
-  phases_completed?: readonly string[];
+  action_history?: readonly ActionHistoryEntry[];
 }
 
 interface BuildInput {
@@ -217,77 +238,6 @@ function timelineFromRunningTree(
   return out;
 }
 
-function timelineFromLegacyStatus(
-  status: BootstrapStatus,
-  nowSeconds: number,
-): TimelineStep[] {
-  const out: TimelineStep[] = [];
-  const completed = Array.isArray(status.phases_completed)
-    ? status.phases_completed
-    : [];
-  for (const phase of completed) {
-    out.push({
-      id: phase,
-      label: humanizeStepLabel(phase),
-      status: SetupStatus.Ok,
-    });
-  }
-  const ca = status.current_action;
-  if (ca && ca.name) {
-    const st = String(ca.status || "").toLowerCase();
-    let mapped: TimelineStepStatus = SetupStatus.Running;
-    if (st === SetupStatus.Ok || st === SetupStatus.Completed) {
-      mapped = SetupStatus.Ok;
-    } else if (st === SetupStatus.Error || st === SetupStatus.Failed) {
-      mapped = SetupStatus.Error;
-    } else if (st === SetupStatus.Skipped) {
-      mapped = SetupStatus.Skipped;
-    }
-    const elapsed =
-      typeof ca.elapsed_seconds === "number"
-        ? ca.elapsed_seconds
-        : typeof ca.started_at === "number"
-          ? Math.max(0, Math.floor(nowSeconds - ca.started_at))
-          : undefined;
-    out.push({
-      id: ca.id || ca.name,
-      label: humanizeStepLabel(ca.name),
-      status: mapped,
-      elapsedSeconds: elapsed,
-    });
-  }
-  return out;
-}
-
-function summarizeLegacyStatus(status: BootstrapStatus): SetupStepSummary {
-  const completed = Array.isArray(status.phases_completed)
-    ? status.phases_completed.length
-    : 0;
-  const ca = status.current_action;
-  let running = 0;
-  let failed = 0;
-  if (ca && ca.name) {
-    const st = String(ca.status || "").toLowerCase();
-    if (
-      st === SetupStatus.Running ||
-      st === "" ||
-      st === SetupStatus.Starting
-    ) {
-      running = 1;
-    } else if (st === SetupStatus.Error || st === SetupStatus.Failed) {
-      failed = 1;
-    }
-  }
-  const total = completed + running + failed;
-  return {
-    total,
-    completed,
-    running,
-    failed,
-    skipped: 0,
-  };
-}
-
 function historyForBootstrap(
   history: readonly JobHistoryEntry[],
 ): {
@@ -334,7 +284,6 @@ const EMPTY_SUMMARY: SetupStepSummary = {
 
 export function buildSetupExperienceState({
   status,
-  statusReachable,
   runningTree,
   history,
   nowSeconds,
@@ -344,10 +293,17 @@ export function buildSetupExperienceState({
   const hist = Array.isArray(history) ? history : [];
   const now = nowSeconds ?? Date.now() / 1000;
 
-  // Controller is unreachable / still warming up. Render a soft
-  // skeleton state so the dashboard never feels empty during the
-  // first few seconds of the operator's experience.
-  if (!status && statusReachable === false) {
+  // Controller is unreachable OR ``/api/status`` hasn't responded
+  // yet. Render a soft skeleton state so the dashboard never feels
+  // empty during the first few seconds of the operator's
+  // experience — and, critically, doesn't briefly flash the
+  // "Queued — waiting for the controller…" copy before the live
+  // ``/api/status`` query resolves with the real
+  // ``initial_bootstrap_done`` flag. ``status === undefined`` means
+  // the wrapper's ``useQuery`` has nothing yet (loading or
+  // errored); both shapes deserve the WarmingUp affordance until
+  // we have a verdict.
+  if (!status) {
     return {
       phase: SetupStatus.WarmingUp,
       isVisible: true,
@@ -367,8 +323,19 @@ export function buildSetupExperienceState({
   }
 
   const bootstrapRoot = findBootstrapRoot(tree);
-  const initialDone = Boolean(state.initial_bootstrap_done);
   const histBootstrap = historyForBootstrap(hist);
+  // ``state.initial_bootstrap_done`` is an in-memory flag on the
+  // controller — it resets to ``false`` on every controller
+  // restart (e.g. an image bake/redeploy). On a fresh restart of
+  // an already-bootstrapped install, that would otherwise wedge
+  // the banner in the "Queued — waiting for the controller…"
+  // state forever. Deriving "first-run done" from job history (a
+  // single prior bootstrap entry of ANY status — ok / error /
+  // cancelled / timeout) makes the signal durable across
+  // restarts: once you've ever bootstrapped, you're past the
+  // first-run window.
+  const initialDone =
+    Boolean(state.initial_bootstrap_done) || histBootstrap.status !== "none";
 
   // Tree path wins when present — most precise live signal.
   if (bootstrapRoot) {
@@ -399,44 +366,6 @@ export function buildSetupExperienceState({
       summary: summarizeRunningTree(bootstrapRoot),
       statusTone: "info",
       timeline: timelineFromRunningTree(bootstrapRoot),
-      ctas: [{ key: "view_details", label: "View setup details", href: "/jobs?filter=bootstrap" }],
-    };
-  }
-
-  // No tree node — fall back to legacy current_action / phases_completed
-  // emitted by /status. This is what the bootstrap runner actually
-  // emits on first install (the JobRunner tree only carries jobs that
-  // are registered in the contract registry).
-  const ca = state.current_action ?? null;
-  const phasesDone = Array.isArray(state.phases_completed)
-    ? state.phases_completed
-    : [];
-  if (
-    !initialDone &&
-    (ca || phasesDone.length > 0 || state.phase === SetupStatus.Running)
-  ) {
-    const activeLabel = ca && ca.name ? humanizeStepLabel(ca.name) : null;
-    const elapsed =
-      ca && typeof ca.elapsed_seconds === "number"
-        ? Math.max(0, ca.elapsed_seconds)
-        : ca && typeof ca.started_at === "number"
-          ? Math.max(0, Math.floor(now - ca.started_at))
-          : 0;
-    return {
-      phase: SetupStatus.Running,
-      isVisible: true,
-      isReady: false,
-      title: "Setting up your media stack",
-      description: activeLabel
-        ? activeLabel
-        : "Configuring your services. This usually takes a couple of minutes.",
-      activePath: ca && ca.name ? [ca.name] : [],
-      activeStepLabel: activeLabel,
-      activeRunId: ca?.id ?? null,
-      elapsedSeconds: elapsed,
-      summary: summarizeLegacyStatus(state),
-      statusTone: "info",
-      timeline: timelineFromLegacyStatus(state, now),
       ctas: [{ key: "view_details", label: "View setup details", href: "/jobs?filter=bootstrap" }],
     };
   }
@@ -524,9 +453,7 @@ export function buildSetupExperienceState({
     };
   }
 
-  const warnings =
-    histBootstrap.errorCount > 0 || state.phase === SetupStatus.Error;
-  if (warnings) {
+  if (histBootstrap.errorCount > 0) {
     return {
       phase: SetupStatus.CompleteWithWarnings,
       isVisible: true,
@@ -543,7 +470,7 @@ export function buildSetupExperienceState({
       timeline: [],
       ctas: [
         { key: "view_details", label: "Review warnings", href: "/jobs?filter=bootstrap" },
-        { key: "verify_health", label: "Verify system health", href: "/ops/health" },
+        { key: "verify_health", label: "Verify system health", href: "/ops" },
       ],
     };
   }
@@ -564,7 +491,7 @@ export function buildSetupExperienceState({
     timeline: [],
     ctas: [
       { key: "open_apps", label: "Open apps", href: "/apps" },
-      { key: "verify_health", label: "Verify system health", href: "/ops/health" },
+      { key: "verify_health", label: "Verify system health", href: "/ops" },
       { key: "view_details", label: "View setup details", href: "/jobs?filter=bootstrap" },
     ],
   };

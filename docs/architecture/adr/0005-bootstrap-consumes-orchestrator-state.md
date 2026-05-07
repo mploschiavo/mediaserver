@@ -1,12 +1,31 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Phases 1–3 fully shipped (2026-05-03). Every
-per-service ensurer is now lifecycle-dispatched; 8 wirer classes
-across 19 promise cutovers cover the *arr family (notifier /
-indexers / download-client / runtime-defaults / seed-series),
-qBittorrent, Bazarr, Jellyseerr, and Maintainerr. Awaiting live
-validation on compose + k8s. Builds on ADR-0003 (orchestrator) and
-ADR-0004 (verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
+**Status:** Phases 1–5a fully shipped. Phases 1–3 landed
+2026-05-03; Phase 4 (``LifecycleWirerBase`` extraction) followed
+shortly after — all 8 wirer classes (``JellyfinNotifierWirer``,
+``IndexerPipelineWirer``, ``BazarrConfigWirer``,
+``JellyseerrConfigWirer``, ``RuntimeDefaultsWirer``,
+``SeedSeriesWirer``, ``CategoriesWirer``,
+``MaintainerrCollectionsWirer``) inherit from
+``adapters/_shared/lifecycle_wirer_base.py`` and share the
+``ProbeResult`` / ``Outcome`` / HTTP-classifier / secret-discovery
+helpers. Phase 5a (legacy ``/status`` shape removal) shipped
+2026-05-06: UI in v1.3.76 stopped consuming
+``current_action`` / ``phases_completed`` / legacy ``phase``;
+controller v1.0.322 stopped emitting them; CLI wait flow
+(``ControllerJobWaitService`` /
+``BootstrapPodHttpClient``) migrated to ``/api/jobs/running`` +
+``initial_bootstrap_done`` + ``error`` for terminal-state and
+in-flight-action checks. Both targets (k8s + compose) live on the
+new contract. Builds on ADR-0003 (orchestrator) and ADR-0004
+(verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
+
+**Next:** Phase 5b (bootstrap-only ensurer retirement —
+``apply-arr-runtime-defaults``, ``ensure-arr-download-client``,
+etc. lose their handler registrations; ``run_job(name)`` /
+auto-heal compatibility shims also retire). Then Phase 5c
+(``_run_preflights`` retirement + JobRunner internals collapse —
+closes ADR-0003 Phase 5e.3+).
 
 Phase 3 final state (final wave shipped at ``e4c9b5b4``):
 
@@ -49,39 +68,70 @@ legacy ``ensured_by: configure-collections`` was a misnomer —
 unrelated to Maintainerr. The cutover untangles this; the real
 handler is ``ensure_maintainerr_integrations``.
 
-## Phase 4 — ``LifecycleWirerBase`` extraction (next, ~half day)
+## Phase 4 — ``LifecycleWirerBase`` extraction (shipped)
 
-8 sibling wirer classes now share the same shape (constructor +
-``probe`` + ``ensure`` + helpers). Duplicate-code ratchet bumped
-from 19 → 23 over the wave. Phase 4 extracts a shared
-``LifecycleWirerBase`` (or composes a small mixin set), refactors
-all 8 wirers to inherit, drives the ratchet back down, tightens
-``logging-only-in-exception-handlers`` + ``python-broad-except``
-where the swallowed-exception pattern is centralized in the base.
+8 sibling wirer classes shared the same shape (constructor +
+``probe`` + ``ensure`` + helpers). Duplicate-code ratchet had
+bumped from 19 → 23 across the Phase 3 wave. Phase 4 extracted
+``adapters/_shared/lifecycle_wirer_base.py`` exposing:
 
-Single dedicated commit. Each of the 8 wirer test suites must
-continue to pass (no behavior change).
+- ``_probe_ok`` / ``_probe_failed`` / ``_probe_unknown`` —
+  ``ProbeResult`` constructors with ``ctx.now()`` evaluation
+  timestamp.
+- ``_outcome_success`` / ``_outcome_transient`` /
+  ``_outcome_permanent`` — ``Outcome[None]`` constructors.
+- ``_classify_http_outcome`` — urllib exception → canonical
+  ``Outcome`` shape (HTTPError = permanent, URLError /
+  OSError / TimeoutError = transient, anything else
+  propagates).
+- ``_discover_secret`` — ``ctx.secrets`` first, ``os.environ``
+  fallback. The established pattern across every wirer +
+  ServarrLifecycle.
 
-## Phase 5+ — retire bootstrap-only ensurers + close ADR-0003 Phase 5e.3+
+All 8 wirers inherit; signatures are intentionally NOT
+abstracted (Servarr-family wirers parameterize on
+``service_id``, single-service wirers take only ``ctx`` —
+constraining ``probe`` / ``ensure`` would force an awkward
+common-denominator).
 
-After live validation succeeds:
+## Phase 5 — retire bootstrap-only ensurers + close ADR-0003 Phase 5e.3+
 
-- ``_run_preflights`` retirement — the legacy preflight pipeline
-  in ``application/jobs/`` becomes redundant once the orchestrator
-  drives every per-service ensurer.
-- Bootstrap-only ensurers (``apply-arr-runtime-defaults``,
-  ``ensure-arr-download-client``, etc.) lose their handler
-  registrations — the wirers ARE the implementation now; the
-  legacy handlers exist only for ``run_job(name)`` /
-  auto-heal compatibility, which Phase 5+ also retires.
-- JobRunner internals retirement — the run-history /
-  phase-orchestration code paths that exclusively serve
-  bootstrap collapse.
-- This closes ADR-0003 Phase 5e.3+ — the deferred legacy-path
-  deletions.
+Sliced into 5a / 5b / 5c:
 
-Multi-week. Each step depends on operator validation that the
-orchestrator-driven path is genuinely the only consumer.
+**Phase 5a — legacy ``/status`` shape removal.** The controller's
+``/status`` endpoint exposes a pre-Job-framework shape
+(``current_action``, ``phases_completed``, legacy ``phase``)
+that the bootstrap progress banner consumes alongside the
+canonical ``/api/jobs/running`` + ``/api/jobs?history``
+contracts. Two contracts for the same job → multi-source
+tearing in the UI's setup-experience derivation. Phase 5a
+retires the legacy shape:
+
+1. UI stops consuming the legacy fields (``setupState.ts``'s
+   ``timelineFromLegacyStatus`` path deleted; banner wrapper
+   drops its ``/status`` query). The banner now reads only
+   from the Job framework.
+2. Controller deletes the fields from the ``/status`` response
+   in a follow-up release, only after the UI rollout has
+   stuck.
+
+**Phase 5b — bootstrap-only ensurer retirement.** Bootstrap-only
+ensurers (``apply-arr-runtime-defaults``,
+``ensure-arr-download-client``, etc.) lose their handler
+registrations — the wirers ARE the implementation now; the
+legacy handlers exist only for ``run_job(name)`` / auto-heal
+compatibility, which 5b also retires.
+
+**Phase 5c — ``_run_preflights`` + JobRunner internals.** The
+legacy preflight pipeline in ``application/jobs/`` becomes
+redundant once the orchestrator drives every per-service
+ensurer. The run-history / phase-orchestration code paths
+that exclusively serve bootstrap collapse. Closes ADR-0003
+Phase 5e.3+ — the deferred legacy-path deletions.
+
+Multi-week overall. Each phase depends on operator validation
+that the orchestrator-driven path is genuinely the only
+consumer.
 
 Phase 2 cutover landed — what changed:
 

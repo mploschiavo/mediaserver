@@ -1,6 +1,4 @@
 import { useState, type JSX } from "react";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import {
   type SetupExperienceState,
@@ -46,11 +44,9 @@ const TONE_RAIL: Record<SetupExperienceState["statusTone"], string> = {
 
 interface BootstrapProgressBannerViewProps {
   setup: SetupExperienceState;
-  /** Whether the user has dismissed the banner. View hides itself when true. */
+  /** Per-run dismissed flag from the wrapper. View hides itself when true. */
   dismissed?: boolean;
-  /** Whether the celebration window has elapsed. View hides itself when true. */
-  celebratedHidden?: boolean;
-  /** Operator clicked the X — controlled by a parent wrapper, no-op in demos. */
+  /** Operator clicked Close on the success state. No-op in demos. */
   onDismiss?: () => void;
   /** Operator clicked Retry. No-op in demos. */
   onRetry?: () => void;
@@ -64,28 +60,20 @@ interface BootstrapProgressBannerViewProps {
  *
  * Use this directly when you want full control over the rendered
  * state — demo routes, Storybook stories, or any caller that wants
- * to bypass the live ``/status`` query. For the production
- * dashboard surface, use ``BootstrapProgressBanner``.
+ * to bypass the live ``/api/jobs/running`` + history queries. For
+ * the production dashboard surface, use ``BootstrapProgressBanner``.
  */
 export function BootstrapProgressBannerView({
   setup,
   dismissed = false,
-  celebratedHidden = false,
   onDismiss,
   onRetry,
   retryDisabled = false,
 }: BootstrapProgressBannerViewProps): JSX.Element | null {
   const [showAllSteps, setShowAllSteps] = useState(false);
 
-  const critical =
-    setup.phase === SetupStatus.Failed ||
-    setup.phase === SetupStatus.Cancelled ||
-    setup.phase === SetupStatus.TimedOut ||
-    setup.phase === SetupStatus.CompleteWithWarnings;
-
   if (!setup.isVisible) return null;
-  if (setup.phase === SetupStatus.Complete && celebratedHidden) return null;
-  if (dismissed && !critical) return null;
+  if (dismissed) return null;
 
   const progressPct = computeProgressPct(setup);
   const elapsedDisplay = formatElapsed(setup.elapsedSeconds);
@@ -94,6 +82,16 @@ export function BootstrapProgressBannerView({
     ? setup.timeline
     : setup.timeline.slice(0, TIMELINE_PREVIEW_COUNT);
   const overflow = setup.timeline.length - visibleTimeline.length;
+
+  // Dismiss affordance is phase-specific:
+  //   - Complete: a labeled "Close" button — explicit acknowledgement,
+  //     standard installer-wizard pattern.
+  //   - Critical (Failed/Cancelled/TimedOut/CompleteWithWarnings): no
+  //     close — operator must Retry / Review.
+  //   - Running / WarmingUp / Queued: no close — bootstrap is in
+  //     flight or pending; dismissing it would hide live work.
+  const showCloseButton =
+    setup.phase === SetupStatus.Complete && Boolean(onDismiss);
 
   return (
     <section
@@ -121,25 +119,10 @@ export function BootstrapProgressBannerView({
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <BannerEyebrow title={setup.title} description={setup.description} />
-            <div className="flex items-start gap-2">
-              <BannerMetaBox elapsedDisplay={elapsedDisplay} />
-              {!critical && setup.phase !== SetupStatus.WarmingUp && onDismiss ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Dismiss bootstrap banner"
-                  title="Dismiss — only do this if you're confident the stack is up"
-                  onClick={onDismiss}
-                  data-testid="bootstrap-progress-banner-dismiss"
-                >
-                  <X aria-hidden className="size-3.5" />
-                </Button>
-              ) : null}
-            </div>
+            <BannerMetaBox elapsedDisplay={elapsedDisplay} />
           </div>
 
-          {setup.phase !== SetupStatus.Complete && setup.phase !== SetupStatus.WarmingUp ? (
+          {setup.phase !== SetupStatus.WarmingUp ? (
             <ProgressBar pct={progressPct} tone={tone} />
           ) : null}
 
@@ -155,6 +138,7 @@ export function BootstrapProgressBannerView({
             phase={setup.phase}
             onRetry={onRetry ?? (() => undefined)}
             retryDisabled={retryDisabled}
+            onClose={showCloseButton ? onDismiss : undefined}
           />
         </div>
       </div>

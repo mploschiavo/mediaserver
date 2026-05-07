@@ -525,16 +525,20 @@ class TestRuntimeConfigFlowsToOverrides(unittest.TestCase):
 class TestControllerStateSerialization(unittest.TestCase):
 
     def test_to_dict_includes_all_action_fields(self):
+        # ADR-0005 Phase 5a: ``current_action`` no longer ships in
+        # ``/status``; the dataclass field stays for internal use.
+        # ``action_history`` and ``pending_actions`` remain.
         s = ControllerState()
         s.add_pending("envoy-config", 30)
-        r = s.start_action("bootstrap", overrides={"_triggered_by": "admin"})
+        s.start_action("bootstrap", overrides={"_triggered_by": "admin"})
         d = s.to_dict()
 
-        self.assertIn("current_action", d)
+        self.assertNotIn("current_action", d)
         self.assertIn("action_history", d)
         self.assertIn("pending_actions", d)
-        self.assertEqual(d["current_action"]["name"], "bootstrap")
         self.assertEqual(len(d["pending_actions"]), 1)
+        # Internal field still set.
+        self.assertEqual(s.current_action.name, "bootstrap")
 
     def test_to_dict_after_cancel(self):
         s = ControllerState()
