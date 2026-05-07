@@ -198,27 +198,25 @@ plugin:
 
     - id: jellyfin-libraries
       description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
-      ensured_by: ensure-jellyfin-libraries
+      # ADR-0005 Phase 5b — the 10th and final wirer. Flipped from
+      # string ``ensured_by: ensure-jellyfin-libraries`` to lifecycle
+      # dispatch through ``JellyfinLifecycle.ensure_libraries``,
+      # backed by ``JellyfinLibrariesWirer``. Closes the last string
+      # ``ensured_by: ensure-*`` snowflake in the contracts tree.
+      # Reverting = restore the legacy ``ensured_by: ensure-jellyfin-
+      # libraries`` line AND flip the probe back to ``http_json`` +
+      # the inline ``assert`` block.
+      ensured_by:
+        type: lifecycle
+        service: jellyfin
+        method: ensure_libraries
       platforms: [compose, k8s]
       bootstrap_blocking: true
       depends_on: [jellyfin-api-key-discoverable]
       probe:
-        type: http_json
+        type: lifecycle
         service: jellyfin
-        path: /Library/VirtualFolders
-        auth: jellyfin_key
-        # Only the 4 required user-media types must point at /media/*.
-        # Jellyfin auto-creates a boxsets/Collections library at
-        # /config/data/collections (system-managed, internal storage)
-        # which would fail an "all libraries" check.
-        assert: |
-          isinstance(response, list)
-          and {l.get('CollectionType') for l in response} >= {'movies', 'tvshows', 'music', 'books'}
-          and all(
-            any(p.startswith('/media/') for p in (l.get('Locations') or []))
-            for l in response
-            if l.get('CollectionType') in ('movies', 'tvshows', 'music', 'books')
-          )
+        method: probe_libraries
 
   event_handlers:
     ENSURE:

@@ -244,11 +244,30 @@ plugin:
       requires: []
       after: [ensure-qbittorrent-categories]
 
+    # ADR-0005 Phase 5b cutover (the 10th and final wirer): ``phase:
+    # post`` + ``priority: 86`` removed. The bootstrap-time path is
+    # now the orchestrator dispatching ``JellyfinLifecycle.
+    # ensure_libraries`` via the ``jellyfin-libraries`` promise (in
+    # ``contracts/services/jellyfin.yaml``). The wirer
+    # (``adapters/jellyfin/libraries_wiring.py``) owns the
+    # ``GET / POST /Library/VirtualFolders`` HTTP shape and the
+    # already-configured short-circuit logic.
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard) keeps resolving it. Without ``phase``,
+    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
+    # bootstrap loader's ``phase_order`` never picks it up — exactly
+    # what we want, since the orchestrator is now the bootstrap path.
+    #
+    # Reverting = restore ``phase: post`` + ``priority: 86`` AND flip
+    # the ``jellyfin-libraries`` promise back to ``ensured_by: ensure-
+    # jellyfin-libraries`` + http_json probe.
+    #
+    # Phase 5b.5 deletes this entry entirely after the auto-heal +
+    # UI migrate off ``run_job("ensure-jellyfin-libraries")``.
     ensure-jellyfin-libraries:
       handler: media_stack.services.apps.core.job_adapters:ensure_jellyfin_libraries
       label: "Ensure Jellyfin libraries (Movies/TV/Music/Books)"
-      phase: post
-      priority: 86
       requires: []
 
     # ADR-0005 Phase 3 cutover (wide-handler delegation): ``phase: post``

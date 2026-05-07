@@ -442,6 +442,18 @@ class PromisesRegistryConsistent(unittest.TestCase):
         # it. See
         # tests/unit/contracts/test_servarr_download_client_promise_driven.py.
         "ensure-arr-download-client",
+        # ADR-0005 Phase 5b (jellyfin-libraries — the 10th and final
+        # wirer): ``JellyfinLifecycle.ensure_libraries`` delegates to
+        # ``JellyfinLibrariesWirer`` (GET /Library/VirtualFolders
+        # readback + per-missing-library POST). The ``jellyfin-
+        # libraries`` promise binds via lifecycle dispatch. Closes
+        # the last string ``ensured_by: ensure-*`` snowflake in
+        # contracts (5b.5 will retire the registration shell). The
+        # legacy job stays REGISTERED so ``run_job(name)`` (auto-
+        # heal + operator dashboard) keeps resolving it; without
+        # ``phase`` the bootstrap loader skips it. See
+        # tests/unit/contracts/test_jellyfin_libraries_promise_driven.py.
+        "ensure-jellyfin-libraries",
     }
 
     def test_no_orphan_ensure_jobs(self):

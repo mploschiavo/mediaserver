@@ -68,11 +68,16 @@ class UrllibPostHandlesRedirects(unittest.TestCase):
         # Jellyfin endpoints. Jellyfin doesn't enforce a URL-base
         # prefix unless ``NetworkConfiguration.BaseUrl`` is set on
         # the server side, which we never set. POSTs to /Users/...,
-        # /Library/Refresh, /Auth/Keys go through unredirected.
+        # /Library/Refresh, /Library/VirtualFolders, /Auth/Keys go
+        # through unredirected.
         # Phase 16-D moved admin_ops.py from services/apps/jellyfin/
         # to infrastructure/jellyfin/; same Jellyfin semantics.
+        # ADR-0005 Phase 5b — libraries_wiring.py is the lifecycle
+        # port of ``ensure_jellyfin_libraries``; POSTs to
+        # /Library/VirtualFolders, same no-prefix semantics.
         "src/media_stack/services/apps/jellyfin/admin_ops.py",
         "src/media_stack/infrastructure/jellyfin/admin_ops.py",
+        "src/media_stack/adapters/jellyfin/libraries_wiring.py",
         "src/media_stack/api/services/health.py",
         "src/media_stack/api/handlers_post.py",
         "src/media_stack/api/services/admin.py",

@@ -42,6 +42,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from media_stack.adapters.jellyfin.libraries_wiring import (
+    JellyfinLibrariesWirer,
+)
 from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
@@ -57,6 +60,15 @@ _DEFAULT_HEALTH_PATH = "/System/Info/Public"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_ENV = "JELLYFIN_API_KEY"
 _DEFAULT_API_KEY_NAME_PREFERENCE = ["Jellyfin", "Jellyseerr"]
+
+
+# ADR-0005 Phase 5b — the 10th and final wirer. Single-service
+# (Jellyfin only) so the wirer takes ``(jellyfin_api_key, ctx)``
+# rather than the Servarr family's ``(service_id, arr_api_key, ctx)``
+# triple. Stateless module-level singleton; library spec +
+# HTTP timeouts constructor-injected for test override. The
+# ``jellyfin-libraries`` promise binds via lifecycle dispatch.
+_LIBRARIES_WIRER = JellyfinLibrariesWirer()
 
 
 class JellyfinLifecycle:
@@ -251,6 +263,24 @@ class JellyfinLifecycle:
                 transient=True,
                 evidence={"env_written": env_var, "error": str(exc)},
             )
+
+    # --- Library wiring (ADR-0005 Phase 5b — the 10th wirer) --------
+    #
+    # Both methods delegate to ``JellyfinLibrariesWirer`` (in
+    # ``libraries_wiring.py``). The lifecycle owns the api-key
+    # discovery contract; the wirer owns the
+    # ``GET / POST /Library/VirtualFolders`` HTTP shape and the
+    # already-configured short-circuit logic.
+
+    def probe_libraries(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _LIBRARIES_WIRER.probe(self.discover_api_key(ctx), ctx)
+
+    def ensure_libraries(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _LIBRARIES_WIRER.ensure(self.discover_api_key(ctx), ctx)
 
     # --- helpers ----------------------------------------------------
 
