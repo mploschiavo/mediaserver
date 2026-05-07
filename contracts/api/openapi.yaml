@@ -11771,6 +11771,135 @@ paths:
                 id: "storage:per_mount_threshold"
                 disabled: true
 
+  /api/lifecycle-ensurers/{service}/{method}:
+    post:
+      operationId: invokeLifecycleEnsurer
+      tags: [Operations]
+      summary: Manually dispatch a single lifecycle ensurer
+      description: |
+        ADR-0005 Phase 5b. The promise orchestrator already routes
+        every unsatisfied promise's ``LifecycleEnsurer`` through the
+        single ``dispatch_ensurer`` entry point. This endpoint
+        exposes that same entry point for two operator-facing
+        callers:
+
+          * Operator dashboard "Run now" buttons (Phase 5b step 3
+            migrates the UI off ``POST /api/jobs/run/<legacy-name>``
+            for ensurer-shaped names).
+          * Auto-heal (Phase 5b step 4 migrates auto-heal off
+            ``action_trigger("ensure-X")`` to a typed
+            ``(service, method)`` invocation).
+
+        Three callers, one mechanism, no per-caller branching.
+
+        Outcome → HTTP status mapping: a 200 indicates the
+        dispatcher RAN. The body's ``status`` field
+        (``success`` / ``transient`` / ``permanent``) carries the
+        outcome shape. ``404`` means the ``(service, method)`` pair
+        is not in the loaded promise registry.
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: service
+          required: true
+          schema:
+            type: string
+          description: Service id matching a contract YAML's ``service.id``.
+        - in: path
+          name: method
+          required: true
+          schema:
+            type: string
+          description: Lifecycle method name (``mint_api_key`` etc.).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source:
+                  type: string
+                  description: |
+                    Caller tag. Defaults to ``operator``.
+                    Recognized: ``operator`` (dashboard "Run now"),
+                    ``auto-heal`` (the recovery loop),
+                    ``orchestrator-tick`` (reserved; the
+                    orchestrator never goes through this endpoint).
+                  enum: [operator, auto-heal, orchestrator-tick]
+                overrides:
+                  type: object
+                  additionalProperties: true
+                  description: |
+                    Per-call config overrides. Reserved for
+                    future use; today the dispatcher reads its
+                    config from the contract YAML.
+            example:
+              source: operator
+              overrides: {}
+      responses:
+        "200":
+          description: Ensurer ran. Outcome shape in body.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [success, transient, permanent]
+                    description: |
+                      ``success`` — ensurer reached the desired
+                      state. ``transient`` — failed but worth
+                      retrying. ``permanent`` — failed and the
+                      operator must intervene.
+                  message:
+                    type: string
+                  source:
+                    type: string
+                  evidence:
+                    type: object
+                    additionalProperties: true
+                  attempts:
+                    type: integer
+                  elapsed_seconds:
+                    type: number
+                required: [status, message, source, evidence]
+              example:
+                status: success
+                message: lifecycle ensurer succeeded
+                source: operator
+                evidence:
+                  reason: minted
+                attempts: 1
+                elapsed_seconds: 0.42
+        "403":
+          description: CSRF token missing/invalid or admin gate denied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Unknown (service, method) pair.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  service:
+                    type: string
+                  method:
+                    type: string
+                required: [error, service, method]
+              example:
+                error: unknown ensurer
+                service: jellyfin
+                method: mint_api_key_typo
+
   # =========================================================================
   # Webhooks — *arr ingest
   # =========================================================================

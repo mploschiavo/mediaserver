@@ -23,6 +23,9 @@ Routes:
 * ``POST /api/guardrails/{id}/test``   — dry-run a single rule.
 * ``POST /api/guardrails/{id}/disable``— soft-disable / re-enable a rule.
 * ``POST /api/media-server/reset``     — DB-level Jellyfin admin reset.
+* ``POST /api/lifecycle-ensurers/{service}/{method}`` — ADR-0005
+  Phase 5b: manually dispatch a single lifecycle ensurer (operator
+  "Run now" + auto-heal converge on the same dispatch path).
 
 The OpenAPI spec already declares each path; ``openapi.yaml``'s
 guardrail bucket gained ``/api/guardrails/config`` in this wave so
@@ -98,6 +101,10 @@ from http import HTTPStatus
 from typing import Any, Callable
 
 from media_stack.api.routing import RouteModule, post
+from media_stack.api.services.lifecycle_ensurer_invoker import (
+    LifecycleEnsurerInvoker,
+    SOURCE_OPERATOR,
+)
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.logging_utils import log_swallowed
 
@@ -698,6 +705,7 @@ class AdminOpsPostRoutes(RouteModule):
         guardrails_service: GuardrailsService | None = None,
         restore_service: RestoreService | None = None,
         media_server_reset: MediaServerResetService | None = None,
+        lifecycle_invoker: LifecycleEnsurerInvoker | None = None,
     ) -> None:
         self._gate = mutation_gate or PostMutationGate()
         self._stack_upgrader = stack_upgrader or StackUpgrader()
@@ -712,6 +720,9 @@ class AdminOpsPostRoutes(RouteModule):
         self._restore = restore_service or RestoreService()
         self._media_server_reset = (
             media_server_reset or MediaServerResetService()
+        )
+        self._lifecycle_invoker = (
+            lifecycle_invoker or LifecycleEnsurerInvoker()
         )
 
     # --- gate helper ---------------------------------------------------
@@ -928,6 +939,34 @@ class AdminOpsPostRoutes(RouteModule):
             return
         body = handler._read_json_body() or {}
         status, response = self._guardrails.set_disabled(id, body)
+        handler._json_response(status, response)
+
+    @post("/api/lifecycle-ensurers/{service}/{method}")
+    def handle_lifecycle_ensurer_invoke(
+        self, handler: Any, *, service: str, method: str,
+    ) -> None:
+        """Manually dispatch a single lifecycle ensurer.
+
+        Body: ``{overrides?: dict, source?: str}`` (source defaults
+        to ``"operator"`` since the operator dashboard is the
+        primary caller; auto-heal passes ``"auto-heal"``).
+
+        ADR-0005 Phase 5b: the surface that lets operator + auto-heal
+        migrate off ``action_trigger("ensure-X")`` to the same
+        ``dispatch_ensurer`` path the orchestrator already uses.
+        Unknown ``(service, method)`` pairs return 404 with the
+        offending pair echoed; outcome envelopes (success / transient
+        / permanent) flow through the 200 body — see
+        ``LifecycleEnsurerInvoker`` for the mapping.
+        """
+        if not self._gated(handler):
+            return
+        body = handler._read_json_body() or {}
+        status, response = self._lifecycle_invoker.invoke(
+            service, method,
+            source=body.get("source", SOURCE_OPERATOR),
+            overrides=body.get("overrides"),
+        )
         handler._json_response(status, response)
 
     @post("/api/media-server/reset")

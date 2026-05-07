@@ -1104,6 +1104,7 @@ class TestRoutingIntegration:
         "/api/guardrails/{id}/test",
         "/api/guardrails/{id}/disable",
         "/api/media-server/reset",
+        "/api/lifecycle-ensurers/{service}/{method}",
     })
 
     def test_all_admin_ops_routes_registered(self) -> None:

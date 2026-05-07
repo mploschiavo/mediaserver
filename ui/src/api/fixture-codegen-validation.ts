@@ -17,6 +17,7 @@
 // is caught.
 //
 // Skipped fixtures (no GET 200 schema, or x-status: planned):
+//   api_status.json — no GET 200 schema for /api/api/status (or x-status: planned)
 //   apps.json — no GET 200 schema for /api/apps (or x-status: planned)
 //   audit-log_head.json — no GET 200 schema for /api/audit-log/head (or x-status: planned)
 //   audit_log_stats.json — no GET 200 schema for /api/audit/log/stats (or x-status: planned)
