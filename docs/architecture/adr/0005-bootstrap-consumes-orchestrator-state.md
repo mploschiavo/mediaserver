@@ -20,12 +20,27 @@ in-flight-action checks. Both targets (k8s + compose) live on the
 new contract. Builds on ADR-0003 (orchestrator) and ADR-0004
 (verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
 
-**Next:** Phase 5b (bootstrap-only ensurer retirement —
-``apply-arr-runtime-defaults``, ``ensure-arr-download-client``,
-etc. lose their handler registrations; ``run_job(name)`` /
-auto-heal compatibility shims also retire). Then Phase 5c
-(``_run_preflights`` retirement + JobRunner internals collapse —
-closes ADR-0003 Phase 5e.3+).
+**Next:** Phases 5b and 5c are sequenced and in flight (no
+deferrals). 5b retires the legacy ``ensure-*`` registrations
+behind a new ``/api/lifecycle-ensurers/{service}/{method}``
+endpoint that operator-dashboard "Run now" + auto-heal both
+migrate to. 5c retires ``_run_preflights`` + JobRunner's
+bootstrap-exclusive machinery and lands the closure: bootstrap
+becomes a registered Job-framework job, ``action_trigger`` and
+``current_action`` / ``action_history`` go away, every top-level
+unit of work flows through one path. See the Phase 5 section
+below for the per-step plan.
+
+**Side-fix shipped on the way**: ``ControllerState.initial_bootstrap_done``
+now persists across restarts via the existing
+``runtime-config.json`` sidecar, via a new
+``mark_initial_bootstrap_done()`` method. Without persistence, an
+already-bootstrapped install would wedge the dashboard banner on
+Queued every time the controller pod restarted. UI's
+history-derived fallback (Phase 5a) is still the durable
+defense; this is the principled-pair on the controller side. The
+flag itself goes away in 5c.4 once bootstrap is a normal
+Job-framework job (run history is the single source of truth).
 
 Phase 3 final state (final wave shipped at ``e4c9b5b4``):
 
@@ -122,16 +137,148 @@ registrations — the wirers ARE the implementation now; the
 legacy handlers exist only for ``run_job(name)`` / auto-heal
 compatibility, which 5b also retires.
 
-**Phase 5c — ``_run_preflights`` + JobRunner internals.** The
-legacy preflight pipeline in ``application/jobs/`` becomes
-redundant once the orchestrator drives every per-service
-ensurer. The run-history / phase-orchestration code paths
-that exclusively serve bootstrap collapse. Closes ADR-0003
-Phase 5e.3+ — the deferred legacy-path deletions.
+The audit during the v1.0.324 release confirmed the work
+spans more than a YAML cleanup: phase-less ``ensure-*``
+registrations are still resolved by ``run_job(name)`` from two
+consumers — operator-dashboard "Run now" buttons and auto-heal's
+recovery dispatch. Deleting registrations without migrating
+those consumers breaks both flows. ``ensure-arr-download-client``
+is also still actively scheduled (``phase: post, priority: 85``)
+because Phase 3 never produced a 9th wirer for it.
 
-Multi-week overall. Each phase depends on operator validation
-that the orchestrator-driven path is genuinely the only
-consumer.
+Sequenced steps (each lands as its own commit + image bake +
+deploy):
+
+1. **5b.1 — DownloadClientWirer.** New
+   ``adapters/servarr/download_client_wiring.py`` mirroring the
+   existing 8 wirers (Servarr-family, parameterized on
+   ``service_id``). Promises ``sonarr-download-client``,
+   ``radarr-download-client`` (and lidarr/readarr if present)
+   flip from string ``ensured_by: ensure-arr-download-client``
+   to ``{type: lifecycle, service: <arr>, method:
+   ensure_download_client}``. Drop ``phase: post`` +
+   ``priority: 85`` from ``core.yaml::ensure-arr-download-client``.
+2. **5b.2 — ``POST /api/lifecycle-ensurers/{service}/{method}``
+   endpoint.** Service: ``LifecycleEnsurerInvoker`` looks up the
+   registry entry, calls ``dispatch_ensurer(ctx, service,
+   method)``, returns the ``Outcome`` envelope. CSRF +
+   admin-gated. Same dispatch path the orchestrator already uses
+   for promise satisfaction — three callers sharing one
+   underlying mechanism, no per-caller branching.
+3. **5b.3 — UI Run-now migration.** Audit existing
+   ``useRunAction("<name>")`` consumers; for ensurer-shaped names
+   thread through a new ``useRunLifecycleEnsurer(service, method)``
+   hook calling the new endpoint. Genuine top-level job names
+   (``orchestrator:satisfy-shadow``, ``jobs:close-stale-runs``,
+   etc.) keep ``useRunAction``.
+4. **5b.4 — Auto-heal migration.** Replace
+   ``action_trigger("ensure-X", {"_source": "auto-heal"})``
+   recovery dispatches with
+   ``LifecycleEnsurerInvoker.invoke(service, method,
+   source="auto-heal")``. Per-ensurer mapping table; e2e
+   recovery test must keep passing.
+5. **5b.5 — Delete legacy ensurer registrations.** Drop the
+   phase-less stubs from ``core.yaml`` / ``jellyseerr.yaml`` /
+   ``bazarr.yaml`` / ``sonarr.yaml`` / ``radarr.yaml``. New
+   ratchet ``test_no_string_ensured_by`` pins that no
+   ``ensured_by: <string>`` entries remain (everything is
+   ``{type: lifecycle, ...}``).
+6. **5b.6 — Live validation.** Bake controller + UI image. Roll
+   to compose + k8s. Smoke: fresh install completes; auto-heal
+   recovers a manually-killed *arr; "Run now" dispatches via the
+   new endpoint.
+
+**Phase 5c — ``_run_preflights`` + JobRunner internals + bootstrap
+becomes a Job-framework job.** The legacy preflight pipeline in
+``application/jobs/`` becomes redundant once the orchestrator
+drives every per-service ensurer. The run-history /
+phase-orchestration code paths that exclusively serve bootstrap
+collapse. Closes ADR-0003 Phase 5e.3+ — the deferred
+legacy-path deletions.
+
+The audit confirmed ``_run_preflights`` is load-bearing today —
+sole sync caller is ``job_adapters.py:1898`` inside
+``discover-api-keys``. JobRunner also carries
+bootstrap-exclusive machinery: ``_try_satisfy_prereqs``
+(framework.py:637), the ``max_attempts`` retry loop
+(framework.py:427), batch run-history bookkeeping
+(framework.py:409). Retiring them is an architectural move, not a
+delete-and-go.
+
+Sequenced steps:
+
+1. **5c.1 — ``discover-api-keys`` delegates to the orchestrator.**
+   The legacy job becomes a thin wrapper invoking
+   ``orchestrator.satisfy_scope([<arr>-api-key-discoverable, ...])``
+   and waiting. Delete ``_run_preflights`` and the
+   ``_run_handler_specs`` plumbing. ADR-0005 Phase 2's
+   ``bootstrap:satisfy-promises`` post-phase already discovers
+   keys via these promises; this consolidates to one path.
+2. **5c.2 — Retire ``_try_satisfy_prereqs`` + ``max_attempts``
+   retry loop.** Both exist because legacy bootstrap re-tried
+   when prereqs weren't met. The orchestrator's tick is itself a
+   settle-loop. JobRunner becomes single-pass: dispatch what's
+   ready, mark unsatisfiable as ``error``.
+3. **5c.3 — Retire batch run-history bookkeeping.**
+   ``record_run_start`` / ``record_run_complete`` batch IDs and
+   parent-child run linking — bootstrap was the only consumer.
+   Per-job history continues working through the normal
+   record-history path.
+4. **5c.4 — Bootstrap becomes a Job-framework job.** This is the
+   actual ADR-0005 closure. ``bootstrap`` registers in the
+   contract registry as a normal top-level Job-framework job
+   whose handler is "queue ``orchestrator:satisfy-shadow`` and
+   wait." The legacy ``action_trigger`` path retires entirely;
+   ``current_action`` and ``action_history`` come off
+   ``ControllerState`` (the UI's Phase 5a fallback to
+   ``action_history`` becomes unnecessary because bootstrap's
+   ``run_id`` and history ``ts`` are now naturally available
+   like every other job). ``controller_serve.py``'s
+   ``_action_worker`` subprocess machinery collapses into the
+   standard ``JobRunner.run`` call.
+5. **5c.5 — Live validation + ADR closures.** Same scenario set
+   as 5b.6. ADR-0003 Phase 5e.3+ marked closed (the deferred
+   deletions ARE these). ADR-0005 status flips to "Phase 5
+   fully shipped."
+
+**Architectural end-state after 5c.4 lands:**
+
+Two principled paths. No snowflakes.
+
+- **``JobRunner.run(name)``** — every top-level scheduled or
+  operator-runnable unit of work. Bootstrap, orchestrator
+  ticks, media-integrity scans, queue housekeeping. One
+  history table, one event stream, one set of dashboard
+  widgets.
+- **``dispatch_ensurer(service, method)``** — atomic promise
+  satisfaction. Three callers sharing the same mechanism: the
+  orchestrator's tick, the new
+  ``/api/lifecycle-ensurers/{service}/{method}`` endpoint, and
+  auto-heal's recovery dispatch. No per-caller branching
+  inside ``dispatch_ensurer``.
+
+The two paths exist because they have different lifecycle
+granularity (promise = atomic, job = run-record-bearing).
+Collapsing them would force an awkward common denominator.
+Document this distinction explicitly in OpenAPI so the
+``/api/jobs/run/{name}`` and ``/api/lifecycle-ensurers/...``
+surfaces don't drift toward "two ways to do the same thing."
+
+**Restart-resilience side-fix shipped 2026-05-07**:
+``ControllerState.initial_bootstrap_done`` now persists to the
+existing ``runtime-config.json`` sidecar via a new
+``mark_initial_bootstrap_done()`` method (called from
+``finish()`` and the two ``controller_serve.py`` flip sites).
+Without persistence, every controller restart on an
+already-bootstrapped install reset the in-memory flag to
+``False`` and the dashboard banner wedged on Queued. The UI's
+history-derived fallback (Phase 5a) is still the durable
+defense; persistence is the principled fix on the
+state-of-the-world. Pinned by
+``test_state_architecture.py::TestInitialBootstrapDonePersistence``.
+After 5c.4 lands, both this flag AND the
+``action_history``-based fallback go away — bootstrap's run
+record is the single source of truth, like every other job.
 
 Phase 2 cutover landed — what changed:
 
