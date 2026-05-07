@@ -431,6 +431,17 @@ class PromisesRegistryConsistent(unittest.TestCase):
         # work that widens the check picks it up. See
         # tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py.
         "apply-arr-runtime-defaults",
+        # ADR-0005 Phase 5b (download-client — the deferred 9th wirer):
+        # ``ServarrLifecycle.ensure_download_client`` delegates to
+        # ``DownloadClientWirer`` (per-arr endpoint + upsert-by-
+        # implementation match). Two promises bind:
+        # sonarr-download-client (cat=tv) + radarr-download-client
+        # (cat=movies). The legacy job stays REGISTERED so
+        # ``run_job(name)`` (auto-heal + operator dashboard) keeps
+        # resolving it; without ``phase`` the bootstrap loader skips
+        # it. See
+        # tests/unit/contracts/test_servarr_download_client_promise_driven.py.
+        "ensure-arr-download-client",
     }
 
     def test_no_orphan_ensure_jobs(self):

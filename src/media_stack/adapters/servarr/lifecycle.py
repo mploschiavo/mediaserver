@@ -32,6 +32,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from media_stack.adapters.servarr.download_client_wiring import (
+    DownloadClientWirer,
+)
 from media_stack.adapters.servarr.indexer_pipeline import (
     IndexerPipelineWirer,
 )
@@ -92,6 +95,18 @@ _SEED_SERIES_WIRER = SeedSeriesWirer()
 # handler does ~100 LoC of multi-arr orchestration in one pass and
 # splitting into N ensurers would clobber the shared *arr settings.
 _RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()
+
+# ADR-0005 Phase 5b — the deferred 9th wirer. Same shape as the
+# notifier / indexer-pipeline / seed-series instances above:
+# stateless module-level singleton, per-call parameterized by
+# service_id + arr_api_key + ctx. qBittorrent identity (host /
+# port / creds) is constructor-injected so tests can override
+# without touching process env. Two promises bind:
+# sonarr-download-client (cat=tv) + radarr-download-client
+# (cat=movies); lidarr / readarr have no download-client promise
+# today but the wirer covers them so the same lifecycle method
+# works across the family.
+_DOWNLOAD_CLIENT_WIRER = DownloadClientWirer()
 
 
 class ServarrLifecycle:
@@ -363,6 +378,37 @@ class ServarrLifecycle:
         self, ctx: OrchestrationContext,
     ) -> Outcome[None]:
         return _RUNTIME_DEFAULTS_WIRER.ensure_runtime_defaults(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    # --- Download-client wiring (ADR-0005 Phase 5b) -----------------
+    #
+    # Two promises bind:
+    #   * sonarr-download-client → probe_download_client / ensure
+    #   * radarr-download-client → probe_download_client / ensure
+    #
+    # Both methods delegate to ``DownloadClientWirer`` (in
+    # ``download_client_wiring.py``). The lifecycle owns the api-key
+    # discovery contract; the wirer owns the per-arr endpoint shape,
+    # the qBittorrent payload, and the upsert-by-implementation
+    # match logic.
+    #
+    # Lidarr / Readarr have no download-client promise today, but
+    # the wirer's ``_ARR_DOWNLOAD_CLIENT_SPECS`` table covers them
+    # too — so adding a future ``lidarr-download-client`` promise is
+    # a one-line YAML change rather than a wirer rewrite.
+
+    def probe_download_client(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _DOWNLOAD_CLIENT_WIRER.probe(
+            self.service_id, self.discover_api_key(ctx), ctx,
+        )
+
+    def ensure_download_client(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _DOWNLOAD_CLIENT_WIRER.ensure(
             self.service_id, self.discover_api_key(ctx), ctx,
         )
 

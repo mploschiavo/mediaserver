@@ -209,13 +209,38 @@ plugin:
       label: "qBit categories (movies/tv/music/books)"
       requires: []
 
+    # ADR-0005 Phase 5b cutover: ``phase: post`` + ``priority: 85``
+    # removed. The bootstrap-time path is now the orchestrator
+    # dispatching ``ServarrLifecycle.ensure_download_client`` per-*arr
+    # via the ``sonarr-download-client`` + ``radarr-download-client``
+    # promises (in their respective ``contracts/services/*.yaml``).
+    # The wirer (``adapters/servarr/download_client_wiring.py``) owns
+    # the per-arr endpoint shape, the QBittorrent payload, and the
+    # upsert-by-implementation match logic.
+    #
+    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
+    # operator dashboard) keeps resolving it. Without ``phase``,
+    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
+    # bootstrap loader's ``phase_order`` never picks it up — exactly
+    # what we want, since the orchestrator is now the bootstrap path.
+    #
+    # ``after: [ensure-qbittorrent-categories]`` stays as documentation
+    # of the runtime ordering invariant (qBit categories must exist
+    # before the *arr's category field references something real).
+    # With ``phase`` absent here AND on the categories job (Phase 3
+    # cutover), ``after`` is a no-op for the bootstrap DAG but keeps
+    # the constraint visible for any future revert.
+    #
+    # Reverting = restore ``phase: post`` + ``priority: 85`` AND flip
+    # ``sonarr-download-client`` / ``radarr-download-client`` promises
+    # back to ``ensured_by: ensure-arr-download-client`` + http_json
+    # probes.
+    #
+    # Phase 5b.5 deletes this entry entirely after the auto-heal +
+    # UI migrate off ``run_job("ensure-arr-download-client")``.
     ensure-arr-download-client:
       handler: media_stack.services.apps.core.job_adapters:ensure_arr_download_client
       label: "Wire qBit as download client on each *arr"
-      phase: post
-      # Must come AFTER qBit categories exist so the *arr's category
-      # field references something real.
-      priority: 85
       requires: []
       after: [ensure-qbittorrent-categories]
 
