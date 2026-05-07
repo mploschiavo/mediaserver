@@ -34,6 +34,7 @@ from media_stack.api.routes.post_admin_ops import (
     PostMutationGate,
 )
 from media_stack.api.services.lifecycle_ensurer_invoker import (
+    LifecycleEnsurerInvocation,
     LifecycleEnsurerInvoker,
     RESPONSE_STATUS_PERMANENT,
     RESPONSE_STATUS_SUCCESS,
@@ -41,12 +42,34 @@ from media_stack.api.services.lifecycle_ensurer_invoker import (
     SOURCE_AUTO_HEAL,
     SOURCE_OPERATOR,
 )
+from media_stack.domain.services.identifiers import (
+    EnsurerMethod,
+    InvocationSource,
+    ServiceId,
+)
 from media_stack.domain.services.lifecycle import Outcome
 from media_stack.domain.services.promises import (
     LifecycleEnsurer,
     LifecycleProbe,
     Promise,
 )
+
+
+def _inv(
+    service: str,
+    method: str,
+    *,
+    source: str = SOURCE_OPERATOR,
+) -> LifecycleEnsurerInvocation:
+    """Tiny test helper — wrap (service, method, source) into a
+    ``LifecycleEnsurerInvocation`` value object so tests aren't
+    forced to repeat the dataclass construction at every call site.
+    """
+    return LifecycleEnsurerInvocation(
+        service=ServiceId(service),
+        method=EnsurerMethod(method),
+        source=InvocationSource(source),
+    )
 from tests.unit.api.routes.test_post_admin_ops import (
     _AlwaysAllowGate,
     _RouteHarness,
@@ -175,7 +198,7 @@ class TestLifecycleEnsurerInvokerDirect:
     def test_known_pair_success(self) -> None:
         invoker = _make_invoker()
         status, body = invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "mint_api_key"),
         )
         assert status == 200
         assert body["status"] == RESPONSE_STATUS_SUCCESS
@@ -186,7 +209,7 @@ class TestLifecycleEnsurerInvokerDirect:
     def test_unknown_service_returns_404(self) -> None:
         invoker = _make_invoker()
         status, body = invoker.invoke(
-            "ghost-svc", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("ghost-svc", "mint_api_key"),
         )
         assert status == 404
         assert body == {
@@ -198,7 +221,7 @@ class TestLifecycleEnsurerInvokerDirect:
     def test_unknown_method_on_known_service_returns_404(self) -> None:
         invoker = _make_invoker()
         status, body = invoker.invoke(
-            "jellyfin", "delete_everything", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "delete_everything"),
         )
         assert status == 404
         assert body["error"] == "unknown ensurer"
@@ -209,7 +232,7 @@ class TestLifecycleEnsurerInvokerDirect:
         capture: dict[str, Any] = {}
         invoker = _make_invoker(capture=capture)
         invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_AUTO_HEAL,
+            _inv("jellyfin", "mint_api_key", source=SOURCE_AUTO_HEAL),
         )
         assert capture["ctx_extra"]["invocation_source"] == SOURCE_AUTO_HEAL
 
@@ -219,7 +242,7 @@ class TestLifecycleEnsurerInvokerDirect:
         # Pass empty string — same shape the route does when body
         # has no ``source`` key.
         _, body = invoker.invoke(
-            "jellyfin", "mint_api_key", source="",
+            _inv("jellyfin", "mint_api_key", source=""),
         )
         assert body["source"] == SOURCE_OPERATOR
         assert capture["ctx_extra"]["invocation_source"] == SOURCE_OPERATOR
@@ -233,7 +256,7 @@ class TestLifecycleEnsurerInvokerDirect:
         capture: dict[str, Any] = {}
         invoker = _make_invoker(capture=capture)
         _, body = invoker.invoke(
-            "jellyfin", "mint_api_key", source="DASHBOARD",
+            _inv("jellyfin", "mint_api_key", source="DASHBOARD"),
         )
         assert body["source"] == SOURCE_OPERATOR
         assert capture["ctx_extra"]["invocation_source"] == SOURCE_OPERATOR
@@ -246,7 +269,7 @@ class TestLifecycleEnsurerInvokerDirect:
             ),
         )
         status, body = invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "mint_api_key"),
         )
         assert status == 200
         assert body["status"] == RESPONSE_STATUS_TRANSIENT
@@ -263,7 +286,7 @@ class TestLifecycleEnsurerInvokerDirect:
             ),
         )
         status, body = invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "mint_api_key"),
         )
         assert status == 200
         assert body["status"] == RESPONSE_STATUS_PERMANENT
@@ -273,7 +296,7 @@ class TestLifecycleEnsurerInvokerDirect:
         capture: dict[str, Any] = {}
         invoker = _make_invoker(capture=capture)
         invoker.invoke(
-            "sonarr", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("sonarr", "mint_api_key"),
         )
         assert capture["secrets"] == {"SONARR_API_KEY": "abc"}
 
@@ -281,7 +304,7 @@ class TestLifecycleEnsurerInvokerDirect:
         capture: dict[str, Any] = {}
         invoker = _make_invoker(capture=capture)
         invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "mint_api_key"),
         )
         spec = capture["spec"]
         assert isinstance(spec, LifecycleEnsurer)
@@ -292,7 +315,7 @@ class TestLifecycleEnsurerInvokerDirect:
         capture: dict[str, Any] = {}
         invoker = _make_invoker(capture=capture)
         invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "mint_api_key"),
         )
         assert capture["now"] == 1234.0
 
@@ -311,7 +334,7 @@ class TestLifecycleEnsurerInvokerDirect:
             dispatch_fn=lambda *a, **k: pytest.fail("should not dispatch"),
         )
         status, body = invoker.invoke(
-            "jellyfin", "mint_api_key", source=SOURCE_OPERATOR,
+            _inv("jellyfin", "mint_api_key"),
         )
         assert status == 404
         assert body["error"] == "unknown ensurer"

@@ -417,22 +417,34 @@ class TestEnsureDownloadClient:
 
 
 class TestQbitCredentialInjection:
-    """The wirer's qBit username / password come from injected
-    callables defaulting to env-var reads (matching the legacy
-    handler). Tests can override without touching process env."""
+    """The wirer's qBit username / password resolve through the
+    ``LifecycleWirerBase._discover_secret(ctx, env_var)`` path:
+    ctx.secrets first, then ``os.environ``, then upstream factory
+    defaults. Tests inject via ctx.secrets so the discovery path is
+    identical to every other wirer in the family."""
 
     @patch("urllib.request.urlopen")
-    def test_constructor_injected_creds_appear_in_payload(
+    def test_ctx_secrets_creds_appear_in_payload(
         self, mock_open: MagicMock,
     ) -> None:
         responses = [_http_response(b"[]"), _http_response(b"", status=201)]
         mock_open.side_effect = responses
 
-        wirer = DownloadClientWirer(
-            qbit_username=lambda: "injected-user",
-            qbit_password=lambda: "injected-pass",
+        # Inject via the ctx.secrets discovery channel — same shape
+        # ``ServarrLifecycle`` uses for arr api keys.
+        ctx_base = _ctx("sonarr")
+        merged_secrets = dict(ctx_base.secrets)
+        merged_secrets["QBIT_USERNAME"] = "injected-user"
+        merged_secrets["QBIT_PASSWORD"] = "injected-pass"
+        ctx = OrchestrationContext(
+            service_id=ctx_base.service_id,
+            config=ctx_base.config,
+            secrets=merged_secrets,
+            now=ctx_base.now,
         )
-        outcome = wirer.ensure("sonarr", _ARR_KEY, _ctx("sonarr"))
+
+        wirer = DownloadClientWirer()
+        outcome = wirer.ensure("sonarr", _ARR_KEY, ctx)
         assert outcome.ok
 
         post_call = mock_open.call_args_list[1]

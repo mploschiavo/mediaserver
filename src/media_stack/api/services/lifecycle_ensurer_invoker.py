@@ -44,8 +44,13 @@ injected collaborators:
 * ``logger`` — module logger by default; tests pass a stub to
   assert audit-trail emissions.
 
-Public surface: a single ``invoke`` method returning ``(status,
-body)``.
+Public surface: a single ``invoke`` method that takes a
+``LifecycleEnsurerInvocation`` value object and returns
+``(http_status, response_body)``. The value-object packaging means
+the call site is ``invoker.invoke(LifecycleEnsurerInvocation(
+service=..., method=..., source=...))`` — adding a new field
+(e.g. correlation id) is an additive change, no positional-arg
+shuffle through callers.
 
 Source tagging
 --------------
@@ -80,9 +85,15 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from typing import Any, Callable, Iterable, Mapping
 
+from media_stack.domain.services.identifiers import (
+    EnsurerMethod,
+    InvocationSource,
+    ServiceId,
+)
 from media_stack.domain.services.lifecycle import (
     OrchestrationContext,
     Outcome,
@@ -105,10 +116,12 @@ logger = logging.getLogger(__name__)
 # "auto-heal"; the orchestrator tick path doesn't go through this
 # class but the reserved value is here so route + audit emitters
 # can compare against a single source-of-truth.
-SOURCE_OPERATOR = "operator"
-SOURCE_AUTO_HEAL = "auto-heal"
-SOURCE_ORCHESTRATOR_TICK = "orchestrator-tick"
-_KNOWN_SOURCES: frozenset[str] = frozenset(
+SOURCE_OPERATOR: InvocationSource = InvocationSource("operator")
+SOURCE_AUTO_HEAL: InvocationSource = InvocationSource("auto-heal")
+SOURCE_ORCHESTRATOR_TICK: InvocationSource = InvocationSource(
+    "orchestrator-tick",
+)
+_KNOWN_SOURCES: frozenset[InvocationSource] = frozenset(
     {SOURCE_OPERATOR, SOURCE_AUTO_HEAL, SOURCE_ORCHESTRATOR_TICK},
 )
 
@@ -121,8 +134,27 @@ RESPONSE_STATUS_PERMANENT = "permanent"
 
 DispatchFn = Callable[..., Outcome[Any]]
 RegistryLoader = Callable[[], list[Promise]]
-SecretsResolver = Callable[[str], Mapping[str, str]]
+SecretsResolver = Callable[[ServiceId], Mapping[str, str]]
 Clock = Callable[[], float]
+
+
+@dataclass(frozen=True)
+class LifecycleEnsurerInvocation:
+    """Value object bundling everything ``LifecycleEnsurerInvoker``
+    needs to dispatch one manual lifecycle-ensurer call.
+
+    Replaces a positional/kwarg-soup signature
+    (``invoke(service, method, *, source, overrides)``) so adding a
+    field (correlation id, requested-by user, override-budget, …)
+    is an additive change at every call site instead of a fan-out
+    rewrite. Frozen so the orchestrator can't mutate the request
+    mid-dispatch.
+    """
+
+    service: ServiceId
+    method: EnsurerMethod
+    source: InvocationSource = SOURCE_OPERATOR
+    overrides: Mapping[str, Any] = field(default_factory=dict)
 
 
 class _SourceTaggingResolver:
@@ -145,17 +177,17 @@ class _SourceTaggingResolver:
         self,
         inner: LifecycleResolver,
         *,
-        source: str,
+        source: InvocationSource,
     ) -> None:
         self._inner = inner
         self._source = source
 
-    def resolve(self, service_id: str) -> Any:
+    def resolve(self, service_id: ServiceId) -> Any:
         return self._inner.resolve(service_id)
 
     def context_for(
         self,
-        service_id: str,
+        service_id: ServiceId,
         *,
         secrets: Mapping[str, str] | None = None,
         now_fn: Any = None,
@@ -207,47 +239,51 @@ class LifecycleEnsurerInvoker:
         self._registry_loader = registry_loader or load_registry
         self._dispatch = dispatch_fn or _default_dispatch_ensurer
         self._clock = clock or time.time
-        self._secrets_resolver = secrets_resolver or _empty_secrets
+        self._secrets_resolver = (
+            secrets_resolver or self._empty_secrets
+        )
         self._log = log or logger
 
     # --- public entry --------------------------------------------------
 
     def invoke(
         self,
-        service: str,
-        method: str,
-        *,
-        source: str,
-        overrides: Mapping[str, Any] | None = None,
+        invocation: LifecycleEnsurerInvocation,
     ) -> tuple[int, dict[str, Any]]:
         """Manually dispatch a single lifecycle ensurer.
 
         Returns ``(http_status, response_body)``. See module-level
         ``Outcome → HTTP mapping`` for the envelope shape.
         """
-        normalized_source = self._normalize_source(source)
-        if not self._is_known_pair(service, method):
+        normalized_source = self._normalize_source(invocation.source)
+        if not self._is_known_pair(invocation.service, invocation.method):
             self._log.warning(
                 "lifecycle-ensurer manual invoke: unknown pair "
                 "service=%r method=%r source=%r",
-                service, method, normalized_source,
+                invocation.service,
+                invocation.method,
+                normalized_source,
             )
             return HTTPStatus.NOT_FOUND, {
                 "error": "unknown ensurer",
-                "service": service,
-                "method": method,
+                "service": invocation.service,
+                "method": invocation.method,
             }
-        spec = LifecycleEnsurer(service=service, method=method)
+        spec = LifecycleEnsurer(
+            service=invocation.service, method=invocation.method,
+        )
         wrapped = _SourceTaggingResolver(
             self._resolver, source=normalized_source,
         )
-        secrets = self._secrets_resolver(service) or {}
+        secrets = self._secrets_resolver(invocation.service) or {}
         now = self._clock()
         self._log.info(
             "lifecycle-ensurer manual invoke: service=%r method=%r "
             "source=%r overrides_keys=%s",
-            service, method, normalized_source,
-            sorted((overrides or {}).keys()),
+            invocation.service,
+            invocation.method,
+            normalized_source,
+            sorted(invocation.overrides.keys()),
         )
         outcome = self._dispatch(
             spec,
@@ -260,7 +296,9 @@ class LifecycleEnsurerInvoker:
 
     # --- internals -----------------------------------------------------
 
-    def _is_known_pair(self, service: str, method: str) -> bool:
+    def _is_known_pair(
+        self, service: ServiceId, method: EnsurerMethod,
+    ) -> bool:
         try:
             return (service, method) in self._known_pairs()
         except Exception as exc:  # noqa: BLE001
@@ -274,16 +312,21 @@ class LifecycleEnsurerInvoker:
             )
             return False
 
-    def _known_pairs(self) -> set[tuple[str, str]]:
+    def _known_pairs(self) -> set[tuple[ServiceId, EnsurerMethod]]:
         promises = self._registry_loader() or []
         return {
-            (p.ensurer.service, p.ensurer.method)
-            for p in _iter_lifecycle_promises(promises)
+            (
+                ServiceId(p.ensurer.service),
+                EnsurerMethod(p.ensurer.method),
+            )
+            for p in self._iter_lifecycle_promises(promises)
         }
 
-    def _normalize_source(self, source: str | None) -> str:
+    def _normalize_source(
+        self, source: InvocationSource | str | None,
+    ) -> InvocationSource:
         if source and source in _KNOWN_SOURCES:
-            return source
+            return InvocationSource(source)
         # Unknown / missing source defaults to operator. We never
         # 400 on an unrecognized source because source is purely
         # observability-side; misclassifying it doesn't change
@@ -296,7 +339,7 @@ class LifecycleEnsurerInvoker:
         return SOURCE_OPERATOR
 
     def _build_response(
-        self, outcome: Outcome[Any], source: str,
+        self, outcome: Outcome[Any], source: InvocationSource,
     ) -> dict[str, Any]:
         if outcome.ok:
             envelope_status = RESPONSE_STATUS_SUCCESS
@@ -316,30 +359,39 @@ class LifecycleEnsurerInvoker:
             "elapsed_seconds": float(outcome.elapsed_seconds),
         }
 
+    def _iter_lifecycle_promises(
+        self, promises: Iterable[Promise],
+    ) -> Iterable[Promise]:
+        """Filter a promise list down to those whose ensurer is a
+        ``LifecycleEnsurer`` (not a legacy ``JobEnsurer``). Bound
+        as an instance method (rather than ``@staticmethod``) per
+        the OO-discipline ratchet — keeps the class the single
+        public surface and leaves room for subclasses to widen
+        the predicate (e.g. ADR-0005 Phase 5c JobEnsurer cutover)
+        without changing call sites."""
+        for p in promises:
+            if isinstance(p.ensurer, LifecycleEnsurer):
+                yield p
 
-def _iter_lifecycle_promises(
-    promises: Iterable[Promise],
-) -> Iterable[Promise]:
-    for p in promises:
-        if isinstance(p.ensurer, LifecycleEnsurer):
-            yield p
+    def _empty_secrets(
+        self, _service: ServiceId,
+    ) -> Mapping[str, str]:
+        """Default secrets resolver — empty.
 
-
-def _empty_secrets(_service: str) -> Mapping[str, str]:
-    """Default secrets resolver — empty.
-
-    The orchestrator passes a populated secrets mapping merged from
-    env + secrets-file mounts, but the synchronous
-    operator/auto-heal entry point doesn't have a request-scoped
-    secrets context yet. Lifecycles that need credentials read from
-    env directly (the ``OrchestrationContext.config.api_key_env``
-    lookup), so an empty default is correct for the migration.
-    Step 4 (auto-heal cutover) wires a real resolver here.
-    """
-    return {}
+        The orchestrator passes a populated secrets mapping merged
+        from env + secrets-file mounts, but the synchronous
+        operator/auto-heal entry point doesn't have a request-scoped
+        secrets context yet. Lifecycles that need credentials read
+        from env directly (the
+        ``OrchestrationContext.config.api_key_env`` lookup), so an
+        empty default is correct for the migration. Step 4
+        (auto-heal cutover) wires a real resolver here.
+        """
+        return {}
 
 
 __all__ = [
+    "LifecycleEnsurerInvocation",
     "LifecycleEnsurerInvoker",
     "RESPONSE_STATUS_PERMANENT",
     "RESPONSE_STATUS_SUCCESS",

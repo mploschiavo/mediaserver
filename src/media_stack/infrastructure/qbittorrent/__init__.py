@@ -16,3 +16,13 @@ credential reconciliation.
 # binary, not a configurable choice.
 QBITTORRENT_FACTORY_DEFAULT_USERNAME = "admin"
 QBITTORRENT_FACTORY_DEFAULT_PASSWORD = "adminadmin"  # noqa: S105
+
+# qBittorrent's WebUI default port (linuxserver/qbittorrent and the
+# upstream binary both bind to 8080). Lives here so adapters that
+# need to point an *arr's download-client config at the qBit
+# WebUI can import the canonical port instead of inlining the
+# literal — same allowlist rationale as the factory password
+# above (it's an upstream binary property, not an operator-tunable
+# default we should move to profile YAML).
+QBITTORRENT_DEFAULT_WEBUI_PORT = 8080
+QBITTORRENT_DEFAULT_HOST = "qbittorrent"

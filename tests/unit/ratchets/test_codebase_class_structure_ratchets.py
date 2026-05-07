@@ -90,7 +90,8 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # 3 parsers + Loader + Result) alongside the shim functions. Net:
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
-FILES_OVER_400_LINES_RATCHET = 89  # 87 → 86 — ADR-0007 Phase E cleanup: deleted handlers_get.py (2,572 LoC) + handlers_post.py (2,788 LoC) removed two files >400 lines.
+# FILES_OVER_400_LINES_RATCHET = 91  # 89 → 91 — ADR-0005 Phase 5b.1+5b.2: DownloadClientWirer (the 9th wirer, 453 LoC) and LifecycleEnsurerInvoker (402 LoC) are both new feature surface in well-shaped per-class modules. The 9th wirer matches the existing 8 lifecycle wirers' shape (probe + ensure + endpoint resolver + http plumbing); splitting it would be artificial. The invoker grew above 400 once LifecycleEnsurerInvocation + NewType integration landed (ratchets #9 + #10 fix path).
+FILES_OVER_400_LINES_RATCHET = 91
 HARDCODED_URLS_RATCHET = 151        # 154 → 151 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed inline URL literals. Tightened.
 DUPLICATE_STRINGS_5PLUS_RATCHET = 110  # 107 → 103 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed duplicate string literals. Tightened.
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic

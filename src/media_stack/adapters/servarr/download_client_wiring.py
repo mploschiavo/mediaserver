@@ -53,10 +53,9 @@ process env.
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
-from typing import Any, Callable
+from typing import Any
 
 from media_stack.adapters._shared.lifecycle_wirer_base import (
     LifecycleWirerBase,
@@ -65,6 +64,12 @@ from media_stack.domain.services import (
     OrchestrationContext,
     Outcome,
     ProbeResult,
+)
+from media_stack.infrastructure.qbittorrent import (
+    QBITTORRENT_DEFAULT_HOST,
+    QBITTORRENT_DEFAULT_WEBUI_PORT,
+    QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
+    QBITTORRENT_FACTORY_DEFAULT_USERNAME,
 )
 
 
@@ -75,18 +80,17 @@ _WRITE_HTTP_TIMEOUT_SECONDS = 10
 
 # --- qBittorrent identity ------------------------------------------
 #
-# Constructor-injected so tests can override; defaults read from the
-# same env vars the legacy handler reads (``QBIT_USERNAME`` /
-# ``QBIT_PASSWORD``) with the same hardcoded fallbacks. The wirer
-# treats qBit as a fixed downstream — host / port aren't per-arr
-# config (they're qBit's own deployment), so they live in the
-# constants table here rather than in ``ctx.config``.
-_QBIT_DEFAULT_HOST = "qbittorrent"
-_QBIT_DEFAULT_PORT = 8080
-_QBIT_DEFAULT_USERNAME_ENV = "QBIT_USERNAME"
-_QBIT_DEFAULT_PASSWORD_ENV = "QBIT_PASSWORD"
-_QBIT_DEFAULT_USERNAME = "admin"
-_QBIT_DEFAULT_PASSWORD = "adminadmin"
+# Connection target for the *arr's download-client config —
+# host/port describe where the *arr should reach qBit, NOT where
+# the controller reaches qBit. Username/password resolved through
+# the LifecycleWirerBase ctx.secrets-then-os.environ fallback so
+# the wirer doesn't read process env directly (one canonical path
+# for credential discovery; tests inject via ctx.secrets). Host /
+# port + factory-default creds all sourced from the canonical
+# ``infrastructure.qbittorrent`` SoT — the allowlisted upstream-
+# constants module — so this wirer doesn't redeclare them.
+_QBIT_USERNAME_ENV = "QBIT_USERNAME"
+_QBIT_PASSWORD_ENV = "QBIT_PASSWORD"  # noqa: S105
 _QBIT_IMPLEMENTATION = "QBittorrent"
 _QBIT_CONFIG_CONTRACT = "QBittorrentSettings"
 _DOWNLOAD_CLIENT_NAME = "qBittorrent"
@@ -117,32 +121,32 @@ class DownloadClientWirer(LifecycleWirerBase):
     def __init__(
         self,
         *,
-        qbit_host: str = _QBIT_DEFAULT_HOST,
-        qbit_port: int = _QBIT_DEFAULT_PORT,
-        qbit_username: Callable[[], str] | None = None,
-        qbit_password: Callable[[], str] | None = None,
+        qbit_host: str = QBITTORRENT_DEFAULT_HOST,
+        qbit_port: int = QBITTORRENT_DEFAULT_WEBUI_PORT,
         list_timeout_seconds: int = _LIST_HTTP_TIMEOUT_SECONDS,
         write_timeout_seconds: int = _WRITE_HTTP_TIMEOUT_SECONDS,
     ) -> None:
         self._qbit_host = qbit_host
         self._qbit_port = qbit_port
-        # Deferred read so process env mutations between bootstrap
-        # and the first ensurer call are honored. Tests can inject a
-        # fixed-value lambda.
-        self._qbit_username_getter = (
-            qbit_username
-            or (lambda: os.environ.get(
-                _QBIT_DEFAULT_USERNAME_ENV, _QBIT_DEFAULT_USERNAME,
-            ))
-        )
-        self._qbit_password_getter = (
-            qbit_password
-            or (lambda: os.environ.get(
-                _QBIT_DEFAULT_PASSWORD_ENV, _QBIT_DEFAULT_PASSWORD,
-            ))
-        )
         self._list_timeout_seconds = list_timeout_seconds
         self._write_timeout_seconds = write_timeout_seconds
+
+    def _qbit_username(self, ctx: OrchestrationContext) -> str:
+        """ctx.secrets → os.environ → factory-default username.
+        Tests inject via ctx.secrets so the secret-discovery path is
+        identical to every other wirer in the family."""
+        return (
+            self._discover_secret(ctx, _QBIT_USERNAME_ENV)
+            or QBITTORRENT_FACTORY_DEFAULT_USERNAME
+        )
+
+    def _qbit_password(self, ctx: OrchestrationContext) -> str:
+        """Same shape as ``_qbit_username`` — ctx.secrets first,
+        env fallback, then upstream factory default."""
+        return (
+            self._discover_secret(ctx, _QBIT_PASSWORD_ENV)
+            or QBITTORRENT_FACTORY_DEFAULT_PASSWORD
+        )
 
     # === Probe =========================================================
 
@@ -233,7 +237,7 @@ class DownloadClientWirer(LifecycleWirerBase):
                 },
             )
         return self._upsert_qbit_client(
-            existing, service_id, url, arr_api_key,
+            existing, service_id, url, arr_api_key, ctx,
         )
 
     # === Endpoint helpers ==============================================
@@ -291,9 +295,10 @@ class DownloadClientWirer(LifecycleWirerBase):
         service_id: str,
         url: str,
         arr_api_key: str,
+        ctx: OrchestrationContext,
     ) -> Outcome[None]:
         match = self._find_qbit_entry(existing)
-        payload = self._build_payload(service_id)
+        payload = self._build_payload(service_id, ctx)
         headers = {
             "X-Api-Key": arr_api_key,
             "Content-Type": "application/json",
@@ -412,7 +417,9 @@ class DownloadClientWirer(LifecycleWirerBase):
 
     # === Payload builder ==============================================
 
-    def _build_payload(self, service_id: str) -> dict[str, Any]:
+    def _build_payload(
+        self, service_id: str, ctx: OrchestrationContext,
+    ) -> dict[str, Any]:
         """Mirror the legacy handler's payload shape verbatim. The
         ``priority: 1`` / ``removeCompletedDownloads: False`` /
         ``removeFailedDownloads: True`` flags are what the legacy
@@ -420,8 +427,8 @@ class DownloadClientWirer(LifecycleWirerBase):
         drift live deployments on next ensurer run."""
         spec = _ARR_DOWNLOAD_CLIENT_SPECS[service_id]
         _, cat_field, cat_value = spec
-        username = self._qbit_username_getter()
-        password = self._qbit_password_getter()
+        username = self._qbit_username(ctx)
+        password = self._qbit_password(ctx)
         fields = [
             {"name": "host",     "value": self._qbit_host},
             {"name": "port",     "value": self._qbit_port},

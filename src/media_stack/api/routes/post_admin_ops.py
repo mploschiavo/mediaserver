@@ -102,8 +102,14 @@ from typing import Any, Callable
 
 from media_stack.api.routing import RouteModule, post
 from media_stack.api.services.lifecycle_ensurer_invoker import (
+    LifecycleEnsurerInvocation,
     LifecycleEnsurerInvoker,
     SOURCE_OPERATOR,
+)
+from media_stack.domain.services.identifiers import (
+    EnsurerMethod,
+    InvocationSource,
+    ServiceId,
 )
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.logging_utils import log_swallowed
@@ -962,11 +968,15 @@ class AdminOpsPostRoutes(RouteModule):
         if not self._gated(handler):
             return
         body = handler._read_json_body() or {}
-        status, response = self._lifecycle_invoker.invoke(
-            service, method,
-            source=body.get("source", SOURCE_OPERATOR),
-            overrides=body.get("overrides"),
+        invocation = LifecycleEnsurerInvocation(
+            service=ServiceId(service),
+            method=EnsurerMethod(method),
+            source=InvocationSource(
+                body.get("source", SOURCE_OPERATOR),
+            ),
+            overrides=body.get("overrides") or {},
         )
+        status, response = self._lifecycle_invoker.invoke(invocation)
         handler._json_response(status, response)
 
     @post("/api/media-server/reset")

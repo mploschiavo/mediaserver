@@ -33,6 +33,21 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BASELINE_FILE = REPO_ROOT / ".ratchets" / "duplicate-code-baseline.txt"
+# Baseline history (the .txt is int-only by convention; rationale
+# lives here so the next reader sees WHY the count moved):
+#   * 27 → 28 — ADR-0005 Phase 5b.1: DownloadClientWirer's
+#     ``_guard_probe_prereqs`` is structurally identical to
+#     IndexerPipelineWirer's (servarr/download_client_wiring.py:172
+#     ↔ servarr/indexer_pipeline.py:120). Both walk the same
+#     pattern: "support-set membership → endpoint-resolve → api-key
+#     check → None". The two wirers wrap different lookup tables
+#     (_ARR_DOWNLOAD_CLIENT_SPECS vs _ARR_API_VERSIONS) and
+#     different endpoint resolvers, so the bodies normalize to
+#     identical fingerprints. Wave-of-9-wirers duplication, same
+#     rationale as the pre-Phase-5b ``_ping_url`` group across the
+#     5 lifecycle adapters. A future LifecycleWirerBase-level
+#     extraction (templated guard helper accepting a support_set +
+#     endpoint_fn) would reduce this back to 27.
 SCAN_DIRS = (REPO_ROOT / "src" / "media_stack",)
 MIN_STATEMENTS = 5
 
