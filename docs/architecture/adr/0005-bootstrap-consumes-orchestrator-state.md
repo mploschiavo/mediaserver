@@ -1,35 +1,61 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Phases 1–5a fully shipped. Phases 1–3 landed
-2026-05-03; Phase 4 (``LifecycleWirerBase`` extraction) followed
-shortly after — all 8 wirer classes (``JellyfinNotifierWirer``,
-``IndexerPipelineWirer``, ``BazarrConfigWirer``,
-``JellyseerrConfigWirer``, ``RuntimeDefaultsWirer``,
-``SeedSeriesWirer``, ``CategoriesWirer``,
-``MaintainerrCollectionsWirer``) inherit from
-``adapters/_shared/lifecycle_wirer_base.py`` and share the
-``ProbeResult`` / ``Outcome`` / HTTP-classifier / secret-discovery
-helpers. Phase 5a (legacy ``/status`` shape removal) shipped
-2026-05-06: UI in v1.3.76 stopped consuming
-``current_action`` / ``phases_completed`` / legacy ``phase``;
-controller v1.0.322 stopped emitting them; CLI wait flow
-(``ControllerJobWaitService`` /
-``BootstrapPodHttpClient``) migrated to ``/api/jobs/running`` +
-``initial_bootstrap_done`` + ``error`` for terminal-state and
-in-flight-action checks. Both targets (k8s + compose) live on the
-new contract. Builds on ADR-0003 (orchestrator) and ADR-0004
-(verifier). Unblocks ADR-0003 Phase 5e.3+ deletions.
+**Status:** Phases 1–5a fully shipped; Phase 5b largely shipped
+(5b.1 / 5b.1b / 5b.2 / 5b.3 / 5b.4 done; 5b.5 + 5b.6 remaining).
+Phase 5c started: 5c.1 wide in flight.
 
-**Next:** Phases 5b and 5c are sequenced and in flight (no
-deferrals). 5b retires the legacy ``ensure-*`` registrations
-behind a new ``/api/lifecycle-ensurers/{service}/{method}``
-endpoint that operator-dashboard "Run now" + auto-heal both
-migrate to. 5c retires ``_run_preflights`` + JobRunner's
-bootstrap-exclusive machinery and lands the closure: bootstrap
-becomes a registered Job-framework job, ``action_trigger`` and
-``current_action`` / ``action_history`` go away, every top-level
-unit of work flows through one path. See the Phase 5 section
-below for the per-step plan.
+Phases 1–3 landed 2026-05-03; Phase 4 (``LifecycleWirerBase``
+extraction) followed shortly after — all 9 (then 10) wirer
+classes inherit from ``adapters/_shared/lifecycle_wirer_base.py``
+and share the ``ProbeResult`` / ``Outcome`` / HTTP-classifier /
+secret-discovery helpers.
+
+Phase 5a (legacy ``/status`` shape removal) shipped 2026-05-06:
+UI in v1.3.76 stopped consuming ``current_action`` /
+``phases_completed`` / legacy ``phase``; controller v1.0.322
+stopped emitting them; CLI wait flow
+(``ControllerJobWaitService`` / ``BootstrapPodHttpClient``)
+migrated to ``/api/jobs/running`` + ``initial_bootstrap_done`` +
+``error`` for terminal-state and in-flight-action checks. Both
+targets (k8s + compose) live on the new contract.
+
+Phase 5b started 2026-05-07:
+
+* **5b.1** — ``DownloadClientWirer`` (9th wirer, the
+  Phase-3-incompleteness Servarr-family wirer for
+  ``ensure-arr-download-client``). Promises ``sonarr-download
+  -client`` / ``radarr-download-client`` flipped to lifecycle
+  dispatch; legacy job lost ``phase: post`` + ``priority: 85``.
+  Commit ``530aebb9``.
+* **5b.1b** — ``JellyfinLibrariesWirer`` (10th wirer, closing
+  the last ``ensured_by: ensure-*`` string-form snowflake).
+  Promise ``jellyfin-libraries`` flipped to lifecycle dispatch;
+  legacy ``ensure-jellyfin-libraries`` lost ``phase: post``.
+  Commit ``272ff685``.
+* **5b.2** — ``POST /api/lifecycle-ensurers/{service}/{method}``
+  endpoint + ``LifecycleEnsurerInvoker`` service. Same
+  ``dispatch_ensurer`` mechanism the orchestrator uses; three
+  callers (orchestrator-tick, operator-UI, auto-heal) sharing
+  one path. Commit ``269eac1a``.
+* **5b.3** — ``useRunLifecycleEnsurer`` UI hook for future
+  operator-dashboard "Run now" surfaces. Audit found zero
+  production ``useRunAction("ensure-X")`` literals today; hook
+  ships ready for use. Commit ``d5959952``.
+* **5b.4** — Auto-heal migration: NO-OP. Audit confirmed
+  ``AutoHealService.run_cycle()`` already routes through the
+  orchestrator's ``dispatch_ensurer`` path via
+  ``run_job("orchestrator:satisfy-shadow", source="auto-heal")``.
+  No migration required — already there from earlier work.
+
+Builds on ADR-0003 (orchestrator) and ADR-0004 (verifier).
+Unblocks ADR-0003 Phase 5e.3+ deletions.
+
+**Next:** 5b.5 (delete the legacy ``ensure-*`` registration
+shells from contracts; new flat ratchet pinning "no string
+``ensured_by: ensure-*``" anywhere); 5b.6 (live validation +
+bake). Then 5c.1 wide (in flight) → 5c.2 → 5c.3 → 5c.4 (the
+closure: bootstrap becomes a Job-framework job, ``action_trigger``
++ ``current_action`` + ``action_history`` retire entirely).
 
 **Side-fix shipped on the way**: ``ControllerState.initial_bootstrap_done``
 now persists across restarts via the existing
