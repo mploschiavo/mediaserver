@@ -106,6 +106,29 @@ plugin:
         service: jellyseerr
         method: ensure_arr_servers
 
+    # --- API-key discoverability (Jellyseerr) -----------------------------
+    # ADR-0005 Phase 5c.1 (wide) — port the legacy
+    # ``container_preflight_handlers`` ``run_preflight`` invocation
+    # for Jellyseerr into the orchestrator's promise model. The
+    # probe checks env-or-disk discoverability + (when reachable)
+    # validates the key against ``GET /api/v1/auth/me``. The ensurer
+    # reads ``settings.json::main.apiKey`` and persists the key to
+    # ``os.environ[JELLYSEERR_API_KEY]`` plus best-effort patches the
+    # ``media-stack-secrets`` k8s Secret. Reverting = restore the
+    # ``container_preflight_handlers`` entry + ``_run_preflights``.
+    - id: jellyseerr-api-key-discoverable
+      description: Jellyseerr's admin API key is in env / disk so other promises can probe it
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: lifecycle
+        service: jellyseerr
+        method: probe_api_key_discoverable
+      ensured_by:
+        type: lifecycle
+        service: jellyseerr
+        method: ensure_api_key_discoverable
+
   event_handlers:
     RUN:
       configure_jellyseerr: media_stack.services.apps.jellyseerr.runtime_ops:configure_jellyseerr

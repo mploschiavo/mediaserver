@@ -221,18 +221,29 @@ class AdapterDelegationTests(unittest.TestCase):
             envoy_config(self._ctx())
         m.assert_called_once()
 
-    def test_discover_api_keys_calls_run_preflights(self) -> None:
+    def test_discover_api_keys_dispatches_through_orchestrator(self) -> None:
+        """ADR-0005 Phase 5c.1 wide cutover: ``discover-api-keys`` no
+        longer calls ``_run_preflights``; it dispatches every service's
+        api-key promise through ``orchestrator.satisfy_scope``. The
+        on-disk fallback + secret-write helpers stay in place."""
+        from media_stack.domain.services.promises import TickSummary
+
+        empty_summary = TickSummary.empty(started_at=0.0)
         with mock.patch(
-            "media_stack.services.jobs.controller_handlers._run_preflights"
-        ) as m_pre, mock.patch(
-            "media_stack.cli.commands.controller_k8s"
-            "._persist_preflight_keys_to_secret"
+            "media_stack.application.services.orchestrator.PromiseOrchestrator"
+        ) as m_orch, mock.patch(
+            "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
+            return_value=({}, []),
+        ), mock.patch(
+            "media_stack.services.apps.core.job_adapters._persist_preflight_keys_to_secret_safe",
+            return_value={"status": "skipped-no-k8s", "written": []},
         ):
+            m_orch.return_value.satisfy_scope.return_value = empty_summary
             from media_stack.services.apps.core.job_adapters import (
                 discover_api_keys,
             )
             discover_api_keys(self._ctx())
-        m_pre.assert_called_once()
+        m_orch.return_value.satisfy_scope.assert_called_once()
 
     def test_run_legacy_pipeline_calls_runner_run(self) -> None:
         runner = mock.MagicMock()

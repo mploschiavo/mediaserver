@@ -132,6 +132,14 @@ _JUSTIFIED_LITERALS = {
         "_SUPPORTED_SERVICE_IDS — the contract surface for the "
         "Servarr lifecycle adapter (the apps that share the *arr "
         "shape: sonarr/radarr/lidarr/readarr/prowlarr).",
+    # ADR-0005 Phase 5c.1 (wide) — same Servarr contract surface as
+    # the lifecycle module above, declared on the wirer so the
+    # constructor can validate the per-call ``service_id`` against
+    # the supported family.
+    "src/media_stack/adapters/servarr/api_key_wiring.py":
+        "_SUPPORTED_SERVICE_IDS — Servarr api-key-discoverable wirer "
+        "supports the same family as ServarrLifecycle "
+        "(sonarr/radarr/lidarr/readarr/prowlarr).",
 }
 
 

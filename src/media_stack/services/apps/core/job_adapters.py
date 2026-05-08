@@ -1859,56 +1859,93 @@ def post_setup(ctx: JobContext) -> dict:
     return {"action": "post-setup"}
 
 
+_DISCOVER_API_KEY_PROMISE_IDS: tuple[str, ...] = (
+    "jellyfin-api-key-discoverable",
+    "sonarr-api-key-discoverable",
+    "radarr-api-key-discoverable",
+    "lidarr-api-key-discoverable",
+    "readarr-api-key-discoverable",
+    "jellyseerr-api-key-discoverable",
+)
+"""ADR-0005 Phase 5c.1 wide — the six per-service api-key-discoverable
+promises ``discover-api-keys`` requests. Jellyfin's promise was added
+in Phase 5b (already on the registry); the other five are the Phase
+5c.1 wide additions. Defined as a module-level tuple so tests pin the
+exact id list — adding a new service's api-key promise without
+adding it here would mean ``discover-api-keys`` silently skips it."""
+
+
+def _detect_platform() -> str:
+    """``"k8s"`` when ``K8S_NAMESPACE`` is set (the controller's
+    in-cluster signal), ``"compose"`` otherwise. Mirrors the
+    ``_persist_preflight_keys_to_secret_safe`` decision so the
+    orchestrator's promise filter aligns with the secret-patch path."""
+    return "k8s" if (os.environ.get("K8S_NAMESPACE") or "").strip() else "compose"
+
+
 def discover_api_keys(ctx: JobContext) -> dict:
-    """Run every container preflight handler (per-app probe +
-    API-key discovery + key persistence to env/secret).
+    """ADR-0005 Phase 5c.1 wide cutover — dispatch every service's
+    API-key discovery through the orchestrator's promise model.
 
-    Preflights are idempotent — they probe each app, harvest its
-    API key from disk or HTTP, and update the env. Running them
-    every bootstrap (and every reconcile) catches drift introduced
-    by a manual key rotation in a service's UI without making the
-    operator remember to "re-bootstrap from scratch".
+    Today (post-cutover) ``discover-api-keys`` is a thin wrapper
+    around ``orchestrator.satisfy_scope([…six promises])``: one per
+    service whose admin API key needs to be discoverable in env /
+    on disk. Each promise binds to a per-service lifecycle method
+    pair (``probe_api_key_discoverable`` + ``ensure_api_key_discoverable``);
+    the orchestrator's tick machinery (probe → ensurer → re-probe →
+    cooldown record → RunRecord) covers what ``_run_preflights``
+    used to do. The on-disk fallback (``_harvest_keys_from_disk``)
+    + k8s secret patch survive — they're post-discovery actions, not
+    preflight, and downstream callers (``runtime_keys`` cache) still
+    expect the result-dict shape they always have.
 
-    Failure modes hardened in v1.0.181:
+    Failure modes that survived the cutover:
 
-    - A single preflight handler raising no longer aborts the
-      whole job. ``_run_preflights`` already catches per-handler
-      errors, but transient failures (Jellyfin not yet bootstrapped
-      on a fresh stack) used to surface here as a top-level
-      ``status: error`` entry in ``/api/jobs.history``. We now
-      treat per-service unavailability as a per-service skip and
-      always return a structured summary.
-    - Even when no preflight populated ``state.preflight_results``
-      (the ``_stub_state`` short-circuit, or every handler erroring)
-      we fall back to reading every service's on-disk
-      ``config.xml`` directly. This is the canonical source of
-      truth — if a key exists on the PVC, the job persists it,
+    - A single service's lifecycle ensurer returning transient (its
+      ``config.xml`` not yet generated, etc.) doesn't abort the job.
+      ``satisfy_scope`` returns the per-promise outcomes; ones that
+      didn't reach ``ok`` land in ``skipped`` so operators can see
+      what's still warming up.
+    - Even when every promise returns transient (fresh-stack case),
+      we fall back to reading each service's on-disk
+      ``api_key_config`` directly. This is the canonical source of
+      truth — if a key exists on the PVC the job persists it,
       regardless of whether the live service was reachable.
     - Secret-write failures (RBAC missing ``patch`` on secrets,
-      compose deploys with no K8s at all) are reported in the
-      result dict instead of raising — they don't invalidate the
-      keys we just resolved.
+      compose deploys with no K8s at all) come back in the result
+      dict's ``persist`` field instead of raising.
 
-    This used to live inline in ``action_bootstrap`` and was
-    skippable via ``BOOTSTRAP_RUN_PREFLIGHTS=0`` (used by the old
-    ``reconcile`` action). Folding it into the job framework
-    removes the env-var dispatch hack — every code path that wants
-    a fresh tree walk now goes through the same ``run_job("bootstrap")``.
+    Reverting Phase 5c.1 = restore the legacy ``_run_preflights``
+    call here AND restore the
+    ``container_preflight_handlers.run_preflight`` entries in each
+    service's contract YAML.
     """
-    from media_stack.services.jobs.controller_handlers import _run_preflights
     args = _default_args(ctx)
     state = _stub_state()
     skipped: list[str] = []
+
+    # ADR-0005 Phase 5c.1 wide — orchestrator dispatch replaces the
+    # legacy ``_run_preflights`` call. Each promise's lifecycle
+    # ensurer runs the same disk-read + env-persist + best-effort
+    # k8s secret patch the legacy preflight did, just expressed
+    # through the orchestrator's typed ``Outcome``.
     try:
-        _run_preflights(state, args)
-    except Exception as exc:
-        # Belt-and-suspenders: per-handler errors are already
-        # swallowed inside ``_exec_spec``, so anything that bubbles
-        # up here is something structural (e.g. config.json malformed,
-        # YAML parse error). Log + carry on — the on-disk fallback
-        # below still resolves keys for services whose files are
-        # readable.
-        skipped.append(f"_run_preflights: {str(exc)[:80]}")
+        from media_stack.application.services.orchestrator import (
+            PromiseOrchestrator,
+        )
+        orch = PromiseOrchestrator()
+        summary = orch.satisfy_scope(
+            list(_DISCOVER_API_KEY_PROMISE_IDS),
+            platform=_detect_platform(),
+        )
+        for attempt in summary.attempts:
+            if attempt.status != "ok":
+                skipped.append(
+                    f"{attempt.promise_id}: {attempt.status} "
+                    f"({(attempt.detail or '')[:80]})"
+                )
+    except Exception as exc:  # noqa: BLE001
+        skipped.append(f"orchestrator.satisfy_scope: {str(exc)[:80]}")
 
     discovered, file_skipped = _harvest_keys_from_disk(args.config_root)
     skipped.extend(file_skipped)

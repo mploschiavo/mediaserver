@@ -431,6 +431,55 @@ class PromiseOrchestrator:
         )
         return summary
 
+    def satisfy_scope(
+        self,
+        promise_ids: list[str],
+        *,
+        platform: str = "compose",
+        secrets: Mapping[str, str] | None = None,
+        dry_run: bool = False,
+        live_services: frozenset[str] | None = None,
+    ) -> TickSummary:
+        """ADR-0005 Phase 5c.1 — run one tick filtered to the named
+        promise IDs. Cooldown + history emitter are SHARED with this
+        orchestrator instance, so a scoped run still ratchets
+        cooldown and lands in run history exactly like a full tick.
+        Unknown ids are silently dropped (caller's list is a request,
+        not a contract)."""
+        scope_set = {pid for pid in (promise_ids or []) if pid}
+        if not scope_set:
+            return TickSummary.empty(started_at=time.time())
+        scoped = [p for p in self._resolved_registry() if p.id in scope_set]
+        if not scoped:
+            return TickSummary.empty(started_at=time.time())
+        return self._scoped_sub_orchestrator(scoped).tick(
+            platform=platform,
+            secrets=secrets,
+            dry_run=dry_run,
+            live_services=live_services,
+        )
+
+    def _scoped_sub_orchestrator(
+        self, scoped_registry: list[Promise],
+    ) -> "PromiseOrchestrator":
+        """Construct a transient sub-orchestrator over the filtered
+        registry sharing this instance's cooldown + history emitter +
+        tunables. Lifted out of :meth:`satisfy_scope` so that method
+        stays under the methods-over-50-lines ratchet."""
+        return PromiseOrchestrator(
+            registry=scoped_registry,
+            resolver=self._resolver,
+            cooldown=self._cooldown,
+            history_emit=self._history_emit,
+            status_interpreter=self._status,
+            workers=self._workers,
+            slow_probe_warn_seconds=self._slow_probe_warn_seconds,
+            probe_batch_timeout_seconds=self._probe_batch_timeout_seconds,
+            repeated_transient_warn_threshold=(
+                self._repeated_transient_warn_threshold
+            ),
+        )
+
     def tick_until_done(
         self,
         *,

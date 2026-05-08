@@ -14,6 +14,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from media_stack.adapters.jellyseerr.api_key_wiring import (
+    JellyseerrApiKeyDiscoverableWirer,
+)
 from media_stack.adapters.jellyseerr.config_wiring import (
     JellyseerrConfigWirer,
 )
@@ -39,6 +42,15 @@ _DEFAULT_API_KEY_FORMAT = "json"
 # client id / scopes) keeps the magic-string surface in the wirer
 # module rather than here.
 _CONFIG_WIRER = JellyseerrConfigWirer()
+
+# ADR-0005 Phase 5c.1 (wide) — api-key-discoverable wirer ports the
+# legacy ``container_preflight_handlers`` shape into the
+# orchestrator's promise model. Stateless module-level singleton —
+# per-call parameterized by ``ctx``. ``probe`` covers env-or-disk
+# discovery + optional ``GET /api/v1/auth/me`` validation; ``ensure``
+# extends ``mint_api_key`` with env + k8s-secret persist so other
+# promises in the same tick see the freshly-discovered key.
+_API_KEY_DISCOVERABLE_WIRER = JellyseerrApiKeyDiscoverableWirer()
 
 
 class JellyseerrLifecycle:
@@ -212,6 +224,25 @@ class JellyseerrLifecycle:
 
     def probe_arr_servers(self, ctx: OrchestrationContext) -> ProbeResult:
         return _CONFIG_WIRER.probe_arr_servers(ctx)
+
+    # --- API-key-discoverable wiring (ADR-0005 Phase 5c.1 wide) -----
+    #
+    # The ``jellyseerr-api-key-discoverable`` promise binds via
+    # lifecycle dispatch through these two methods. ``probe`` matches
+    # ``probe_has_api_key`` (env or settings.json) with optional
+    # live HTTP validation; ``ensure`` reads from disk and persists
+    # to env + k8s secret so other promises in the same tick see
+    # the freshly-discovered value.
+
+    def probe_api_key_discoverable(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _API_KEY_DISCOVERABLE_WIRER.probe(ctx)
+
+    def ensure_api_key_discoverable(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _API_KEY_DISCOVERABLE_WIRER.ensure(ctx)
 
     def ensure_arr_servers(
         self, ctx: OrchestrationContext,

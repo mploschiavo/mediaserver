@@ -32,6 +32,9 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from media_stack.adapters.servarr.api_key_wiring import (
+    ServarrApiKeyDiscoverableWirer,
+)
 from media_stack.adapters.servarr.download_client_wiring import (
     DownloadClientWirer,
 )
@@ -107,6 +110,18 @@ _RUNTIME_DEFAULTS_WIRER = RuntimeDefaultsWirer()
 # today but the wirer covers them so the same lifecycle method
 # works across the family.
 _DOWNLOAD_CLIENT_WIRER = DownloadClientWirer()
+
+# ADR-0005 Phase 5c.1 (wide) — the api-key-discoverable wirer ports
+# the legacy ``container_preflight_handlers`` shape into the
+# orchestrator's promise model. Stateless module-level singleton:
+# per-call parameterized by ``service_id`` + ``ctx``. The wirer's
+# ``probe`` matches what ``probe_has_api_key`` already does (env or
+# config.xml), with optional ``GET /api/v3/system/status``
+# validation. The ``ensure`` extends ``mint_api_key`` by ALSO
+# persisting the discovered key to env + the k8s secret — so
+# subsequent promises in the same tick (and downstream consumers)
+# see the freshly-discovered value without a process restart.
+_API_KEY_DISCOVERABLE_WIRER = ServarrApiKeyDiscoverableWirer()
 
 
 class ServarrLifecycle:
@@ -411,6 +426,29 @@ class ServarrLifecycle:
         return _DOWNLOAD_CLIENT_WIRER.ensure(
             self.service_id, self.discover_api_key(ctx), ctx,
         )
+
+    # --- API-key-discoverable wiring (ADR-0005 Phase 5c.1 wide) -----
+    #
+    # Four promises bind:
+    #   * sonarr-api-key-discoverable
+    #   * radarr-api-key-discoverable
+    #   * lidarr-api-key-discoverable
+    #   * readarr-api-key-discoverable
+    # All four share ``ServarrApiKeyDiscoverableWirer`` — same probe
+    # (env-or-disk + optional HTTP validation) + same ensure
+    # (read-from-disk + persist-to-env + k8s-secret patch). Replaces
+    # the legacy ``container_preflight_handlers`` ``run_preflight``
+    # invocation under ``_run_preflights``.
+
+    def probe_api_key_discoverable(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        return _API_KEY_DISCOVERABLE_WIRER.probe(self.service_id, ctx)
+
+    def ensure_api_key_discoverable(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        return _API_KEY_DISCOVERABLE_WIRER.ensure(self.service_id, ctx)
 
     # --- persist ----------------------------------------------------
 

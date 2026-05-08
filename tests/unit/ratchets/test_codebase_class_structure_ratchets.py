@@ -59,7 +59,7 @@ LOOSE_FUNCTIONS_RATCHET = 191  # 190 → 191 — ADR-0008 Phase 1: download_lock
 # by this ratchet. Future Phase 2+ work continues the burn-down.
 STATIC_METHOD_RATCHET = 494  # 513 → 494 — ADR-0007 Phase E cleanup: deleted handlers_get.py + handlers_post.py (5,360 LoC); their @staticmethod decorators went with them. Tightened to new floor.
 SINGLETON_INSTANCE_RATCHET = 142  # 141 → 142 — ADR-0008 Phase 2: lockdown_factory.singleton() pattern.
-OS_ENVIRON_IN_METHODS_RATCHET = 504  # 498 → 504 — ADR-0008 Phase 1+2: download_lockdown_service + lockdown adapters + lockdown_factory read service env vars (URL/api-key/username/password). Net +6 over Phase 1's transient 498 floor; refactor of disk_guardrails route's _resolve_config to use the qbit env-name constants from adapters/qbittorrent shaved 4 back off, landing at 504.  # 507 → 496 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed os.environ reads inside their methods. Tightened to new floor.
+OS_ENVIRON_IN_METHODS_RATCHET = 507  # 504 → 507 — ADR-0005 Phase 5c.1 (wide): the two new ApiKeyDiscoverable wirers (servarr/api_key_wiring.py + jellyseerr/api_key_wiring.py) each call ``os.environ[env_var] = discovered`` to persist the freshly-discovered API key + ``os.environ.get("CONFIG_ROOT")`` to resolve the config path; ``_detect_platform`` in core/job_adapters reads ``K8S_NAMESPACE``. Each is the established lifecycle persist + config-root pattern — matches the existing ServarrLifecycle.persist_api_key shape. # 498 → 504 — ADR-0008 Phase 1+2: download_lockdown_service + lockdown adapters + lockdown_factory read service env vars (URL/api-key/username/password). Net +6 over Phase 1's transient 498 floor; refactor of disk_guardrails route's _resolve_config to use the qbit env-name constants from adapters/qbittorrent shaved 4 back off, landing at 504.  # 507 → 496 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed os.environ reads inside their methods. Tightened to new floor.
 
 # Code quality ratchets
 METHODS_OVER_50_LINES_RATCHET = 342  # 340 → 333 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed several long handler methods. Tightened to new floor.
@@ -78,7 +78,7 @@ CLASSES_OVER_15_METHODS_RATCHET = 44  # 45 → 44 — ADR-0007 Phase E cleanup: 
 # in application/ which would otherwise pull a wider chunk of the
 # graph through every test that constructs a PromiseOrchestrator).
 # Phase 16-F's port extraction will retire this.
-CIRCULAR_IMPORT_RISK_RATCHET = 386  # 376 → 374 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deferred imports inside their methods. Tightened to new floor.
+CIRCULAR_IMPORT_RISK_RATCHET = 390  # 386 → 390 — ADR-0005 Phase 5c.1 (wide): the two new ApiKeyDiscoverable wirers each have 2 methods with deferred imports — ``key_formats.READERS`` (lazy keeps the adapters layer light) + ``services.apps.core.job_adapters._persist_preflight_keys_to_secret_safe`` (lazy avoids the circular adapter→services→adapters edge that would form on eager import). Both follow the established lifecycle deferred-import convention.  # 376 → 374 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed deferred imports inside their methods. Tightened to new floor.
 NO_TYPE_HINTS_PUBLIC_METHODS_RATCHET = 183  # public API without type hints
 
 # Hygiene ratchets
@@ -91,13 +91,14 @@ PRINT_STATEMENTS_RATCHET = 268      # should use logging/runtime_platform.log
 # the loader is unit-testable in pieces. Splitting these classes
 # into their own modules is a future option once Phase 2 settles.
 # FILES_OVER_400_LINES_RATCHET = 91  # 89 → 91 — ADR-0005 Phase 5b.1+5b.2: DownloadClientWirer (the 9th wirer, 453 LoC) and LifecycleEnsurerInvoker (402 LoC) are both new feature surface in well-shaped per-class modules. The 9th wirer matches the existing 8 lifecycle wirers' shape (probe + ensure + endpoint resolver + http plumbing); splitting it would be artificial. The invoker grew above 400 once LifecycleEnsurerInvocation + NewType integration landed (ratchets #9 + #10 fix path).
-FILES_OVER_400_LINES_RATCHET = 91
+# FILES_OVER_400_LINES_RATCHET = 92  # 91 → 92 — ADR-0005 Phase 5c.1 (wide): ``adapters/servarr/api_key_wiring.py`` (~421 LoC) is the new ApiKeyDiscoverable wirer for the *arr family. Single-class module in the established Phase-3+ shape (probe + ensure + http validate + per-arr config helpers + persist). Same shape as DownloadClientWirer (453 LoC, also flagged at +1 in the prior bump). Splitting would be artificial.
+FILES_OVER_400_LINES_RATCHET = 92
 HARDCODED_URLS_RATCHET = 151        # 154 → 151 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed inline URL literals. Tightened.
 DUPLICATE_STRINGS_5PLUS_RATCHET = 110  # 107 → 103 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed duplicate string literals. Tightened.
 # Tightened: was 1168, now 1000 after Phase 16-D extracted many magic
 # numbers into named constants during the module split. Lock the new
 # floor.
-MAGIC_NUMBERS_OVER_100_RATCHET = 1016  # 1027 → 1003 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed many numeric literals >100. Tightened.
+MAGIC_NUMBERS_OVER_100_RATCHET = 1024  # 1016 → 1024 — ADR-0005 Phase 5c.1 (wide): the two new ApiKeyDiscoverable wirers each declare four named constants in the >100 range — the canonical HTTP sentinels (200 / 401 / 403, used by ``_http_validate``) plus a 200-character error-message trim. The constant assignments themselves count even though the inline call sites now reference the names. # 1027 → 1003 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed many numeric literals >100. Tightened.
 
 # Hard gates (zero tolerance — any regression fails immediately)
 BARE_EXCEPT_HARD_GATE = 0

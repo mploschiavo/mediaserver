@@ -195,11 +195,6 @@ def _resolve_handler(spec: str):
         return None
 
 
-def _run_preflights(state: object, args: argparse.Namespace) -> None:
-    specs = _load_handler_specs("container_preflight_handlers")
-    _run_handler_specs(specs, state, args, phase_label="PREFLIGHT")
-
-
 def _run_post_bootstrap(state: object, args: argparse.Namespace) -> None:
     specs = _load_handler_specs("container_post_setup_handlers")
     _run_handler_specs(specs, state, args, phase_label="POST-BOOTSTRAP")

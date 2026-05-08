@@ -79,3 +79,20 @@ plugin:
         type: lifecycle
         service: lidarr
         method: ensure_jellyfin_notifier
+
+    # --- API-key discoverability (Lidarr) ---------------------------------
+    # ADR-0005 Phase 5c.1 (wide) — see Sonarr's analogous promise for
+    # the rationale. Reverting = restore the
+    # ``container_preflight_handlers`` entry + ``_run_preflights``.
+    - id: lidarr-api-key-discoverable
+      description: Lidarr's admin API key is in env / disk so other promises can probe it
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: lifecycle
+        service: lidarr
+        method: probe_api_key_discoverable
+      ensured_by:
+        type: lifecycle
+        service: lidarr
+        method: ensure_api_key_discoverable

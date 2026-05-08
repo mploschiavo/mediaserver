@@ -1,8 +1,8 @@
-"""Tests for the ``discover-api-keys`` job adapter (v1.0.181 hardening).
+"""Tests for the ``discover-api-keys`` job adapter.
 
 The bug we're guarding against (regression-test style):
 
-- Pre-fix: the job called ``_run_preflights`` then
+- Pre-fix: the job called the legacy ``_run_preflights`` then
   ``_persist_preflight_keys_to_secret``. If a single preflight raised
   (Jellyfin not yet bootstrapped on a fresh stack), the K8s client
   failed (RBAC missing the ``patch`` verb), or the state stub didn't
@@ -11,16 +11,23 @@ The bug we're guarding against (regression-test style):
   empty strings — every endpoint that did
   ``os.environ.get("JELLYFIN_API_KEY", "")`` saw "" and returned an
   empty payload.
-- Post-fix: per-service failures are recorded as skips, the job always
-  walks every service's on-disk config file as the canonical source
-  of truth, secret-write failures are reported but don't abort, and
-  the response carries ``discovered`` + ``skipped`` + ``persist`` for
-  the dashboard to surface.
+- ADR-0005 Phase 5c.1 wide cutover: ``_run_preflights`` is GONE.
+  The job dispatches every service's api-key promise through
+  ``orchestrator.satisfy_scope([…6 promises])``. Per-service
+  transient failures (e.g. config.xml not yet generated) land as
+  skip entries. The on-disk fallback (``_harvest_keys_from_disk``)
+  + k8s secret patch survive — they're post-discovery actions.
+- Post-fix: per-service failures are recorded as skips, the job
+  always walks every service's on-disk config file as the canonical
+  source of truth, secret-write failures are reported but don't
+  abort, and the response carries ``discovered`` + ``skipped`` +
+  ``persist`` for the dashboard to surface.
 
 Coverage:
 - success path harvests every service's key
 - partial-skip: one service's file is missing, others succeed
-- ``_run_preflights`` raising doesn't abort the job
+- ``orchestrator.satisfy_scope`` raising doesn't abort the job
+- ``orchestrator.satisfy_scope`` is called with the six expected promise ids
 - secret write happens via the K8s client when ``K8S_NAMESPACE`` is set
 - compose mode (no ``K8S_NAMESPACE``) returns ``skipped-no-k8s``
 - previous env value is preserved when the file is unreadable in this run
@@ -221,16 +228,43 @@ class PersistKeysToSecretSafeTests(unittest.TestCase):
         self.assertEqual(result["status"], "rbac-denied")
 
 
-class DiscoverApiKeysJobTests(unittest.TestCase):
-    """Top-level job behaviour."""
+class _StubOrchestrator:
+    """Simple stub for ``PromiseOrchestrator`` — captures the
+    ``satisfy_scope`` call so tests can assert against it without
+    mocking the (heavy) lifecycle dispatch chain. Returns whatever
+    ``TickSummary`` the fixture supplies."""
 
-    def test_run_preflights_failure_does_not_abort_job(self) -> None:
-        """A bug in the preflight runner used to surface as
-        ``status: error`` in /api/jobs.history — now it lands as a
-        recorded skip and on-disk fallback still resolves keys."""
+    def __init__(self, summary, *, raise_exc: Exception | None = None) -> None:
+        self._summary = summary
+        self._raise = raise_exc
+        self.calls: list[dict] = []
+
+    def satisfy_scope(self, promise_ids, **kwargs):
+        self.calls.append({"promise_ids": list(promise_ids), **kwargs})
+        if self._raise is not None:
+            raise self._raise
+        return self._summary
+
+
+def _empty_summary():
+    from media_stack.domain.services.promises import TickSummary
+    return TickSummary.empty(started_at=0.0)
+
+
+class DiscoverApiKeysJobTests(unittest.TestCase):
+    """Top-level job behaviour — ADR-0005 Phase 5c.1 wide cutover."""
+
+    def test_satisfy_scope_failure_does_not_abort_job(self) -> None:
+        """A bug in the orchestrator used to surface as
+        ``status: error`` in /api/jobs.history (when the legacy
+        ``_run_preflights`` raised) — now it lands as a recorded skip
+        and the on-disk fallback still resolves keys."""
+        stub = _StubOrchestrator(
+            _empty_summary(), raise_exc=RuntimeError("boom"),
+        )
         with mock.patch(
-            "media_stack.services.jobs.controller_handlers._run_preflights",
-            side_effect=RuntimeError("boom"),
+            "media_stack.application.services.orchestrator.PromiseOrchestrator",
+            return_value=stub,
         ), mock.patch(
             "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
             return_value=({"SONARR_API_KEY": "k"}, []),
@@ -242,14 +276,49 @@ class DiscoverApiKeysJobTests(unittest.TestCase):
 
         self.assertEqual(result["action"], "discover-api-keys")
         self.assertIn("SONARR_API_KEY", result["discovered"])
-        self.assertTrue(any("_run_preflights" in s for s in result["skipped"]))
+        self.assertTrue(
+            any("orchestrator.satisfy_scope" in s for s in result["skipped"]),
+            f"expected orchestrator.satisfy_scope skip, got {result['skipped']!r}",
+        )
+
+    def test_dispatches_six_per_service_promises(self) -> None:
+        """The wide cutover passes one promise id per service whose
+        admin API key the controller wants discoverable. Adding a new
+        service to the list is the cutover surface — pinning here
+        catches a silent regression that drops a service."""
+        stub = _StubOrchestrator(_empty_summary())
+        with mock.patch(
+            "media_stack.application.services.orchestrator.PromiseOrchestrator",
+            return_value=stub,
+        ), mock.patch(
+            "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
+            return_value=({}, []),
+        ), mock.patch(
+            "media_stack.services.apps.core.job_adapters._persist_preflight_keys_to_secret_safe",
+            return_value={"status": "skipped-no-k8s", "written": []},
+        ):
+            ja.discover_api_keys(_FakeCtx())
+
+        self.assertEqual(len(stub.calls), 1)
+        ids = stub.calls[0]["promise_ids"]
+        for expected in (
+            "jellyfin-api-key-discoverable",
+            "sonarr-api-key-discoverable",
+            "radarr-api-key-discoverable",
+            "lidarr-api-key-discoverable",
+            "readarr-api-key-discoverable",
+            "jellyseerr-api-key-discoverable",
+        ):
+            self.assertIn(expected, ids)
 
     def test_returns_structured_summary(self) -> None:
         """The dashboard needs ``discovered`` + ``skipped`` + ``persist``
         to tell the operator what worked, what didn't, and what to do
         about it."""
+        stub = _StubOrchestrator(_empty_summary())
         with mock.patch(
-            "media_stack.services.jobs.controller_handlers._run_preflights",
+            "media_stack.application.services.orchestrator.PromiseOrchestrator",
+            return_value=stub,
         ), mock.patch(
             "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
             return_value=({"SONARR_API_KEY": "k"}, ["radarr: no key on disk"]),
@@ -266,8 +335,10 @@ class DiscoverApiKeysJobTests(unittest.TestCase):
     def test_invalidates_runtime_keys_cache_after_persist(self) -> None:
         """Otherwise the next /api/libraries call would still see the
         stale (None) cache entry until the 30s TTL elapsed."""
+        stub = _StubOrchestrator(_empty_summary())
         with mock.patch(
-            "media_stack.services.jobs.controller_handlers._run_preflights",
+            "media_stack.application.services.orchestrator.PromiseOrchestrator",
+            return_value=stub,
         ), mock.patch(
             "media_stack.services.apps.core.job_adapters._harvest_keys_from_disk",
             return_value=({}, []),

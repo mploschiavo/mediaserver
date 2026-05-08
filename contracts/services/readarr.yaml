@@ -45,3 +45,31 @@ plugin:
     readarr: media_stack.services.apps.servarr.servarr_adapters:readarr_before_common_steps
   adapter_classes:
     servarr: media_stack.services.apps.servarr.technologies.readarr:ReadarrAdapter
+
+  # ADR-0006 Phase 3 — Readarr-side promise lives HERE alongside the
+  # service's lifecycle_class + adapter declarations rather than in
+  # the monolithic ``contracts/promises/promises.yaml``. Loader walks
+  # both ``contracts/services/*.yaml::plugin.promises`` AND
+  # ``contracts/promises/cross_cutting.yaml`` (or legacy
+  # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
+  # depends_on resolution — see
+  # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  promises:
+    # --- API-key discoverability (Readarr) --------------------------------
+    # ADR-0005 Phase 5c.1 (wide) — port the legacy
+    # ``container_preflight_handlers`` ``run_preflight`` invocation
+    # for Readarr into the orchestrator's promise model. See Sonarr's
+    # analogous promise for the rationale. Reverting = restore the
+    # ``container_preflight_handlers`` entry + ``_run_preflights``.
+    - id: readarr-api-key-discoverable
+      description: Readarr's admin API key is in env / disk so other promises can probe it
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: lifecycle
+        service: readarr
+        method: probe_api_key_discoverable
+      ensured_by:
+        type: lifecycle
+        service: readarr
+        method: ensure_api_key_discoverable
