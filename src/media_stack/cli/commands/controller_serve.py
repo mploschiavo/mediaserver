@@ -1,29 +1,60 @@
-"""HTTP API serve mode for the bootstrap controller."""
+"""HTTP API serve mode for the bootstrap controller.
+
+ADR-0005 Phase 5c.4 closure (partial — see report)
+--------------------------------------------------
+
+The legacy subprocess-per-action machinery (`_MP_CTX`, `_action_worker`,
+`_SubprocessState`) has been retired. Every action now runs through
+`_dispatch_action` -> `JobRunner.run` on a single background worker
+thread inside the controller process. The thread is started once at
+boot and consumes the same priority queue the previous loop drained.
+
+What stayed and why
+~~~~~~~~~~~~~~~~~~~
+
+* `state.start_action`/`finish_action`/`cancel_action`/`add_pending`/
+  `pop_pending` remain on `ControllerState`. They feed log-line
+  action tagging (`state.append_log` reads `current_action.name`),
+  the `/status` `action_history` array consumed by the k8s wait
+  service in `cli/workflows/controller_job_wait_service.py`, the
+  RSS feed in `metrics.py::get_rss_feed`, and the running-rows
+  branch of `jobs.py::_RunningJobsAggregator`. Removing them per
+  the original 5c.4 spec requires a coordinated rewrite of those
+  consumers; that is deferred to a follow-up commit.
+
+* The local `action_trigger` closure remains because every config
+  writer in `routes/post_*` and the `auth_config` service depends on
+  it as the queue-injection seam. It now enqueues onto the same
+  in-process priority queue the worker thread drains.
+
+What changed
+~~~~~~~~~~~~
+
+* No more `multiprocessing.spawn`: the worker is a daemon thread.
+  The fork-deadlock guard (`_MP_CTX = get_context("spawn")`) is
+  gone with it.
+* No more inter-process log queue: the thread shares
+  `runtime_platform.log` directly, so action log lines arrive
+  with the same `current_action` tag they always did (no log-tag
+  regression vs. the subprocess shape).
+* Cancellation: `state.is_cancelled` -> `framework.request_cancel()`
+  signals the in-process JobRunner via the existing module-global
+  flag the SIGTERM handler used to set. No process kill.
+* Timeout: a watchdog daemon thread per dispatched action calls
+  `framework.request_cancel()` if the worker exceeds the budget.
+  The action loop then completes through the next `JobContext.
+  check_cancelled()` instead of being SIGKILL'd.
+"""
 
 from __future__ import annotations
 
 
 from media_stack.core.logging_utils import log_swallowed
 import argparse
-import multiprocessing
 import os
 import queue
 import threading
-import traceback
 from pathlib import Path as _Path
-
-# Use spawn (not fork) for action subprocesses. The controller has
-# ~6 threads at startup (HTTP server, audit verifier, snapshot
-# timer, scheduled reconciler, user-reconcile, audit-verify); on
-# Linux the multiprocessing default is fork(), which inherits all
-# of those threads' locks as permanently held in the child. The
-# first time the child tries to acquire any of those locks (the
-# logging module's internal lock fires on the very first log call)
-# the subprocess deadlocks with no useful message. Symptom:
-# ``[ACTION] bootstrap: starting`` logs, then dead silence for the
-# entire timeout window. Spawn creates a fresh interpreter, no
-# inherited locks. (2026-04-22 incident.)
-_MP_CTX = multiprocessing.get_context("spawn")
 
 import yaml as _yaml
 
@@ -34,12 +65,10 @@ from media_stack.core.auth.configure_auth_job import (
 
 from media_stack.cli.commands.controller_dispatch import (
     _dispatch_action,
-    _track_failed_service,
 )
 from media_stack.services.jobs.controller_handlers import (
     _resolve_config_path,
 )
-import logging
 
 from media_stack.cli.commands.controller_profile import (
     _apply_profile_env,
@@ -164,67 +193,6 @@ def _load_boot_profile(env: dict) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-class _SubprocessState:
-    """Lightweight state stub for subprocess workers.
-
-    The real ControllerState can't be pickled across processes.
-    This stub absorbs calls that the dispatch code makes on state
-    (record_preflight, mark_service_failed, etc.) without crashing.
-    Lives at module scope so spawn-pickle can find it by name."""
-    preflight_results: dict = {}
-    is_cancelled: bool = False
-
-    def __getattr__(self, name):
-        """Return a no-op for any method call."""
-        return lambda *a, **kw: None
-
-
-def _action_worker(
-    action_name: str,
-    overrides: dict,
-    args_dict: dict,
-    log_queue,
-) -> None:
-    """Run one action in a subprocess.  MUST be a module-level
-    function — Python's spawn start method pickles by qualified
-    name, so a nested ``_run_serve.<locals>._action_worker``
-    raises ``Can't get local object`` at start time. Logs go to
-    ``log_queue``."""
-    import argparse as _ap
-    import signal as _signal
-    import traceback as _tb
-
-    def _on_sigterm(signum, frame):
-        from media_stack.services.jobs.framework import request_cancel
-        request_cancel()
-        log_queue.put(("log", f"[ACTION] {action_name}: SIGTERM received, cancelling jobs"))
-
-    _signal.signal(_signal.SIGTERM, _on_sigterm)
-
-    worker_args = _ap.Namespace(**args_dict)
-
-    import media_stack.services.runtime_platform as _rp
-
-    def _subprocess_log(msg):
-        if _rp._extract_level(str(msg)) < _rp._current_log_level:
-            return
-        log_queue.put(("log", msg))
-
-    _rp.log = _subprocess_log
-
-    stub_state = _SubprocessState()
-
-    try:
-        _dispatch_action(action_name, overrides, worker_args, stub_state)
-        log_queue.put(("done", None))
-    except Exception as exc:
-        log_queue.put(("error", str(exc)))
-        tb = _tb.format_exc().strip()
-        if tb:
-            for line in tb.splitlines():
-                log_queue.put(("log", f"[TRACE] {line}"))
-
-
 def _run_serve(args: argparse.Namespace) -> None:
     """HTTP API server with action dispatch loop.
 
@@ -333,13 +301,16 @@ def _run_serve(args: argparse.Namespace) -> None:
     action_timeout = int(os.environ.get("BOOTSTRAP_ACTION_TIMEOUT", "1800"))
     max_retries = int(os.environ.get("BOOTSTRAP_ACTION_MAX_RETRIES", "0"))
     _queue_seq = 0
+    _queue_seq_lock = threading.Lock()
 
     def action_trigger(action_name: str, overrides: dict) -> None:
         nonlocal _queue_seq
         from media_stack.api.server import ACTION_PRIORITY, DEFAULT_ACTION_PRIORITY
         prio = int(overrides.pop("_priority", ACTION_PRIORITY.get(action_name, DEFAULT_ACTION_PRIORITY)))
-        _queue_seq += 1
-        action_queue.put((prio, _queue_seq, action_name, overrides))
+        with _queue_seq_lock:
+            _queue_seq += 1
+            seq = _queue_seq
+        action_queue.put((prio, seq, action_name, overrides))
         state.add_pending(action_name, prio, overrides)
 
     # Wrap runtime_platform.log to also feed the SSE ring buffer.
@@ -605,206 +576,226 @@ def _run_serve(args: argparse.Namespace) -> None:
         action_trigger("bootstrap", {})
 
     # -----------------------------------------------------------------------
-    # Action worker — runs in a SUBPROCESS (separate GIL) so the API
-    # server stays responsive while jobs execute.
+    # Action worker — runs on a daemon THREAD (not a subprocess).
     #
-    # Each action spawns a short-lived child process. The parent monitors
-    # it, drains logs, and detects crashes. If the child dies, the parent
-    # logs the error and continues processing the queue. The container's
-    # healthcheck only checks the parent (API server) which is always up.
+    # ADR-0005 Phase 5c.4: replaced the multiprocessing-spawn worker with
+    # in-process dispatch. ``_dispatch_action`` already routes through
+    # ``run_job`` -> ``JobRunner.run`` which records its own per-job and
+    # batch run history; the parent thread's only job is to drain the
+    # priority queue, enforce a per-action timeout via the framework's
+    # cooperative-cancel signal, and run the post-action auto-heal /
+    # webhook hooks the legacy loop owned.
+    #
+    # Cancellation: ``state.is_cancelled`` (set by POST /cancel via
+    # ``state.cancel_action()``) plumbs through to
+    # ``framework.request_cancel()`` so the in-flight ``JobContext``
+    # raises ``CancelledError`` at its next ``check_cancelled()`` call.
+    # Same semantics the SIGTERM handler in the deleted ``_action_worker``
+    # used to give us — minus the hard-kill, which the in-process model
+    # cannot offer (and operators haven't relied on for the real
+    # contract-driven jobs since they all check cancel cooperatively).
     # -----------------------------------------------------------------------
 
-    pass  # _SubprocessState + _action_worker moved to module scope
+    def _run_one_action(action_name: str, overrides: dict, action_record) -> str | None:
+        """Run a single action synchronously. Returns error message or None on success.
 
-    # Serialize args to a dict for subprocess pickling
-    _args_dict = vars(args)
+        The call goes through ``_dispatch_action`` -> ``run_job`` ->
+        ``JobRunner.run``. A watchdog daemon thread enforces the per-
+        action timeout by setting ``framework.request_cancel()`` if
+        the action exceeds its budget; the JobRunner notices on its
+        next prereq/job boundary.
+        """
+        from media_stack.services.jobs import framework as _fw
 
-    # Main action dispatch loop — runs forever.
-    while True:
-        try:
-            _prio, _seq, action_name, overrides = action_queue.get()
-        except KeyboardInterrupt:
-            runtime_platform.log("[INFO] Shutting down bootstrap service")
-            server.shutdown()
-            return
+        timeout_seconds = max(1, int(overrides.get("timeout") or action_timeout))
+        cancel_event = threading.Event()
+        timed_out = threading.Event()
 
-        state.pop_pending(action_name)
-
-        # Merge runtime_config into overrides so toggles like auto_download_content
-        # propagate to _apply_overrides in the subprocess.
-        for cfg_key, cfg_val in state.runtime_config.items():
-            overrides.setdefault(cfg_key, cfg_val)
-
-        # Retry support: allow per-action retry via override or env default.
-        retry_limit = int(overrides.pop("retry", max_retries))
-        attempt = 0
-
-        while True:
-            attempt += 1
-            action_record = state.start_action(
-                action_name, overrides=overrides, timeout_seconds=action_timeout
-            )
-            suffix = f" (attempt {attempt}/{retry_limit + 1})" if retry_limit > 0 else ""
-            runtime_platform.log(
-                f"[ACTION] {action_name} [{action_record.id}]: dispatching "
-                f"(timeout={action_timeout}s){suffix}"
-            )
-
-            # Run action in subprocess — separate GIL, API stays responsive
-            log_q: _MP_CTX.Queue = _MP_CTX.Queue()
-            runtime_platform.log(f"[DEBUG] Spawning subprocess for action={action_name}, "
-                                 f"pid=parent:{os.getpid()}")
-            worker = _MP_CTX.Process(
-                target=_action_worker,
-                args=(action_name, dict(overrides), _args_dict, log_q),
-                daemon=True,
-            )
-            worker.start()
-            runtime_platform.log(f"[DEBUG] Subprocess started: pid={worker.pid}")
-
-            # Drain log queue while worker runs; check for cancellation.
-            # Plus: enforce the timeout, and emit a heartbeat every
-            # 60s so the dashboard + log reader sees the action is
-            # still alive (rather than guessing).
-            error_msg = None
-            cancelled = False
-            timed_out = False
-            import time as _time_mod
-            t_started = _time_mod.monotonic()
-            t_last_heartbeat = t_started
-            timeout_seconds = max(1, int(overrides.get("timeout") or action_timeout))
-            while worker.is_alive() or not log_q.empty():
-                # Cancel: hard-kill subprocess.
-                if not cancelled and state.is_cancelled:
-                    cancelled = True
-                    runtime_platform.log(f"[ACTION] {action_name}: cancelling (killing pid={worker.pid})")
-                    worker.terminate()
-                    worker.join(timeout=3)
-                    if worker.is_alive():
-                        worker.kill()
-                        worker.join(timeout=2)
-                    break
-                # Timeout: hard-kill subprocess. Was previously
-                # informational only — bootstrap could spin past
-                # ``timeout_seconds`` indefinitely (the 18-min
-                # fork-deadlock incident).
-                elapsed = _time_mod.monotonic() - t_started
-                if not timed_out and elapsed > timeout_seconds:
-                    timed_out = True
+        def _watchdog() -> None:
+            # Heartbeat every 60s; trip cancel when the budget is gone.
+            import time as _t
+            t0 = _t.monotonic()
+            next_heartbeat = t0 + 60
+            while not cancel_event.wait(timeout=1.0):
+                now = _t.monotonic()
+                elapsed = now - t0
+                if elapsed >= timeout_seconds:
+                    timed_out.set()
                     runtime_platform.log(
                         f"[ACTION] {action_name}: TIMED OUT after "
                         f"{elapsed:.0f}s (limit {timeout_seconds}s) — "
-                        f"killing pid={worker.pid}"
+                        "requesting cooperative cancel"
                     )
-                    worker.terminate()
-                    worker.join(timeout=3)
-                    if worker.is_alive():
-                        worker.kill()
-                        worker.join(timeout=2)
-                    error_msg = f"timed out after {elapsed:.0f}s (limit {timeout_seconds}s)"
-                    break
-                # Heartbeat: every 60s of subprocess silence.
-                if elapsed - (t_last_heartbeat - t_started) > 60:
-                    t_last_heartbeat = _time_mod.monotonic()
+                    _fw.request_cancel()
+                    return
+                if now >= next_heartbeat:
+                    next_heartbeat = now + 60
                     runtime_platform.log(
                         f"[ACTION] {action_name}: still running "
                         f"({elapsed:.0f}s elapsed, timeout {timeout_seconds}s)"
                     )
-                try:
-                    msg_type, msg_data = log_q.get(timeout=0.5)
-                    if msg_type == "log":
-                        runtime_platform.log(msg_data)
-                    elif msg_type == "done":
-                        pass
-                    elif msg_type == "error":
-                        error_msg = msg_data
-                except Exception as exc:
-                    log_swallowed(exc)
+                # Also propagate operator-initiated cancel from the
+                # ControllerState into the framework's module-global
+                # cancel flag.
+                if state.is_cancelled:
+                    _fw.request_cancel()
 
-            if cancelled:
-                state.finish_action(error="cancelled by user")
-                runtime_platform.log(f"[ACTION] {action_name}: cancelled")
-                break
+        watchdog = threading.Thread(
+            target=_watchdog, daemon=True, name=f"action-watchdog-{action_record.id}",
+        )
+        watchdog.start()
 
-            worker.join(timeout=5)
-            exit_code = worker.exitcode
-            runtime_platform.log(f"[DEBUG] Subprocess finished: pid={worker.pid}, "
-                                 f"exit_code={exit_code}, error={'yes' if error_msg else 'no'}")
+        # Reset the framework's module-global cancel flag for this run;
+        # it persists across calls otherwise.
+        _fw.clear_cancel()
 
-            if error_msg:
-                state.finish_action(error=error_msg)
-                runtime_platform.log(f"[ERR] Action {action_name} failed: {error_msg}")
+        error_msg: str | None = None
+        try:
+            _dispatch_action(action_name, overrides, args, state)
+        except Exception as exc:  # noqa: BLE001
+            error_msg = str(exc)
+        finally:
+            cancel_event.set()
+            watchdog.join(timeout=2)
 
-                if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                    state.mark_initial_bootstrap_done()
-                    runtime_platform.log(
-                        "[WARN] Initial bootstrap had errors but service is marked ready"
-                    )
-                    for queued in ["configure-media-server", "post-setup", "envoy-config", "validate-credentials"]:
-                        runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
-                        # Tag as auto-heal so the dashboard badges
-                        # the recovery cascade correctly.
-                        action_trigger(queued, {"_source": "auto-heal"})
+        if timed_out.is_set() and not error_msg:
+            error_msg = f"timed out after {timeout_seconds}s"
+        if state.is_cancelled and not error_msg:
+            error_msg = "cancelled by user"
 
-                if attempt <= retry_limit:
-                    delay = min(10.0, 2.0 ** (attempt - 1))
-                    runtime_platform.log(
-                        f"[RETRY] {action_name}: retrying in {delay:.0f}s "
-                        f"(attempt {attempt}/{retry_limit + 1})"
-                    )
-                    import time as _time
-                    _time.sleep(delay)
-                    continue
+        # Reset the cancel flag so the next action starts clean.
+        _fw.clear_cancel()
+        return error_msg
 
-                _fire_webhooks(state, "action_error", {
-                    "action": action_name,
-                    "status": "error",
-                    "error": error_msg,
-                    "elapsed_seconds": action_record.elapsed_seconds,
-                })
+    def _action_loop() -> None:
+        """Drain the action queue forever. Runs on a daemon thread."""
+        while True:
+            try:
+                _prio, _seq, action_name, overrides = action_queue.get()
+            except KeyboardInterrupt:
+                runtime_platform.log("[INFO] Shutting down bootstrap service")
+                server.shutdown()
+                return
 
-                if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
-                    heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
-                    runtime_platform.log(
-                        f"[HEAL] {len(state.get_failed_services())} services need healing. "
-                        f"Auto-queuing reconcile in {heal_delay}s."
-                    )
-                    # Tag the auto-queued reconcile as auto-heal so
-                    # the history badge reads ``auto-heal`` instead
-                    # of ``unknown`` — operators need to distinguish
-                    # "the controller decided to retry" from "the
-                    # cron schedule fired".
-                    threading.Timer(
-                        heal_delay,
-                        lambda: action_trigger(
-                            "reconcile", {"_source": "auto-heal"},
-                        ),
-                    ).start()
+            state.pop_pending(action_name)
 
-                break  # Exhausted retries.
+            # Merge runtime_config into overrides so toggles like
+            # auto_download_content propagate to ``_apply_overrides``.
+            for cfg_key, cfg_val in state.runtime_config.items():
+                overrides.setdefault(cfg_key, cfg_val)
 
-            else:
-                # Success
-                state.finish_action()
+            # Retry support: allow per-action retry via override or env default.
+            retry_limit = int(overrides.pop("retry", max_retries))
+            attempt = 0
 
-                _fire_webhooks(state, "action_complete", {
-                    "action": action_name,
-                    "status": "complete",
-                    "elapsed_seconds": action_record.elapsed_seconds,
-                })
+            while True:
+                attempt += 1
+                action_record = state.start_action(
+                    action_name, overrides=overrides, timeout_seconds=action_timeout
+                )
+                suffix = f" (attempt {attempt}/{retry_limit + 1})" if retry_limit > 0 else ""
+                runtime_platform.log(
+                    f"[ACTION] {action_name} [{action_record.id}]: dispatching "
+                    f"(timeout={action_timeout}s){suffix}"
+                )
 
-                if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                    state.mark_initial_bootstrap_done()
-                    runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
-                    # Historical: this used to auto-queue
-                    # ``configure-media-server / post-setup / envoy-config /
-                    # discover-indexers / validate-credentials`` because
-                    # the original ``bootstrap`` was a thin wrapper that
-                    # didn't run them. Bootstrap is now the full DAG (see
-                    # contracts/services/core.yaml::bootstrap-orchestrate),
-                    # so re-queuing those wastes ~14 min on a second
-                    # discover-indexers pass and does nothing else useful.
-                    # If a job needs to run AFTER bootstrap, add it as a
-                    # downstream contract job — don't bring this back.
+                error_msg = _run_one_action(action_name, dict(overrides), action_record)
+                cancelled = error_msg == "cancelled by user"
 
-                break  # Success — exit retry loop.
+                if cancelled:
+                    state.finish_action(error="cancelled by user")
+                    runtime_platform.log(f"[ACTION] {action_name}: cancelled")
+                    break
+
+                if error_msg:
+                    state.finish_action(error=error_msg)
+                    runtime_platform.log(f"[ERR] Action {action_name} failed: {error_msg}")
+
+                    if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                        state.mark_initial_bootstrap_done()
+                        runtime_platform.log(
+                            "[WARN] Initial bootstrap had errors but service is marked ready"
+                        )
+                        for queued in ["configure-media-server", "post-setup", "envoy-config", "validate-credentials"]:
+                            runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
+                            # Tag as auto-heal so the dashboard badges
+                            # the recovery cascade correctly.
+                            action_trigger(queued, {"_source": "auto-heal"})
+
+                    if attempt <= retry_limit:
+                        delay = min(10.0, 2.0 ** (attempt - 1))
+                        runtime_platform.log(
+                            f"[RETRY] {action_name}: retrying in {delay:.0f}s "
+                            f"(attempt {attempt}/{retry_limit + 1})"
+                        )
+                        import time as _time
+                        _time.sleep(delay)
+                        continue
+
+                    _fire_webhooks(state, "action_error", {
+                        "action": action_name,
+                        "status": "error",
+                        "error": error_msg,
+                        "elapsed_seconds": action_record.elapsed_seconds,
+                    })
+
+                    if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
+                        heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
+                        runtime_platform.log(
+                            f"[HEAL] {len(state.get_failed_services())} services need healing. "
+                            f"Auto-queuing reconcile in {heal_delay}s."
+                        )
+                        # Tag the auto-queued reconcile as auto-heal so
+                        # the history badge reads ``auto-heal`` instead
+                        # of ``unknown`` — operators need to distinguish
+                        # "the controller decided to retry" from "the
+                        # cron schedule fired".
+                        threading.Timer(
+                            heal_delay,
+                            lambda: action_trigger(
+                                "reconcile", {"_source": "auto-heal"},
+                            ),
+                        ).start()
+
+                    break  # Exhausted retries.
+
+                else:
+                    # Success
+                    state.finish_action()
+
+                    _fire_webhooks(state, "action_complete", {
+                        "action": action_name,
+                        "status": "complete",
+                        "elapsed_seconds": action_record.elapsed_seconds,
+                    })
+
+                    if action_name == "bootstrap" and not state.initial_bootstrap_done:
+                        state.mark_initial_bootstrap_done()
+                        runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
+                        # Historical: this used to auto-queue
+                        # ``configure-media-server / post-setup / envoy-config /
+                        # discover-indexers / validate-credentials`` because
+                        # the original ``bootstrap`` was a thin wrapper that
+                        # didn't run them. Bootstrap is now the full DAG (see
+                        # contracts/services/core.yaml::bootstrap-orchestrate),
+                        # so re-queuing those wastes ~14 min on a second
+                        # discover-indexers pass and does nothing else useful.
+                        # If a job needs to run AFTER bootstrap, add it as a
+                        # downstream contract job — don't bring this back.
+
+                    break  # Success — exit retry loop.
+
+    action_thread = threading.Thread(
+        target=_action_loop, daemon=True, name="action-dispatch",
+    )
+    action_thread.start()
+
+    # Park the main thread on the API server. The action thread is a
+    # daemon so it dies with us. Previously the dispatch loop ran on
+    # the main thread; now it lives on its own thread so KeyboardInterrupt
+    # in the API thread bubbles up here cleanly.
+    try:
+        action_thread.join()
+    except KeyboardInterrupt:
+        runtime_platform.log("[INFO] Shutting down bootstrap service")
+        server.shutdown()

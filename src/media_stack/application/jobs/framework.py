@@ -657,15 +657,31 @@ class JobRunner:
             runtime_platform.log(f"[INFO] Preflight attempt: {exc}")
 
 
-# Module-level cancel flag — set by SIGTERM handler in subprocess.
+# Module-level cancel flag — set by SIGTERM handler in subprocess
+# (legacy) or by the in-process action loop (ADR-0005 Phase 5c.4).
 # JobContext checks this so cancellation propagates through the job tree.
 _cancel_requested = False
 
 
 def request_cancel() -> None:
-    """Signal cancellation from outside (e.g., SIGTERM handler)."""
+    """Signal cancellation from outside (e.g., SIGTERM handler, or
+    the in-process action-watchdog when an action exceeds its
+    timeout / the operator hits POST /cancel)."""
     global _cancel_requested
     _cancel_requested = True
+
+
+def clear_cancel() -> None:
+    """Reset the module-global cancel flag.
+
+    The legacy subprocess shape didn't need this — the SIGTERM-set
+    flag died with the subprocess at action end. The in-process
+    action loop (ADR-0005 Phase 5c.4) reuses the same module
+    namespace across actions, so each new dispatch must clear the
+    flag or the second action would inherit the first's cancel.
+    """
+    global _cancel_requested
+    _cancel_requested = False
 
 
 def _is_cancel_requested() -> bool:

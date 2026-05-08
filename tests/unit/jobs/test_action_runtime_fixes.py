@@ -1,34 +1,35 @@
 """Ratchets for v1.0.105: bootstrap visibility + correctness.
 
-Three fixes pinned here, each with a "why" the next refactor
-needs to keep working:
+ADR-0005 Phase 5c.4 (in-process action loop)
+--------------------------------------------
 
-  1. **Spawn instead of fork for action subprocesses.**
-     The 2026-04-22 incident: bootstrap auto-queued at startup
-     logged ``[ACTION] bootstrap: starting`` and then EMITTED
-     ZERO LOGS for 18+ minutes (the entire 600s timeout window
-     and beyond). Cause: the controller has 6 background threads
-     (HTTP server, audit verifier, snapshot timer, scheduled
-     reconciler, user-reconcile, audit-verify); Python's
-     multiprocessing default on Linux is fork(); fork inherits
-     all those threads' locks as PERMANENTLY HELD in the child;
-     the child's first lock acquire (logging.Logger uses an
-     internal lock on every log call) deadlocks. Spawn creates a
-     fresh interpreter, so no inherited locks.
+The original ratchets pinned three properties of the multiprocessing-
+spawn worker that owned action dispatch. That worker was retired in
+ADR-0005 Phase 5c.4 in favour of an in-process daemon thread that
+calls ``_dispatch_action`` -> ``run_job`` -> ``JobRunner.run``
+directly. The same three end-user invariants still apply, but the
+mechanism for each is different:
 
-  2. **Timeout enforcement actually kills the subprocess.**
-     The previous ``timeout=600s`` was informational only — the
-     parent loop sat in ``while worker.is_alive()`` indefinitely.
-     Now the parent monitors elapsed time and ``terminate()``s the
-     subprocess at the limit.
+  1. **No fork-deadlock.** The original incident (2026-04-22)
+     was ``fork()`` inheriting the controller's logging-module
+     lock as permanently held in the child. The in-process loop
+     doesn't fork at all, so the deadlock surface is gone by
+     construction. The ratchet now asserts the legacy spawn-
+     context machinery is *absent* (any reintroduction would
+     recreate the original failure mode).
 
-  3. **Per-job heartbeat + per-job complete log.** The job tree
-     used to log ``[INFO] JobRunner: N jobs to dispatch`` once,
-     then go silent until ``[INFO] JobRunner: complete``. Long
-     jobs (e.g. discover-indexers, ~14 min) made the dashboard
-     look frozen. Now each job emits ``[JOB] X: <status> (<elapsed>s)
-     — N/M done, R remaining`` on completion, AND the parent
-     emits a heartbeat every 60s of subprocess silence.
+  2. **Timeout enforcement actually stops the action.** The
+     legacy parent ``terminate()``d the subprocess. The new
+     watchdog daemon thread calls
+     ``framework.request_cancel()`` which raises
+     ``CancelledError`` at the JobRunner's next prereq /
+     check_cancelled boundary. Same end-user contract, no
+     SIGKILL.
+
+  3. **Per-action heartbeat every 60s.** The watchdog thread
+     emits ``[ACTION] X: still running (Ts elapsed, timeout Ys)``
+     every 60s, matching the legacy subprocess heartbeat. The
+     per-job ``[JOB]`` line in the JobRunner is unchanged.
 
   4. **Skip-forced-password-rotation env var** for testing —
      ``STACK_ADMIN_SKIP_FORCED_ROTATION=1`` suppresses the
@@ -50,52 +51,120 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 
-class SpawnMethodForActionSubprocesses(unittest.TestCase):
+class NoForkBasedActionSubprocesses(unittest.TestCase):
+    """ADR-0005 Phase 5c.4: actions run on a daemon thread, not a
+    subprocess. The original fork-deadlock surface (2026-04-22
+    incident) is gone by construction — re-introducing
+    ``multiprocessing.Process`` of any kind in the action path
+    would resurrect it.
+    """
 
-    def test_uses_spawn_context_not_fork(self) -> None:
+    def test_no_multiprocessing_in_controller_serve(self) -> None:
+        """Strip comments + the module docstring, then assert no
+        live ``multiprocessing`` use survives. Block comments and
+        the file-level docstring are allowed to *reference* the
+        legacy symbols — the file documents the migration.
+        """
+        import ast
+        path = ROOT / "src/media_stack/cli/commands/controller_serve.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        # Drop the module-level docstring (first Expr/Constant node)
+        # and any function-level docstrings so block-quote references
+        # to the legacy symbols don't trip the ratchet.
+        ast.get_docstring(tree)  # warm the ast.AST.body[0] check
+        if (
+            tree.body
+            and isinstance(tree.body[0], ast.Expr)
+            and isinstance(tree.body[0].value, ast.Constant)
+        ):
+            tree.body.pop(0)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                # Replace docstrings with empty string so the
+                # ``ast.unparse`` round-trip below can't catch them.
+                node.value.value = ""
+        live_source = ast.unparse(tree)
+        self.assertNotIn(
+            "import multiprocessing", live_source,
+            "controller_serve.py re-imports multiprocessing — the "
+            "in-process action loop must not spawn subprocesses "
+            "(the 18-min fork-deadlock incident).",
+        )
+        self.assertNotIn(
+            "multiprocessing.Process(", live_source,
+            "controller_serve.py spawns a multiprocessing.Process — "
+            "the in-process action loop must not spawn subprocesses.",
+        )
+        self.assertNotIn(
+            'get_context("spawn")', live_source,
+            "controller_serve.py re-introduced spawn context — the "
+            "in-process action loop has no subprocess to spawn.",
+        )
+
+    def test_action_runs_on_daemon_thread(self) -> None:
         path = ROOT / "src/media_stack/cli/commands/controller_serve.py"
         text = path.read_text(encoding="utf-8")
         self.assertIn(
-            'multiprocessing.get_context("spawn")', text,
-            "controller_serve.py reverted to fork() for action "
-            "subprocesses — first lock acquire in the child will "
-            "deadlock (the 18-min bootstrap-silence incident).",
-        )
-        # Process spawn must use the spawn context, not the bare
-        # multiprocessing.Process (which respects the global
-        # default which IS fork on Linux).
-        self.assertNotIn(
-            "multiprocessing.Process(", text,
-            "controller_serve.py uses bare multiprocessing.Process; "
-            "should be _MP_CTX.Process so the spawn context applies.",
+            "action-dispatch", text,
+            "Action-dispatch thread name removed — the in-process "
+            "action loop's worker thread should be named so it shows "
+            "up in py-spy / faulthandler dumps.",
         )
 
 
 class TimeoutActuallyEnforced(unittest.TestCase):
 
-    def test_parent_kills_subprocess_at_timeout(self) -> None:
+    def test_watchdog_requests_cancel_at_timeout(self) -> None:
         path = ROOT / "src/media_stack/cli/commands/controller_serve.py"
         text = path.read_text(encoding="utf-8")
-        # Look for the timeout-enforcement block: monotonic timer +
-        # worker.terminate() under an `elapsed > timeout_seconds`
-        # check.
-        self.assertIn("timed_out", text,
-                      "Timeout-enforcement variable removed.")
+        # The in-process equivalent of subprocess termination:
+        # the watchdog thread sets ``timed_out`` and calls
+        # ``framework.request_cancel()`` so the next prereq /
+        # check_cancelled boundary in the JobRunner raises
+        # ``CancelledError``.
+        self.assertIn(
+            "timed_out", text,
+            "Timeout-enforcement variable removed — bootstrap can "
+            "spin past the configured limit (the 18-min incident).",
+        )
         self.assertRegex(
             text,
-            r"if not timed_out and elapsed > timeout_seconds",
-            "Timeout enforcement check missing — bootstrap can "
-            "spin past the configured limit (the 18-min incident).",
+            r"if elapsed >= timeout_seconds",
+            "Timeout-enforcement check missing — bootstrap can "
+            "spin past the configured limit.",
+        )
+        self.assertIn(
+            "request_cancel", text,
+            "Watchdog no longer calls ``framework.request_cancel`` on "
+            "timeout; the JobRunner has nothing to react to.",
         )
 
 
 class HeartbeatAndPerJobLogs(unittest.TestCase):
 
-    def test_subprocess_heartbeat_every_60s(self) -> None:
+    def test_action_heartbeat_every_60s(self) -> None:
         path = ROOT / "src/media_stack/cli/commands/controller_serve.py"
         text = path.read_text(encoding="utf-8")
-        self.assertIn("still running", text)
-        self.assertIn("t_last_heartbeat", text)
+        # The in-process watchdog emits "still running" every 60s;
+        # the variable name changed from ``t_last_heartbeat`` (legacy
+        # subprocess shape) to ``next_heartbeat`` (the watchdog's
+        # absolute-time bookkeeping).
+        self.assertIn(
+            "still running", text,
+            "Per-action heartbeat log line removed — long actions "
+            "(~14 min discover-indexers) make the dashboard look "
+            "frozen.",
+        )
+        self.assertIn(
+            "next_heartbeat", text,
+            "Heartbeat scheduling variable removed — verify the "
+            "watchdog still emits one heartbeat per 60s.",
+        )
 
     def test_jobrunner_logs_per_job_completion_with_progress(self) -> None:
         # services/jobs/framework.py is now a sys.modules-alias shim;
