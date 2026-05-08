@@ -69,12 +69,8 @@ _KEY_ID = "id"
 _KEY_NAME = "name"
 _KEY_KIND = "kind"
 _KEY_STARTED_AT = "started_at"
-_KEY_ELAPSED_SECONDS = "elapsed_seconds"
-_KEY_TRIGGERED_BY = "triggered_by"
 _KEY_ACTIVE_PODS = "active_pods"
-_KIND_ACTION = "action"
 _KIND_K8S_JOB = "k8s_job"
-_STATUS_RUNNING = "running"
 # Cap on the k8s ``list_namespaced_job`` page size — keeps the
 # request bounded even in a large namespace. The aggregator only
 # needs an in-flight snapshot, not a full enumeration; 50 is the
@@ -165,60 +161,17 @@ class _RunningJobsAggregator:
     def collect(self, handler: Any) -> tuple[list[dict], list[dict]]:
         """Return ``(running_flat, running_tree)`` for the request.
 
-        ``handler`` is the controller-API handler so we can read
-        ``handler.state`` for ActionRecord rows; the rest of the
-        sources are process-global.
+        ADR-0005 Phase 5c.4b: ``ControllerState.current_action`` /
+        ``action_history`` retired. ``_collect_run_history_tree()``
+        is the single source of truth for in-flight runs; the
+        legacy ``_collect_action_records`` branch is gone.
         """
+        del handler  # legacy branch retired; tree is process-global
         running: list[dict] = []
-        self._collect_action_records(handler, running)
         if self._config.in_kubernetes:
             self._collect_k8s_jobs(running)
         tree = self._collect_run_history_tree()
         return running, tree
-
-    def _collect_action_records(
-        self, handler: Any, running: list[dict],
-    ) -> None:
-        try:
-            state = handler.state
-            cur = getattr(state, "current_action", None)
-            if cur is not None and not getattr(cur, "is_terminal", True):
-                running.append({
-                    _KEY_ID: cur.id,
-                    _KEY_NAME: cur.name,
-                    _KEY_KIND: _KIND_ACTION,
-                    _KEY_STARTED_AT: cur.started_at,
-                    _KEY_ELAPSED_SECONDS: cur.elapsed_seconds,
-                    _KEY_TRIGGERED_BY: getattr(cur, "triggered_by", ""),
-                })
-            # action_history may also contain still-running rows
-            # from re-entrant actions; pick those out too.
-            for a in getattr(state, "action_history", []):
-                if (
-                    a is not cur
-                    and getattr(a, "status", None)
-                    and a.status.value == _STATUS_RUNNING
-                    and not getattr(a, "is_terminal", True)
-                ):
-                    running.append({
-                        _KEY_ID: a.id,
-                        _KEY_NAME: a.name,
-                        _KEY_KIND: _KIND_ACTION,
-                        _KEY_STARTED_AT: a.started_at,
-                        _KEY_ELAPSED_SECONDS: a.elapsed_seconds,
-                        _KEY_TRIGGERED_BY: getattr(a, "triggered_by", ""),
-                    })
-        except (AttributeError, KeyError, TypeError, ValueError) as exc:
-            # Narrowed from the legacy ``except Exception``: every
-            # source of failure here is structural attribute access
-            # on ``state`` / ``a.status``. ``KeyError`` covers the
-            # ``a.id`` / ``cur.id`` dataclass-as-dict legacy shape;
-            # ``TypeError`` covers ``a.status.value`` when ``status``
-            # is missing-but-falsy. Anything else (e.g. a real
-            # ``RuntimeError``) propagates to the outer route-method
-            # ``except`` and yields the 500 response with empty
-            # payload.
-            log_swallowed(exc)
 
     def _collect_k8s_jobs(self, running: list[dict]) -> None:
         try:

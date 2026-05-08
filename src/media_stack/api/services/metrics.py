@@ -306,17 +306,33 @@ class MetricsService:
         return get_envoy_timeseries(window_seconds)
 
     def get_rss_feed(self, state: Any, cache: Any) -> str:
-        """Generate RSS/Atom feed of action events and health changes."""
-        state_dict = state.to_dict() if hasattr(state, "to_dict") else {}
-        history = state_dict.get("action_history", [])
+        """Generate RSS/Atom feed of action events and health changes.
+
+        ADR-0005 Phase 5c.4b: reads from the Job framework's
+        ``get_job_history()`` instead of the retired
+        ``ControllerState.action_history``. Each batch entry's
+        per-job results carry the same fields (status / error /
+        elapsed) the legacy ActionRecord exposed.
+        """
+        del state  # ADR-0005 Phase 5c.4b — no longer needed
+        from media_stack.application.jobs.framework import get_job_history
+        history = get_job_history()
         items = []
-        for a in reversed(history[-20:]):
-            status = "error" if a.get("error") else "complete"
-            title = f"Action: {a.get('name', '?')} — {status}"
-            desc = f"Duration: {a.get('elapsed_seconds', '?')}s"
-            if a.get("error"):
-                desc += f"\nError: {a['error']}"
-            items.append(f"""  <item>
+        for entry in history[:20]:
+            jobs = entry.get("jobs") or {}
+            ts = entry.get("ts")
+            for name, result in jobs.items():
+                if not isinstance(result, dict):
+                    continue
+                err = result.get("error")
+                status = "error" if err else "complete"
+                title = f"Action: {name} — {status}"
+                desc = f"Duration: {result.get('elapsed', '?')}s"
+                if ts:
+                    desc += f"\nWhen: {ts}"
+                if err:
+                    desc += f"\nError: {err}"
+                items.append(f"""  <item>
     <title>{title}</title>
     <description><![CDATA[{desc}]]></description>
     <category>{status}</category>

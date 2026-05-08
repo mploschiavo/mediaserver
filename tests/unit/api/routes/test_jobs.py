@@ -202,38 +202,17 @@ class TestJobsRunningRoute:
     """
 
     @patch("media_stack.api.routes.jobs.get_running_tree")
-    def test_returns_aggregator_with_action_records(
+    def test_returns_aggregator_from_run_history_tree(
         self, mock_tree,
     ) -> None:
+        # ADR-0005 Phase 5c.4b: ``ControllerState.current_action`` /
+        # ``action_history`` retired; the run-history tree is the
+        # single source of truth for in-flight runs. The aggregator's
+        # legacy ActionRecord branch is gone.
         mock_tree.return_value = [
             {"id": "run-42", "name": "reconcile", "children": []},
         ]
-        # Build a state fixture with one currently-running action
-        # plus one history row also in `running` status (re-entrant).
-        running_status = SimpleNamespace(value="running")
-        cur = SimpleNamespace(
-            id="action-1",
-            name="bootstrap",
-            kind="action",
-            started_at=1777140000.0,
-            elapsed_seconds=12.5,
-            triggered_by="cron",
-            is_terminal=False,
-        )
-        history_row = SimpleNamespace(
-            id="action-2",
-            name="reconcile",
-            kind="action",
-            started_at=1777139900.0,
-            elapsed_seconds=120.0,
-            triggered_by="manual",
-            is_terminal=False,
-            status=running_status,
-        )
-        state = SimpleNamespace(
-            current_action=cur,
-            action_history=[cur, history_row],
-        )
+        state = SimpleNamespace()  # field-free; no longer read
         harness = RouteDispatchHarness.with_default_router()
         response = harness.dispatch(
             "GET", "/api/jobs/running", state=state,
@@ -241,11 +220,12 @@ class TestJobsRunningRoute:
 
         assert response.status == 200
         body = json.loads(response.body)
-        # Response shape pin.
+        # Response shape pin (unchanged).
         assert set(body.keys()) == {"running", "count", "tree"}
-        assert body["count"] == 2
-        names = {row["name"] for row in body["running"]}
-        assert names == {"bootstrap", "reconcile"}
+        # ``running`` is the flat aggregator (k8s pods only after
+        # 5c.4b); the run-history tree is the canonical view.
+        assert body["count"] == 0
+        assert body["running"] == []
         assert body["tree"] == [
             {"id": "run-42", "name": "reconcile", "children": []},
         ]

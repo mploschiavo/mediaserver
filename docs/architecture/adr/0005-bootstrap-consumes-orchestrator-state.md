@@ -50,12 +50,38 @@ Phase 5b started 2026-05-07:
 Builds on ADR-0003 (orchestrator) and ADR-0004 (verifier).
 Unblocks ADR-0003 Phase 5e.3+ deletions.
 
-**Next:** 5b.5 (delete the legacy ``ensure-*`` registration
-shells from contracts; new flat ratchet pinning "no string
-``ensured_by: ensure-*``" anywhere); 5b.6 (live validation +
-bake). Then 5c.1 wide (in flight) → 5c.2 → 5c.3 → 5c.4 (the
-closure: bootstrap becomes a Job-framework job, ``action_trigger``
-+ ``current_action`` + ``action_history`` retire entirely).
+**Status update 2026-05-08** — Phase 5b complete, Phase 5c
+substantially landed:
+
+* **5b.5** (commit ``fee8897c``) — legacy ``ensure-*``
+  registration shells deleted from ``core.yaml`` +
+  ``jellyseerr.yaml``. New flat ratchet
+  (``test_no_string_ensure_ensured_by``) pins the invariant:
+  every ``ensured_by`` is either ``{type: lifecycle, ...}``
+  or a top-level operational job in an explicit allowlist.
+* **5c.1 wide** (commit ``515e7b37``) — added 5 new
+  ``*-api-key-discoverable`` lifecycle promises (sonarr,
+  radarr, lidarr, readarr, jellyseerr); migrated
+  ``discover-api-keys`` to ``orchestrator.satisfy_scope([6
+  ids])``; deleted ``_run_preflights``. Every service's
+  API-key discovery flows through the orchestrator now.
+* **5c.4 (partial)** (commit ``9dc6761e``) — retired the
+  subprocess-per-action machinery
+  (``_MP_CTX`` / ``_action_worker`` / ``_SubprocessState``).
+  Every action runs through ``_dispatch_action -> JobRunner.run``
+  on a single in-process daemon thread. Per-action watchdog
+  enforces timeout via cooperative cancel
+  (``framework.request_cancel()``).
+
+**Next:** 5c.4b — delete ``ControllerState.{current_action,
+action_history}`` fields + the lifecycle methods that mutate
+them; migrate the 5 deferred consumers (``state.append_log`` SSE
+tagging, k8s wait service, RSS feed, jobs aggregator,
+``post_misc::POST /cancel``); remove the UI's Phase 5a
+``action_history`` fallback. Then 5c.2 + 5c.3 (now provably
+vestigial — ``_try_satisfy_prereqs``, ``max_attempts`` retry
+loop, batch run-history bookkeeping). Then 5b.6 / 5c.5 (live
+validation + bake; close ADR-0003 Phase 5e.3+).
 
 **Side-fix shipped on the way**: ``ControllerState.initial_bootstrap_done``
 now persists across restarts via the existing

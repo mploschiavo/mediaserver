@@ -97,6 +97,27 @@ class BootstrapPodHttpClient:
                 walk(top)
         return running
 
+    def query_jobs_history(self, pod_name: str) -> list[dict[str, Any]]:
+        """Most-recent-first list of batch history entries from
+        ``GET /api/jobs?history``.
+
+        ADR-0005 Phase 5c.4b: replaces the legacy
+        ``state.action_history`` poll (the dataclass field was
+        retired). Each entry carries ``ts`` + per-job results
+        keyed by ``job_name`` with ``status`` / ``error`` /
+        ``elapsed`` fields — the same shape the wait service
+        previously consumed off ``action_history``.
+        """
+        body = self._exec_http(pod_name, "/api/jobs?history")
+        if body is None:
+            return []
+        try:
+            payload = json.loads(body or "{}")
+        except json.JSONDecodeError:
+            return []
+        history = payload.get("history") or []
+        return [e for e in history if isinstance(e, dict)]
+
 
 @dataclass
 class ControllerJobWaitService:
@@ -531,18 +552,28 @@ class ControllerJobWaitService:
                     self.sleep(3)
                     continue
                 # Action is no longer running — check history for result.
-                history = status.get("action_history") or []
-                for record in reversed(history):
-                    if record.get("name") == wait_for_action:
-                        if record.get("error"):
-                            raise KubernetesError(
-                                f"Action '{wait_for_action}' failed: {record['error']}"
-                            )
+                # ADR-0005 Phase 5c.4b: ``ControllerState.action_history``
+                # was retired; bootstrap-class actions now live in the
+                # Job framework's ``/api/jobs?history`` (their per-job
+                # results carry the same ``status`` / ``error`` fields).
+                jobs_history = self._pod_http.query_jobs_history(pod_name)
+                for entry in jobs_history:
+                    jobs = entry.get("jobs") or {}
+                    result = jobs.get(wait_for_action)
+                    if not isinstance(result, dict):
+                        continue
+                    err = result.get("error")
+                    if err:
+                        raise KubernetesError(
+                            f"Action '{wait_for_action}' failed: {err}"
+                        )
+                    if str(result.get("status", "")) in ("ok", "complete"):
                         self.info(
                             f"Action '{wait_for_action}' completed successfully "
-                            f"({record.get('elapsed_seconds', '?')}s)"
+                            f"({result.get('elapsed', '?')}s)"
                         )
                         return
+                    break  # most recent entry; don't keep walking
                 # Action not in history yet and not running — it may not have started.
                 if elapsed >= self.cfg.timeout_seconds:
                     raise KubernetesError(
