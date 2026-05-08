@@ -18,19 +18,13 @@ Sections:
     method names.
   * PromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the move (cutover-proof convention).
-  * LegacyJobUnscheduled — ``ensure-qbittorrent-categories`` is
-    still REGISTERED in core.yaml (handler + label + requires)
-    but has NO ``phase`` / ``priority`` field, so the bootstrap
-    DAG skips it.
-  * LegacyJobStillResolvable — the registered handler resolves
-    cleanly so ``run_job(name)`` and the auto-heal cycle keep
-    working even though the bootstrap loader never picks it up.
-  * AfterChainPreserved — ``ensure-arr-download-client`` still
-    declares ``after: [ensure-qbittorrent-categories]``. The
-    line is a no-op for the bootstrap DAG now (the referenced
-    job has no ``phase``), but we pin it so a future revert that
-    restores ``phase: post`` finds the chain intact rather than
-    silently losing the ordering invariant.
+  * LegacyJobRetired — ``ensure-qbittorrent-categories`` is GONE
+    from core.yaml as of ADR-0005 Phase 5b.5; the orchestrator's
+    lifecycle dispatch is the only path.
+  * WirerSurfacePinned — the ``CategoriesWirer`` class is the unit
+    of cutover; its singleton attachment to ``QbittorrentLifecycle``
+    is pinned so a refactor that "inlines the wirer back" or "swaps
+    to a per-instance attribute" surfaces here.
 """
 
 from __future__ import annotations
@@ -74,7 +68,6 @@ class _LoadedRegistry:
 
 _PROMISE_ID = "qbittorrent-categories"
 _LEGACY_JOB_NAME = "ensure-qbittorrent-categories"
-_DEPENDENT_JOB_NAME = "ensure-arr-download-client"
 
 
 class PromiseUsesLifecycleDispatch(unittest.TestCase):
@@ -136,100 +129,24 @@ class PromiseIsBlocking(unittest.TestCase):
         )
 
 
-class LegacyJobUnscheduled(unittest.TestCase):
-    """``ensure-qbittorrent-categories`` no longer has ``phase: post``
-    in core.yaml. The job is still REGISTERED so ``run_job(name)``
-    (auto-heal + operator) keeps resolving it; the bootstrap loader
-    skips it because ``phase`` is absent."""
-
-    def setUp(self) -> None:
-        self.contracts = _ContractFixture()
-        self.entry = self.contracts.core_jobs().get(_LEGACY_JOB_NAME)
-        self.assertIsNotNone(
-            self.entry,
-            f"{_LEGACY_JOB_NAME} disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase / priority) so "
-            "run_job + auto-heal still resolve it.",
-        )
-
-    def test_no_phase_field(self) -> None:
-        self.assertNotIn(
-            "phase", self.entry,
-            f"{_LEGACY_JOB_NAME} has phase= again — the cutover "
-            "removed it. Reverting means restoring phase: post + "
-            "priority: 84 in core.yaml AND flipping the "
-            f"{_PROMISE_ID} promise back to http_text + string "
-            "ensured_by.",
-        )
-
-    def test_no_priority_field(self) -> None:
-        self.assertNotIn(
-            "priority", self.entry,
-            f"{_LEGACY_JOB_NAME} has priority= again — the cutover "
-            "removed it (priority is meaningless without phase). "
-            "Restoring priority is part of the revert chain.",
-        )
-
-    def test_handler_path_unchanged(self) -> None:
-        # The orchestrator's lifecycle dispatch is implemented in
-        # ``QbittorrentLifecycle`` via ``CategoriesWirer``, but the
-        # legacy job's handler MUST stay so run_job + auto-heal keep
-        # working.
-        self.assertEqual(
-            self.entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:"
-            "ensure_qbittorrent_categories",
-        )
-
-
-class LegacyJobStillResolvable(unittest.TestCase):
-    """The job entry's handler imports cleanly. Auto-heal and
-    operator-dashboard ``run_job`` still resolve through
-    ``get_job_registry()`` even when the bootstrap loader skips
-    the job."""
-
-    def test_handler_imports(self) -> None:
-        import importlib
-        mod = importlib.import_module(
-            "media_stack.services.apps.core.job_adapters",
-        )
-        self.assertTrue(
-            hasattr(mod, "ensure_qbittorrent_categories"),
-            "ensure_qbittorrent_categories dropped from job_adapters "
-            "— breaks both legacy run_job AND the cutover's "
-            "documentation-by-precedent (the legacy handler is the "
-            "reference implementation for the wirer).",
-        )
-
-
-class AfterChainPreserved(unittest.TestCase):
-    """``ensure-arr-download-client`` still declares
-    ``after: [ensure-qbittorrent-categories]``. The line is a no-op
-    for the bootstrap DAG now (the referenced job has no ``phase``),
-    but the runtime ordering invariant still holds: download-client
-    wiring on the *arrs references qBit categories that must exist
-    first. Pin the line so a future revert that restores
-    ``phase: post`` finds the chain intact."""
+class LegacyJobRetired(unittest.TestCase):
+    """``ensure-qbittorrent-categories`` is GONE from core.yaml as
+    of ADR-0005 Phase 5b.5. The orchestrator's lifecycle dispatch
+    via ``QbittorrentLifecycle.ensure_categories`` is the only
+    path; auto-heal and the operator dashboard route through the
+    orchestrator too."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
 
-    def test_after_chain_intact(self) -> None:
-        downstream = self.contracts.core_jobs().get(_DEPENDENT_JOB_NAME)
-        self.assertIsNotNone(
-            downstream,
-            f"{_DEPENDENT_JOB_NAME} disappeared from core.yaml — "
-            "the after-chain pin assumes it's still registered.",
-        )
-        self.assertIn(
-            _LEGACY_JOB_NAME,
-            list(downstream.get("after") or []),
-            f"{_DEPENDENT_JOB_NAME} no longer has "
-            f"``after: [{_LEGACY_JOB_NAME}]`` — the runtime ordering "
-            "invariant on download-client wiring vs. categories "
-            "presence is now undocumented. Either restore the line "
-            "or update this ratchet with intent.",
+    def test_legacy_registration_is_gone(self) -> None:
+        self.assertNotIn(
+            _LEGACY_JOB_NAME, self.contracts.core_jobs(),
+            f"{_LEGACY_JOB_NAME} reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post "
+            "+ priority: 84) AND flipping the qbittorrent-categories "
+            "promise back to http_text + string ensured_by.",
         )
 
 

@@ -107,12 +107,17 @@ class TestJobRegistry(unittest.TestCase):
         # restart-apps, discover-indexers, push-indexers,
         # discover-api-keys, run-legacy-pipeline). Use subset
         # semantics so adding new contract jobs doesn't break this.
+        # ADR-0005 Phase 5b.5: ``configure-jellyseerr`` retired from
+        # the contract YAML — the orchestrator dispatches the same
+        # code path via ``JellyseerrLifecycle.ensure_arr_servers``
+        # (which wide-handler-delegates back to the same legacy
+        # ``configure_jellyseerr`` handler).
         per_app = {
             "configure-libraries", "configure-livetv",
             "configure-plugins", "configure-playback",
             "configure-home-screen", "configure-collections",
             "refresh-media", "configure-categories",
-            "configure-jellyseerr", "configure-arr-clients",
+            "configure-arr-clients",
             "configure-indexers", "configure-auth",
             "configure-auto-scan",
         }

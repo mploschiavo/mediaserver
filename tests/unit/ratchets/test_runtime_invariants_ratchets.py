@@ -2003,18 +2003,23 @@ class ArrJellyfinNotifierWired(unittest.TestCase):
             "imports stay invisible to Jellyfin's UI.",
         )
 
-    def test_notifier_job_registered(self) -> None:
-        try:
-            import yaml as _yaml
-        except ImportError:
-            self.skipTest("PyYAML not installed")
-        path = ROOT / "contracts" / "services" / "core.yaml"
-        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        jobs = (doc.get("plugin", {}) or {}).get("jobs", {}) or {}
-        self.assertIn(
-            "ensure-arr-jellyfin-notifier", jobs,
-            "ensure-arr-jellyfin-notifier missing from core.yaml — "
-            "the per-path refresh integration won't fire on bootstrap.",
+    def test_notifier_handler_importable(self) -> None:
+        # ADR-0005 Phase 5b.5 retired the
+        # ``ensure-arr-jellyfin-notifier`` registration shell; the
+        # per-path refresh integration now fires on bootstrap via
+        # the orchestrator's lifecycle dispatch (3 *-jellyfin-notifier
+        # promises → ServarrLifecycle.ensure_jellyfin_notifier). Pin
+        # the underlying handler stays importable so the orchestrator
+        # can keep reaching the same code path.
+        import importlib
+        mod = importlib.import_module(
+            "media_stack.services.apps.core.job_adapters",
+        )
+        self.assertTrue(
+            hasattr(mod, "ensure_arr_jellyfin_notifier"),
+            "ensure_arr_jellyfin_notifier dropped from job_adapters "
+            "— the per-path refresh integration won't fire on "
+            "bootstrap.",
         )
 
 
@@ -2057,18 +2062,22 @@ class JellyseerrOidcBootstrapped(unittest.TestCase):
                 "preview-OIDC schema.",
             )
 
-    def test_job_registered_in_contract(self) -> None:
-        try:
-            import yaml as _yaml
-        except ImportError:
-            self.skipTest("PyYAML not installed")
-        path = ROOT / "contracts" / "services" / "core.yaml"
-        doc = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        jobs = (doc.get("plugin", {}) or {}).get("jobs", {}) or {}
-        self.assertIn(
-            "ensure-jellyseerr-oidc", jobs,
-            "ensure-jellyseerr-oidc job missing from core.yaml — "
-            "the OIDC bootstrap won't fire on `compose up` after a wipe.",
+    def test_oidc_handler_importable(self) -> None:
+        # ADR-0005 Phase 5b.5 retired the ``ensure-jellyseerr-oidc``
+        # registration shell; the OIDC bootstrap now fires on
+        # ``compose up`` via the orchestrator's lifecycle dispatch
+        # (jellyseerr-oidc + jellyseerr-application-url promises →
+        # JellyseerrLifecycle.ensure_oidc / ensure_application_url).
+        # Pin the underlying handler stays importable as the
+        # reference implementation.
+        import importlib
+        mod = importlib.import_module(
+            "media_stack.services.apps.core.job_adapters",
+        )
+        self.assertTrue(
+            hasattr(mod, "ensure_jellyseerr_oidc"),
+            "ensure_jellyseerr_oidc dropped from job_adapters — the "
+            "OIDC bootstrap reference implementation is gone.",
         )
 
     def test_authelia_client_still_in_contract(self) -> None:

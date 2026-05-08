@@ -345,34 +345,25 @@ class PromisesRegistryConsistent(unittest.TestCase):
     # When you cut over a job, add its name here AND pin the wiring
     # in a ``test_<svc>_<job>_promise_driven.py`` ratchet so the
     # cutover can't silently regress.
+    #
+    # ADR-0005 Phase 5b.5: the 7 ``ensure-*`` registration shells
+    # (categories, download-client, jellyfin-libraries, seed-series,
+    # jellyseerr-oidc, jellyfin-notifier, bazarr) plus
+    # ``apply-arr-runtime-defaults`` and ``configure-jellyseerr``
+    # were deleted from contracts. Their names dropped from this
+    # allowlist alongside the deletion — once the YAML registration
+    # is gone, they can no longer appear in ``self.jobs`` so the
+    # orphan check has no candidate to flag. The broader
+    # ``test_no_string_ensure_ensured_by.py`` ratchet now enforces
+    # "no string ``ensure-*`` references" across the whole contract
+    # set.
     _ORCHESTRATOR_LIFECYCLE_DISPATCHED = {
-        # ADR-0005 Phase 3 (proof-of-pattern, sonarr+radarr+lidarr):
-        # ServarrLifecycle.ensure_jellyfin_notifier wraps the same
-        # handler this job points at. See
-        # tests/unit/contracts/test_servarr_jellyfin_notifier_promise_driven.py.
-        "ensure-arr-jellyfin-notifier",
-        # ADR-0005 Phase 3 (jellyseerr family):
-        # JellyseerrLifecycle.ensure_oidc / ensure_application_url
-        # wrap the legacy ``ensure-jellyseerr-oidc`` settings.json
-        # mutation; ``ensure_arr_servers`` delegates back to the
-        # legacy ``configure-jellyseerr`` handler. Both jobs stay
-        # registered (auto-heal + operator dashboard) but the
-        # bootstrap path is the orchestrator's lifecycle dispatch.
-        # See tests/unit/contracts/test_jellyseerr_config_promise_driven.py.
-        "ensure-jellyseerr-oidc",
-        "configure-jellyseerr",
-        # ADR-0005 Phase 3 (Bazarr family — five promises share one
-        # ensurer because the legacy handler does all five things in
-        # one form-encoded POST + one file write).
-        # BazarrLifecycle.ensure_config_wiring wraps the same handler
-        # this job points at. See
-        # tests/unit/contracts/test_bazarr_config_promise_driven.py.
-        "ensure-bazarr-language-profile",
         # ADR-0005 Phase 3 follow-on (sonarr + radarr indexer
         # pipeline): ServarrLifecycle.ensure_indexers narrows the
         # legacy whole-pipeline run to a per-*arr probe-then-
         # trigger-Prowlarr-sync flow. The legacy ``push-indexers``
-        # job stays registered so ``run_job(name)`` keeps reaching
+        # job stays registered (it's a top-level operational job,
+        # not an ensurer stub) so ``run_job(name)`` keeps reaching
         # the heavyweight handler for full reconcile. Listed here
         # for cross-reference even though the orphan check below
         # only flags ``ensure-*`` names — future ratchet work that
@@ -380,27 +371,6 @@ class PromisesRegistryConsistent(unittest.TestCase):
         # was retired) will pick it up. See
         # tests/unit/contracts/test_servarr_indexers_promise_driven.py.
         "push-indexers",
-        # ADR-0005 Phase 3 (wide-handler delegation, sonarr seed
-        # series): ServarrLifecycle.ensure_has_series's wirer
-        # delegates back to this legacy handler via injected
-        # callables — the wirer owns only the idempotent probe
-        # (count series >= 5). The job stays registered so
-        # ``run_job(name)`` keeps reaching the heavyweight Sonarr
-        # API roundtrip + tvdbId-lookup-per-title path. See
-        # tests/unit/contracts/test_servarr_seed_series_promise_driven.py.
-        "ensure-sonarr-seed-series",
-        # ADR-0005 Phase 3 (qBittorrent categories — single-promise,
-        # session-cookie auth). ``QbittorrentLifecycle.ensure_categories``
-        # delegates to ``CategoriesWirer`` (cookie-jar login + per-
-        # category POST). The legacy job stays registered so
-        # ``run_job(name)`` (auto-heal + operator dashboard) keeps
-        # resolving it; the bootstrap loader skips it because ``phase``
-        # is absent. The legacy handler is the canonical example in
-        # the silent-error-as-ok bug class — the wirer surfaces login
-        # failures as ``Outcome.failure(transient=True)`` so auto-heal
-        # sees them. See
-        # tests/unit/contracts/test_qbittorrent_categories_promise_driven.py.
-        "ensure-qbittorrent-categories",
         # ADR-0005 Phase 3 (maintainerr rules-linked-to-arr — wide-
         # handler delegation): the legacy
         # ``ensured_by: configure-collections`` was a misnomer —
@@ -416,44 +386,6 @@ class PromisesRegistryConsistent(unittest.TestCase):
         # bootstrap phase. See
         # tests/unit/contracts/test_maintainerr_rules_promise_driven.py.
         "configure-collections",
-        # ADR-0005 Phase 3 (runtime-defaults — three promises share
-        # one ensurer because the legacy handler is monolithic: one
-        # call patches every *arr's quality-profile language /
-        # import-list enableAuto / SAB + delay-profile state in one
-        # pass). ``ServarrLifecycle.ensure_runtime_defaults``
-        # delegates back to this legacy handler via injected
-        # configure_handler + job_context_factory callables (wide-
-        # handler pattern from the Jellyseerr family). Three promises
-        # bind: sonarr-quality-profiles + radarr-quality-profiles +
-        # radarr-import-lists-auto. Listed here for cross-reference
-        # even though the orphan check only flags ``ensure-*`` names
-        # (this job's name doesn't match the prefix); future ratchet
-        # work that widens the check picks it up. See
-        # tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py.
-        "apply-arr-runtime-defaults",
-        # ADR-0005 Phase 5b (download-client — the deferred 9th wirer):
-        # ``ServarrLifecycle.ensure_download_client`` delegates to
-        # ``DownloadClientWirer`` (per-arr endpoint + upsert-by-
-        # implementation match). Two promises bind:
-        # sonarr-download-client (cat=tv) + radarr-download-client
-        # (cat=movies). The legacy job stays REGISTERED so
-        # ``run_job(name)`` (auto-heal + operator dashboard) keeps
-        # resolving it; without ``phase`` the bootstrap loader skips
-        # it. See
-        # tests/unit/contracts/test_servarr_download_client_promise_driven.py.
-        "ensure-arr-download-client",
-        # ADR-0005 Phase 5b (jellyfin-libraries — the 10th and final
-        # wirer): ``JellyfinLifecycle.ensure_libraries`` delegates to
-        # ``JellyfinLibrariesWirer`` (GET /Library/VirtualFolders
-        # readback + per-missing-library POST). The ``jellyfin-
-        # libraries`` promise binds via lifecycle dispatch. Closes
-        # the last string ``ensured_by: ensure-*`` snowflake in
-        # contracts (5b.5 will retire the registration shell). The
-        # legacy job stays REGISTERED so ``run_job(name)`` (auto-
-        # heal + operator dashboard) keeps resolving it; without
-        # ``phase`` the bootstrap loader skips it. See
-        # tests/unit/contracts/test_jellyfin_libraries_promise_driven.py.
-        "ensure-jellyfin-libraries",
     }
 
     def test_no_orphan_ensure_jobs(self):

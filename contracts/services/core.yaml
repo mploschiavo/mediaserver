@@ -175,193 +175,18 @@ plugin:
       # finish (which itself waits for discovery via the chain above).
       after: [reset-prowlarr-app-mappings]
 
-    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 84``
-    # removed. The bootstrap-time path is now the orchestrator
-    # dispatching ``QbittorrentLifecycle.ensure_categories`` via the
-    # ``qbittorrent-categories`` promise in
-    # ``contracts/services/qbittorrent.yaml`` (which delegates to
-    # ``CategoriesWirer`` — cookie-jar login + per-category POST).
-    #
-    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
-    # operator dashboard) keeps resolving it. Without ``phase``,
-    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
-    # bootstrap loader's ``phase_order`` never picks it up — exactly
-    # what we want, since the orchestrator is now the bootstrap-time
-    # path.
-    #
-    # The legacy handler is the canonical case study in the
-    # silent-error-as-ok bug class — login failures logged ``err=…``
-    # while returning ``status=ok``. The lifecycle ensurer surfaces
-    # the same conditions as ``Outcome.failure(transient=…)`` so
-    # auto-heal sees them.
-    #
-    # Note: ``ensure-arr-download-client`` below preserves its
-    # ``after: [ensure-qbittorrent-categories]`` line. With ``phase``
-    # absent on this job, ``after`` is a no-op for the bootstrap DAG
-    # (the referenced job is no longer scheduled), but the line stays
-    # documenting the runtime ordering invariant for any future revert.
-    #
-    # Reverting = restore ``phase: post`` and ``priority: 84``; AND
-    # flip the ``qbittorrent-categories`` promise back to ``http_text``
-    # probe + string ``ensured_by``.
-    ensure-qbittorrent-categories:
-      handler: media_stack.services.apps.core.job_adapters:ensure_qbittorrent_categories
-      label: "qBit categories (movies/tv/music/books)"
-      requires: []
-
-    # ADR-0005 Phase 5b cutover: ``phase: post`` + ``priority: 85``
-    # removed. The bootstrap-time path is now the orchestrator
-    # dispatching ``ServarrLifecycle.ensure_download_client`` per-*arr
-    # via the ``sonarr-download-client`` + ``radarr-download-client``
-    # promises (in their respective ``contracts/services/*.yaml``).
-    # The wirer (``adapters/servarr/download_client_wiring.py``) owns
-    # the per-arr endpoint shape, the QBittorrent payload, and the
-    # upsert-by-implementation match logic.
-    #
-    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
-    # operator dashboard) keeps resolving it. Without ``phase``,
-    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
-    # bootstrap loader's ``phase_order`` never picks it up — exactly
-    # what we want, since the orchestrator is now the bootstrap path.
-    #
-    # ``after: [ensure-qbittorrent-categories]`` stays as documentation
-    # of the runtime ordering invariant (qBit categories must exist
-    # before the *arr's category field references something real).
-    # With ``phase`` absent here AND on the categories job (Phase 3
-    # cutover), ``after`` is a no-op for the bootstrap DAG but keeps
-    # the constraint visible for any future revert.
-    #
-    # Reverting = restore ``phase: post`` + ``priority: 85`` AND flip
-    # ``sonarr-download-client`` / ``radarr-download-client`` promises
-    # back to ``ensured_by: ensure-arr-download-client`` + http_json
-    # probes.
-    #
-    # Phase 5b.5 deletes this entry entirely after the auto-heal +
-    # UI migrate off ``run_job("ensure-arr-download-client")``.
-    ensure-arr-download-client:
-      handler: media_stack.services.apps.core.job_adapters:ensure_arr_download_client
-      label: "Wire qBit as download client on each *arr"
-      requires: []
-      after: [ensure-qbittorrent-categories]
-
-    # ADR-0005 Phase 5b cutover (the 10th and final wirer): ``phase:
-    # post`` + ``priority: 86`` removed. The bootstrap-time path is
-    # now the orchestrator dispatching ``JellyfinLifecycle.
-    # ensure_libraries`` via the ``jellyfin-libraries`` promise (in
-    # ``contracts/services/jellyfin.yaml``). The wirer
-    # (``adapters/jellyfin/libraries_wiring.py``) owns the
-    # ``GET / POST /Library/VirtualFolders`` HTTP shape and the
-    # already-configured short-circuit logic.
-    #
-    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
-    # operator dashboard) keeps resolving it. Without ``phase``,
-    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
-    # bootstrap loader's ``phase_order`` never picks it up — exactly
-    # what we want, since the orchestrator is now the bootstrap path.
-    #
-    # Reverting = restore ``phase: post`` + ``priority: 86`` AND flip
-    # the ``jellyfin-libraries`` promise back to ``ensured_by: ensure-
-    # jellyfin-libraries`` + http_json probe.
-    #
-    # Phase 5b.5 deletes this entry entirely after the auto-heal +
-    # UI migrate off ``run_job("ensure-jellyfin-libraries")``.
-    ensure-jellyfin-libraries:
-      handler: media_stack.services.apps.core.job_adapters:ensure_jellyfin_libraries
-      label: "Ensure Jellyfin libraries (Movies/TV/Music/Books)"
-      requires: []
-
-    # ADR-0005 Phase 3 cutover (wide-handler delegation): ``phase: post``
-    # + ``priority: 87`` removed. The bootstrap-time path is now the
-    # orchestrator dispatching ``ServarrLifecycle.ensure_has_series``
-    # via the ``sonarr-has-series`` promise in
-    # ``contracts/services/sonarr.yaml``. The ``ensure_has_series``
-    # ensurer's wirer delegates back to this handler via injected
-    # callables, so the legacy implementation stays the single source
-    # of truth for seed-series mutation. The job stays REGISTERED so
-    # ``run_job(name)`` (auto-heal + operator dashboard) keeps
-    # resolving it; without ``phase`` the bootstrap loader never picks
-    # it up. Reverting = restore ``phase: post`` + ``priority: 87`` AND
-    # flip the ``sonarr-has-series`` promise back to ``ensured_by:
-    # ensure-sonarr-seed-series`` + http_json probe.
-    ensure-sonarr-seed-series:
-      handler: media_stack.services.apps.core.job_adapters:ensure_sonarr_seed_series
-      label: "Seed Sonarr with starter series"
-      # Re-asserts the seed-series titles from arr.yaml after every
-      # bootstrap. Previously a runtime hook side-effect; promoted
-      # to its own job so it survives ``compose down -v`` cycles
-      # (v1.0.146 systemic fix).
-      requires: []
-
-    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 88``
-    # removed. The bootstrap-time path is now the orchestrator
-    # dispatching ``JellyseerrLifecycle.ensure_oidc`` /
-    # ``ensure_application_url`` via the ``jellyseerr-oidc`` and
-    # ``jellyseerr-application-url`` promises in
-    # ``contracts/services/jellyseerr.yaml``. The job stays
-    # REGISTERED so ``run_job(name)`` (auto-heal + operator
-    # dashboard) keeps resolving it; without ``phase`` the bootstrap
-    # loader's ``phase_order`` never picks it up. Reverting =
-    # restore ``phase: post`` + ``priority: 88`` AND flip both
-    # promises back to ``ensured_by: ensure-jellyseerr-oidc``.
-    ensure-jellyseerr-oidc:
-      handler: media_stack.services.apps.core.job_adapters:ensure_jellyseerr_oidc
-      label: "Wire Authelia SSO into Jellyseerr"
-      requires: []
-
-    # ADR-0005 Phase 3 cutover: ``phase: post`` removed. The
-    # bootstrap-time path is now the orchestrator dispatching
-    # ``ServarrLifecycle.ensure_jellyfin_notifier`` per-*arr
-    # via the ``*-jellyfin-notifier`` promises in
-    # ``contracts/services/{sonarr,radarr,lidarr}.yaml``.
-    #
-    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
-    # operator dashboard) keeps resolving it. Without ``phase``,
-    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
-    # bootstrap loader's ``phase_order`` never picks it up — exactly
-    # what we want.
-    #
-    # Replaces the controller's webhook→/Library/Refresh full-scan
-    # with a native MediaBrowser notifier per *arr — Jellyfin
-    # rescans only the affected path on import/delete/rename.
-    #
-    # Reverting = restore ``phase: post`` and ``priority: 89``;
-    # the orchestrator's lifecycle dispatch becomes redundant but
-    # harmless (idempotent ensurer).
-    ensure-arr-jellyfin-notifier:
-      handler: media_stack.services.apps.core.job_adapters:ensure_arr_jellyfin_notifier
-      label: "Wire *arr → Jellyfin library refresh"
-      requires: []
-
-    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 91``
-    # removed. The bootstrap-time path is now the orchestrator
-    # dispatching ``BazarrLifecycle.ensure_config_wiring`` via the
-    # five Bazarr lifecycle promises in
-    # ``contracts/services/bazarr.yaml`` (bazarr-language-profile,
-    # bazarr-default-profile-toggles, bazarr-providers,
-    # bazarr-arr-integration, bazarr-jellyfin-plugin-config — all share
-    # the same ensurer because the legacy handler does all five things
-    # in one form-encoded POST + one file write).
-    #
-    # The job stays REGISTERED so ``run_job(name)`` (auto-heal +
-    # operator dashboard) keeps resolving it. Without ``phase``,
-    # ``discover_jobs_from_contracts`` reads ``phase=None`` and the
-    # bootstrap loader's ``phase_order`` never picks it up — exactly
-    # what we want, since the orchestrator is now the bootstrap-time
-    # path.
-    #
-    # Without this wiring, Bazarr's UI shows "Missing languages
-    # profile" and downloads no subtitles. The lifecycle ensurer is
-    # idempotent — only creates the default English profile if no
-    # profiles exist yet; defaults + provider list + arr-integration
-    # are always re-asserted (so drift is corrected on every run).
-    #
-    # Reverting = restore ``phase: post`` and ``priority: 91``; the
-    # orchestrator's lifecycle dispatch becomes redundant but harmless
-    # (idempotent ensurer).
-    ensure-bazarr-language-profile:
-      handler: media_stack.services.apps.core.job_adapters:ensure_bazarr_language_profile
-      label: "Set up Bazarr language profile"
-      requires: []
+    # ADR-0005 Phase 5b.5 retired the legacy ``ensure-*`` registration
+    # shells (ensure-qbittorrent-categories, ensure-arr-download-client,
+    # ensure-jellyfin-libraries, ensure-sonarr-seed-series,
+    # ensure-jellyseerr-oidc, ensure-arr-jellyfin-notifier,
+    # ensure-bazarr-language-profile). Lifecycle dispatch via the wirer
+    # classes is now the only path; auto-heal + operator dashboard +
+    # the orchestrator all reach the same code via the lifecycle
+    # ensurer rather than ``run_job(<legacy-name>)``. The legacy
+    # handler functions in ``services/apps/core/job_adapters.py`` are
+    # still imported by the wirer classes (wide-handler delegation
+    # pattern) and stay until ``_configure_handler`` injection retires
+    # in a later Phase.
 
     mass-search-throttled:
       handler: media_stack.services.apps.core.job_adapters:mass_search_throttled
@@ -451,24 +276,16 @@ plugin:
     # post phase — runs after services are configured
     # ---------------------------------------------------------------
 
-    apply-arr-runtime-defaults:
-      handler: media_stack.services.apps.core.job_adapters:apply_arr_runtime_defaults
-      label: "Update download settings"
-      # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 55``
-      # were removed because the orchestrator now dispatches the
-      # same code path via lifecycle ensurer. Three promises bind:
-      #   * sonarr-quality-profiles    → ensure_runtime_defaults
-      #   * radarr-quality-profiles    → ensure_runtime_defaults
-      #   * radarr-import-lists-auto   → ensure_runtime_defaults
-      # The job entry stays REGISTERED so ``run_job(name)`` (auto-
-      # heal + operator dashboard) keeps reaching the heavyweight
-      # whole-family path. Reverting = restore ``phase: post`` +
-      # ``priority: 55`` and flip every *-quality-profiles +
-      # *-import-lists-auto promise back to http_json + string
-      # ``ensured_by``. See:
-      #   tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py
-      #   tests/unit/adapters/test_servarr_lifecycle_runtime_defaults.py
-      requires: [arr_apps_reachable]
+    # ADR-0005 Phase 5b.5 retired the legacy
+    # ``apply-arr-runtime-defaults`` registration shell. Lifecycle
+    # dispatch via ``ServarrLifecycle.ensure_runtime_defaults`` (which
+    # delegates to ``RuntimeDefaultsWirer``) is now the only path —
+    # three promises bind (sonarr-quality-profiles,
+    # radarr-quality-profiles, radarr-import-lists-auto). The legacy
+    # ``apply_arr_runtime_defaults`` handler in
+    # ``services/apps/core/job_adapters.py`` is still imported by the
+    # wirer (wide-handler delegation) and stays until
+    # ``_configure_handler`` injection retires in a later Phase.
 
     validate-credentials:
       handler: media_stack.services.apps.core.job_adapters:validate_credentials

@@ -27,20 +27,15 @@ plugin:
   service_technology_map:
     jellyseerr_service: jellyseerr
     request_manager_service: jellyseerr
-  jobs:
-    # ADR-0005 Phase 3 cutover: ``phase: post`` + ``priority: 5``
-    # removed. The bootstrap-time path is now the orchestrator
-    # dispatching ``JellyseerrLifecycle.ensure_arr_servers`` via the
-    # ``jellyseerr-arr-servers`` promise above. The job stays
-    # REGISTERED so ``run_job(name)`` (auto-heal + operator
-    # dashboard) keeps resolving it; without ``phase`` the bootstrap
-    # loader's ``phase_order`` never picks it up. Reverting =
-    # restore ``phase: post`` + ``priority: 5`` AND flip the
-    # promise back to ``ensured_by: configure-jellyseerr``.
-    configure-jellyseerr:
-      handler: media_stack.services.apps.jellyseerr.configure_jellyseerr_job:configure_jellyseerr
-      label: "Update Jellyseerr"
-      requires: [media_server_reachable, media_server_api_key]
+  # ADR-0005 Phase 5b.5 retired the legacy ``configure-jellyseerr``
+  # registration shell. Lifecycle dispatch via
+  # ``JellyseerrLifecycle.ensure_arr_servers`` (which delegates back
+  # to the ``configure_jellyseerr`` handler in
+  # ``application.jellyseerr.configure_jellyseerr_job``) is now the
+  # only path — the ``jellyseerr-arr-servers`` promise binds via
+  # lifecycle dispatch. The legacy handler stays importable for the
+  # wirer; only the YAML registration shell is gone.
+  jobs: {}
 
   # ADR-0006 Phase 3c — Jellyseerr family migration. The three
   # Jellyseerr promises live HERE alongside the service's jobs /

@@ -1,5 +1,6 @@
 """Pin the promise-driven wiring of the Jellyseerr config-wiring
-cutover (ADR-0005 Phase 3 — Jellyseerr family).
+cutover (ADR-0005 Phase 3 — Jellyseerr family; Phase 5b.5 retired
+the registration shells).
 
 Three promises (jellyseerr-oidc, jellyseerr-application-url,
 jellyseerr-arr-servers) all flipped from string-typed
@@ -8,9 +9,16 @@ to ``{type: lifecycle, service: jellyseerr, method: ...}``. The
 probes flipped from ``http_json`` / ``file_json`` to lifecycle-
 typed too. The legacy ``ensure-jellyseerr-oidc`` job in
 ``core.yaml`` and ``configure-jellyseerr`` job in
-``jellyseerr.yaml`` lost their ``phase: post`` so the bootstrap
-loader stops scheduling them directly — the orchestrator
-dispatches via the promise registry instead.
+``jellyseerr.yaml`` were deleted in Phase 5b.5; the orchestrator's
+lifecycle dispatch is now the only path. The legacy
+``configure_jellyseerr`` handler in
+``application.jellyseerr.configure_jellyseerr_job`` stays
+importable because ``JellyseerrConfigWirer.ensure_arr_servers``
+wide-handler-delegates back to it; the legacy
+``ensure_jellyseerr_oidc`` handler in
+``services/apps/core/job_adapters.py`` is genuinely orphan now
+(the wirer owns the OIDC settings.json mutation directly) and is
+flagged for Phase 5c+ deletion.
 
 This ratchet pins the contract-level shape so a future contract
 edit can't silently undo it.
@@ -21,13 +29,10 @@ Sections:
     method names.
   * EachPromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the cutover (proof-of-pattern convention).
-  * LegacyJobsUnscheduled — both legacy jobs retained their handler
-    + label entries but lost ``phase``, so
-    ``discover_jobs_from_contracts`` skips them from the bootstrap
-    DAG.
-  * LegacyHandlersStillResolvable — the registered handlers import
-    cleanly so ``run_job(name)`` and the auto-heal cycle keep
-    working even though the bootstrap loader never picks them up.
+  * LegacyJobsRetired — both legacy job registrations are GONE.
+  * LegacyConfigureHandlerStillImportable — the
+    ``configure_jellyseerr`` handler stays so the wirer's
+    wide-handler delegation keeps working.
 """
 
 from __future__ import annotations
@@ -161,94 +166,45 @@ class EachPromiseIsBlocking(unittest.TestCase):
             )
 
 
-class LegacyJobsUnscheduled(unittest.TestCase):
-    """Both legacy jobs are still registered (handler + label +
-    requires) but no longer have ``phase: post``. Without ``phase``
-    the bootstrap loader skips them; ``run_job(name)`` (auto-heal +
-    operator) keeps resolving them."""
+class LegacyJobsRetired(unittest.TestCase):
+    """Both legacy job registrations are GONE as of ADR-0005
+    Phase 5b.5. The orchestrator's lifecycle dispatch via the
+    Jellyseerr config promises is the only path; auto-heal and the
+    operator dashboard route through the orchestrator too."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
-        self.oidc_entry = self.contracts.core_jobs().get(
-            "ensure-jellyseerr-oidc",
-        )
-        self.configure_entry = self.contracts.jellyseerr_jobs().get(
-            "configure-jellyseerr",
-        )
 
-    def test_oidc_job_still_registered(self) -> None:
-        self.assertIsNotNone(
-            self.oidc_entry,
-            "ensure-jellyseerr-oidc disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase) so run_job + "
-            "auto-heal still resolve it.",
-        )
-
-    def test_configure_job_still_registered(self) -> None:
-        self.assertIsNotNone(
-            self.configure_entry,
-            "configure-jellyseerr disappeared from jellyseerr.yaml — "
-            "the cutover keeps it registered, just unscheduled.",
-        )
-
-    def test_oidc_job_has_no_phase(self) -> None:
+    def test_oidc_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.oidc_entry,
-            "ensure-jellyseerr-oidc has phase= again — the cutover "
-            "removed it. Reverting means restoring phase: post + "
-            "priority: 88 in core.yaml AND flipping the jellyseerr-oidc "
-            "+ jellyseerr-application-url promises back to the legacy "
+            "ensure-jellyseerr-oidc", self.contracts.core_jobs(),
+            "ensure-jellyseerr-oidc reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post + "
+            "priority: 88) AND flipping the jellyseerr-oidc + "
+            "jellyseerr-application-url promises back to the legacy "
             "http_json/file_json probes + string ensured_by.",
         )
 
-    def test_configure_job_has_no_phase(self) -> None:
+    def test_configure_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.configure_entry,
-            "configure-jellyseerr has phase= again — the cutover "
-            "removed it. Reverting means restoring phase: post + "
-            "priority: 5 in jellyseerr.yaml AND flipping the "
-            "jellyseerr-arr-servers promise back to "
-            "ensured_by: configure-jellyseerr.",
-        )
-
-    def test_oidc_handler_path_unchanged(self) -> None:
-        # The orchestrator's LifecycleEnsurer path uses
-        # JellyseerrLifecycle.ensure_oidc, which mutates settings.json
-        # in the same shape as the legacy handler. The legacy job's
-        # handler MUST stay so run_job + auto-heal keep working.
-        self.assertEqual(
-            self.oidc_entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:"
-            "ensure_jellyseerr_oidc",
-        )
-
-    def test_configure_handler_path_unchanged(self) -> None:
-        self.assertEqual(
-            self.configure_entry.get("handler"),
-            "media_stack.services.apps.jellyseerr."
-            "configure_jellyseerr_job:configure_jellyseerr",
+            "configure-jellyseerr", self.contracts.jellyseerr_jobs(),
+            "configure-jellyseerr reappeared in jellyseerr.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post + "
+            "priority: 5) AND flipping the jellyseerr-arr-servers "
+            "promise back to ensured_by: configure-jellyseerr.",
         )
 
 
-class LegacyHandlersStillResolvable(unittest.TestCase):
-    """The job entries' handlers import cleanly. Auto-heal and
-    operator-dashboard ``run_job`` still resolve through
-    ``get_job_registry()`` even when the bootstrap loader skips
-    the jobs."""
-
-    def test_oidc_handler_imports(self) -> None:
-        import importlib
-        mod = importlib.import_module(
-            "media_stack.services.apps.core.job_adapters",
-        )
-        self.assertTrue(
-            hasattr(mod, "ensure_jellyseerr_oidc"),
-            "ensure_jellyseerr_oidc dropped from job_adapters — "
-            "breaks both legacy run_job AND the orchestrator's "
-            "lifecycle method (which the legacy handler is the "
-            "reference implementation for).",
-        )
+class LegacyConfigureHandlerStillImportable(unittest.TestCase):
+    """``configure_jellyseerr`` stays importable because the
+    orchestrator's ``JellyseerrLifecycle.ensure_arr_servers``
+    wide-handler-delegates back to it via injected callables. The
+    ``ensure_jellyseerr_oidc`` handler is genuinely orphan now (the
+    wirer owns OIDC settings.json mutation directly) — flagged for
+    Phase 5c+ deletion. We don't pin it here so the deletion can
+    happen without churning this file."""
 
     def test_configure_handler_imports(self) -> None:
         import importlib
@@ -259,8 +215,8 @@ class LegacyHandlersStillResolvable(unittest.TestCase):
             hasattr(mod, "configure_jellyseerr"),
             "configure_jellyseerr dropped from "
             "application.jellyseerr.configure_jellyseerr_job — "
-            "breaks both legacy run_job AND the orchestrator's "
-            "ensure_arr_servers (which delegates back to it).",
+            "breaks the orchestrator's ensure_arr_servers wide-"
+            "handler delegation.",
         )
 
 

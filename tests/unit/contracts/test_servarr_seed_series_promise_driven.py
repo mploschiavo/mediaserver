@@ -24,14 +24,13 @@ Sections:
     method names.
   * PromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the move (matches the *-jellyfin-notifier convention).
-  * LegacyJobUnscheduled — ``ensure-sonarr-seed-series`` is still
-    REGISTERED in core.yaml (handler + label) but has NO ``phase``
-    or ``priority`` field, so ``discover_jobs_from_contracts``
-    doesn't place it on the bootstrap-scheduled phase tree.
-  * LegacyHandlerStillResolvable — the registered handler imports
-    cleanly so ``run_job(name)``, the auto-heal cycle, AND the
-    orchestrator's ``ensure_has_series`` lifecycle delegate all
-    keep reaching the same code path.
+  * LegacyJobRetired — ``ensure-sonarr-seed-series`` is GONE from
+    core.yaml as of ADR-0005 Phase 5b.5; the orchestrator's
+    lifecycle dispatch is the only path.
+  * LegacyHandlerStillImportable — the underlying handler imports
+    cleanly so the orchestrator's ``ensure_has_series`` wide-
+    handler delegate keeps reaching the same heavyweight Sonarr-
+    API + tvdbId-lookup code path.
 """
 
 from __future__ import annotations
@@ -149,72 +148,36 @@ class PromiseIsBlocking(unittest.TestCase):
         )
 
 
-class LegacyJobUnscheduled(unittest.TestCase):
-    """``ensure-sonarr-seed-series`` no longer has ``phase: post`` /
-    ``priority: 87`` in core.yaml. The job is still REGISTERED so
-    ``run_job(name)`` (auto-heal + operator) keeps resolving it
-    AND the orchestrator's ``ensure_has_series`` ensurer delegates
-    back to it; the bootstrap loader skips it because ``phase`` is
-    absent."""
+class LegacyJobRetired(unittest.TestCase):
+    """``ensure-sonarr-seed-series`` is GONE from core.yaml as of
+    ADR-0005 Phase 5b.5. The orchestrator's lifecycle dispatch via
+    the ``sonarr-has-series`` promise is the only path; auto-heal
+    and the operator dashboard route through the orchestrator
+    too."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
-        self.entry = self.contracts.core_jobs().get(
-            "ensure-sonarr-seed-series",
-        )
-        self.assertIsNotNone(
-            self.entry,
-            "ensure-sonarr-seed-series disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase/priority) so run_job "
-            "+ auto-heal + the lifecycle-method delegation still "
-            "resolve it.",
-        )
 
-    def test_no_phase_field(self) -> None:
-        # Restoring ``phase: post`` would put the job back on the
-        # bootstrap-scheduled phase tree and double up with the
-        # orchestrator's lifecycle dispatch via the
-        # ``sonarr-has-series`` promise.
+    def test_legacy_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.entry,
-            "ensure-sonarr-seed-series has phase= again — the cutover "
-            "removed it. Reverting means restoring phase: post + "
-            "priority: 87 in core.yaml AND flipping the "
-            "sonarr-has-series promise back to http_json + string "
-            "ensured_by.",
-        )
-
-    def test_no_priority_field(self) -> None:
-        self.assertNotIn(
-            "priority", self.entry,
-            "ensure-sonarr-seed-series has priority= again — kept "
-            "paired with phase removal so reverting is a single-step "
-            "diff.",
-        )
-
-    def test_handler_path_unchanged(self) -> None:
-        # The orchestrator's LifecycleEnsurer:sonarr:ensure_has_series
-        # delegates BACK to this handler via the wirer's injected
-        # ``configure_handler``. Renaming the handler path silently
-        # breaks both legacy run_job AND the orchestrator's lifecycle
-        # delegate.
-        self.assertEqual(
-            self.entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:"
-            "ensure_sonarr_seed_series",
+            "ensure-sonarr-seed-series", self.contracts.core_jobs(),
+            "ensure-sonarr-seed-series reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post "
+            "+ priority: 87) AND flipping the sonarr-has-series "
+            "promise back to http_json + string ensured_by.",
         )
 
 
-class LegacyHandlerStillResolvable(unittest.TestCase):
-    """The job entry's handler imports cleanly. Auto-heal,
-    operator-dashboard ``run_job``, AND the orchestrator's
-    ``ensure_has_series`` lifecycle delegate all resolve through
-    the same shim path
-    (``services.apps.core.job_adapters``). The shim path keeps the
-    adapters → application hexagon ratchet clean (the lifecycle
-    method's lazy import never reaches into ``application/``
-    directly)."""
+class LegacyHandlerStillImportable(unittest.TestCase):
+    """The underlying ``ensure_sonarr_seed_series`` handler stays
+    importable because the orchestrator's
+    ``ServarrLifecycle.ensure_has_series`` wirer wide-handler-
+    delegates back to it via injected ``configure_handler``. The
+    shim path through ``services.apps.core.job_adapters`` keeps
+    the adapters → application hexagon ratchet clean (the
+    lifecycle method's lazy import never reaches into
+    ``application/`` directly)."""
 
     def test_handler_imports_via_services_shim(self) -> None:
         import importlib
@@ -224,9 +187,9 @@ class LegacyHandlerStillResolvable(unittest.TestCase):
         self.assertTrue(
             hasattr(mod, "ensure_sonarr_seed_series"),
             "ensure_sonarr_seed_series dropped from "
-            "services.apps.core.job_adapters — breaks both legacy "
-            "run_job AND the orchestrator's lifecycle method (which "
-            "delegates to this handler via injected callables).",
+            "services.apps.core.job_adapters — breaks the "
+            "orchestrator's lifecycle method (which delegates to "
+            "this handler via injected callables).",
         )
 
 

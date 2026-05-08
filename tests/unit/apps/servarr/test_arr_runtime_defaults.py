@@ -308,27 +308,36 @@ class DispatcherSelectsConfiguredArrApps(unittest.TestCase):
 
 
 class ContractRegistration(unittest.TestCase):
-    """Pin the contract entry so a refactor can't silently drop
-    the apply-arr-runtime-defaults job + handler reference from
-    core.yaml.
+    """ADR-0005 Phase 5b.5 retired the legacy
+    ``apply-arr-runtime-defaults`` registration shell from
+    ``core.yaml``. The orchestrator's lifecycle dispatch via the
+    three runtime-defaults promises is the only path. The legacy
+    handler stays importable in ``services/apps/core/job_adapters``
+    because the wirer wide-handler-delegates back to it.
 
-    ADR-0005 Phase 3 cutover (three runtime-defaults promises
-    share ``ServarrLifecycle.ensure_runtime_defaults``): the job
-    no longer carries ``phase: post`` + ``priority: 55`` because
-    the orchestrator dispatches the same code path via lifecycle
-    ensurer. The job entry STAYS REGISTERED so ``run_job(name)``
-    (auto-heal + operator dashboard) keeps reaching the
-    heavyweight whole-family path. This ratchet pins handler-
-    name + job-name presence; the cutover invariants live in
-    ``tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py``.
+    The retirement invariant lives in
+    ``tests/unit/contracts/test_servarr_runtime_defaults_promise_driven.py``;
+    this ratchet pins the handler-name presence so the wirer's
+    delegation target can't silently disappear.
     """
 
-    def test_apply_arr_runtime_defaults_in_contract(self) -> None:
+    def test_apply_arr_runtime_defaults_handler_importable(self) -> None:
+        import importlib
+        mod = importlib.import_module(
+            "media_stack.services.apps.core.job_adapters",
+        )
+        self.assertTrue(
+            hasattr(mod, "apply_arr_runtime_defaults"),
+            "apply_arr_runtime_defaults dropped from job_adapters — "
+            "breaks RuntimeDefaultsWirer's wide-handler delegation.",
+        )
+
+    def test_legacy_registration_shell_is_gone(self) -> None:
         text = (ROOT / "contracts/services/core.yaml").read_text(encoding="utf-8")
-        self.assertIn("apply-arr-runtime-defaults:", text)
-        self.assertIn(
-            "media_stack.services.apps.core.job_adapters:"
-            "apply_arr_runtime_defaults", text,
+        self.assertNotIn(
+            "apply-arr-runtime-defaults:", text,
+            "apply-arr-runtime-defaults reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell.",
         )
 
 

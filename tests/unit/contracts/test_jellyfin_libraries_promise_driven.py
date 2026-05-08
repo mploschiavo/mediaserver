@@ -1,16 +1,18 @@
 """Pin the promise-driven wiring of the jellyfin-libraries cutover
-(ADR-0005 Phase 5b — the 10th and final wirer).
+(ADR-0005 Phase 5b — the 10th and final wirer; Phase 5b.5 retired
+the registration shell).
 
 The ``jellyfin-libraries`` promise flipped from string-typed
 ``ensured_by: ensure-jellyfin-libraries`` to ``{type: lifecycle,
 service: jellyfin, method: ensure_libraries}``. Its probe flipped
 from ``http_json`` to lifecycle-typed too. The legacy
-``ensure-jellyfin-libraries`` job in ``core.yaml`` lost its
-``phase: post`` + ``priority: 86`` lines so the bootstrap loader
-stops scheduling it — the orchestrator dispatches via the promise
-registry instead. The legacy handler stays REGISTERED so
-``run_job(name)`` (auto-heal + operator dashboard) keeps reaching
-the heavyweight handler.
+``ensure-jellyfin-libraries`` job in ``core.yaml`` was deleted in
+Phase 5b.5 (the orchestrator's lifecycle dispatch is now the only
+path; auto-heal + the operator dashboard route through the
+orchestrator too). The legacy handler in
+``services/apps/core/job_adapters.py`` is now genuinely orphan
+(``JellyfinLibrariesWirer`` owns the GET/POST flow directly, no
+wide-handler delegation) — flagged for Phase 5c+ deletion.
 
 This ratchet pins the contract-level shape so a future contract
 edit can't silently undo it.
@@ -21,13 +23,9 @@ Sections:
     method names.
   * PromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the move (matches the *-jellyfin-notifier convention).
-  * LegacyJobUnscheduled — ``ensure-jellyfin-libraries`` is still
-    REGISTERED in core.yaml (handler + label) but has NO ``phase``
-    / ``priority`` field, so ``discover_jobs_from_contracts``
-    doesn't place it on the bootstrap-scheduled phase tree.
-  * LegacyJobStillResolvable — the registered handler resolves
-    cleanly so ``run_job(name)`` and the auto-heal cycle keep
-    working even though the bootstrap loader skips it.
+  * LegacyJobRetired — ``ensure-jellyfin-libraries`` is GONE from
+    core.yaml. Re-introducing the registration would re-create the
+    legacy ``run_job(name)`` path the orchestrator now owns.
 """
 
 from __future__ import annotations
@@ -138,76 +136,26 @@ class PromiseIsBlocking(unittest.TestCase):
         )
 
 
-class LegacyJobUnscheduled(unittest.TestCase):
-    """``ensure-jellyfin-libraries`` no longer has ``phase: post`` /
-    ``priority: 86`` in core.yaml. The job is still REGISTERED so
-    ``run_job(name)`` (auto-heal + operator) keeps resolving it for
-    full-pipeline reconcile; the bootstrap loader skips it because
-    ``phase`` is absent."""
+class LegacyJobRetired(unittest.TestCase):
+    """``ensure-jellyfin-libraries`` is GONE from core.yaml as of
+    ADR-0005 Phase 5b.5. The orchestrator's lifecycle dispatch via
+    the ``jellyfin-libraries`` promise is the only path; auto-heal
+    and the operator dashboard route through the orchestrator too.
+    Re-introducing the registration shell would re-create the
+    legacy ``run_job(name)`` path."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
-        self.entry = self.contracts.core_jobs().get(
-            "ensure-jellyfin-libraries",
-        )
-        self.assertIsNotNone(
-            self.entry,
-            "ensure-jellyfin-libraries disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase) so run_job + auto-heal "
-            "still resolve it.",
-        )
 
-    def test_no_phase_field(self) -> None:
-        # ``phase: post`` would put the job back on the bootstrap-
-        # scheduled phase tree and double up with the orchestrator's
-        # lifecycle dispatch via the jellyfin-libraries promise.
+    def test_legacy_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.entry,
-            "ensure-jellyfin-libraries has phase= again — the "
-            "cutover removed it. Reverting means restoring "
-            "phase: post + priority: 86 in core.yaml AND flipping "
-            "the jellyfin-libraries promise back to http_json + "
-            "string ensured_by.",
-        )
-
-    def test_no_priority_field(self) -> None:
-        self.assertNotIn(
-            "priority", self.entry,
-            "ensure-jellyfin-libraries has priority= again — kept "
-            "paired with phase removal so reverting is a single-step "
-            "diff.",
-        )
-
-    def test_handler_path_unchanged(self) -> None:
-        # The orchestrator's
-        # LifecycleEnsurer:jellyfin:ensure_libraries is implemented
-        # in JellyfinLifecycle, but the legacy job's handler MUST
-        # stay so run_job + auto-heal keep reaching the heavyweight
-        # ensure_jellyfin_libraries path.
-        self.assertEqual(
-            self.entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:ensure_jellyfin_libraries",
-        )
-
-
-class LegacyJobStillResolvable(unittest.TestCase):
-    """The job entry's handler imports cleanly. Auto-heal and
-    operator-dashboard ``run_job`` still resolve through
-    ``get_job_registry()`` even when the bootstrap loader skips
-    the job."""
-
-    def test_handler_imports(self) -> None:
-        import importlib
-        mod = importlib.import_module(
-            "media_stack.services.apps.core.job_adapters",
-        )
-        self.assertTrue(
-            hasattr(mod, "ensure_jellyfin_libraries"),
-            "ensure_jellyfin_libraries dropped from job_adapters — "
-            "breaks legacy run_job AND removes the reference "
-            "implementation the orchestrator's lifecycle method "
-            "mirrors.",
+            "ensure-jellyfin-libraries", self.contracts.core_jobs(),
+            "ensure-jellyfin-libraries reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Lifecycle dispatch via the jellyfin-libraries promise "
+            "is the only path. Reverting means restoring the entry "
+            "(with phase: post + priority: 86) AND flipping the "
+            "promise back to http_json + string ensured_by.",
         )
 
 

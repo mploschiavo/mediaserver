@@ -20,13 +20,9 @@ Sections:
     method names.
   * EachPromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the move (proof-of-pattern convention).
-  * LegacyJobUnscheduled — ``ensure-arr-jellyfin-notifier`` is
-    still REGISTERED in core.yaml (handler + label + requires)
-    but has NO ``phase`` field, so ``discover_jobs_from_contracts``
-    skips it from the bootstrap DAG.
-  * LegacyJobStillResolvable — the registered handler resolves
-    cleanly so ``run_job(name)`` and the auto-heal cycle keep
-    working even though the bootstrap loader never picks it up.
+  * LegacyJobRetired — ``ensure-arr-jellyfin-notifier`` is GONE
+    from core.yaml as of ADR-0005 Phase 5b.5; the orchestrator's
+    lifecycle dispatch is the only path.
 """
 
 from __future__ import annotations
@@ -150,66 +146,24 @@ class EachPromiseIsBlocking(unittest.TestCase):
             )
 
 
-class LegacyJobUnscheduled(unittest.TestCase):
-    """``ensure-arr-jellyfin-notifier`` no longer has ``phase: post``
-    in core.yaml. The job is still REGISTERED so ``run_job(name)``
-    (auto-heal + operator) keeps resolving it; the bootstrap loader
-    skips it because ``phase`` is absent."""
+class LegacyJobRetired(unittest.TestCase):
+    """``ensure-arr-jellyfin-notifier`` is GONE from core.yaml as of
+    ADR-0005 Phase 5b.5. The orchestrator's lifecycle dispatch via
+    the three *-jellyfin-notifier promises is the only path; auto-
+    heal and the operator dashboard route through the orchestrator
+    too."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
-        self.entry = self.contracts.core_jobs().get(
-            "ensure-arr-jellyfin-notifier",
-        )
-        self.assertIsNotNone(
-            self.entry,
-            "ensure-arr-jellyfin-notifier disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase) so run_job + auto-heal "
-            "still resolve it.",
-        )
 
-    def test_no_phase_field(self) -> None:
-        # ``phase: post`` would put the job back in the bootstrap
-        # DAG and double up with the orchestrator's lifecycle dispatch
-        # via the *-jellyfin-notifier promises.
+    def test_legacy_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.entry,
-            "ensure-arr-jellyfin-notifier has phase= again — the "
-            "cutover removed it. Reverting means restoring "
-            "phase: post + priority: 89 in core.yaml AND flipping "
-            "every *-jellyfin-notifier promise back to http_json + "
-            "string ensured_by.",
-        )
-
-    def test_handler_path_unchanged(self) -> None:
-        # The orchestrator's LifecycleEnsurer:<svc>:ensure_jellyfin_notifier
-        # is implemented in ServarrLifecycle, but the legacy job's
-        # handler MUST stay so run_job + auto-heal keep working.
-        self.assertEqual(
-            self.entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:"
-            "ensure_arr_jellyfin_notifier",
-        )
-
-
-class LegacyJobStillResolvable(unittest.TestCase):
-    """The job entry's handler imports cleanly. Auto-heal and
-    operator-dashboard ``run_job`` still resolve through
-    ``get_job_registry()`` even when the bootstrap loader skips
-    the job."""
-
-    def test_handler_imports(self) -> None:
-        import importlib
-        mod = importlib.import_module(
-            "media_stack.services.apps.core.job_adapters",
-        )
-        self.assertTrue(
-            hasattr(mod, "ensure_arr_jellyfin_notifier"),
-            "ensure_arr_jellyfin_notifier dropped from job_adapters "
-            "— breaks both legacy run_job AND the orchestrator's "
-            "lifecycle method (which the legacy handler is the "
-            "reference implementation for).",
+            "ensure-arr-jellyfin-notifier", self.contracts.core_jobs(),
+            "ensure-arr-jellyfin-notifier reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post + "
+            "priority: 89) AND flipping every *-jellyfin-notifier "
+            "promise back to http_json + string ensured_by.",
         )
 
 

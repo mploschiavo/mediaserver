@@ -21,14 +21,9 @@ Sections:
     method names.
   * EachPromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the move (matches the *-jellyfin-notifier convention).
-  * LegacyJobUnscheduled — ``ensure-arr-download-client`` is still
-    REGISTERED in core.yaml (handler + label + after-chain) but has
-    NO ``phase`` / ``priority`` field, so
-    ``discover_jobs_from_contracts`` doesn't place it on the
-    bootstrap-scheduled phase tree.
-  * LegacyJobStillResolvable — the registered handler resolves
-    cleanly so ``run_job(name)`` and the auto-heal cycle keep
-    working even though the bootstrap loader skips it.
+  * LegacyJobRetired — ``ensure-arr-download-client`` is GONE from
+    core.yaml as of ADR-0005 Phase 5b.5; the orchestrator's
+    lifecycle dispatch is the only path.
 """
 
 from __future__ import annotations
@@ -147,87 +142,28 @@ class EachPromiseIsBlocking(unittest.TestCase):
             )
 
 
-class LegacyJobUnscheduled(unittest.TestCase):
-    """``ensure-arr-download-client`` no longer has ``phase: post`` /
-    ``priority: 85`` in core.yaml. The job is still REGISTERED so
-    ``run_job(name)`` (auto-heal + operator) keeps resolving it for
-    full-pipeline reconcile; the bootstrap loader skips it because
-    ``phase`` is absent."""
+class LegacyJobRetired(unittest.TestCase):
+    """``ensure-arr-download-client`` is GONE from core.yaml as of
+    ADR-0005 Phase 5b.5. The orchestrator's lifecycle dispatch via
+    the *-download-client promises is the only path; auto-heal and
+    the operator dashboard route through the orchestrator too. The
+    after-chain to ``ensure-qbittorrent-categories`` (also retired
+    in 5b.5) is no longer expressible in YAML — the runtime
+    ordering invariant is now enforced by the orchestrator's promise
+    dependency graph (qbittorrent-categories → *-download-client)."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
-        self.entry = self.contracts.core_jobs().get(
-            "ensure-arr-download-client",
-        )
-        self.assertIsNotNone(
-            self.entry,
-            "ensure-arr-download-client disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase) so run_job + auto-heal "
-            "still resolve it.",
-        )
 
-    def test_no_phase_field(self) -> None:
-        # ``phase: post`` would put the job back on the bootstrap-
-        # scheduled phase tree and double up with the orchestrator's
-        # lifecycle dispatch via the *-download-client promises.
+    def test_legacy_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.entry,
-            "ensure-arr-download-client has phase= again — the "
-            "cutover removed it. Reverting means restoring "
-            "phase: post + priority: 85 in core.yaml AND flipping "
-            "every *-download-client promise back to http_json + "
-            "string ensured_by.",
-        )
-
-    def test_no_priority_field(self) -> None:
-        self.assertNotIn(
-            "priority", self.entry,
-            "ensure-arr-download-client has priority= again — kept "
-            "paired with phase removal so reverting is a single-step "
-            "diff.",
-        )
-
-    def test_handler_path_unchanged(self) -> None:
-        # The orchestrator's LifecycleEnsurer:<svc>:ensure_download_client
-        # is implemented in ServarrLifecycle, but the legacy job's
-        # handler MUST stay so run_job + auto-heal keep reaching the
-        # heavyweight whole-arr-family path.
-        self.assertEqual(
-            self.entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:ensure_arr_download_client",
-        )
-
-    def test_after_chain_preserved(self) -> None:
-        # ``after: [ensure-qbittorrent-categories]`` keeps the
-        # relative ordering invariant visible — qBit categories
-        # must exist before the *arr's category field references
-        # something real. With phase= absent on both jobs the chain
-        # is documentation-only for the bootstrap DAG, but matters
-        # if either job is ever rescheduled.
-        self.assertEqual(
-            list(self.entry.get("after") or []),
-            ["ensure-qbittorrent-categories"],
-        )
-
-
-class LegacyJobStillResolvable(unittest.TestCase):
-    """The job entry's handler imports cleanly. Auto-heal and
-    operator-dashboard ``run_job`` still resolve through
-    ``get_job_registry()`` even when the bootstrap loader skips
-    the job."""
-
-    def test_handler_imports(self) -> None:
-        import importlib
-        mod = importlib.import_module(
-            "media_stack.services.apps.core.job_adapters",
-        )
-        self.assertTrue(
-            hasattr(mod, "ensure_arr_download_client"),
-            "ensure_arr_download_client dropped from job_adapters — "
-            "breaks both legacy run_job AND the orchestrator's "
-            "lifecycle method (which the legacy handler is the "
-            "reference implementation for).",
+            "ensure-arr-download-client", self.contracts.core_jobs(),
+            "ensure-arr-download-client reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post + "
+            "priority: 85 + after: [ensure-qbittorrent-categories]) "
+            "AND flipping every *-download-client promise back to "
+            "http_json + string ensured_by.",
         )
 
 

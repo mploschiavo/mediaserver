@@ -31,13 +31,13 @@ Sections:
     state and silently break.
   * EachPromiseIsBlocking — explicit ``bootstrap_blocking: true``
     survived the move (proof-of-pattern convention).
-  * LegacyJobUnscheduled — ``apply-arr-runtime-defaults`` is still
-    REGISTERED in core.yaml (handler + label + requires) but has NO
-    ``phase`` field, so ``discover_jobs_from_contracts`` skips it
-    from the bootstrap DAG.
-  * LegacyJobStillResolvable — the registered handler imports
-    cleanly so ``run_job(name)`` and the auto-heal cycle keep working
-    even though the bootstrap loader skips it.
+  * LegacyJobRetired — ``apply-arr-runtime-defaults`` is GONE from
+    core.yaml as of ADR-0005 Phase 5b.5; the orchestrator's
+    lifecycle dispatch is the only path.
+  * LegacyHandlerStillImportable — the underlying handler imports
+    cleanly so the orchestrator's ``ensure_runtime_defaults``
+    wide-handler delegate keeps reaching the same heavyweight
+    whole-family code path.
 """
 
 from __future__ import annotations
@@ -175,71 +175,34 @@ class EachPromiseIsBlocking(unittest.TestCase):
             )
 
 
-class LegacyJobUnscheduled(unittest.TestCase):
-    """``apply-arr-runtime-defaults`` no longer has ``phase: post``
-    or ``priority: 55`` in core.yaml. The job is still REGISTERED so
-    ``run_job(name)`` (auto-heal + operator) keeps resolving it; the
-    bootstrap loader skips it because ``phase`` is absent."""
+class LegacyJobRetired(unittest.TestCase):
+    """``apply-arr-runtime-defaults`` is GONE from core.yaml as of
+    ADR-0005 Phase 5b.5. The orchestrator's lifecycle dispatch via
+    the three runtime-defaults promises is the only path; auto-heal
+    and the operator dashboard route through the orchestrator
+    too."""
 
     def setUp(self) -> None:
         self.contracts = _ContractFixture()
-        self.entry = self.contracts.core_jobs().get(
-            "apply-arr-runtime-defaults",
-        )
-        self.assertIsNotNone(
-            self.entry,
-            "apply-arr-runtime-defaults disappeared from core.yaml — "
-            "the cutover keeps it registered, just unscheduled. "
-            "Restore the entry (without phase/priority) so run_job + "
-            "auto-heal still resolve it.",
-        )
 
-    def test_no_phase_field(self) -> None:
+    def test_legacy_registration_is_gone(self) -> None:
         self.assertNotIn(
-            "phase", self.entry,
-            "apply-arr-runtime-defaults has phase= again — the "
-            "cutover removed it. Reverting means restoring "
-            "phase: post + priority: 55 in core.yaml AND flipping "
-            "every *-quality-profiles + *-import-lists-auto promise "
-            "back to http_json + string ensured_by.",
-        )
-
-    def test_no_priority_field(self) -> None:
-        self.assertNotIn(
-            "priority", self.entry,
-            "apply-arr-runtime-defaults has priority= again — kept "
-            "paired with phase removal so reverting is a single-step "
-            "diff.",
-        )
-
-    def test_handler_path_unchanged(self) -> None:
-        # The orchestrator's
-        # LifecycleEnsurer:<svc>:ensure_runtime_defaults wide-handler-
-        # delegates back to this job's handler, so the path MUST
-        # stay intact.
-        self.assertEqual(
-            self.entry.get("handler"),
-            "media_stack.services.apps.core.job_adapters:"
-            "apply_arr_runtime_defaults",
-        )
-
-    def test_requires_chain_preserved(self) -> None:
-        # ``requires: [arr_apps_reachable]`` keeps the relative
-        # ordering for cases where ``run_job`` is invoked manually.
-        # Drop it and any operator-driven ``run_job
-        # apply-arr-runtime-defaults`` would race the *arr reach
-        # probe.
-        self.assertEqual(
-            list(self.entry.get("requires") or []),
-            ["arr_apps_reachable"],
+            "apply-arr-runtime-defaults", self.contracts.core_jobs(),
+            "apply-arr-runtime-defaults reappeared in core.yaml — "
+            "ADR-0005 Phase 5b.5 retired the registration shell. "
+            "Reverting means restoring the entry (with phase: post + "
+            "priority: 55 + requires: [arr_apps_reachable]) AND "
+            "flipping every *-quality-profiles + *-import-lists-auto "
+            "promise back to http_json + string ensured_by.",
         )
 
 
-class LegacyJobStillResolvable(unittest.TestCase):
-    """The job entry's handler imports cleanly. Auto-heal and
-    operator-dashboard ``run_job`` still resolve through
-    ``get_job_registry()`` even when the bootstrap loader skips
-    the job."""
+class LegacyHandlerStillImportable(unittest.TestCase):
+    """The underlying ``apply_arr_runtime_defaults`` handler stays
+    importable because the orchestrator's
+    ``ServarrLifecycle.ensure_runtime_defaults`` wide-handler-
+    delegates back to it via injected ``configure_handler`` +
+    ``job_context_factory`` callables."""
 
     def test_handler_imports(self) -> None:
         import importlib
@@ -249,9 +212,9 @@ class LegacyJobStillResolvable(unittest.TestCase):
         self.assertTrue(
             hasattr(mod, "apply_arr_runtime_defaults"),
             "apply_arr_runtime_defaults dropped from job_adapters — "
-            "breaks both legacy run_job AND the orchestrator's "
-            "lifecycle method (which wide-handler-delegates back to "
-            "the legacy handler via injected callables).",
+            "breaks the orchestrator's lifecycle method (which "
+            "wide-handler-delegates back to the legacy handler via "
+            "injected callables).",
         )
 
 
