@@ -67,10 +67,8 @@ function collectFetcherCalls(): FetcherCall[] {
       // string (which is itself an interpolation).
       let normalized = literal.replace(/\$\{[^}]+\}/g, "{param}");
       // Strip leading slashes and any literal query string.
-      normalized = normalized
-        .replace(/^\/+/, "")
-        .split("?")[0]
-        .replace(/\/+$/, "");
+      const stripped = normalized.replace(/^\/+/, "").split("?")[0] ?? "";
+      normalized = stripped.replace(/\/+$/, "");
       // Adjacent ``{param}{param}`` runs (path segment + query
       // string built from interpolations like
       // ``api/logs/${source}${qs}``) collapse to a single ``{param}``

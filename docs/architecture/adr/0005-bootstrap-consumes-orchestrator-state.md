@@ -1,8 +1,24 @@
 # ADR-0005 — Bootstrap consumes orchestrator state
 
-**Status:** Phases 1–5a fully shipped; Phase 5b largely shipped
-(5b.1 / 5b.1b / 5b.2 / 5b.3 / 5b.4 done; 5b.5 + 5b.6 remaining).
-Phase 5c started: 5c.1 wide in flight.
+**Status:** Phase 5 substantially closed 2026-05-08 with the
+v1.0.325 / v1.3.82 bake. Bootstrap is now a Job-framework job
+(no ``action_trigger`` snowflake), every ``ensure-*`` string
+dispatch is gone, every API-key-discoverable promise routes
+through the orchestrator, and the legacy
+``ControllerState.{current_action, action_history}`` surface is
+deleted. The closure unblocks ADR-0003 Phase 5e.3+ deletions.
+
+What's still outstanding (post-soak follow-up):
+
+* **5c.2 + 5c.3** — narrow JobRunner internal cleanup
+  (``_try_satisfy_prereqs`` + the retry-on-no-ready-jobs shape +
+  the parent-batch ``_rh_start`` wrap). Operator-invisible
+  hygiene; agent audit confirmed the originally-stated scope was
+  too broad — ``max_attempts`` is contract-surface and per-job
+  ``_rh_start``/``_rh_complete`` is the Jobs UI history source.
+  Cleanup deferred until v1.0.325 has soaked.
+
+Phase rollup:
 
 Phases 1–3 landed 2026-05-03; Phase 4 (``LifecycleWirerBase``
 extraction) followed shortly after — all 9 (then 10) wirer
@@ -18,6 +34,47 @@ stopped emitting them; CLI wait flow
 migrated to ``/api/jobs/running`` + ``initial_bootstrap_done`` +
 ``error`` for terminal-state and in-flight-action checks. Both
 targets (k8s + compose) live on the new contract.
+
+**End-state architecture** (after v1.0.325 / v1.3.82):
+
+* Every top-level scheduled or operator-runnable unit of work
+  flows through ``JobRunner.run(name)``. One history table, one
+  event stream, one ``/api/jobs?history`` + ``/api/jobs/running``.
+  Bootstrap is one such job; ``reconcile``, ``orchestrator:satisfy
+  -shadow``, ``media-integrity:scan``, etc. are siblings.
+* Every promise ``ensured_by`` is either ``{type: lifecycle,
+  service, method}`` (10 wirers; 19 promises post-Phase 3 + 6
+  api-key-discoverable promises post-5c.1 wide) OR a top-level
+  operational-job string in an explicit allowlist (``envoy-config``,
+  ``discover-indexers``, ``tag-indexers-for-apps``,
+  ``unpackerr-post``, ``push-indexers``).
+  ``test_no_string_ensure_ensured_by`` pins the invariant.
+* Atomic promise satisfaction goes through ``dispatch_ensurer``
+  (the orchestrator's tick mechanism). Three callers share it:
+  orchestrator-tick, operator-UI (``POST /api/lifecycle-ensurers/
+  {service}/{method}``), and auto-heal (already routed via
+  ``run_job("orchestrator:satisfy-shadow", source="auto-heal")``
+  pre-5b). No per-caller branching inside ``dispatch_ensurer``.
+* ``ControllerState`` is now a thin deployment-state holder
+  (``initial_bootstrap_done`` + ``runtime_config`` +
+  ``failed_services`` + log buffer). The action-lifecycle surface
+  (``current_action``, ``action_history``,
+  ``start_action``/``finish_action``/etc.) is gone — Job
+  framework's ``run_history`` module is the canonical record.
+  Architecture ratchets at
+  ``test_no_controller_state_action_lifecycle.py`` +
+  ``test_no_legacy_preflight.py`` pin the absence.
+* Legacy preflight machinery (``_run_preflights``) deleted. Every
+  service's API-key discovery is a lifecycle promise the
+  orchestrator's ``satisfy_scope([6 ids])`` resolves.
+* Subprocess-per-action machinery
+  (``_MP_CTX`` / ``_action_worker`` / ``_SubprocessState``) gone.
+  Actions run on a single in-process daemon thread.
+* UI's Phase 5a ``action_history`` fallback removed.
+  ``BootstrapProgressBanner`` derives ``currentRunKey`` from
+  ``/api/jobs/running.tree`` + ``/api/jobs?history`` only — the
+  same two sources every other job uses. Bootstrap stops being a
+  snowflake from the operator-visible side too.
 
 Phase 5b started 2026-05-07:
 
