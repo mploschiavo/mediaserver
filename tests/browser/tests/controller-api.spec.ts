@@ -441,12 +441,17 @@ test.describe('Routing API', () => {
       headers: { 'Content-Type': 'application/json', ...auth },
     });
 
-    // Check status for action_history — envoy-config should appear
-    const statusResp = await request.get(`${baseUrl}/status`);
-    expect(statusResp.ok()).toBeTruthy();
-    const status = await statusResp.json();
-    const history = status.action_history || [];
-    const envoyActions = history.filter((a: { action: string }) => a.action === 'envoy-config');
+    // Check job history — envoy-config should appear in /api/jobs.history[]
+    // (ADR-0005 Phase 5c.4c: ``state.action_history`` retired; the
+    // Job framework's history endpoint is the source of truth).
+    const jobsResp = await request.get(`${baseUrl}/api/jobs?history`);
+    expect(jobsResp.ok()).toBeTruthy();
+    const jobsBody = await jobsResp.json();
+    const history = jobsBody.history || [];
+    const envoyActions = history.filter(
+      (entry: { jobs?: Record<string, unknown> }) =>
+        entry.jobs && Object.keys(entry.jobs).some((k) => k === 'envoy-config'),
+    );
     expect(envoyActions.length).toBeGreaterThan(0);
 
     // Restore original value
@@ -519,27 +524,28 @@ test.describe('Action queue and cancel', () => {
     expect(Array.isArray(d.pending_actions)).toBeTruthy();
   });
 
-  test('GET /status includes action_history array', async ({ request }) => {
+  test('GET /status no longer ships action_history (ADR-0005 Phase 5c.4c)', async ({ request }) => {
+    // Run history flows through the Job framework now —
+    // ``GET /api/jobs?history`` is the canonical surface.
     const r = await request.get(`${baseUrl}/status`);
     expect(r.ok()).toBeTruthy();
     const d = await r.json();
-    expect(Array.isArray(d.action_history)).toBeTruthy();
+    expect(d).not.toHaveProperty('action_history');
+    expect(d).not.toHaveProperty('current_action');
   });
 
-  test('GET /status action_history entries have status field', async ({ request }) => {
-    // Trigger an action first so history is non-empty
+  test('GET /api/jobs?history entries carry per-job status', async ({ request }) => {
+    // Trigger an action first so history is non-empty.
     await request.post(`${baseUrl}/actions/envoy-config`, { headers: auth });
-    // Give the action time to at least start and finish
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    const r = await request.get(`${baseUrl}/status`);
+    const r = await request.get(`${baseUrl}/api/jobs?history`);
     expect(r.ok()).toBeTruthy();
     const d = await r.json();
-    if (d.action_history.length > 0) {
-      for (const entry of d.action_history) {
-        expect(entry).toHaveProperty('status');
-        expect(entry).toHaveProperty('name');
-        expect(entry).toHaveProperty('id');
+    if ((d.history || []).length > 0) {
+      for (const entry of d.history) {
+        expect(entry).toHaveProperty('ts');
+        expect(entry).toHaveProperty('jobs');
       }
     }
   });

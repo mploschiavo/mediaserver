@@ -125,30 +125,11 @@ class _AlwaysAllowGate:
 # ---------------------------------------------------------------------------
 
 
-class _FakeAction:
-    """Stand-in for ``ControllerState.current_action`` — only
-    needs ``to_dict()``."""
-
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._payload = payload
-
-    def to_dict(self) -> dict[str, Any]:
-        return dict(self._payload)
-
-
-class _FakeCancelState:
-    def __init__(
-        self,
-        *,
-        cancelled: bool,
-        current_action: _FakeAction | None,
-    ) -> None:
-        self._cancelled = cancelled
-        self.current_action = current_action
-
-    def cancel_action(self) -> bool:
-        return self._cancelled
-
+# ADR-0005 Phase 5c.4c: cancel no longer reads off the
+# ``ControllerState`` action-lifecycle surface. The ``ActionCanceller``
+# accepts ``cancel_fn`` (the ``framework.request_cancel`` shim) and
+# ``running_tree_fn`` (the ``run_history.get_running_tree`` shim);
+# tests pass closures over plain dicts, no fake state class needed.
 
 class _FakeConfigState:
     def __init__(self) -> None:
@@ -377,48 +358,74 @@ class TestActionsRoute:
 
 
 class TestCancelRoute:
-    def test_running_action_returns_cancel_requested(self) -> None:
-        state = _FakeCancelState(
-            cancelled=True,
-            current_action=_FakeAction({
-                "id": "bootstrap-3", "name": "bootstrap", "status": "running",
-            }),
+    """ADR-0005 Phase 5c.4c response-shape pin.
+
+    Cancel route returns ``cancelled_run_id`` + ``run_name`` (Job
+    framework run-history identifiers) instead of the legacy
+    ``current_action`` ActionRecord payload. The route reads the
+    in-flight tree off ``run_history.get_running_tree`` and signals
+    via ``framework.request_cancel``.
+    """
+
+    def _cancel_routes(
+        self,
+        running_tree: list[dict[str, Any]] | None = None,
+        cancel_calls: list[None] | None = None,
+    ) -> MiscPostRoutes:
+        return _routes_with(
+            action_canceller=ActionCanceller(
+                cancel_fn=(
+                    (lambda: cancel_calls.append(None))
+                    if cancel_calls is not None
+                    else (lambda: None)
+                ),
+                running_tree_fn=(lambda: list(running_tree or [])),
+            ),
         )
-        routes = _routes_with(action_canceller=ActionCanceller())
+
+    def test_running_action_returns_cancel_requested(self) -> None:
+        running = [{"run_id": "01HX9", "job_name": "bootstrap"}]
+        cancel_calls: list[None] = []
+        routes = self._cancel_routes(
+            running_tree=running, cancel_calls=cancel_calls,
+        )
         harness = _RouteHarness.with_routes(routes)
-        response, _ = _dispatch_post(harness, "/cancel", state=state)
+        response, _ = _dispatch_post(harness, "/cancel")
 
         assert response.status == 200
         body = json.loads(response.body)
         assert body["status"] == "cancel_requested"
-        assert body["current_action"]["name"] == "bootstrap"
+        assert body["cancelled_run_id"] == "01HX9"
+        assert body["run_name"] == "bootstrap"
+        # Cancel signal fired exactly once.
+        assert len(cancel_calls) == 1
 
     def test_no_running_action_returns_no_action_running(self) -> None:
-        state = _FakeCancelState(cancelled=False, current_action=None)
-        routes = _routes_with(action_canceller=ActionCanceller())
+        cancel_calls: list[None] = []
+        routes = self._cancel_routes(
+            running_tree=[], cancel_calls=cancel_calls,
+        )
         harness = _RouteHarness.with_routes(routes)
-        response, _ = _dispatch_post(harness, "/cancel", state=state)
+        response, _ = _dispatch_post(harness, "/cancel")
 
         assert response.status == 200
         body = json.loads(response.body)
         assert body["status"] == "no_action_running"
-        assert body["current_action"] is None
+        assert body["cancelled_run_id"] is None
+        assert body["run_name"] is None
+        # Nothing in flight → no cancel signal sent.
+        assert cancel_calls == []
 
-    def test_cancel_called_with_state(self) -> None:
-        captured_states: list[Any] = []
-
-        def fake_cancel(state: Any) -> bool:
-            captured_states.append(state)
-            return True
-
-        state = _FakeCancelState(cancelled=True, current_action=None)
-        routes = _routes_with(
-            action_canceller=ActionCanceller(cancel_fn=fake_cancel),
+    def test_cancel_signal_sent_when_running(self) -> None:
+        cancel_calls: list[None] = []
+        running = [{"run_id": "abc", "job_name": "reconcile"}]
+        routes = self._cancel_routes(
+            running_tree=running, cancel_calls=cancel_calls,
         )
         harness = _RouteHarness.with_routes(routes)
-        _dispatch_post(harness, "/cancel", state=state)
+        _dispatch_post(harness, "/cancel")
 
-        assert captured_states == [state]
+        assert len(cancel_calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -687,20 +694,60 @@ class TestActionTrigger:
 
 
 class TestActionCanceller:
-    def test_returns_cancelled_and_current(self) -> None:
-        action = _FakeAction({"id": "x"})
-        state = _FakeCancelState(cancelled=True, current_action=action)
-        cancelled, current = ActionCanceller().cancel(state)
-        assert cancelled is True
-        assert current is action
+    """ADR-0005 Phase 5c.4c: cancel reads the running tree and
+    signals the framework cancel flag. Both collaborators are
+    constructor-injected so tests pass plain closures."""
 
-    def test_returns_none_current_when_state_lacks_attr(self) -> None:
-        class _NoAttr:
-            def cancel_action(self) -> bool:
-                return False
-        cancelled, current = ActionCanceller().cancel(_NoAttr())
+    def test_returns_cancelled_and_run_id_when_running(self) -> None:
+        cancel_calls: list[None] = []
+        canceller = ActionCanceller(
+            cancel_fn=lambda: cancel_calls.append(None),
+            running_tree_fn=lambda: [
+                {"run_id": "01HX9", "job_name": "bootstrap"},
+            ],
+        )
+        cancelled, run_id, run_name = canceller.cancel()
+        assert cancelled is True
+        assert run_id == "01HX9"
+        assert run_name == "bootstrap"
+        assert cancel_calls == [None]
+
+    def test_returns_false_when_tree_empty(self) -> None:
+        cancel_calls: list[None] = []
+        canceller = ActionCanceller(
+            cancel_fn=lambda: cancel_calls.append(None),
+            running_tree_fn=lambda: [],
+        )
+        cancelled, run_id, run_name = canceller.cancel()
         assert cancelled is False
-        assert current is None
+        assert run_id is None
+        assert run_name is None
+        # Nothing in flight → no cancel signal sent.
+        assert cancel_calls == []
+
+    def test_picks_first_root_when_multiple_running(self) -> None:
+        canceller = ActionCanceller(
+            cancel_fn=lambda: None,
+            running_tree_fn=lambda: [
+                {"run_id": "first", "job_name": "bootstrap"},
+                {"run_id": "second", "job_name": "reconcile"},
+            ],
+        )
+        cancelled, run_id, run_name = canceller.cancel()
+        assert cancelled is True
+        # Top-level root is the first entry.
+        assert run_id == "first"
+        assert run_name == "bootstrap"
+
+    def test_handles_missing_run_id_field_gracefully(self) -> None:
+        canceller = ActionCanceller(
+            cancel_fn=lambda: None,
+            running_tree_fn=lambda: [{"job_name": "boot"}],
+        )
+        cancelled, run_id, run_name = canceller.cancel()
+        assert cancelled is True
+        assert run_id is None
+        assert run_name == "boot"
 
 
 class TestConfigWriter:
@@ -837,15 +884,15 @@ class TestCsrfGate:
         routes = MiscPostRoutes(
             mutation_gate=self._gate_blocking(),
             action_canceller=ActionCanceller(
-                cancel_fn=lambda s: cancel_calls.append(s) or True,
+                cancel_fn=lambda: cancel_calls.append(None),
+                running_tree_fn=lambda: [
+                    {"run_id": "x", "job_name": "bootstrap"},
+                ],
             ),
         )
         harness = _RouteHarness.with_routes(routes)
         response, _ = _dispatch_post(
             harness, "/cancel",
-            state=_FakeCancelState(
-                cancelled=True, current_action=None,
-            ),
             headers={"Cookie": "media_stack_csrf=zzz"},
         )
         assert response.status == 403

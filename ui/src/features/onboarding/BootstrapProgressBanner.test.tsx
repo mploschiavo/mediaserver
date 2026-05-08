@@ -231,24 +231,23 @@ describe("BootstrapProgressBanner", () => {
     ).toBeInTheDocument();
   });
 
-  it("dismisses Complete state via the Close button when only action_history identifies the run (legacy bootstrap path)", async () => {
-    // Regression: the bootstrap action runs through the controller's
-    // legacy ``action_trigger`` path, NOT the Job framework, so it
-    // never appears in ``/api/jobs/running`` or ``/api/jobs?history``.
-    // ``state.action_history`` (on /status) is the only durable
-    // per-run identifier — the Close button must derive its key
-    // from there or it's a no-op.
+  it("dismisses Complete state via the Close button using job-history ts as the run key", async () => {
+    // ADR-0005 Phase 5c.4c: bootstrap runs through ``JobRunner.run``
+    // like every other action, so ``/api/jobs?history`` carries the
+    // bootstrap entry directly. The legacy ``action_history``
+    // fallback was retired with the ``ControllerState.action_history``
+    // field; the dismissal key now reads off ``ts:`` exclusively.
     const { userEvent } = await import("@testing-library/user-event");
     reset();
-    statusState.data = {
-      initial_bootstrap_done: true,
-      action_history: [
-        { id: "bootstrap-1", name: "bootstrap", status: "complete" },
-      ],
-    };
+    statusState.data = { initial_bootstrap_done: true };
     jobsState.data = {
-      // Empty Job-framework history — only the legacy path ran.
-      history: [],
+      history: [
+        {
+          ts: 1700001000,
+          jobs: { bootstrap: { status: SetupStatus.Ok } },
+          errors: 0,
+        },
+      ],
     };
     renderWithProviders(<BootstrapProgressBanner />);
     const closeBtn = screen.getByTestId("bootstrap-progress-banner-close");
@@ -256,10 +255,10 @@ describe("BootstrapProgressBanner", () => {
     expect(
       screen.queryByTestId("bootstrap-progress-banner"),
     ).not.toBeInTheDocument();
-    // Persisted as action:<id> so a subsequent re-bootstrap (new
-    // action id) re-shows the banner automatically.
+    // Persisted as ts:<unix-seconds> so a re-bootstrap (new ts)
+    // re-shows the banner automatically.
     expect(window.localStorage.getItem("media-stack:bootstrap-dismissed-run"))
-      .toBe("action:bootstrap-1");
+      .toBe("ts:1700001000");
   });
 
   it("does NOT render a Close button while bootstrap is Running", () => {

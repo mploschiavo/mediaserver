@@ -58,27 +58,10 @@ export interface SetupCta {
 }
 
 /**
- * One entry in ``state.action_history`` — kept on ``/status`` as
- * the authoritative record of every bootstrap-class action run.
- * The bootstrap action runs through the controller's legacy
- * ``action_trigger`` path (NOT the Job framework's runner), so it
- * never appears in ``/api/jobs/running`` or ``/api/jobs?history``.
- * ``action_history`` is the only durable per-run identifier the
- * banner has for the bootstrap action — used as a per-run
- * dismissal key in the wrapper.
- */
-export interface ActionHistoryEntry {
-  id?: string;
-  name?: string;
-  status?: string;
-  started_at?: number | null;
-  completed_at?: number | null;
-}
-
-/**
  * Slice of the controller's ``/status`` response that the bootstrap
  * banner consumes. ADR-0005 Phase 5a retired the legacy
- * ``current_action`` / ``phases_completed`` / ``phase`` fields —
+ * ``current_action`` / ``phases_completed`` / ``phase`` fields;
+ * Phase 5c.4c retires ``action_history`` for the same reason —
  * those duplicated the Job framework's running-tree + history view
  * and caused multi-source tearing in this derivation.
  *
@@ -86,14 +69,14 @@ export interface ActionHistoryEntry {
  * install ever bootstrapped successfully?), not runtime state, so
  * it stays on ``/status`` with no Job-framework equivalent.
  *
- * ``action_history`` is needed by the wrapper for per-run
- * dismissal keying — the legacy ``bootstrap`` action doesn't
- * register with the Job framework, so it has no ``run_id`` in
- * ``/api/jobs/running`` or history entry in ``/api/jobs?history``.
+ * Per-run dismissal keying now reads off
+ * ``/api/jobs/running.tree`` (live ``run_id``) and
+ * ``/api/jobs?history`` (ts of completed bootstrap entry) only —
+ * the bootstrap action runs through ``JobRunner.run`` like every
+ * other action post-Phase-5c.4c, so both sources see it.
  */
 export interface BootstrapStatus {
   initial_bootstrap_done?: boolean;
-  action_history?: readonly ActionHistoryEntry[];
 }
 
 interface BuildInput {

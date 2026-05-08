@@ -69,8 +69,8 @@ class TestShouldEmitLogLine:
                                         action_filter="envoy-config")
 
     def test_action_filter_empty_action_field(self) -> None:
-        # The current_action is unset — request asked for a specific
-        # action, so the line is NOT a match.
+        # No action tag bound on the contextvar — request asked
+        # for a specific action, so the line is NOT a match.
         assert not should_emit_log_line("msg", "",
                                         action_filter="envoy-config")
 

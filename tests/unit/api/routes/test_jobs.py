@@ -240,7 +240,9 @@ class TestJobsRunningRoute:
         route still emits the canonical shape.
         """
         mock_tree.return_value = []
-        state = SimpleNamespace(current_action=None, action_history=[])
+        # ADR-0005 Phase 5c.4b/c: aggregator no longer reads off
+        # ``state``; an empty namespace works.
+        state = SimpleNamespace()
         harness = RouteDispatchHarness.with_default_router()
         response = harness.dispatch(
             "GET", "/api/jobs/running", state=state,
@@ -266,7 +268,7 @@ class TestJobsRunningRoute:
         tree.
         """
         mock_tree.side_effect = OSError("disk read failure")
-        state = SimpleNamespace(current_action=None, action_history=[])
+        state = SimpleNamespace()
         harness = RouteDispatchHarness.with_default_router()
         response = harness.dispatch(
             "GET", "/api/jobs/running", state=state,
@@ -353,12 +355,14 @@ class TestRunningJobsAggregator:
     """
 
     @patch("media_stack.api.routes.jobs.get_running_tree")
-    def test_action_record_failure_does_not_break_collection(
+    def test_state_is_ignored_post_5c_4b(
         self, mock_tree,
     ) -> None:
-        """If reading the action-record state raises, the per-source
-        catch swallows it and ``running`` stays empty. Tree still
-        runs, k8s branch still skipped (no env var).
+        """ADR-0005 Phase 5c.4b/c: the aggregator no longer reads
+        anything off ``handler.state`` — the legacy
+        ``current_action``/``action_history`` branch was retired.
+        Pin: an exploding state attribute doesn't break collection
+        because nothing reads it.
         """
         from media_stack.api.routes.jobs import (
             _RunningJobsAggregator,
@@ -366,12 +370,6 @@ class TestRunningJobsAggregator:
         )
         mock_tree.return_value = [{"id": "run-x"}]
 
-        # state with a property that raises on access.
-        # Use ``AttributeError`` since that's one of the narrowed
-        # exception types ``_collect_action_records`` actually
-        # catches — anything outside the (AttributeError, KeyError,
-        # TypeError, ValueError) tuple is intentionally allowed to
-        # propagate to the route-level outer except.
         class ExplodingState:
             @property
             def current_action(self):

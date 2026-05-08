@@ -10,7 +10,8 @@ isolation.
 
 Filter precedence (matches ``ops.get_service_logs`` for parity):
 
-  1. ``action`` — exact match on the bookkept ``current_action`` field
+  1. ``action`` — exact match on the per-line action tag (sourced
+     from ``runtime_platform.current_action_tag`` post-Phase-5c.4c)
   2. ``level``  — case-insensitive token match against the line body
   3. ``q``      — free text or ``/regex/i`` via the standard delimiter
 

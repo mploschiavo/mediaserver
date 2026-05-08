@@ -1,49 +1,46 @@
 """HTTP API serve mode for the bootstrap controller.
 
-ADR-0005 Phase 5c.4 closure (partial — see report)
---------------------------------------------------
+ADR-0005 Phase 5c.4c closure
+----------------------------
 
 The legacy subprocess-per-action machinery (`_MP_CTX`, `_action_worker`,
-`_SubprocessState`) has been retired. Every action now runs through
-`_dispatch_action` -> `JobRunner.run` on a single background worker
-thread inside the controller process. The thread is started once at
-boot and consumes the same priority queue the previous loop drained.
+`_SubprocessState`) was retired in 5c.4. Phase 5c.4c finishes the
+job: every read- and write-side ``ControllerState.current_action`` /
+``action_history`` consumer has been migrated, and the dataclass
+fields + lifecycle methods (``start_action`` / ``finish_action`` /
+``cancel_action`` / ``add_pending`` / ``pop_pending`` / ``get_action``
+/ ``action_running``) are gone with this commit.
 
-What stayed and why
-~~~~~~~~~~~~~~~~~~~
+Where each former consumer reads from now
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* `state.start_action`/`finish_action`/`cancel_action`/`add_pending`/
-  `pop_pending` remain on `ControllerState`. They feed log-line
-  action tagging (`state.append_log` reads `current_action.name`),
-  the `/status` `action_history` array consumed by the k8s wait
-  service in `cli/workflows/controller_job_wait_service.py`, the
-  RSS feed in `metrics.py::get_rss_feed`, and the running-rows
-  branch of `jobs.py::_RunningJobsAggregator`. Removing them per
-  the original 5c.4 spec requires a coordinated rewrite of those
-  consumers; that is deferred to a follow-up commit.
+* Log-line action tagging — the SSE ring buffer's ``append_log``
+  reads ``runtime_platform.get_current_action_tag()``, populated by
+  the action loop's ``current_action_tag(name)`` context manager.
+  Same SSE filter shape (``GET /logs/stream?action=…``); no
+  dataclass field involved.
+* In-flight aggregator (``GET /api/jobs/running``) — reads the run-
+  history tree exclusively (5c.4b).
+* RSS feed + k8s wait service — read ``get_job_history()`` /
+  ``GET /api/jobs?history`` (5c.4b).
+* ``POST /cancel`` — reads ``run_history.get_running_tree()`` and
+  signals via ``framework.request_cancel()``. Response shape now
+  carries ``cancelled_run_id`` + ``run_name`` instead of an
+  ``ActionRecord`` payload; ``/api/actions/cancel`` inherits via
+  the same handler.
 
-* The local `action_trigger` closure remains because every config
-  writer in `routes/post_*` and the `auth_config` service depends on
-  it as the queue-injection seam. It now enqueues onto the same
-  in-process priority queue the worker thread drains.
+What stayed
+~~~~~~~~~~~
 
-What changed
-~~~~~~~~~~~~
-
-* No more `multiprocessing.spawn`: the worker is a daemon thread.
-  The fork-deadlock guard (`_MP_CTX = get_context("spawn")`) is
-  gone with it.
-* No more inter-process log queue: the thread shares
-  `runtime_platform.log` directly, so action log lines arrive
-  with the same `current_action` tag they always did (no log-tag
-  regression vs. the subprocess shape).
-* Cancellation: `state.is_cancelled` -> `framework.request_cancel()`
-  signals the in-process JobRunner via the existing module-global
-  flag the SIGTERM handler used to set. No process kill.
-* Timeout: a watchdog daemon thread per dispatched action calls
-  `framework.request_cancel()` if the worker exceeds the budget.
-  The action loop then completes through the next `JobContext.
-  check_cancelled()` instead of being SIGKILL'd.
+* The local ``action_trigger`` closure — every config writer in
+  ``routes/post_*`` and the ``auth_config`` service depends on it
+  as the queue-injection seam.
+* The watchdog: a daemon thread per dispatched action calls
+  ``framework.request_cancel()`` if the worker exceeds the budget;
+  the JobRunner notices on its next ``JobContext.check_cancelled()``
+  call.
+* ``initial_bootstrap_done`` + ``mark_initial_bootstrap_done()`` —
+  deployment-state flag persisted to the runtime-config sidecar.
 """
 
 from __future__ import annotations
@@ -311,7 +308,10 @@ def _run_serve(args: argparse.Namespace) -> None:
             _queue_seq += 1
             seq = _queue_seq
         action_queue.put((prio, seq, action_name, overrides))
-        state.add_pending(action_name, prio, overrides)
+        # ADR-0005 Phase 5c.4c: ``state.add_pending`` retired. The
+        # in-process queue itself is now the source of truth for
+        # pending work; ``ControllerState.pending_actions`` was
+        # only ever a duplicated view of the queue contents.
 
     # Wrap runtime_platform.log to also feed the SSE ring buffer.
     _original_log = runtime_platform.log
@@ -596,24 +596,46 @@ def _run_serve(args: argparse.Namespace) -> None:
     # contract-driven jobs since they all check cancel cooperatively).
     # -----------------------------------------------------------------------
 
-    def _run_one_action(action_name: str, overrides: dict, action_record) -> str | None:
-        """Run a single action synchronously. Returns error message or None on success.
+    # Local action-instance counter used for log-line labeling only
+    # (replaces ``state._action_counter`` / ``ActionRecord.id``).
+    _instance_counter = 0
+    _instance_counter_lock = threading.Lock()
+
+    def _next_instance_id(action_name: str) -> str:
+        nonlocal _instance_counter
+        with _instance_counter_lock:
+            _instance_counter += 1
+            return f"{action_name}-{_instance_counter}"
+
+    def _run_one_action(
+        action_name: str, overrides: dict, instance_id: str,
+    ) -> tuple[str | None, float]:
+        """Run a single action synchronously. Returns ``(error_msg, elapsed_seconds)``.
 
         The call goes through ``_dispatch_action`` -> ``run_job`` ->
         ``JobRunner.run``. A watchdog daemon thread enforces the per-
         action timeout by setting ``framework.request_cancel()`` if
         the action exceeds its budget; the JobRunner notices on its
         next prereq/job boundary.
+
+        ADR-0005 Phase 5c.4c: cancellation observation moved off
+        ``state.is_cancelled`` (retired) onto the framework's module-
+        global flag (``_fw._is_cancel_requested``). The
+        ``current_action_tag(action_name)`` ``with`` block ensures
+        every log line emitted from inside the dispatch (and from
+        any thread that inherited this context) carries the action
+        name on its SSE envelope.
         """
+        import time as _t
         from media_stack.services.jobs import framework as _fw
 
         timeout_seconds = max(1, int(overrides.get("timeout") or action_timeout))
         cancel_event = threading.Event()
         timed_out = threading.Event()
+        started = _t.monotonic()
 
         def _watchdog() -> None:
             # Heartbeat every 60s; trip cancel when the budget is gone.
-            import time as _t
             t0 = _t.monotonic()
             next_heartbeat = t0 + 60
             while not cancel_event.wait(timeout=1.0):
@@ -634,14 +656,9 @@ def _run_serve(args: argparse.Namespace) -> None:
                         f"[ACTION] {action_name}: still running "
                         f"({elapsed:.0f}s elapsed, timeout {timeout_seconds}s)"
                     )
-                # Also propagate operator-initiated cancel from the
-                # ControllerState into the framework's module-global
-                # cancel flag.
-                if state.is_cancelled:
-                    _fw.request_cancel()
 
         watchdog = threading.Thread(
-            target=_watchdog, daemon=True, name=f"action-watchdog-{action_record.id}",
+            target=_watchdog, daemon=True, name=f"action-watchdog-{instance_id}",
         )
         watchdog.start()
 
@@ -651,21 +668,24 @@ def _run_serve(args: argparse.Namespace) -> None:
 
         error_msg: str | None = None
         try:
-            _dispatch_action(action_name, overrides, args, state)
+            with runtime_platform.current_action_tag(action_name):
+                _dispatch_action(action_name, overrides, args, state)
         except Exception as exc:  # noqa: BLE001
             error_msg = str(exc)
         finally:
             cancel_event.set()
             watchdog.join(timeout=2)
 
+        elapsed = round(_t.monotonic() - started, 1)
+
         if timed_out.is_set() and not error_msg:
             error_msg = f"timed out after {timeout_seconds}s"
-        if state.is_cancelled and not error_msg:
+        if _fw._is_cancel_requested() and not error_msg:
             error_msg = "cancelled by user"
 
         # Reset the cancel flag so the next action starts clean.
         _fw.clear_cancel()
-        return error_msg
+        return error_msg, elapsed
 
     def _action_loop() -> None:
         """Drain the action queue forever. Runs on a daemon thread."""
@@ -676,8 +696,6 @@ def _run_serve(args: argparse.Namespace) -> None:
                 runtime_platform.log("[INFO] Shutting down bootstrap service")
                 server.shutdown()
                 return
-
-            state.pop_pending(action_name)
 
             # Merge runtime_config into overrides so toggles like
             # auto_download_content propagate to ``_apply_overrides``.
@@ -690,25 +708,23 @@ def _run_serve(args: argparse.Namespace) -> None:
 
             while True:
                 attempt += 1
-                action_record = state.start_action(
-                    action_name, overrides=overrides, timeout_seconds=action_timeout
-                )
+                instance_id = _next_instance_id(action_name)
                 suffix = f" (attempt {attempt}/{retry_limit + 1})" if retry_limit > 0 else ""
                 runtime_platform.log(
-                    f"[ACTION] {action_name} [{action_record.id}]: dispatching "
+                    f"[ACTION] {action_name} [{instance_id}]: dispatching "
                     f"(timeout={action_timeout}s){suffix}"
                 )
 
-                error_msg = _run_one_action(action_name, dict(overrides), action_record)
+                error_msg, elapsed_seconds = _run_one_action(
+                    action_name, dict(overrides), instance_id,
+                )
                 cancelled = error_msg == "cancelled by user"
 
                 if cancelled:
-                    state.finish_action(error="cancelled by user")
                     runtime_platform.log(f"[ACTION] {action_name}: cancelled")
                     break
 
                 if error_msg:
-                    state.finish_action(error=error_msg)
                     runtime_platform.log(f"[ERR] Action {action_name} failed: {error_msg}")
 
                     if action_name == "bootstrap" and not state.initial_bootstrap_done:
@@ -736,7 +752,7 @@ def _run_serve(args: argparse.Namespace) -> None:
                         "action": action_name,
                         "status": "error",
                         "error": error_msg,
-                        "elapsed_seconds": action_record.elapsed_seconds,
+                        "elapsed_seconds": elapsed_seconds,
                     })
 
                     if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
@@ -761,12 +777,10 @@ def _run_serve(args: argparse.Namespace) -> None:
 
                 else:
                     # Success
-                    state.finish_action()
-
                     _fire_webhooks(state, "action_complete", {
                         "action": action_name,
                         "status": "complete",
-                        "elapsed_seconds": action_record.elapsed_seconds,
+                        "elapsed_seconds": elapsed_seconds,
                     })
 
                     if action_name == "bootstrap" and not state.initial_bootstrap_done:

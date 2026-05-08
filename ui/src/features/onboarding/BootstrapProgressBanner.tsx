@@ -5,7 +5,6 @@ import { useJobs, useJobsRunning, useRunAction } from "@/features/jobs/hooks";
 import type { JobHistoryEntry, RunningTreeNodeShape } from "@/features/jobs/hooks";
 import {
   buildSetupExperienceState,
-  type ActionHistoryEntry,
   type BootstrapStatus,
 } from "./setupState";
 import { SetupStatus } from "./setupStatusConstants";
@@ -19,30 +18,24 @@ const STATUS_POLL_INTERVAL_MS = 30_000;
  * Used as the per-run dismissal key so a re-bootstrap (new run)
  * automatically re-shows the banner without manual reset.
  *
- * Three signal sources, tried in order:
+ * Two signal sources, tried in order:
  *
  *   1. ``/api/jobs/running.tree`` — bootstrap root's ``run_id``
- *      (ULID/UUID). Only fires for Job-framework-routed bootstrap
- *      runs.
+ *      (ULID/UUID).
  *   2. ``/api/jobs?history`` — most recent bootstrap history
  *      entry's ``ts`` (Unix epoch seconds).
- *   3. ``/status::action_history`` — most recent bootstrap action's
- *      ``id`` (e.g. ``"bootstrap-1"``). The legacy
- *      ``action_trigger`` path that ``controller_serve`` uses on
- *      auto-run / re-bootstrap does NOT register with the Job
- *      framework — its records live ONLY in
- *      ``state.action_history``. Without this fallback, the per-
- *      run dismissal key is permanently ``null`` on every install
- *      that bootstraps via the legacy path, so the Close button
- *      becomes a no-op.
  *
- * Returns ``null`` only when none of the three has an entry —
+ * ADR-0005 Phase 5c.4c retired the third signal source
+ * (``/status::action_history``). The bootstrap action now runs
+ * through ``JobRunner.run`` like every other action, so both
+ * remaining sources see it.
+ *
+ * Returns ``null`` only when neither has an entry —
  * pre-first-run / brand-new install with nothing started yet.
  */
 function deriveCurrentRunKey(
   runningTree: readonly RunningTreeNodeShape[],
   history: readonly JobHistoryEntry[],
-  actionHistory: readonly ActionHistoryEntry[],
 ): string | null {
   for (const node of runningTree) {
     if (node.job_name === "bootstrap" && node.run_id) {
@@ -52,11 +45,6 @@ function deriveCurrentRunKey(
   for (const entry of history) {
     if (entry.jobs?.bootstrap && typeof entry.ts === "number") {
       return `ts:${entry.ts}`;
-    }
-  }
-  for (const action of actionHistory) {
-    if (action.name === "bootstrap" && action.id) {
-      return `action:${action.id}`;
     }
   }
   return null;
@@ -116,12 +104,10 @@ export function BootstrapProgressBanner(): JSX.Element | null {
       deriveCurrentRunKey(
         runningQuery.data?.tree ?? [],
         jobsQuery.data?.history ?? [],
-        statusQuery.data?.action_history ?? [],
       ),
     [
       runningQuery.data?.tree,
       jobsQuery.data?.history,
-      statusQuery.data?.action_history,
     ],
   );
 

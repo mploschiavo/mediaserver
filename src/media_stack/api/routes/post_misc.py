@@ -186,33 +186,75 @@ class ActionTrigger:
 
 
 class ActionCanceller:
-    """Adapter onto ``handler.state.cancel_action()``.
+    """Adapter onto the JobRunner cancellation flag + running-tree
+    lookup.
 
-    The legacy chain reads ``state.cancel_action()`` directly off
-    the handler; the Adapter pattern keeps the route body a
-    one-liner + lets tests pass a fake state without forging the
-    full ``ControllerState`` surface.
+    ADR-0005 Phase 5c.4c: the legacy ``ControllerState.cancel_action``
+    + ``current_action`` surface is retired. Cancel now flows through
+    ``framework.request_cancel()`` (the same module-level flag the
+    SIGTERM handler / per-action watchdog already use), and the
+    in-flight run is read off ``run_history.get_running_tree()`` —
+    the Job framework's authoritative source of "what is running
+    right now". Same UX (``cancel_requested`` vs
+    ``no_action_running``); just a different data source.
     """
 
     def __init__(
         self,
-        cancel_fn: Callable[[Any], bool] | None = None,
+        cancel_fn: Callable[[], None] | None = None,
+        running_tree_fn: Callable[[], list[dict[str, Any]]] | None = None,
     ) -> None:
         self._cancel = cancel_fn
+        self._running_tree = running_tree_fn
 
-    def cancel(self, state: Any) -> tuple[bool, Any]:
-        """Return ``(cancelled, current_action)``.
+    def cancel(self) -> tuple[bool, str | None, str | None]:
+        """Return ``(cancelled, run_id, run_name)``.
 
-        ``cancelled`` is True iff a running action was signalled to
-        stop; ``current_action`` is the (possibly-None) action
-        record off ``state.current_action`` after the cancel call.
+        ``cancelled`` is True iff at least one in-flight run was
+        observed when we signalled cancel; ``run_id`` / ``run_name``
+        carry the topmost in-flight root's identifiers (or ``None``
+        if nothing was running). The Job framework propagates the
+        cancel flag through every active ``JobContext.check_cancelled``
+        boundary, so a single call cancels the whole subtree.
         """
+        tree = self._read_running_tree()
+        running_root = tree[0] if tree else None
+        run_id = (
+            str(running_root.get("run_id") or "")
+            if running_root else ""
+        ) or None
+        run_name = (
+            str(running_root.get("job_name") or "")
+            if running_root else ""
+        ) or None
+        was_running = running_root is not None
+        if was_running:
+            self._signal_cancel()
+        return was_running, run_id, run_name
+
+    def _read_running_tree(self) -> list[dict[str, Any]]:
+        if self._running_tree is not None:
+            return list(self._running_tree() or [])
+        from media_stack.application.jobs.run_history import (
+            get_running_tree as _get_running_tree,
+        )
+        try:
+            return list(_get_running_tree() or [])
+        except (OSError, ValueError, AttributeError) as exc:
+            # Same narrowed catch as ``_RunningJobsAggregator`` —
+            # the run-history reader hits disk; degrading to "no
+            # running runs visible" is the correct fail-mode for
+            # cancel (operator can retry after the controller
+            # recovers I/O).
+            logger.debug("cancel: get_running_tree failed: %s", exc)
+            return []
+
+    def _signal_cancel(self) -> None:
         if self._cancel is not None:
-            cancelled = self._cancel(state)
-        else:
-            cancelled = state.cancel_action()
-        current = getattr(state, "current_action", None)
-        return cancelled, current
+            self._cancel()
+            return
+        from media_stack.services.jobs import framework as _fw
+        _fw.request_cancel()
 
 
 class ConfigWriter:
@@ -442,23 +484,25 @@ class MiscPostRoutes(RouteModule):
         """Cancel the currently-running action — root-path legacy
         alias.
 
-        Returns ``{status: "cancel_requested" | "no_action_running",
-        current_action: ...}``. The current-action record is taken
-        AFTER the cancel call so a successful cancel still returns
-        the running record (caller polls ``/status`` to confirm
-        the action has stopped).
+        ADR-0005 Phase 5c.4c response shape:
+        ``{status: "cancel_requested" | "no_action_running",
+        cancelled_run_id: <str|null>, run_name: <str|null>}``.
+        Replaces the legacy ``current_action`` ActionRecord — the
+        caller now has direct ``run_id`` access into the Job
+        framework's run-history surface (``GET /api/jobs?history``)
+        for the just-cancelled run.
         """
         if not self._gated(handler):
             return
-        cancelled, current = self._action_canceller.cancel(handler.state)
-        record = current.to_dict() if current is not None else None
+        cancelled, run_id, run_name = self._action_canceller.cancel()
         handler._json_response(
             HTTPStatus.OK,
             {
                 "status": (
                     "cancel_requested" if cancelled else "no_action_running"
                 ),
-                "current_action": record,
+                "cancelled_run_id": run_id,
+                "run_name": run_name,
             },
         )
 

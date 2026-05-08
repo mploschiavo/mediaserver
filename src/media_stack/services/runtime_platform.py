@@ -4,10 +4,13 @@
 from __future__ import annotations
 from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
+import contextlib
+import contextvars
 import json
 import os
 import re
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from media_stack.adapters.common import bool_cfg as _lib_bool_cfg
@@ -41,6 +44,51 @@ _current_log_level = _LOG_LEVEL_ORDER.get(
 )
 
 
+
+
+# ---------------------------------------------------------------------------
+# Current-action tag — replaces ControllerState.current_action.name for
+# log-line tagging in the SSE ring buffer (ADR-0005 Phase 5c.4c).
+#
+# The action loop (controller_serve.py) wraps each in-flight dispatch in
+# ``current_action_tag(name)`` so any ``runtime_platform.log`` call made
+# from inside that dispatch — including those that flow through the
+# ``_instrumented_log`` shim into ``state.append_log`` — observes the
+# active action name. ``contextvars.ContextVar`` makes the tag
+# thread-safe and copy-on-fork for daemon threads spawned mid-dispatch
+# (the JobRunner's non_blocking branch); the previous implementation
+# read ``state.current_action.name`` under a global mutex, which was
+# functionally equivalent but coupled the SSE filter to the dataclass
+# we're now retiring.
+# ---------------------------------------------------------------------------
+
+_current_action_tag: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "media_stack_current_action_tag", default="",
+)
+
+
+def get_current_action_tag() -> str:
+    """Return the active action name for the current execution context.
+
+    Empty string means no action is bound (SSE consumers treat the
+    empty tag as "untagged" the same way they did when
+    ``state.current_action`` was None).
+    """
+    return _current_action_tag.get()
+
+
+@contextlib.contextmanager
+def current_action_tag(name: str) -> Iterator[None]:
+    """Bind ``name`` as the active action tag for the duration of the
+    ``with`` block. Restores the previous tag on exit (so nested
+    bindings — e.g. an action that spawns a sub-dispatch — unwind
+    cleanly).
+    """
+    token = _current_action_tag.set(str(name or ""))
+    try:
+        yield
+    finally:
+        _current_action_tag.reset(token)
 
 
 class RuntimePlatformService:
@@ -222,11 +270,13 @@ __all__ = [
     "RuntimePlatformService",
     "bool_cfg",
     "coerce_list",
+    "current_action_tag",
     "env_truthy",
     "field_list",
     "field_map",
     "find_component_by_implementation",
     "deep_merge_objects",
+    "get_current_action_tag",
     "get_log_level",
     "http_request",
     "load_bootstrap_default_json",

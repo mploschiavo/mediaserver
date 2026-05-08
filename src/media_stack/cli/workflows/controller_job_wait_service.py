@@ -37,9 +37,12 @@ class BootstrapPodHttpClient:
     Two endpoints are interesting to the CLI wait flow:
 
     - ``GET /status`` — deployment-state flags
-      (``initial_bootstrap_done``, ``error``, ``action_history``).
+      (``initial_bootstrap_done``, ``error``).
     - ``GET /api/jobs/running`` — Job framework's live tree, used
       to detect a still-in-flight action by ``job_name``.
+    - ``GET /api/jobs?history`` — completed-run history
+      (``ControllerState.action_history`` was retired in
+      ADR-0005 Phase 5c.4c).
 
     Extracted from ``ControllerJobWaitService`` so the wait service
     keeps a coherent (sub-500-line) shape.

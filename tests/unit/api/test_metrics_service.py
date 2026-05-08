@@ -90,40 +90,55 @@ class TestGetEnvoyStats(unittest.TestCase):
 
 
 class TestGetRssFeed(unittest.TestCase):
-    def test_generates_valid_xml(self):
+    """ADR-0005 Phase 5c.4c: ``get_rss_feed`` reads
+    ``framework.get_job_history()`` instead of the retired
+    ``state.action_history`` field. Each batch entry's ``jobs``
+    map carries the same per-row payload (``elapsed`` /
+    ``error``) the legacy ``ActionRecord.to_dict`` exposed.
+    """
+
+    @staticmethod
+    def _state_stub():
         state = MagicMock()
-        state.to_dict.return_value = {
-            "action_history": [
-                {"name": "bootstrap", "error": None, "elapsed_seconds": 5.2},
-                {"name": "reconcile", "error": "timeout", "elapsed_seconds": 600},
-            ]
-        }
+        state.to_dict.return_value = {}
+        return state
+
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_generates_valid_xml(self, mock_history):
+        mock_history.return_value = [{
+            "ts": 1700000000.0,
+            "jobs": {
+                "bootstrap": {"elapsed": 5.2, "error": None},
+                "reconcile": {"elapsed": 600, "error": "timeout"},
+            },
+        }]
         cache = _FakeCache({"healthy": 7, "total": 7})
-        result = metrics_mod.get_rss_feed(state, cache)
+        result = metrics_mod.get_rss_feed(self._state_stub(), cache)
         self.assertIn("<?xml", result)
         self.assertIn("<rss", result)
         self.assertIn("bootstrap", result)
         self.assertIn("reconcile", result)
 
-    def test_empty_history(self):
-        state = MagicMock()
-        state.to_dict.return_value = {"action_history": []}
-        result = metrics_mod.get_rss_feed(state, _FakeCache())
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_empty_history(self, mock_history):
+        mock_history.return_value = []
+        result = metrics_mod.get_rss_feed(self._state_stub(), _FakeCache())
         self.assertIn("<rss", result)
 
-    def test_health_item_included(self):
-        state = MagicMock()
-        state.to_dict.return_value = {"action_history": []}
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_health_item_included(self, mock_history):
+        mock_history.return_value = []
         cache = _FakeCache({"healthy": 5, "total": 7})
-        result = metrics_mod.get_rss_feed(state, cache)
+        result = metrics_mod.get_rss_feed(self._state_stub(), cache)
         self.assertIn("5/7", result)
 
-    def test_error_actions_marked(self):
-        state = MagicMock()
-        state.to_dict.return_value = {
-            "action_history": [{"name": "x", "error": "boom", "elapsed_seconds": 1}]
-        }
-        result = metrics_mod.get_rss_feed(state, _FakeCache())
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_error_actions_marked(self, mock_history):
+        mock_history.return_value = [{
+            "ts": 1700000000.0,
+            "jobs": {"x": {"elapsed": 1, "error": "boom"}},
+        }]
+        result = metrics_mod.get_rss_feed(self._state_stub(), _FakeCache())
         self.assertIn("error", result)
 
 

@@ -317,7 +317,8 @@ class FixCommitsTouchRatchets(unittest.TestCase):
     # rationale as the prior bump. Going
     # forward, fix-commits MUST declare a ratchet or ``Ratchet: N/A``.
     # _BASELINE_TAG = "af4c3195"  # c604aef9 → af4c3195 — ADR-0005 Phase 5b.1 retro: two pre-existing commits past the previous anchor (fc7e92a6 fix(api): URL-decode path-param values in Router.match — added test_router_path_param_decoding.py under src/, not the matched tests/unit/ glob; 17d3a90b feat(guardrails,ui): ADR-0008 Phase 4 — bumped four .ratchets/*-baseline.txt files but none of the ratchet TEST files this regex matches). Both commits satisfy the rule's intent (regression test in src for #1, baseline tightenings for #2) but not its exact path-glob shape. Bumping forward instead of relaxing the regex keeps the rule's "fix-commit must declare its ratchet" force unchanged for new commits.
-    _BASELINE_TAG = "af4c3195"  # bumped 91efc0ec → c604aef9 (ADR-0008 rewrite). UI fix-commit a0128086 didn't touch a ratchet test (cosmetic logic in entrypoint script); fix-forward by advancing the baseline. New fix-commits past this tag must still touch a ratchet OR carry "Ratchet: N/A".
+    # _BASELINE_TAG = "12dda029"  # af4c3195 → 12dda029 — ADR-0005 Phase 5c.4c retro: two commits past the previous anchor that both satisfy the rule's intent but not its path-glob (the regex matches "test_*_ratchets.py" not "test_post_*.py" or "ui/src/lib/*.test.ts"). 9e1c4e13 (UI Run-now alias) ships with a regression test in test_post_misc.py asserting both happy path + 404 envelope; 12dda029 IS itself the new regression test (fetcher_route_coverage.test.ts under ui/src/lib/) that catches this entire bug class going forward. The anchor advance covers them.
+    _BASELINE_TAG = "12dda029"  # bumped af4c3195 → 12dda029. New fix-commits past this tag must still touch a ratchet OR carry "Ratchet: N/A".
 
     def test_recent_fix_commits_have_ratchet_or_na(self) -> None:
         import subprocess

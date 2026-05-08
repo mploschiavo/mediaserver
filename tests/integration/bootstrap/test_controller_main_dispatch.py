@@ -106,7 +106,13 @@ class TestActionTrigger(unittest.TestCase):
     """Tests for the action_trigger closure created inside _run_serve."""
 
     def _build_trigger(self):
-        """Simulate the action_trigger closure from _run_serve."""
+        """Simulate the action_trigger closure from _run_serve.
+
+        ADR-0005 Phase 5c.4c: ``state.add_pending`` retired — the
+        in-process priority queue is the source of truth for
+        pending work. The trigger closure now just enqueues and
+        increments the sequence counter.
+        """
         state = ControllerState()
         action_queue = queue.PriorityQueue()
         _queue_seq = 0
@@ -125,7 +131,6 @@ class TestActionTrigger(unittest.TestCase):
             ))
             _queue_seq += 1
             action_queue.put((prio, _queue_seq, action_name, overrides))
-            state.add_pending(action_name, prio, overrides)
 
         return action_trigger, action_queue, state
 
@@ -159,11 +164,17 @@ class TestActionTrigger(unittest.TestCase):
         self.assertEqual(seq1, 1)
         self.assertEqual(seq2, 2)
 
-    def test_trigger_adds_pending_to_state(self):
-        trigger, _, state = self._build_trigger()
+    def test_trigger_enqueues_with_overrides(self):
+        # ADR-0005 Phase 5c.4c: ``state.add_pending`` retired; the
+        # priority queue is the source of truth. The trigger
+        # closure now puts ``(prio, seq, name, overrides)`` onto
+        # the queue without touching ``state``.
+        trigger, q, state = self._build_trigger()
         trigger("bootstrap", {"foo": "bar"})
-        self.assertEqual(len(state.pending_actions), 1)
-        self.assertEqual(state.pending_actions[0]["name"], "bootstrap")
+        prio, seq, name, overrides = q.get()
+        self.assertEqual(name, "bootstrap")
+        self.assertEqual(overrides, {"foo": "bar"})
+        self.assertEqual(state.pending_actions, [])
 
 
 # ---------------------------------------------------------------------------
@@ -189,19 +200,26 @@ class TestActionPriority(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestCancellationChecks(unittest.TestCase):
+    """ADR-0005 Phase 5c.4c: cancellation moved off ``ControllerState``
+    onto the framework's module-level cancel flag. Pin that flag's
+    set/clear cycle here — the production action loop's watchdog
+    consumes it the same way."""
 
-    def test_cancel_action_sets_cancel_event(self):
-        state = ControllerState()
-        state.start_action("bootstrap")
-        self.assertTrue(state.cancel_action())
-        self.assertTrue(state.is_cancelled)
+    def test_request_cancel_sets_flag(self):
+        from media_stack.services.jobs import framework as _fw
+        _fw.clear_cancel()
+        self.assertFalse(_fw._is_cancel_requested())
+        _fw.request_cancel()
+        try:
+            self.assertTrue(_fw._is_cancel_requested())
+        finally:
+            _fw.clear_cancel()
 
-    def test_finish_action_clears_cancel_event(self):
-        state = ControllerState()
-        state.start_action("bootstrap")
-        state.cancel_action()
-        state.finish_action(error="cancelled by user")
-        self.assertFalse(state.is_cancelled)
+    def test_clear_cancel_resets_flag(self):
+        from media_stack.services.jobs import framework as _fw
+        _fw.request_cancel()
+        _fw.clear_cancel()
+        self.assertFalse(_fw._is_cancel_requested())
 
 
 # ---------------------------------------------------------------------------
@@ -215,11 +233,12 @@ class TestPostBootstrapAutoQueue(unittest.TestCase):
         triggered = []
         state = ControllerState()
         state.initial_bootstrap_done = False
-        state.start_action("bootstrap")
-        state.finish_action()
 
         action_name = "bootstrap"
         if action_name == "bootstrap" and not state.initial_bootstrap_done:
+            # Direct field assignment in the test; production goes
+            # through ``mark_initial_bootstrap_done`` which also
+            # persists. The test only cares about the field flip.
             state.initial_bootstrap_done = True
             for queued in ["post-setup", "envoy-config", "discover-indexers"]:
                 triggered.append(queued)

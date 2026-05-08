@@ -347,12 +347,13 @@ components:
 
     ControllerState:
       # ADR-0005 Phase 5a removed the legacy bootstrap-progress
-      # fields (``phase``, ``phases_completed``, ``current_action``)
-      # — they duplicated the Job framework's running-tree + history
-      # view and caused multi-source tearing in UI consumers. Use
-      # ``GET /api/jobs/running`` and ``GET /api/jobs?history`` for
-      # live progress; ``initial_bootstrap_done`` + ``error`` are
-      # the canonical terminal-state signals.
+      # fields (``phase``, ``phases_completed``, ``current_action``);
+      # Phase 5c.4c retires ``action_history`` for the same reason —
+      # they all duplicated the Job framework's running-tree +
+      # history view. Use ``GET /api/jobs/running`` and
+      # ``GET /api/jobs?history`` for live progress;
+      # ``initial_bootstrap_done`` + ``error`` are the canonical
+      # terminal-state signals.
       type: object
       properties:
         started_at:
@@ -386,10 +387,6 @@ components:
           type: array
           items:
             type: string
-        action_history:
-          type: array
-          items:
-            $ref: '#/components/schemas/ActionRecord'
         pending_actions:
           type: array
           items:
@@ -1188,7 +1185,10 @@ paths:
             r = requests.get("http://localhost:9100/status")
             state = r.json()
             print(f"First-run done: {state['initial_bootstrap_done']}")
-            print(f"Actions completed: {len(state.get('action_history', []))}")
+            # ADR-0005 Phase 5c.4c: action_history retired from /status.
+            # Use GET /api/jobs?history for completed-run history.
+            jobs = requests.get("http://localhost:9100/api/jobs?history").json()
+            print(f"Job batches recorded: {len(jobs.get('history', []))}")
         - lang: JavaScript
           label: JavaScript
           source: |
@@ -1228,17 +1228,6 @@ paths:
                   dry_run: false
                 webhook_urls:
                   - "https://hooks.example.com/media-stack"
-                action_history:
-                  - id: bootstrap-1
-                    name: bootstrap
-                    status: complete
-                    started_at: 1712505600.0
-                    completed_at: 1712505660.5
-                    elapsed_seconds: 60.5
-                    error: null
-                    overrides: {}
-                    timeout_seconds: 600
-                    triggered_by: admin
                 pending_actions: []
 
   /api/status:
@@ -1567,6 +1556,12 @@ paths:
         Request cancellation of the currently running action. If an action
         is running, it will be signalled to stop at the next checkpoint.
         Also accessible as `POST /actions/cancel`.
+
+        ADR-0005 Phase 5c.4c response shape: returns the in-flight
+        run's `run_id` (Job framework run-history identifier) and
+        `run_name` (job name) so callers can drill straight into
+        `GET /api/jobs?history` for the cancelled run, instead of
+        the legacy `current_action` ActionRecord payload.
       x-codeSamples:
         - lang: curl
           label: cURL
@@ -1580,7 +1575,8 @@ paths:
             r = requests.post("http://localhost:9100/cancel",
                               auth=("admin", "password"))
             print(r.json())
-            # {"status": "cancel_requested", "current_action": {...}}
+            # {"status": "cancel_requested",
+            #  "cancelled_run_id": "01HX...", "run_name": "bootstrap"}
         - lang: JavaScript
           label: JavaScript
           source: |
@@ -1602,16 +1598,16 @@ paths:
                   status:
                     type: string
                     enum: [cancel_requested, no_action_running]
-                  current_action:
-                    $ref: '#/components/schemas/ActionRecord'
+                  cancelled_run_id:
+                    type: string
+                    nullable: true
+                  run_name:
+                    type: string
+                    nullable: true
               example:
                 status: cancel_requested
-                current_action:
-                  id: bootstrap-3
-                  name: bootstrap
-                  status: running
-                  started_at: 1712505600.0
-                  elapsed_seconds: 12.3
+                cancelled_run_id: 01HX9SJ87D2MN6P5VJB27Q3RAB
+                run_name: bootstrap
 
   /run:
     post:
@@ -10957,14 +10953,14 @@ paths:
         ``CurrentlyRunningCard``.
 
         Sources combined here:
-          1. ``ActionRecord``-tracked actions with status=RUNNING
-             (bootstrap, reconcile, mass-search, etc.).
-          2. K8s ``Job`` pods in Active phase (CronJob fires that
+          1. K8s ``Job`` pods in Active phase (CronJob fires that
              haven't completed yet) — best-effort via the in-cluster
              k8s client. Skipped outside k8s.
-          3. ``run_history.get_running_tree()`` — in-flight runs
+          2. ``run_history.get_running_tree()`` — in-flight runs
              grouped parent → children for the
-             ``CurrentlyRunningCard``.
+             ``CurrentlyRunningCard``. ADR-0005 Phase 5c.4b/c
+             retired the ``ActionRecord``-state branch; the run-
+             history tree is the authoritative live view.
 
         Migrated from the legacy ``elif`` chain in v1.0.21X-era
         ADR-0007 Phase 2 wave 3.

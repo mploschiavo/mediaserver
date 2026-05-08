@@ -1,8 +1,19 @@
-"""Tests for ControllerState architecture — actions, logs, config, thread safety."""
+"""Tests for ControllerState architecture — log buffer, runtime
+config, failed services, deployment-state persistence, and
+``ActionRecord`` value-object semantics.
+
+ADR-0005 Phase 5c.4c retired the action-lifecycle surface that
+this file used to cover (``start_action`` / ``finish_action`` /
+``cancel_action`` / ``add_pending`` / ``pop_pending`` /
+``get_action`` / ``action_running``); the architecture ratchet
+``test_no_controller_state_action_lifecycle.py`` pins their
+absence. ``ActionRecord`` itself remains as a small public value
+object, kept here so external operator scripts that import it for
+shape-typing keep working.
+"""
 
 import sys
 import threading
-import time
 import unittest
 from pathlib import Path
 
@@ -10,9 +21,15 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from media_stack.api.state import ActionRecord, ActionStatus, ControllerState  # noqa: E402
+from media_stack.services.runtime_platform import current_action_tag  # noqa: E402
 
 
 class TestActionRecord(unittest.TestCase):
+    """``ActionRecord`` is now a pure value object — production
+    no longer constructs it (Phase 5c.4c). The tests stay so any
+    external script that imports it for shape-typing has its
+    contract pinned."""
+
     def test_start_sets_running(self):
         r = ActionRecord(id="test-1", name="test")
         r.start()
@@ -48,6 +65,7 @@ class TestActionRecord(unittest.TestCase):
         self.assertEqual(r.status, ActionStatus.TIMEOUT)
 
     def test_elapsed_seconds(self):
+        import time
         r = ActionRecord(id="test-1", name="test")
         r.start()
         time.sleep(0.05)
@@ -70,46 +88,11 @@ class TestActionRecord(unittest.TestCase):
         self.assertEqual(d["triggered_by"], "admin")
 
 
-class TestControllerStateActions(unittest.TestCase):
-    def test_start_action(self):
-        s = ControllerState()
-        action = s.start_action("bootstrap")
-        self.assertEqual(action.name, "bootstrap")
-        self.assertEqual(action.status, ActionStatus.RUNNING)
-        self.assertTrue(s.action_running)
-
-    def test_finish_action(self):
-        s = ControllerState()
-        s.start_action("bootstrap")
-        s.finish_action()
-        self.assertFalse(s.action_running)
-        self.assertEqual(len(s.action_history), 1)
-
-    def test_cancel_action_returns_true(self):
-        s = ControllerState()
-        s.start_action("bootstrap")
-        self.assertTrue(s.cancel_action())
-        self.assertTrue(s.is_cancelled)
-
-    def test_cancel_no_action_returns_false(self):
-        s = ControllerState()
-        self.assertFalse(s.cancel_action())
-
-    def test_action_counter_increments(self):
-        s = ControllerState()
-        a1 = s.start_action("test")
-        s.finish_action()
-        a2 = s.start_action("test")
-        self.assertNotEqual(a1.id, a2.id)
-
-    def test_triggered_by_from_overrides(self):
-        s = ControllerState()
-        action = s.start_action("test", overrides={"_triggered_by": "admin", "foo": "bar"})
-        self.assertEqual(action.triggered_by, "admin")
-        self.assertNotIn("_triggered_by", action.overrides)
-
-
 class TestControllerStateLogs(unittest.TestCase):
+    """``state.append_log`` reads its action-tag off
+    ``runtime_platform.current_action_tag`` (Phase 5c.4c contextvar)
+    instead of the retired ``current_action`` field."""
+
     def test_append_and_get(self):
         s = ControllerState()
         s.append_log("hello")
@@ -119,11 +102,10 @@ class TestControllerStateLogs(unittest.TestCase):
 
     def test_filter_by_action(self):
         s = ControllerState()
-        s.start_action("bootstrap")
-        s.append_log("line1")
-        s.finish_action()
-        s.start_action("reconcile")
-        s.append_log("line2")
+        with current_action_tag("bootstrap"):
+            s.append_log("line1")
+        with current_action_tag("reconcile"):
+            s.append_log("line2")
         logs = s.get_logs_since(0, action="bootstrap")
         self.assertEqual(len(logs), 1)
         self.assertEqual(logs[0][2], "line1")
@@ -142,19 +124,15 @@ class TestControllerStateLogs(unittest.TestCase):
 
 
 class TestControllerStatePending(unittest.TestCase):
-    def test_add_and_pop(self):
-        s = ControllerState()
-        s.add_pending("bootstrap", 10)
-        self.assertEqual(len(s.pending_actions), 1)
-        s.pop_pending("bootstrap")
-        self.assertEqual(len(s.pending_actions), 0)
+    """``pending_actions`` is now always empty (the priority queue
+    is the source of truth post-Phase-5c.4c). ``clear_pending``
+    survives because operator clear-queue tooling still calls it;
+    test the no-op shape it now has."""
 
-    def test_clear_pending(self):
+    def test_clear_empty_pending(self):
         s = ControllerState()
-        s.add_pending("a", 10)
-        s.add_pending("b", 20)
         count = s.clear_pending()
-        self.assertEqual(count, 2)
+        self.assertEqual(count, 0)
         self.assertEqual(len(s.pending_actions), 0)
 
 
@@ -188,19 +166,19 @@ class TestControllerStateFailedServices(unittest.TestCase):
         self.assertEqual(len(s.get_failed_services()), 0)
 
     def test_to_dict_serialization(self):
-        # ADR-0005 Phase 5a: legacy bootstrap-progress fields
-        # (``phase`` / ``phases_completed`` / ``current_action``)
-        # are no longer serialized — Job framework provides the
-        # canonical view via ``/api/jobs/running`` + history.
+        # ADR-0005 Phase 5a/5c.4c: legacy bootstrap-progress fields
+        # (``phase`` / ``phases_completed`` / ``current_action`` /
+        # ``action_history``) are no longer serialized — Job
+        # framework provides the canonical view via
+        # ``/api/jobs/running`` + history.
         s = ControllerState()
-        s.start_action("test")
         s.append_log("hello")
         d = s.to_dict()
         self.assertIn("initial_bootstrap_done", d)
-        self.assertIn("action_history", d)
         self.assertNotIn("phase", d)
         self.assertNotIn("phases_completed", d)
         self.assertNotIn("current_action", d)
+        self.assertNotIn("action_history", d)
 
 
 class TestInitialBootstrapDonePersistence(unittest.TestCase):
@@ -234,7 +212,7 @@ class TestInitialBootstrapDonePersistence(unittest.TestCase):
             self.assertIs(saved.get("_initial_bootstrap_done"), True)
 
     def test_load_persisted_config_restores_flag_after_restart(self):
-        import tempfile, json
+        import tempfile
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             # Simulate a prior controller life that successfully

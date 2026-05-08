@@ -223,12 +223,15 @@ test.describe('Multi-gateway routing', () => {
       // Wait briefly for the action to be recorded.
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const statusResp = await request.get(`${controllerUrl}/status`);
-      expect(statusResp.ok()).toBeTruthy();
-      const status = await statusResp.json();
-      const history: Array<{ action?: string; name?: string }> = status.action_history || [];
+      // ADR-0005 Phase 5c.4c: ``state.action_history`` retired.
+      // Run history flows through ``GET /api/jobs?history`` —
+      // each batch entry's ``jobs`` map is keyed by job name.
+      const jobsResp = await request.get(`${controllerUrl}/api/jobs?history`);
+      expect(jobsResp.ok()).toBeTruthy();
+      const jobsBody = await jobsResp.json();
+      const history: Array<{ jobs?: Record<string, unknown> }> = jobsBody.history || [];
       const envoyActions = history.filter(
-        (a) => a.action === 'envoy-config' || a.name === 'envoy-config',
+        (entry) => entry.jobs && Object.keys(entry.jobs).includes('envoy-config'),
       );
       expect(envoyActions.length).toBeGreaterThan(0);
     } finally {

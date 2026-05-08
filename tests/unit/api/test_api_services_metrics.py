@@ -34,10 +34,35 @@ def _make_health(services_dict, healthy=None, total=None):
 
 
 def _make_state(action_history=None):
-    """Return a mock state object with a to_dict() method."""
+    """Return a mock state object with a to_dict() method.
+
+    ADR-0005 Phase 5c.4c: ``get_rss_feed`` no longer reads
+    ``state.to_dict().action_history`` — that key is retired. The
+    helper still returns a state object so test signatures are
+    stable; ``action_history`` is wired into the framework's
+    ``get_job_history`` via ``patch`` in each test instead.
+    """
     state = MagicMock()
-    state.to_dict.return_value = {"action_history": action_history or []}
+    state.to_dict.return_value = {}
     return state
+
+
+def _patch_history(history_jobs):
+    """Build a patch that replaces ``framework.get_job_history`` so
+    ``get_rss_feed`` sees a single batch entry whose ``jobs`` map
+    carries the legacy ``action_history`` shape (one job per row).
+    """
+    # Each row in legacy ``action_history`` becomes one job in a
+    # single batch entry. Production reads ``jobs`` as a dict keyed
+    # by job name.
+    jobs = {
+        row["name"]: {
+            "elapsed": row.get("elapsed_seconds", row.get("elapsed", 0)),
+            "error": row.get("error"),
+        }
+        for row in (history_jobs or [])
+    }
+    return [{"ts": 1700000000.0, "jobs": jobs}]
 
 
 # ---------------------------------------------------------------------------
@@ -183,12 +208,14 @@ class TestGetEnvoyStatsError(unittest.TestCase):
 class TestGetRssFeedStructure(unittest.TestCase):
     """RSS output is well-formed XML with expected elements."""
 
-    def test_rss_with_actions_and_health(self):
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_rss_with_actions_and_health(self, mock_history):
         history = [
             {"name": "bootstrap", "elapsed_seconds": 12},
             {"name": "restart", "elapsed_seconds": 3, "error": "timeout"},
         ]
-        state = _make_state(history)
+        mock_history.return_value = _patch_history(history)
+        state = _make_state()
         cache = _make_cache({"healthy": 5, "total": 7})
 
         xml_text = metrics_mod.get_rss_feed(state, cache)
@@ -206,10 +233,12 @@ class TestGetRssFeedStructure(unittest.TestCase):
 
 
 class TestGetRssFeedEmptyHistory(unittest.TestCase):
-    """Empty action_history still produces valid XML with health item."""
+    """Empty job history still produces valid XML with health item."""
 
-    def test_empty_history_with_health(self):
-        state = _make_state([])
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_empty_history_with_health(self, mock_history):
+        mock_history.return_value = []
+        state = _make_state()
         cache = _make_cache({"healthy": 3, "total": 3})
 
         xml_text = metrics_mod.get_rss_feed(state, cache)
@@ -219,8 +248,10 @@ class TestGetRssFeedEmptyHistory(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertIn("Health:", items[0].find("title").text)
 
-    def test_empty_history_no_health_cache(self):
-        state = _make_state([])
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_empty_history_no_health_cache(self, mock_history):
+        mock_history.return_value = []
+        state = _make_state()
         cache = _make_cache(None)
 
         xml_text = metrics_mod.get_rss_feed(state, cache)
@@ -233,9 +264,11 @@ class TestGetRssFeedEmptyHistory(unittest.TestCase):
 class TestGetRssFeedErrorActions(unittest.TestCase):
     """Actions with errors show 'error' status and include error detail."""
 
-    def test_error_action_content(self):
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_error_action_content(self, mock_history):
         history = [{"name": "push-indexers", "elapsed_seconds": 1, "error": "connection lost"}]
-        state = _make_state(history)
+        mock_history.return_value = _patch_history(history)
+        state = _make_state()
         cache = _make_cache(None)
 
         xml_text = metrics_mod.get_rss_feed(state, cache)
@@ -246,9 +279,11 @@ class TestGetRssFeedErrorActions(unittest.TestCase):
         self.assertEqual(item.find("category").text, "error")
         self.assertIn("connection lost", item.find("description").text)
 
-    def test_successful_action_content(self):
+    @patch("media_stack.application.jobs.framework.get_job_history")
+    def test_successful_action_content(self, mock_history):
         history = [{"name": "rebuild", "elapsed_seconds": 45}]
-        state = _make_state(history)
+        mock_history.return_value = _patch_history(history)
+        state = _make_state()
         cache = _make_cache(None)
 
         xml_text = metrics_mod.get_rss_feed(state, cache)

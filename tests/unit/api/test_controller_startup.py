@@ -152,29 +152,59 @@ class TestSaveDoesNotCorruptProfile(unittest.TestCase):
 
 
 class TestActionProgressVisibility(unittest.TestCase):
-    """Verify action progress is visible through the API."""
+    """Verify run progress is visible through the Job framework
+    surface.
 
-    def test_running_action_has_elapsed(self):
-        # ADR-0005 Phase 5a: ``current_action`` no longer ships in
-        # ``/status``; the dataclass field stays for internal
-        # bookkeeping. Action visibility flows through the Job
-        # framework (``/api/jobs/running``) for live consumers.
+    ADR-0005 Phase 5c.4c retired the ``ControllerState`` action
+    lifecycle (``start_action`` / ``add_pending`` / etc.) — every
+    in-flight + completed run flows through ``run_history``
+    instead. These tests exercise the JSONL-backed
+    ``get_running_tree`` reader the same way the SPA's
+    ``/api/jobs/running`` consumer does.
+    """
+
+    def test_running_run_visible_via_run_history_tree(self):
+        # Live in-flight runs surface through ``get_running_tree``;
+        # ``ControllerState.to_dict`` no longer exposes them.
         from media_stack.api.state import ControllerState
+        from media_stack.application.jobs import run_history
+        from media_stack.domain.jobs.run_record import RunStatus
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+
         state = ControllerState()
-        action = state.start_action("discover-indexers")
-        self.assertIsNotNone(action.elapsed_seconds)
-        self.assertGreaterEqual(action.elapsed_seconds, 0)
         d = state.to_dict()
+        # ``current_action`` + ``action_history`` retired from the
+        # wire shape.
         self.assertNotIn("current_action", d)
-        self.assertEqual(state.current_action.name, "discover-indexers")
+        self.assertNotIn("action_history", d)
 
-    def test_pending_actions_visible(self):
+        # Simulate an in-flight run. ``record_run_start`` writes a
+        # ``status=running`` record to the JSONL file; ``get_running_tree``
+        # walks it to surface live runs.
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "run-history.jsonl"
+            with mock.patch.object(run_history, "_path", return_value=path):
+                rec = run_history.record_run_start(
+                    "discover-indexers",
+                    triggered_by="manual",
+                )
+                tree = run_history.get_running_tree()
+                self.assertEqual(len(tree), 1)
+                self.assertEqual(tree[0]["run_id"], rec.run_id)
+                self.assertEqual(tree[0]["job_name"], "discover-indexers")
+                self.assertEqual(tree[0]["status"], RunStatus.RUNNING)
+
+    def test_pending_actions_field_remains_empty(self):
+        # ``add_pending`` retired in 5c.4c; the in-process priority
+        # queue is the source of truth for pending work. The
+        # ``pending_actions`` field is kept on ``/status`` only for
+        # back-compat (always empty).
         from media_stack.api.state import ControllerState
         state = ControllerState()
-        state.add_pending("validate-credentials", 80)
         d = state.to_dict()
-        self.assertEqual(len(d["pending_actions"]), 1)
-        self.assertEqual(d["pending_actions"][0]["name"], "validate-credentials")
+        self.assertEqual(d["pending_actions"], [])
 
 
 if __name__ == "__main__":

@@ -14,6 +14,14 @@ from typing import Any
 import logging
 
 
+# ``ActionStatus`` + ``ActionRecord`` are retained as a small public
+# value-object type so external operator scripts that read action
+# records (e.g. via the legacy ``GET /jobs.history[].jobs``
+# tabulation) still get a typed shape. Production no longer
+# constructs them — Phase 5c.4c retired the ``ControllerState``
+# action-lifecycle surface that did. The class can move to a
+# domain types module in a follow-up; leaving it here keeps the
+# import paths external scripts depend on stable.
 class ActionStatus(str, enum.Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -98,11 +106,18 @@ class ActionRecord:
 
 @dataclass
 class ControllerState:
-    """Mutable state shared between the HTTP API thread and the bootstrap runner thread."""
+    """Mutable state shared between the HTTP API thread and the bootstrap runner thread.
+
+    ADR-0005 Phase 5c.4c retired the action-lifecycle surface
+    (``current_action`` / ``action_history`` fields, plus
+    ``start_action`` / ``finish_action`` / ``cancel_action`` /
+    ``add_pending`` / ``pop_pending`` / ``get_action`` /
+    ``action_running``). Authoritative in-flight + completed run
+    state now lives in the Job framework (``run_history`` JSONL on
+    disk + ``GET /api/jobs/running`` + ``GET /api/jobs?history``).
+    """
 
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    _cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
-    _action_counter: int = field(default=0, repr=False)
 
     # Legacy fields — kept for backward compatibility with host-side polling.
     phase: str = "idle"
@@ -114,10 +129,17 @@ class ControllerState:
     app_status: dict[str, dict[str, Any]] = field(default_factory=dict)
     run_overrides: dict[str, Any] = field(default_factory=dict)
 
-    # Action tracking.
+    # Deployment-state flag — has this install ever bootstrapped
+    # successfully? Persisted to the runtime-config sidecar so a
+    # controller restart on an already-bootstrapped install
+    # doesn't wedge the dashboard banner.
     initial_bootstrap_done: bool = False
-    current_action: ActionRecord | None = None
-    action_history: list[ActionRecord] = field(default_factory=list)
+    # ``pending_actions`` is now always empty — the in-process
+    # priority queue is the source of truth for queued work. The
+    # field stays in ``to_dict()`` for back-compat with the public
+    # ``/status`` shape (consumers tolerate an empty list); a
+    # follow-up phase can remove it once every external operator
+    # script has rolled past it.
     pending_actions: list[dict[str, Any]] = field(default_factory=list)
 
     # Runtime config overrides (persisted across actions, togglable via /config).
@@ -215,106 +237,50 @@ class ControllerState:
     def is_complete(self) -> bool:
         return self.phase in ("complete", "error")
 
-    # --- action lifecycle ---
-
-    def start_action(
-        self,
-        action_name: str,
-        overrides: dict[str, Any] | None = None,
-        timeout_seconds: int = 600,
-    ) -> ActionRecord:
-        with self._lock:
-            self._action_counter += 1
-            clean_overrides = dict(overrides or {})
-            triggered_by = str(clean_overrides.pop("_triggered_by", "system"))
-            action = ActionRecord(
-                id=f"{action_name}-{self._action_counter}",
-                name=action_name,
-                overrides=clean_overrides,
-                timeout_seconds=timeout_seconds,
-                triggered_by=triggered_by,
-            )
-            action.start()
-            self.current_action = action
-            self._cancel_event.clear()
-            # Update legacy fields for backward-compatible polling.
-            self.phase = "running"
-            self.error = None
-            return action
-
-    def finish_action(self, error: str | None = None) -> None:
-        with self._lock:
-            if self.current_action and not self.current_action.is_terminal:
-                self.current_action.finish(error)
-                self.action_history.append(self.current_action)
-            self.current_action = None
-            self._cancel_event.clear()
-            # Update legacy fields.
-            self.completed_at = time.time()
-            self.phase = "error" if error else "complete"
-            self.error = error
-
-    def cancel_action(self) -> bool:
-        """Request cancellation of the current action. Returns True if an action was running."""
-        with self._lock:
-            if self.current_action and not self.current_action.is_terminal:
-                self._cancel_event.set()
-                return True
-            return False
-
-    @property
-    def is_cancelled(self) -> bool:
-        return self._cancel_event.is_set()
-
-    # --- pending queue tracking ---
-
-    def add_pending(self, action_name: str, priority: int, overrides: dict[str, Any] | None = None) -> None:
-        """Track a newly queued action as pending."""
-        with self._lock:
-            clean = {k: v for k, v in (overrides or {}).items() if not k.startswith("_")}
-            self.pending_actions.append({
-                "name": action_name,
-                "priority": priority,
-                "queued_at": time.time(),
-                "overrides": clean,
-            })
-
-    def pop_pending(self, action_name: str) -> None:
-        """Remove the first pending entry matching this action name."""
-        with self._lock:
-            for i, item in enumerate(self.pending_actions):
-                if item["name"] == action_name:
-                    self.pending_actions.pop(i)
-                    break
+    # ADR-0005 Phase 5c.4c: action lifecycle methods retired.
+    # ``start_action`` / ``finish_action`` / ``cancel_action`` /
+    # ``add_pending`` / ``pop_pending`` / ``get_action`` /
+    # ``action_running`` were duplicating the Job framework's
+    # run_history surface. Replacement plumbing:
+    #   * In-flight roots: ``run_history.get_running_tree()``
+    #   * Completed runs: ``framework.get_job_history()``
+    #   * Cancellation: ``framework.request_cancel()`` + the per-
+    #     action watchdog in ``cli/commands/controller_serve.py``
+    #   * Log-line action tag: ``runtime_platform.current_action_tag``
 
     def clear_pending(self) -> int:
-        """Remove all pending actions. Returns count removed."""
+        """Remove all pending actions. Returns count removed.
+
+        Vestigial after Phase 5c.4c (``add_pending`` retired so the
+        list never grows). Kept on the public surface because
+        operator clear-queue tooling still calls it; can be removed
+        once the public ``/status``'s ``pending_actions`` envelope
+        retires too.
+        """
         with self._lock:
             count = len(self.pending_actions)
             self.pending_actions.clear()
             return count
 
-    @property
-    def action_running(self) -> bool:
-        with self._lock:
-            return self.current_action is not None and not self.current_action.is_terminal
-
-    def get_action(self, action_id: str) -> ActionRecord | None:
-        with self._lock:
-            if self.current_action and self.current_action.id == action_id:
-                return self.current_action
-            for record in reversed(self.action_history):
-                if record.id == action_id:
-                    return record
-            return None
-
     # --- log streaming ---
 
     def append_log(self, line: str) -> None:
-        """Append a log line to the ring buffer and notify SSE waiters."""
+        """Append a log line to the ring buffer and notify SSE waiters.
+
+        ADR-0005 Phase 5c.4c: the per-line action tag is read off the
+        ``runtime_platform`` contextvar (set by the action loop's
+        ``current_action_tag(name)`` ``with`` block), not the retired
+        ``current_action`` field on this dataclass. The SSE shape and
+        filter semantics (``get_logs_since(action=...)``) are
+        unchanged — we just stopped reading from a dataclass field
+        that no longer exists.
+        """
+        from media_stack.services.runtime_platform import (
+            get_current_action_tag,
+        )
         with self._lock:
             self._log_seq += 1
-            action = self.current_action.name if self.current_action else ""
+            action = get_current_action_tag()
             self._log_buffer.append((self._log_seq, time.time(), line, action))
             self._log_event.set()
             self._log_event.clear()
@@ -422,15 +388,12 @@ class ControllerState:
     def to_dict(self) -> dict[str, Any]:
         """Serialize the public ``/status`` response.
 
-        ADR-0005 Phase 5a retired the legacy bootstrap-progress
-        fields (``phase``, ``phases_completed``, ``current_action``)
-        — they duplicated the Job framework's running-tree + history
-        view. Consumers that need live progress now read from
-        ``/api/jobs/running`` + ``/api/jobs?history`` instead.
-
-        The dataclass fields themselves stay for internal
-        bookkeeping (``set_phase`` / ``begin_action`` / etc. still
-        write them); they're just no longer part of the wire shape.
+        ADR-0005 Phase 5a retired ``phase`` / ``phases_completed`` /
+        ``current_action`` from the wire; Phase 5c.4c retires
+        ``action_history`` for the same reason — it duplicated the
+        Job framework's run-history view. Consumers that need
+        live progress read from ``/api/jobs/running`` +
+        ``/api/jobs?history`` instead.
         """
         with self._lock:
             elapsed = None
@@ -448,7 +411,6 @@ class ControllerState:
                 "initial_bootstrap_done": self.initial_bootstrap_done,
                 "runtime_config": dict(self.runtime_config),
                 "webhook_urls": list(self.webhook_urls),
-                "action_history": [a.to_dict() for a in self.action_history],
                 "pending_actions": [dict(p) for p in self.pending_actions],
                 "failed_services": dict(self.failed_services),
             }

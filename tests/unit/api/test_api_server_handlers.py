@@ -252,9 +252,10 @@ class TestGetReadyz(unittest.TestCase):
 
 class TestGetStatus(unittest.TestCase):
     def test_status_returns_full_state_dict(self):
-        # ADR-0005 Phase 5a: ``/status`` no longer ships the legacy
-        # bootstrap-progress fields (``phase`` / ``phases_completed``
-        # / ``current_action``). Live progress reads through the Job
+        # ADR-0005 Phase 5a / 5c.4c: ``/status`` no longer ships the
+        # legacy bootstrap-progress fields (``phase`` /
+        # ``phases_completed`` / ``current_action`` /
+        # ``action_history``). Live progress reads through the Job
         # framework; this test verifies the canonical fields stay.
         state = ControllerState()
         state.phase = "running"
@@ -263,9 +264,11 @@ class TestGetStatus(unittest.TestCase):
             h.do_GET()
         body = _get_json_written(h)
         self.assertEqual(_get_response_code(h), 200)
-        for key in ("initial_bootstrap_done", "runtime_config", "action_history"):
+        for key in ("initial_bootstrap_done", "runtime_config"):
             self.assertIn(key, body)
-        for legacy_key in ("phase", "phases_completed", "current_action"):
+        for legacy_key in (
+            "phase", "phases_completed", "current_action", "action_history",
+        ):
             self.assertNotIn(legacy_key, body)
 
 
@@ -358,35 +361,58 @@ class TestGetWebhooks(unittest.TestCase):
 # ===========================================================================
 
 class TestPostCancel(unittest.TestCase):
+    """ADR-0005 Phase 5c.4c: ``POST /cancel`` reads the Job
+    framework run-history tree (``run_history.get_running_tree``)
+    and signals via ``framework.request_cancel``. Response shape
+    carries ``cancelled_run_id`` + ``run_name`` instead of the
+    retired ``current_action`` ActionRecord payload."""
+
     def test_cancel_when_action_running(self):
         state = ControllerState()
-        state.start_action("bootstrap")
         h = make_handler("POST", "/cancel", state=state)
-        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}):
+        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}), \
+                mock.patch(
+                    "media_stack.application.jobs.run_history.get_running_tree",
+                    return_value=[
+                        {"run_id": "rid-1", "job_name": "bootstrap"},
+                    ],
+                ):
             h.do_POST()
         body = _get_json_written(h)
         self.assertEqual(_get_response_code(h), 200)
         self.assertEqual(body["status"], "cancel_requested")
-        self.assertIsNotNone(body["current_action"])
+        self.assertEqual(body["cancelled_run_id"], "rid-1")
+        self.assertEqual(body["run_name"], "bootstrap")
 
     def test_cancel_when_idle(self):
         state = ControllerState()
         h = make_handler("POST", "/cancel", state=state)
-        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}):
+        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}), \
+                mock.patch(
+                    "media_stack.application.jobs.run_history.get_running_tree",
+                    return_value=[],
+                ):
             h.do_POST()
         body = _get_json_written(h)
         self.assertEqual(_get_response_code(h), 200)
         self.assertEqual(body["status"], "no_action_running")
-        self.assertIsNone(body["current_action"])
+        self.assertIsNone(body["cancelled_run_id"])
+        self.assertIsNone(body["run_name"])
 
     def test_cancel_via_actions_cancel_alias(self):
         state = ControllerState()
-        state.start_action("envoy-config")
         h = make_handler("POST", "/actions/cancel", state=state)
-        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}):
+        with mock.patch.dict(os.environ, {"STACK_ADMIN_PASSWORD": ""}), \
+                mock.patch(
+                    "media_stack.application.jobs.run_history.get_running_tree",
+                    return_value=[
+                        {"run_id": "rid-2", "job_name": "envoy-config"},
+                    ],
+                ):
             h.do_POST()
         body = _get_json_written(h)
         self.assertEqual(body["status"], "cancel_requested")
+        self.assertEqual(body["cancelled_run_id"], "rid-2")
 
 
 class TestPostActions(unittest.TestCase):
