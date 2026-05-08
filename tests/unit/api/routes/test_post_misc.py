@@ -250,6 +250,56 @@ class TestActionsRoute:
         assert len(captured) == 1
         assert captured[0][1] == "bootstrap"
 
+    def test_api_alias_forwards_to_same_handler(self) -> None:
+        # ``/api/actions/{name}`` is the dashboard alias of
+        # ``/actions/{name}``. SPA's nginx only proxies ``/api/*``
+        # to the controller; without this alias the UI's "Run now"
+        # button hits the SPA-fallback ``try_files`` block and 404s.
+        # Pin: alias dispatches the same trigger.
+        captured: list[tuple[Any, str]] = []
+
+        def fake_trigger(handler: Any, action_name: str) -> None:
+            captured.append((handler, action_name))
+            handler._json_response(200, {"status": "accepted"})
+
+        routes = _routes_with(
+            known_actions=KnownActionsProvider(
+                known_actions=frozenset({"run-media-hygiene"}),
+            ),
+            action_trigger=ActionTrigger(trigger_fn=fake_trigger),
+        )
+        harness = _RouteHarness.with_routes(routes)
+        response, _ = _dispatch_post(
+            harness, "/api/actions/run-media-hygiene",
+        )
+
+        assert response.status == 200
+        assert json.loads(response.body) == {"status": "accepted"}
+        assert len(captured) == 1
+        assert captured[0][1] == "run-media-hygiene"
+
+    def test_api_alias_unknown_action_returns_404(self) -> None:
+        # Same 404 envelope as the root-path route — symmetry
+        # check so the SPA's error-handling path doesn't have to
+        # branch on which prefix the request used.
+        routes = _routes_with(
+            known_actions=KnownActionsProvider(
+                known_actions=frozenset({"bootstrap"}),
+            ),
+            action_trigger=ActionTrigger(
+                trigger_fn=lambda h, n: None,
+            ),
+        )
+        harness = _RouteHarness.with_routes(routes)
+        response, _ = _dispatch_post(
+            harness, "/api/actions/not-a-real-action",
+        )
+
+        assert response.status == 404
+        body = json.loads(response.body)
+        assert body["error"] == "unknown action 'not-a-real-action'"
+        assert "bootstrap" in body["known"]
+
     def test_unknown_action_returns_404(self) -> None:
         triggered: list[Any] = []
         routes = _routes_with(
@@ -881,6 +931,7 @@ class TestRoutingIntegration:
 
     _EXPECTED = frozenset({
         "/actions/{name}",
+        "/api/actions/{name}",
         "/cancel",
         "/config",
         "/run",

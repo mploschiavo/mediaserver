@@ -381,6 +381,11 @@ class MiscPostRoutes(RouteModule):
 
         The body (optional JSON) flows through to the handler's
         ``_handle_action`` which forwards it as ``overrides``.
+
+        SPA consumers should hit ``/api/actions/{name}`` instead
+        (``handle_action_api`` below) — the SPA's nginx config
+        only proxies ``/api/*`` to the controller. Same dispatch
+        body; just routed under the proxied prefix.
         """
         if not self._gated(handler):
             return
@@ -388,6 +393,36 @@ class MiscPostRoutes(RouteModule):
         # the operator's curl scripts predate the dedicated cancel
         # path, so we keep it routed here. Delegate to the canonical
         # cancel handler so the response shape matches.
+        if name == "cancel":
+            self.handle_cancel(handler)
+            return
+        if not self._known_actions.contains(name):
+            handler._json_response(
+                HTTPStatus.NOT_FOUND,
+                {
+                    "error": f"unknown action '{name}'",
+                    "known": sorted(self._known_actions.all()),
+                },
+            )
+            return
+        self._action_trigger.trigger(handler, name)
+
+    @post("/api/actions/{name}")
+    def handle_action_api(self, handler: Any, *, name: str) -> None:
+        """Dashboard-facing alias of ``handle_action``.
+
+        Same dispatch body and response shape as
+        ``POST /actions/{name}``. The alias exists so the SPA's
+        ``location /api/`` nginx block reaches the controller
+        without needing a separate ``location = /actions`` rule
+        per nginx config — without it, the SPA's "Run now" /
+        "Cancel" buttons hit the SPA-fallback ``try_files`` block
+        and the operator sees "unknown path
+        '/api/actions/<name>'". This was the same bug class
+        ADR-0005 Phase 5a fixed for ``/status`` -> ``/api/status``.
+        """
+        if not self._gated(handler):
+            return
         if name == "cancel":
             self.handle_cancel(handler)
             return

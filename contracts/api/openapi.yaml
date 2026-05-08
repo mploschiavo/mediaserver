@@ -1503,6 +1503,61 @@ paths:
                 error: "unknown action 'foo'"
                 known: [auto-indexers, bootstrap, envoy-config, finalize, reconcile, restart-apps, sync-indexers]
 
+  /api/actions/{name}:
+    # Dashboard-facing alias of ``/actions/{name}``. Same dispatch
+    # body and response shape; exists so the SPA's nginx
+    # ``location /api/`` block reaches the controller without a
+    # separate ``location = /actions`` rule per nginx config.
+    # Without it, the SPA's "Run now" / "Cancel" buttons hit the
+    # SPA-fallback ``try_files`` block and the operator sees
+    # "unknown path '/api/actions/<name>'".
+    post:
+      operationId: triggerActionApi
+      tags: [Actions]
+      summary: Trigger an orchestration action (dashboard alias)
+      description: |
+        Same response as ``POST /actions/{name}``. Use this path
+        from the SPA — the dashboard's nginx only proxies
+        ``/api/*`` to the controller.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The action to trigger
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Action accepted and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionAccepted'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: Unknown action name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  known:
+                    type: array
+                    items:
+                      type: string
+
   /cancel:
     post:
       operationId: cancelAction
