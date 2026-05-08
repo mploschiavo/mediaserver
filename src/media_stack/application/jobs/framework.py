@@ -353,9 +353,16 @@ class JobRunner:
         actor: str | None = None,
         **kwargs: Any,
     ):
+        # ADR-0005 Phase 5c.2: ``max_attempts`` (and the legacy
+        # ``max_wait`` kwarg alias) are accepted for call-site
+        # compatibility but no longer wire up a retry-the-whole-loop
+        # tier on JobRunner. Per-job retry is the
+        # ``Job.max_attempts`` contract field, threaded into the
+        # per-job dispatch site further down (line ~1225).
+        del max_attempts
+        kwargs.pop("max_wait", None)
         self.root = root
         self.ctx = ctx
-        self.max_attempts = kwargs.get("max_wait", max_attempts) if "max_wait" in kwargs else max_attempts
         # ``source`` / ``actor`` flow into ``_record_history`` so
         # ``GET /api/jobs.history[]`` carries a who-triggered-this
         # tag. ``None`` defaults to ``"unknown"`` at the writer
@@ -423,8 +430,19 @@ class JobRunner:
             batch_run = None
             batch_id_for_children = None
 
-        attempt = 0
-        while attempt <= self.max_attempts:
+        # ADR-0005 Phase 5c.2: dropped the bootstrap-only
+        # retry-on-no-ready-jobs shape. Pre-Phase-5 the loop would
+        # call ``_try_satisfy_prereqs`` (now retired) and re-enter
+        # the dispatch up to ``max_attempts`` times. Post-Phase-5c.1
+        # every API-key-discoverable promise routes through the
+        # orchestrator's lifecycle dispatch — itself a settle loop —
+        # so JobRunner doesn't need its own retry tier. When nothing
+        # is ready and no async work is in flight, mark the blocked
+        # jobs ``prereq_not_met`` and break cleanly. ``Job.max_attempts``
+        # (the contract field) still threads per-job retry tunables
+        # through ``check_prereqs`` and the per-job dispatch sites
+        # further down.
+        while True:
             pending = [j for j in all_jobs if j.name not in self.dispatched]
             if not pending:
                 # Everything is dispatched. If async jobs are still in
@@ -445,28 +463,20 @@ class JobRunner:
                     with self._cv:
                         self._cv.wait(timeout=2.0)
                     continue
-                # No async work in flight either — try to satisfy
-                # named prereqs (e.g. preflight discovers an API key).
-                attempt += 1
-                if attempt > self.max_attempts:
-                    for j in blocked:
-                        reason = (
-                            j.check_prereqs(self.ctx)
-                            or f"after-deps not done: {[d for d in j.after if d in all_job_names and d not in self.done]}"
-                        )
-                        runtime_platform.log(f"[WARN] {j.name}: deferred — {reason}")
-                        self.results[j.name] = {"status": "prereq_not_met", "reason": reason}
-                        self.dispatched.add(j.name)
-                        self.done.add(j.name)
-                    break
-                runtime_platform.log(
-                    f"[INFO] JobRunner: {len(blocked)} jobs waiting on prereqs, "
-                    f"attempting to satisfy (attempt {attempt}/{self.max_attempts})"
-                )
-                self._try_satisfy_prereqs()
-                continue
-
-            attempt = 0
+                # No async work in flight either — the orchestrator's
+                # promise loop is the canonical "satisfy missing
+                # prereqs" path; nothing JobRunner can do here. Mark
+                # the blocked jobs and break.
+                for j in blocked:
+                    reason = (
+                        j.check_prereqs(self.ctx)
+                        or f"after-deps not done: {[d for d in j.after if d in all_job_names and d not in self.done]}"
+                    )
+                    runtime_platform.log(f"[WARN] {j.name}: deferred — {reason}")
+                    self.results[j.name] = {"status": "prereq_not_met", "reason": reason}
+                    self.dispatched.add(j.name)
+                    self.done.add(j.name)
+                break
 
             for job in ready:
                 if self.ctx.cancelled:
@@ -633,29 +643,6 @@ class JobRunner:
         for sub in job.sub_jobs:
             jobs.extend(self._flatten(sub))
         return jobs
-
-    def _try_satisfy_prereqs(self) -> None:
-        """Actively try to satisfy prereqs (e.g., run media server preflight)."""
-        ms_id = self.ctx.media_server_id()
-        if not ms_id:
-            return
-        try:
-            preflight_mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.http_preflight")
-            run_preflight = preflight_mod.run_preflight
-            result = run_preflight(
-                config_root=self.ctx.config_root,
-                admin_username=self.ctx.admin_username,
-                admin_password=self.ctx.admin_password,
-                log=runtime_platform.log,
-            )
-            from media_stack.api.services.registry import SERVICE_MAP
-            svc = SERVICE_MAP.get(ms_id)
-            if svc and result and result.get(svc.api_key_env):
-                os.environ[svc.api_key_env] = result[svc.api_key_env]
-                runtime_platform.log(f"[OK] {ms_id}: API key obtained via preflight")
-        except Exception as exc:
-            runtime_platform.log(f"[INFO] Preflight attempt: {exc}")
-
 
 # Module-level cancel flag — set by SIGTERM handler in subprocess
 # (legacy) or by the in-process action loop (ADR-0005 Phase 5c.4).

@@ -249,17 +249,19 @@ class TestRunAllWithRetry(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
 
     def test_ms_jobs_skipped_when_prereqs_not_met(self):
-        """When prereqs fail, media server sub-jobs get prereq_not_met."""
+        """When prereqs fail, media server sub-jobs get prereq_not_met.
+
+        ADR-0005 Phase 5c.2: ``JobRunner._try_satisfy_prereqs`` was
+        retired (preflight is now an orchestrator lifecycle promise).
+        Removed the now-stale ``patch`` of that method.
+        """
         with patch.dict(PREREQS, {
             "media_server_reachable": lambda ctx: False,
             "media_server_api_key": lambda ctx: False,
         }):
-            with patch(
-                "media_stack.services.jobs.framework.JobRunner._try_satisfy_prereqs"
-            ), patch("importlib.import_module") as mock_mod:
+            with patch("importlib.import_module") as mock_mod:
                 # Mock handler imports so unrelated prereq-free jobs (e.g.
-                # discover-api-keys, which now runs real jellyfin preflight)
-                # don't reach the network.
+                # discover-api-keys) don't reach the network.
                 mock_mod.return_value = MagicMock()
                 result = run_all_media_server_jobs(max_wait=1)
         # Jobs with unmet prereqs should be skipped
@@ -351,21 +353,25 @@ class TestJobFrameworkPluggable(unittest.TestCase):
         self.assertEqual(order, ["L1", "L2"])  # L3 and L4 skipped
         del PREREQS["level3_gate"]
 
-    def test_job_runner_retries_then_runs(self):
-        """JobRunner retries prereqs then executes when satisfied."""
-        call_count = {"n": 0}
-        def prereq_passes_after_retries(ctx):
-            call_count["n"] += 1
-            return call_count["n"] >= 3  # checked twice per round (ready + deferred)
-
-        register_prereq("slow_prereq", prereq_passes_after_retries)
+    def test_job_runner_marks_unsatisfied_prereq_as_prereq_not_met(self):
+        """ADR-0005 Phase 5c.2: dropped the bootstrap-only retry-on
+        -no-ready-jobs shape. JobRunner is now single-pass — a job
+        whose prereq is unsatisfied at dispatch time is marked
+        ``prereq_not_met`` and the loop breaks (no retry tier). The
+        orchestrator's lifecycle dispatch is the canonical settle
+        loop now.
+        """
+        register_prereq("never_passes", lambda ctx: False)
         called = []
-        job = Job("test", lambda ctx: called.append(True), requires=["slow_prereq"])
-        with patch.object(JobRunner, "_try_satisfy_prereqs"):
-            result = JobRunner(job, JobContext(), max_attempts=3).run()
-        self.assertTrue(called)
-        self.assertEqual(result["status"], "ok")
-        del PREREQS["slow_prereq"]
+        job = Job("test", lambda ctx: called.append(True), requires=["never_passes"])
+        result = JobRunner(job, JobContext()).run()
+        # Job did NOT run; prereq stayed unsatisfied.
+        self.assertFalse(called)
+        # Result envelope marks the deferral.
+        per_job = result.get("jobs", {}).get("test")
+        self.assertIsNotNone(per_job)
+        self.assertEqual(per_job.get("status"), "prereq_not_met")
+        del PREREQS["never_passes"]
 
     def test_find_job_in_tree(self):
         """run_job finds jobs deep in the tree with their prereqs."""
