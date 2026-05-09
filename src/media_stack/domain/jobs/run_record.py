@@ -34,6 +34,15 @@ Design notes
 * **``log_anchor``** carries the params to deep-link into the
   Logs page, so the Jobs UI can render a "View logs for this run"
   button without itself owning log knowledge.
+
+ADR-0012 shape
+--------------
+The three loose helpers (``make_run_id``, ``truncate_stdout_tail``,
+``resolve_run_history_path``) live as plain instance methods on
+:class:`RunRecordHelpers` (no ``@staticmethod``). A module-level
+singleton (``_INSTANCE``) plus aliases preserve the existing import
+surface so callers like ``from ... import make_run_id`` keep working
+unchanged.
 """
 
 from __future__ import annotations
@@ -42,6 +51,7 @@ import os
 import secrets
 import time
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 
@@ -54,28 +64,27 @@ RUN_HISTORY_HARD_CAP = 50000
 # in the controller's main log.
 RUN_STDOUT_TAIL_CAP = 16 * 1024
 
+# Default config root used when ``CONFIG_ROOT`` env var is unset.
+# Matches the controller's deploy convention.
+_DEFAULT_CONFIG_ROOT = "/srv-config"
+
+# Error-string truncation budget on RunRecord — matches framework's
+# existing pattern, ratcheted at 500 chars.
+_RUN_ERROR_MAX_LEN = 500
+
+# ULID encoding constants. 48-bit timestamp + 80-bit randomness =
+# 128 bits → 26 base32 chars. The 5-bit mask extracts each base32
+# digit during the reverse-build loop.
+_ULID_TIMESTAMP_BITS = 48
+_ULID_RANDOM_BITS = 80
+_ULID_RANDOM_BYTES = 10  # _ULID_RANDOM_BITS // 8
+_ULID_CHAR_COUNT = 26
+_ULID_BASE32_MASK = 0x1F
 
 # Crockford's Base32 alphabet — used by ULIDs. Excludes I, L, O, U
 # to avoid visual ambiguity. The result is a 26-char string that
 # sorts lexicographically by time.
 _ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-
-
-def make_run_id(now_ms: int | None = None) -> str:
-    """Produce a 26-char ULID. Sortable by creation time, globally
-    unique with overwhelming probability (80 bits of randomness)."""
-    ts = int(now_ms if now_ms is not None else time.time() * 1000)
-    # 48-bit timestamp, 80-bit randomness.
-    rand_bits = secrets.token_bytes(10)
-    rand_int = int.from_bytes(rand_bits, byteorder="big")
-    # Encode timestamp (48 bits → 10 chars) + random (80 bits → 16
-    # chars).
-    full = (ts << 80) | rand_int
-    out = []
-    for _ in range(26):
-        out.append(_ULID_ALPHABET[full & 0x1F])
-        full >>= 5
-    return "".join(reversed(out))
 
 
 # Run lifecycle states. ``running`` records are written when the
@@ -150,8 +159,8 @@ class RunRecord:
         if self.stdout_tail and len(self.stdout_tail) > RUN_STDOUT_TAIL_CAP:
             self.stdout_tail = self.stdout_tail[-RUN_STDOUT_TAIL_CAP:]
         # Cap error similar to framework's existing pattern.
-        if self.error and len(self.error) > 500:
-            self.error = self.error[:500]
+        if self.error and len(self.error) > _RUN_ERROR_MAX_LEN:
+            self.error = self.error[:_RUN_ERROR_MAX_LEN]
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -231,20 +240,73 @@ class RunRecord:
         )
 
 
-def truncate_stdout_tail(text: str) -> str:
-    """Convenience for callers that capture stdout before
-    constructing a record. Trims to ``RUN_STDOUT_TAIL_CAP`` from
-    the END of the buffer."""
-    if not text:
-        return ""
-    if len(text) <= RUN_STDOUT_TAIL_CAP:
-        return text
-    return text[-RUN_STDOUT_TAIL_CAP:]
+class RunRecordHelpers:
+    """Sibling helper bundle for :class:`RunRecord` (ADR-0012 form).
+
+    Hosts the three free helpers that previously lived at module top:
+    ULID generation, stdout-tail truncation, and run-history-path
+    resolution. Instances are stateless; the module-level
+    :data:`_INSTANCE` plus aliases below are the canonical entry
+    points so existing ``from ... import make_run_id`` style imports
+    keep working unchanged.
+    """
+
+    def make_run_id(self, now_ms: int | None = None) -> str:
+        """Produce a 26-char ULID. Sortable by creation time, globally
+        unique with overwhelming probability (80 bits of randomness)."""
+        ts = int(now_ms if now_ms is not None else time.time() * 1000)
+        # 48-bit timestamp, 80-bit randomness.
+        rand_bits = secrets.token_bytes(_ULID_RANDOM_BYTES)
+        rand_int = int.from_bytes(rand_bits, byteorder="big")
+        # Encode timestamp (48 bits → 10 chars) + random (80 bits →
+        # 16 chars).
+        full = (ts << _ULID_RANDOM_BITS) | rand_int
+        out: list[str] = []
+        for _ in range(_ULID_CHAR_COUNT):
+            out.append(_ULID_ALPHABET[full & _ULID_BASE32_MASK])
+            full >>= 5
+        return "".join(reversed(out))
+
+    def truncate_stdout_tail(self, text: str) -> str:
+        """Convenience for callers that capture stdout before
+        constructing a record. Trims to ``RUN_STDOUT_TAIL_CAP`` from
+        the END of the buffer."""
+        if not text:
+            return ""
+        if len(text) <= RUN_STDOUT_TAIL_CAP:
+            return text
+        return text[-RUN_STDOUT_TAIL_CAP:]
+
+    def resolve_run_history_path(self) -> "os.PathLike[str]":
+        """``config/.controller/run-history.jsonl`` — same dir as the
+        legacy job-history.json.
+
+        Reads ``CONFIG_ROOT`` from the environment per call (not
+        cached) so monkeypatching in tests works without a reset
+        hook. Falls back to :data:`_DEFAULT_CONFIG_ROOT` when unset.
+        """
+        config_root = os.environ.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT)
+        return Path(config_root) / ".controller" / "run-history.jsonl"
 
 
-def resolve_run_history_path() -> "os.PathLike[str]":
-    """``config/.controller/run-history.jsonl`` — same dir as the
-    legacy job-history.json."""
-    from pathlib import Path
-    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
-    return Path(config_root) / ".controller" / "run-history.jsonl"
+_INSTANCE = RunRecordHelpers()
+
+# Module-level aliases preserve every public name so existing
+# ``from media_stack.domain.jobs.run_record import make_run_id``
+# style imports keep working unchanged.
+make_run_id = _INSTANCE.make_run_id
+truncate_stdout_tail = _INSTANCE.truncate_stdout_tail
+resolve_run_history_path = _INSTANCE.resolve_run_history_path
+
+
+__all__ = [
+    "RUN_HISTORY_HARD_CAP",
+    "RUN_STDOUT_TAIL_CAP",
+    "LogAnchor",
+    "RunRecord",
+    "RunRecordHelpers",
+    "RunStatus",
+    "make_run_id",
+    "resolve_run_history_path",
+    "truncate_stdout_tail",
+]

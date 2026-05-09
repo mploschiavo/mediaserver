@@ -3,10 +3,19 @@
 This module defines target-agnostic contracts so orchestration flows can
 dispatch platform lifecycle actions (k8s and compose) through a single
 interface.
+
+ADR-0012 shape: the three module-level helpers (``normalize_platform_target``,
+``_require_dependency``, ``build_rebuild_platform_adapter``) live as plain
+instance methods on ``PlatformAdapterFactory``. A module-level uppercase
+``_INSTANCE`` plus name aliases preserve every public + underscore name so
+callers and ``mock.patch`` keep working. Internal cross-method calls go
+through ``sys.modules[__name__]`` so test patches on the alias keep
+intercepting.
 """
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -101,30 +110,56 @@ class RebuildPlatformAdapterBuildRequest:
     disk_allocation_gb: int = 500
 
 
-def normalize_platform_target(target: str) -> str:
-    return _normalize_platform_target_from_registry(target)
+class PlatformAdapterFactory:
+    """Class-based wrapper for platform adapter construction (ADR-0012).
+
+    Holds the three previously-loose helpers as plain instance methods. The
+    module-level ``_INSTANCE`` plus aliases preserve every public + underscore
+    name so callers and ``mock.patch.object(mod, "_require_dependency", ...)``
+    keep intercepting.
+    """
+
+    def normalize_platform_target(self, target: str) -> str:
+        """Map free-form target aliases to the canonical platform key."""
+        return _normalize_platform_target_from_registry(target)
+
+    def _require_dependency(
+        self,
+        request: RebuildPlatformAdapterBuildRequest,
+        value: object | None,
+        name: str,
+    ) -> object:
+        """Raise when a per-target dependency is missing on the build request."""
+        if value is None:
+            raise ValueError(
+                "Missing required dependency for platform target "
+                f"'{request.target}': {name}"
+            )
+        return value
+
+    def build_rebuild_platform_adapter(
+        self,
+        request: RebuildPlatformAdapterBuildRequest,
+    ) -> RebuildPlatformAdapter:
+        """Build the target-specific adapter via the platform plugin registry."""
+        module = sys.modules[__name__]
+        resolved_target = module.normalize_platform_target(request.target)
+        plugin = resolve_platform_plugin(resolved_target)
+        if plugin is None:
+            available = ", ".join(available_platform_targets())
+            raise ValueError(
+                f"Unsupported rebuild platform target '{request.target}'. "
+                f"Supported targets: {available}."
+            )
+        normalized_request = replace(request, target=resolved_target)
+        return plugin.build_adapter(normalized_request, module._require_dependency)
 
 
-def _require_dependency(
-    request: RebuildPlatformAdapterBuildRequest, value: object | None, name: str
-) -> object:
-    if value is None:
-        raise ValueError(
-            "Missing required dependency for platform target " f"'{request.target}': {name}"
-        )
-    return value
+_INSTANCE = PlatformAdapterFactory()
 
-
-def build_rebuild_platform_adapter(
-    request: RebuildPlatformAdapterBuildRequest,
-) -> RebuildPlatformAdapter:
-    resolved_target = normalize_platform_target(request.target)
-    plugin = resolve_platform_plugin(resolved_target)
-    if plugin is None:
-        available = ", ".join(available_platform_targets())
-        raise ValueError(
-            f"Unsupported rebuild platform target '{request.target}'. "
-            f"Supported targets: {available}."
-        )
-    normalized_request = replace(request, target=resolved_target)
-    return plugin.build_adapter(normalized_request, _require_dependency)
+# Module-level aliases preserve every public + underscore name so existing
+# callers (`from media_stack.core.platform_adapter import …`) and tests that
+# patch via `mock.patch.object(mod, "_require_dependency", …)` keep working.
+normalize_platform_target = _INSTANCE.normalize_platform_target
+_require_dependency = _INSTANCE._require_dependency
+build_rebuild_platform_adapter = _INSTANCE.build_rebuild_platform_adapter

@@ -102,45 +102,61 @@ if __name__ == "__main__":
 '''
 
 
-def _camel(name: str) -> str:
-    return "".join(p.capitalize() for p in name.replace("-", "_").split("_"))
+class ScaffoldJobTestCommand:
+    """Render a per-job test skeleton at ``tests/jobs/test_<job>.py``."""
+
+    def camel(self, name: str) -> str:
+        return "".join(p.capitalize() for p in name.replace("-", "_").split("_"))
+
+    def safe(self, name: str) -> str:
+        return name.replace("-", "_")
+
+    def main(self, argv: list[str] | None = None) -> int:
+        # Dispatch through sys.modules so test mock.patch on module-level
+        # `_camel` / `_safe` / `_TEMPLATE` is honored.
+        module = sys.modules[__name__]
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("job_name", help="job name (e.g. discover-api-keys)")
+        parser.add_argument(
+            "--out-dir",
+            # File now lives at src/media_stack/cli/commands/<this>.py —
+            # parents[4] lands at the repo root. Was parents[1] when the
+            # script lived at bin/<this>.py.
+            default=str(Path(__file__).resolve().parents[4] / "tests" / "jobs"),
+            help="destination directory (defaults to tests/jobs)",
+        )
+        parser.add_argument(
+            "--force", action="store_true",
+            help="overwrite an existing file at the destination",
+        )
+        args = parser.parse_args(argv)
+
+        target = Path(args.out_dir) / f"test_{module._safe(args.job_name)}.py"
+        if target.exists() and not args.force:
+            print(f"refusing to overwrite {target} (use --force)",
+                  file=sys.stderr)
+            return 1
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        body = module._TEMPLATE.format(
+            job_name=args.job_name,
+            class_name=module._camel(args.job_name),
+        )
+        target.write_text(body, encoding="utf-8")
+        print(f"wrote {target}")
+        return 0
 
 
-def _safe(name: str) -> str:
-    return name.replace("-", "_")
+_INSTANCE = ScaffoldJobTestCommand()
 
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("job_name", help="job name (e.g. discover-api-keys)")
-    parser.add_argument(
-        "--out-dir",
-        # File now lives at src/media_stack/cli/commands/<this>.py —
-        # parents[4] lands at the repo root. Was parents[1] when the
-        # script lived at bin/<this>.py.
-        default=str(Path(__file__).resolve().parents[4] / "tests" / "jobs"),
-        help="destination directory (defaults to tests/jobs)",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="overwrite an existing file at the destination",
-    )
-    args = parser.parse_args(argv)
-
-    target = Path(args.out_dir) / f"test_{_safe(args.job_name)}.py"
-    if target.exists() and not args.force:
-        print(f"refusing to overwrite {target} (use --force)",
-              file=sys.stderr)
-        return 1
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    body = _TEMPLATE.format(
-        job_name=args.job_name,
-        class_name=_camel(args.job_name),
-    )
-    target.write_text(body, encoding="utf-8")
-    print(f"wrote {target}")
-    return 0
+# Module-level aliases for every public + underscore name (preserves
+# test mock.patch targets and the historical import surface, including
+# the ``main`` entry point referenced from pyproject.toml).
+camel = _INSTANCE.camel
+_camel = _INSTANCE.camel
+safe = _INSTANCE.safe
+_safe = _INSTANCE.safe
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":

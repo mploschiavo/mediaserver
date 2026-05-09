@@ -7,55 +7,34 @@ from media_stack.core.logging_utils import log_swallowed
 import importlib
 import inspect
 import json
+import logging
 import os
 import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from media_stack.services.top_level_config_model import TopLevelBootstrapConfig
 
 from media_stack.infrastructure.platforms.compose.docker_client import DockerClient
-import logging
 
 InfoFn = Callable[[str], None]
 
-
-def _parse_wait_seconds(value: str, *, default_seconds: int = 600) -> int:
-    token = str(value or "").strip().lower()
-    if not token:
-        return default_seconds
-    unit = token[-1:] if token else ""
-    magnitude_raw = token[:-1] if unit in {"s", "m", "h"} else token
-    try:
-        magnitude = float(magnitude_raw)
-    except Exception:
-        return default_seconds
-    multiplier = 1.0
-    if unit == "m":
-        multiplier = 60.0
-    elif unit == "h":
-        multiplier = 3600.0
-    return max(1, int(magnitude * multiplier))
-
-
-def _decode_logs(raw: Any) -> str:
-    if isinstance(raw, bytes):
-        return raw.decode("utf-8", errors="replace")
-    return str(raw or "")
-
-
-def _normalize_port(value: object) -> str:
-    token = str(value or "").strip()
-    if token.startswith(":"):
-        token = token[1:]
-    if not token or not token.isdigit():
-        return ""
-    port = int(token)
-    if port < 1 or port > 65535:
-        return ""
-    return str(port)
+_VALID_PULL_POLICIES = frozenset({"always", "if-missing", "never"})
+_DEFAULT_PULL_POLICY = "if-missing"
+_DEFAULT_WAIT_SECONDS = 600
+_API_MODE_PORT = 9100
+_API_MODE_TRIGGER_TIMEOUT = 10
+_API_MODE_POLL_TIMEOUT = 5
+_API_MODE_POLL_INTERVAL_SECONDS = 3
+_API_BASE_RESOLVE_DEADLINE_SECONDS = 30
+_LEGACY_LOG_TAIL = 600
+_LEGACY_POLL_INTERVAL_SECONDS = 2
+_LEGACY_STOP_TIMEOUT_SECONDS = 10
+_DEFAULT_CONFIG_ROOT = Path("/srv/media-stack/config")
 
 
 @dataclass(frozen=True)
@@ -84,12 +63,46 @@ class ComposeBootstrapService:
     info: InfoFn
     docker: DockerClient
 
+    def parse_wait_seconds(
+        self, value: str, *, default_seconds: int = _DEFAULT_WAIT_SECONDS
+    ) -> int:
+        token = str(value or "").strip().lower()
+        if not token:
+            return default_seconds
+        unit = token[-1:] if token else ""
+        magnitude_raw = token[:-1] if unit in {"s", "m", "h"} else token
+        try:
+            magnitude = float(magnitude_raw)
+        except ValueError:
+            return default_seconds
+        multiplier = 1.0
+        if unit == "m":
+            multiplier = 60.0
+        elif unit == "h":
+            multiplier = 3600.0
+        return max(1, int(magnitude * multiplier))
+
+    def decode_logs(self, raw: Any) -> str:
+        if isinstance(raw, bytes):
+            return raw.decode("utf-8", errors="replace")
+        return str(raw or "")
+
+    def normalize_port(self, value: object) -> str:
+        token = str(value or "").strip()
+        if token.startswith(":"):
+            token = token[1:]
+        if not token or not token.isdigit():
+            return ""
+        port = int(token)
+        if port < 1 or port > 65535:
+            return ""
+        return str(port)
+
     def _project_name(self) -> str:
         project = str(self.cfg.compose_project_name or "").strip()
         return project or str(self.cfg.namespace or "").strip() or "media-stack"
 
-    @staticmethod
-    def _import_hook(spec: str) -> Callable[..., object]:
+    def _import_hook(self, spec: str) -> Callable[..., object]:
         if ":" not in spec:
             raise RuntimeError(f"Invalid compose runtime policy hook spec '{spec}'")
         module_name, symbol_name = spec.split(":", 1)
@@ -101,8 +114,8 @@ class ComposeBootstrapService:
             )
         return hook
 
-    @staticmethod
     def _invoke_hook(
+        self,
         hook: Callable[..., object],
         *,
         hook_name: str,
@@ -192,7 +205,7 @@ class ComposeBootstrapService:
         ).strip()
         if token:
             return Path(token).expanduser()
-        return Path("/srv/media-stack/config")
+        return _DEFAULT_CONFIG_ROOT
 
     def _resolve_stack_root(self, compose_env: dict[str, str]) -> Path | None:
         explicit = str(compose_env.get("STACK_ROOT") or "").strip()
@@ -208,7 +221,7 @@ class ComposeBootstrapService:
         data_path = Path(data_root).expanduser()
         try:
             common = Path(os.path.commonpath([str(media_path), str(data_path)]))
-        except Exception:
+        except ValueError:
             return None
         if not str(common).strip() or str(common) == "/":
             return None
@@ -235,7 +248,7 @@ class ComposeBootstrapService:
         context: dict[str, object] = {"cfg": cfg}
         context.update(dict(self.cfg.runtime_config_policy_params or {}))
         if "app_gateway_port" not in context:
-            inferred_gateway_port = _normalize_port(
+            inferred_gateway_port = self.normalize_port(
                 compose_env.get("APP_GATEWAY_PORT")
                 or compose_env.get("TRAEFIK_HTTP_PORT")
                 or compose_env.get("EDGE_HTTP_PORT")
@@ -269,27 +282,26 @@ class ComposeBootstrapService:
             handle.write("\n")
             handle.close()
             return Path(handle.name)
-        except Exception:
+        except OSError:
             handle.close()
             try:
                 Path(handle.name).unlink()
-            except Exception as exc:
+            except OSError as exc:
                 log_swallowed(exc)
             raise
 
-    @staticmethod
-    def _image_pull_policy() -> str:
+    def _image_pull_policy(self) -> str:
         policy = (
             str(
                 os.environ.get("COMPOSE_BOOTSTRAP_IMAGE_PULL_POLICY")
                 or os.environ.get("BOOTSTRAP_IMAGE_PULL_POLICY")
-                or "if-missing"
+                or _DEFAULT_PULL_POLICY
             )
             .strip()
             .lower()
         )
-        if policy not in {"always", "if-missing", "never"}:
-            return "if-missing"
+        if policy not in _VALID_PULL_POLICIES:
+            return _DEFAULT_PULL_POLICY
         return policy
 
     def _prepare_bootstrap_runner_image(self) -> None:
@@ -327,10 +339,10 @@ class ComposeBootstrapService:
 
     def _container_logs(self, container: Any) -> str:
         try:
-            raw = container.logs(stdout=True, stderr=True, tail=600)
+            raw = container.logs(stdout=True, stderr=True, tail=_LEGACY_LOG_TAIL)
         except Exception:
             return ""
-        return _decode_logs(raw)
+        return self.decode_logs(raw)
 
     def _run_api_mode(
         self,
@@ -349,11 +361,10 @@ class ComposeBootstrapService:
         ``docker compose up``.
         """
         container_name = f"{project_name}-media-stack-controller"
-        api_port = 9100
 
         # Ensure the bootstrap service container is running.
         self.docker.ping()
-        api_base = self._resolve_container_api_base(container_name, api_port)
+        api_base = self._resolve_container_api_base(container_name, _API_MODE_PORT)
 
         # Trigger bootstrap action via HTTP (same as deploy-k8s.sh / deploy-compose.sh).
         self.info(f"Compose bootstrap: triggering via {api_base}/actions/bootstrap")
@@ -362,15 +373,13 @@ class ComposeBootstrapService:
             overrides["auto_download_content"] = True
         trigger_body = json.dumps(overrides).encode("utf-8")
         try:
-            from urllib import request as _request
-
-            req = _request.Request(
+            req = urllib_request.Request(
                 f"{api_base}/actions/bootstrap",
                 data=trigger_body,
                 method="POST",
                 headers={"Content-Type": "application/json"},
             )
-            with _request.urlopen(req, timeout=10) as resp:
+            with urllib_request.urlopen(req, timeout=_API_MODE_TRIGGER_TIMEOUT) as resp:
                 self.info(f"Bootstrap trigger response: {resp.read().decode()}")
         except Exception as exc:
             self.info(f"Bootstrap trigger warning: {exc}")
@@ -378,14 +387,10 @@ class ComposeBootstrapService:
         # Poll /status until complete or error (same as K8s flow).
         self._poll_api_status(api_base, container_name, wait_seconds)
 
-    def _resolve_container_api_base(
-        self, container_name: str, port: int
-    ) -> str:
+    def _resolve_container_api_base(self, container_name: str, port: int) -> str:
         """Get the controller container's network IP for API polling."""
-        import time as _time
-
-        deadline = _time.time() + 30
-        while _time.time() < deadline:
+        deadline = time.time() + _API_BASE_RESOLVE_DEADLINE_SECONDS
+        while time.time() < deadline:
             container = self.docker.get_container(container_name)
             if container is not None:
                 try:
@@ -399,22 +404,17 @@ class ComposeBootstrapService:
                             return f"http://{ip}:{port}"
                 except Exception as exc:
                     log_swallowed(exc)
-            _time.sleep(1)
+            time.sleep(1)
         return f"http://{container_name}:{port}"
 
-    def _poll_api_status(
-        self, api_base: str, container_name: str, timeout: int
-    ) -> None:
+    def _poll_api_status(self, api_base: str, container_name: str, timeout: int) -> None:
         """Poll the bootstrap runner's /status API until complete or error."""
-        from urllib import error as _error
-        from urllib import request as _request
-
         deadline = time.time() + timeout
         self.info(f"Compose bootstrap: polling API at {api_base}/status")
         while time.time() < deadline:
             try:
-                req = _request.Request(f"{api_base}/status", method="GET")
-                with _request.urlopen(req, timeout=5) as resp:
+                req = urllib_request.Request(f"{api_base}/status", method="GET")
+                with urllib_request.urlopen(req, timeout=_API_MODE_POLL_TIMEOUT) as resp:
                     data = json.loads(resp.read().decode("utf-8", errors="replace"))
                 phase = str(data.get("phase", "")).strip()
                 if phase == "complete":
@@ -425,13 +425,13 @@ class ComposeBootstrapService:
                     raise RuntimeError(
                         f"Compose bootstrap failed: {error_msg}"
                     )
-            except _error.URLError:
+            except urllib_error.URLError:
                 logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
             except RuntimeError:
                 raise
             except Exception as exc:
                 log_swallowed(exc)
-            time.sleep(3)
+            time.sleep(_API_MODE_POLL_INTERVAL_SECONDS)
 
         # Timeout — try to get status one more time.
         container = self.docker.get_container(container_name)
@@ -458,7 +458,9 @@ class ComposeBootstrapService:
         # API mode: use --serve + poll /status. Preflights run inside the container.
         use_api_mode = os.environ.get("BOOTSTRAP_API_MODE", "0") == "1"
         if use_api_mode:
-            wait_seconds = _parse_wait_seconds(self.cfg.wait_timeout, default_seconds=600)
+            wait_seconds = self.parse_wait_seconds(
+                self.cfg.wait_timeout, default_seconds=_DEFAULT_WAIT_SECONDS
+            )
             self._run_api_mode(
                 compose_env=compose_env,
                 config_root=config_root,
@@ -476,7 +478,9 @@ class ComposeBootstrapService:
         )
         network_name = f"{project_name}_default"
         container_name = f"{project_name}-media-stack-controller"
-        wait_seconds = _parse_wait_seconds(self.cfg.wait_timeout, default_seconds=600)
+        wait_seconds = self.parse_wait_seconds(
+            self.cfg.wait_timeout, default_seconds=_DEFAULT_WAIT_SECONDS
+        )
         bootstrap_env: dict[str, str] = {
             "FULLY_PRECONFIGURED": "1" if self.cfg.apply_initial_preferences else "0",
             "PRECONFIGURE_API_KEYS": "1" if self.cfg.preconfigure_api_keys else "0",
@@ -556,11 +560,11 @@ class ComposeBootstrapService:
                     raise RuntimeError(
                         f"Compose bootstrap container entered status '{state.status}'.\n{logs.strip()}"
                     )
-                time.sleep(2)
+                time.sleep(_LEGACY_POLL_INTERVAL_SECONDS)
             container = self.docker.get_container(container_name)
             if container is not None:
                 try:
-                    container.stop(timeout=10)
+                    container.stop(timeout=_LEGACY_STOP_TIMEOUT_SECONDS)
                 except Exception as exc:
                     log_swallowed(exc)
             logs = self._container_logs(container) if container is not None else ""
@@ -572,5 +576,16 @@ class ComposeBootstrapService:
             self.docker.remove_container(container_name, force=True)
             try:
                 runtime_cfg_file.unlink()
-            except Exception as exc:
+            except OSError as exc:
                 log_swallowed(exc)
+
+
+# Module-level singleton — shared collaborator wired once at import time.
+_INSTANCE = ComposeBootstrapService.__new__(ComposeBootstrapService)
+
+
+# Backwards-compatible underscore aliases — preserve the public import
+# surface used by historical callers and module-level patches.
+_parse_wait_seconds = _INSTANCE.parse_wait_seconds
+_decode_logs = _INSTANCE.decode_logs
+_normalize_port = _INSTANCE.normalize_port

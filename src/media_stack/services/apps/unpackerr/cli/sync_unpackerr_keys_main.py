@@ -40,15 +40,13 @@ class SyncUnpackerrKeysService:
         self.kube = kube
         self.logger = logger
 
-    @staticmethod
-    def _normalize_app_token(value: str | None) -> str:
+    def _normalize_app_token(self, value: str | None) -> str:
         token = str(value or "").strip().lower()
         token = re.sub(r"[^a-z0-9-]+", "-", token)
         token = token.strip("-")
         return token
 
-    @staticmethod
-    def _api_key_env_name(app: str) -> str:
+    def _api_key_env_name(self, app: str) -> str:
         token = re.sub(r"[^A-Za-z0-9]+", "_", str(app or ""))
         token = token.strip("_").upper()
         if not token:
@@ -60,7 +58,7 @@ class SyncUnpackerrKeysService:
         if path and path.is_file():
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception as exc:
+            except (OSError, ValueError) as exc:
                 raise ConfigError(f"Failed parsing bootstrap config {path}: {exc}") from exc
             else:
                 apps: list[str] = []
@@ -80,9 +78,10 @@ class SyncUnpackerrKeysService:
                 if apps:
                     return apps
 
+        module = sys.modules[__name__]
         try:
             apps: list[str] = []
-            for manifest in load_plugin_manifests():
+            for manifest in module.load_plugin_manifests():
                 technology = self._normalize_app_token(manifest.technology)
                 if not technology:
                     continue
@@ -92,7 +91,7 @@ class SyncUnpackerrKeysService:
                         apps.append(technology)
             if apps:
                 return apps
-        except Exception as exc:
+        except (OSError, ValueError, AttributeError, KeyError, TypeError) as exc:
             raise ConfigError(
                 f"Failed resolving Arr/Prowlarr app targets from plugin manifests: {exc}"
             ) from exc
@@ -253,64 +252,71 @@ class SyncUnpackerrKeysService:
         return True
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="bin/sync-unpackerr-keys.sh",
-        description=(
-            "Reads configured Arr/Prowlarr API keys from running pods and updates "
-            "media-stack-secrets."
-        ),
-    )
-    parser.add_argument("--namespace", default="media-stack")
-    parser.add_argument("--secret-name", default="media-stack-secrets")
-    parser.add_argument(
-        "--bootstrap-config-file",
-        default="",
-        help=(
-            "Resolved/bootstrap config JSON used to determine which Arr/Prowlarr apps "
-            "to sync (defaults to contracts/media-stack.config.json if present)."
-        ),
-    )
-    return parser
-
-
-def parse_config(argv: list[str] | None = None) -> SyncUnpackerrKeysConfig:
-    args = build_arg_parser().parse_args(argv)
-    namespace = str(args.namespace or "").strip()
-    secret_name = str(args.secret_name or "").strip()
-    if not namespace:
-        raise ConfigError("namespace must be non-empty")
-    if not secret_name:
-        raise ConfigError("secret name must be non-empty")
-    bootstrap_config_token = str(args.bootstrap_config_file or "").strip()
-    bootstrap_config_file: Path | None = None
-    if bootstrap_config_token:
-        bootstrap_config_file = Path(bootstrap_config_token)
-    else:
-        root_dir = repo_root_from_script_file(__file__)
-        candidate = root_dir / "contracts" / "media-stack.config.json"
-        if candidate.exists():
-            bootstrap_config_file = candidate
-    return SyncUnpackerrKeysConfig(
-        namespace=namespace,
-        secret_name=secret_name,
-        bootstrap_config_file=bootstrap_config_file,
-    )
-
-
-def main(argv: list[str] | None = None) -> int:
-    logger = configure_logging()
-    try:
-        cfg = parse_config(argv)
-        service = SyncUnpackerrKeysService(
-            cfg=cfg,
-            kube=KubernetesClient.from_environment(),
-            logger=logger,
+class SyncUnpackerrKeysCli:
+    def build_arg_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            prog="bin/sync-unpackerr-keys.sh",
+            description=(
+                "Reads configured Arr/Prowlarr API keys from running pods and updates "
+                "media-stack-secrets."
+            ),
         )
-        return service.run()
-    except (ConfigError, KubernetesError, MediaStackError) as exc:
-        log_event(logger, logging.ERROR, "sync.unpackerr.failed", error=str(exc))
-        return 1
+        parser.add_argument("--namespace", default="media-stack")
+        parser.add_argument("--secret-name", default="media-stack-secrets")
+        parser.add_argument(
+            "--bootstrap-config-file",
+            default="",
+            help=(
+                "Resolved/bootstrap config JSON used to determine which Arr/Prowlarr apps "
+                "to sync (defaults to contracts/media-stack.config.json if present)."
+            ),
+        )
+        return parser
+
+    def parse_config(self, argv: list[str] | None = None) -> SyncUnpackerrKeysConfig:
+        module = sys.modules[__name__]
+        args = module.build_arg_parser().parse_args(argv)
+        namespace = str(args.namespace or "").strip()
+        secret_name = str(args.secret_name or "").strip()
+        if not namespace:
+            raise ConfigError("namespace must be non-empty")
+        if not secret_name:
+            raise ConfigError("secret name must be non-empty")
+        bootstrap_config_token = str(args.bootstrap_config_file or "").strip()
+        bootstrap_config_file: Path | None = None
+        if bootstrap_config_token:
+            bootstrap_config_file = Path(bootstrap_config_token)
+        else:
+            root_dir = repo_root_from_script_file(__file__)
+            candidate = root_dir / "contracts" / "media-stack.config.json"
+            if candidate.exists():
+                bootstrap_config_file = candidate
+        return SyncUnpackerrKeysConfig(
+            namespace=namespace,
+            secret_name=secret_name,
+            bootstrap_config_file=bootstrap_config_file,
+        )
+
+    def main(self, argv: list[str] | None = None) -> int:
+        module = sys.modules[__name__]
+        logger = configure_logging()
+        try:
+            cfg = module.parse_config(argv)
+            service = SyncUnpackerrKeysService(
+                cfg=cfg,
+                kube=KubernetesClient.from_environment(),
+                logger=logger,
+            )
+            return service.run()
+        except (ConfigError, KubernetesError, MediaStackError) as exc:
+            log_event(logger, logging.ERROR, "sync.unpackerr.failed", error=str(exc))
+            return 1
+
+
+_INSTANCE = SyncUnpackerrKeysCli()
+build_arg_parser = _INSTANCE.build_arg_parser
+parse_config = _INSTANCE.parse_config
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":

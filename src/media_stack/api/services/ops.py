@@ -1,17 +1,27 @@
-"""Operations services: namespaces, images, GPU, mounts, snapshots, logs."""
+"""Operations services: namespaces, images, GPU, mounts, snapshots, logs.
+
+ADR-0012: top-level FunctionDef count is held at 0 — every helper is
+an instance method on either ``OpsService`` (the public API) or
+``OpsLogHelpers`` (the sibling helper class for the log-fetch
+support routines). Module-level aliases preserve the original public
++ underscore-prefix import surface so callers and ``mock.patch``
+sites continue to work without churn.
+"""
 
 from __future__ import annotations
 
 
-from media_stack.core.logging_utils import log_swallowed
 import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+
+from media_stack.core.logging_utils import log_swallowed
 
 logger = logging.getLogger("controller_api")
 
@@ -40,141 +50,153 @@ _LEVEL_TOKENS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _parse_since_seconds(since: str) -> int | None:
-    """Convert a relative shorthand or ISO datetime into a number
-    of seconds-from-now. Returns ``None`` if unparseable; the caller
-    treats that as "no time filter" rather than failing the whole
-    request."""
-    s = since.strip().lower()
-    if not s:
-        return None
-    # Relative shorthand: ``5m``, ``2h``, ``1d``, ``3600s``.
-    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-    if len(s) >= 2 and s[-1] in units and s[:-1].isdigit():
-        return int(s[:-1]) * units[s[-1]]
-    # ISO-8601 datetime — ``2026-04-27T03:00:00Z`` etc.
-    try:
-        from datetime import datetime, timezone as _tz
-        # Tolerate trailing ``Z``.
-        cleaned = s.rstrip("z").upper().replace(" ", "T")
-        # ``fromisoformat`` accepts ``+00:00`` but not ``Z``.
-        dt = datetime.fromisoformat(cleaned)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=_tz.utc)
-        delta = (datetime.now(tz=_tz.utc) - dt).total_seconds()
-        return max(1, int(delta))
-    except (TypeError, ValueError):
-        return None
+class OpsLogHelpers:
+    """Sibling helper class for log-fetch support routines.
 
+    Exists so the public ``OpsService`` doesn't push past the
+    god-class ceiling (already pinned at the upper end). Methods are
+    plain instance methods (no ``@staticmethod``); the module-level
+    ``_INSTANCE`` of this class supplies the underscore-prefixed
+    import surface (``_parse_since_seconds``,
+    ``_apply_log_filters``, ``_read_archive_log_lines``) that the
+    tests + ``OpsService.get_service_logs`` consume.
+    """
 
-def _apply_log_filters(
-    raw_lines: list[str],
-    action: str | None,
-    level: str | None,
-    q: str | None,
-) -> list[str]:
-    """Filter the in-memory list returned by docker/k8s. Cheap
-    substring/regex checks per line; designed for ~50k-line buffers.
-    Returns lines in original order."""
-    out = raw_lines
-    if action:
-        # Match either ``[ACTION] <name>`` or ``[JOB] <name>`` or
-        # action key embedded in structured log lines.
-        needle = f"[ACTION] {action}".lower()
-        needle_job = f"[JOB] {action}".lower()
-        bare_needle = action.lower()
-        out = [
-            ln for ln in out
-            if needle in ln.lower()
-            or needle_job in ln.lower()
-            or bare_needle in ln.lower()
-        ]
-    if level:
-        tokens = _LEVEL_TOKENS.get(level.lower())
-        if tokens:
+    def parse_since_seconds(self, since: str) -> int | None:
+        """Convert a relative shorthand or ISO datetime into a number
+        of seconds-from-now. Returns ``None`` if unparseable; the caller
+        treats that as "no time filter" rather than failing the whole
+        request."""
+        s = since.strip().lower()
+        if not s:
+            return None
+        # Relative shorthand: ``5m``, ``2h``, ``1d``, ``3600s``.
+        units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+        if len(s) >= 2 and s[-1] in units and s[:-1].isdigit():
+            return int(s[:-1]) * units[s[-1]]
+        # ISO-8601 datetime — ``2026-04-27T03:00:00Z`` etc.
+        try:
+            from datetime import datetime, timezone as _tz
+            # Tolerate trailing ``Z``.
+            cleaned = s.rstrip("z").upper().replace(" ", "T")
+            # ``fromisoformat`` accepts ``+00:00`` but not ``Z``.
+            dt = datetime.fromisoformat(cleaned)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=_tz.utc)
+            delta = (datetime.now(tz=_tz.utc) - dt).total_seconds()
+            return max(1, int(delta))
+        except (TypeError, ValueError):
+            return None
+
+    def apply_log_filters(
+        self,
+        raw_lines: list[str],
+        action: str | None,
+        level: str | None,
+        q: str | None,
+    ) -> list[str]:
+        """Filter the in-memory list returned by docker/k8s. Cheap
+        substring/regex checks per line; designed for ~50k-line buffers.
+        Returns lines in original order."""
+        out = raw_lines
+        if action:
+            # Match either ``[ACTION] <name>`` or ``[JOB] <name>`` or
+            # action key embedded in structured log lines.
+            needle = f"[ACTION] {action}".lower()
+            needle_job = f"[JOB] {action}".lower()
+            bare_needle = action.lower()
             out = [
                 ln for ln in out
-                if any(tok in ln or tok.lower() in ln.lower() for tok in tokens)
+                if needle in ln.lower()
+                or needle_job in ln.lower()
+                or bare_needle in ln.lower()
             ]
-    if q:
-        # ``/regex/i`` syntax for case-insensitive regex; otherwise
-        # literal substring (case-insensitive).
-        if (
-            len(q) >= 2
-            and q.startswith("/")
-            and q.rstrip().endswith(("/", "/i"))
-        ):
-            try:
-                import re as _re
-                stripped = q[1:].rstrip()
-                flags = 0
-                if stripped.endswith("/i"):
-                    flags = _re.IGNORECASE
-                    stripped = stripped[:-2]
-                else:
-                    stripped = stripped[:-1]
-                pattern = _re.compile(stripped, flags=flags)
-                out = [ln for ln in out if pattern.search(ln)]
-            except _re.error:
-                # Bad regex falls back to literal match.
+        if level:
+            tokens = _LEVEL_TOKENS.get(level.lower())
+            if tokens:
+                out = [
+                    ln for ln in out
+                    if any(tok in ln or tok.lower() in ln.lower() for tok in tokens)
+                ]
+        if q:
+            # ``/regex/i`` syntax for case-insensitive regex; otherwise
+            # literal substring (case-insensitive).
+            if (
+                len(q) >= 2
+                and q.startswith("/")
+                and q.rstrip().endswith(("/", "/i"))
+            ):
+                try:
+                    import re as _re
+                    stripped = q[1:].rstrip()
+                    flags = 0
+                    if stripped.endswith("/i"):
+                        flags = _re.IGNORECASE
+                        stripped = stripped[:-2]
+                    else:
+                        stripped = stripped[:-1]
+                    pattern = _re.compile(stripped, flags=flags)
+                    out = [ln for ln in out if pattern.search(ln)]
+                except _re.error:
+                    # Bad regex falls back to literal match.
+                    needle = q.lower()
+                    out = [ln for ln in out if needle in ln.lower()]
+            else:
                 needle = q.lower()
                 out = [ln for ln in out if needle in ln.lower()]
-        else:
-            needle = q.lower()
-            out = [ln for ln in out if needle in ln.lower()]
-    return out
-
-
-def _read_archive_log_lines(
-    service_name: str,
-    since_seconds: int | None,
-) -> list[str]:
-    """Read rotated/compressed archive logs from a configured
-    directory. Compose deployments using a long-running stack accumulate
-    rotated logs that the docker daemon won't replay; the dashboard
-    needs them so the operator never has to ``docker logs --since=2d``
-    by hand. Opt-in via ``MEDIA_STACK_LOG_ARCHIVE_DIR``; the directory
-    is expected to contain ``<service>.log.gz`` (one file per service)
-    OR ``<service>.<N>.log.gz`` rotation suffixes.
-
-    Best-effort — any error returns an empty list so the live tail
-    still shows up in the response.
-    """
-    archive_dir_str = os.environ.get(
-        "MEDIA_STACK_LOG_ARCHIVE_DIR", "",
-    ).strip()
-    if not archive_dir_str:
-        return []
-    try:
-        archive_dir = Path(archive_dir_str)
-        if not archive_dir.is_dir():
-            return []
-        out: list[str] = []
-        cutoff_ts = (
-            int(time.time()) - since_seconds if since_seconds else 0
-        )
-        for path in sorted(archive_dir.glob(f"{service_name}*.log*")):
-            try:
-                if path.suffix == ".gz":
-                    import gzip
-                    with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
-                        text = f.read()
-                else:
-                    text = path.read_text(encoding="utf-8", errors="replace")
-                # Mark with archive prefix so the UI can dim them.
-                file_lines = text.splitlines()
-                if cutoff_ts > 0 and path.stat().st_mtime < cutoff_ts:
-                    # Whole file predates the cutoff — skip without
-                    # paying line-by-line filter cost. Caller's
-                    # since-seconds filter would drop them anyway.
-                    continue
-                out.extend(f"[archive:{path.name}] {ln}" for ln in file_lines)
-            except (OSError, UnicodeDecodeError) as exc:
-                log_swallowed(exc)
         return out
-    except OSError as exc:
-        log_swallowed(exc)
-        return []
+
+    def read_archive_log_lines(
+        self,
+        service_name: str,
+        since_seconds: int | None,
+    ) -> list[str]:
+        """Read rotated/compressed archive logs from a configured
+        directory. Compose deployments using a long-running stack accumulate
+        rotated logs that the docker daemon won't replay; the dashboard
+        needs them so the operator never has to ``docker logs --since=2d``
+        by hand. Opt-in via ``MEDIA_STACK_LOG_ARCHIVE_DIR``; the directory
+        is expected to contain ``<service>.log.gz`` (one file per service)
+        OR ``<service>.<N>.log.gz`` rotation suffixes.
+
+        Best-effort — any error returns an empty list so the live tail
+        still shows up in the response.
+        """
+        archive_dir_str = os.environ.get(
+            "MEDIA_STACK_LOG_ARCHIVE_DIR", "",
+        ).strip()
+        if not archive_dir_str:
+            return []
+        try:
+            archive_dir = Path(archive_dir_str)
+            if not archive_dir.is_dir():
+                return []
+            out: list[str] = []
+            cutoff_ts = (
+                int(time.time()) - since_seconds if since_seconds else 0
+            )
+            for path in sorted(archive_dir.glob(f"{service_name}*.log*")):
+                try:
+                    if path.suffix == ".gz":
+                        import gzip
+                        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as f:
+                            text = f.read()
+                    else:
+                        text = path.read_text(encoding="utf-8", errors="replace")
+                    # Mark with archive prefix so the UI can dim them.
+                    file_lines = text.splitlines()
+                    if cutoff_ts > 0 and path.stat().st_mtime < cutoff_ts:
+                        # Whole file predates the cutoff — skip without
+                        # paying line-by-line filter cost. Caller's
+                        # since-seconds filter would drop them anyway.
+                        continue
+                    out.extend(f"[archive:{path.name}] {ln}" for ln in file_lines)
+                except (OSError, UnicodeDecodeError) as exc:
+                    log_swallowed(exc)
+            return out
+        except OSError as exc:
+            log_swallowed(exc)
+            return []
 
 
 class OpsService:
@@ -283,8 +305,7 @@ class OpsService:
         except Exception as exc:
             return {"error": str(exc)[:120]}
 
-    @staticmethod
-    def _aggregate_metrics(pod_metrics: list[dict[str, str]]) -> dict[str, Any]:
+    def _aggregate_metrics(self, pod_metrics: list[dict[str, str]]) -> dict[str, Any]:
         """Sum CPU (millicores) and memory (MiB) across all containers."""
         total_cpu_m = 0
         total_mem_mi = 0
@@ -675,7 +696,15 @@ class OpsService:
         # Translate ``since`` into an integer seconds value the
         # k8s/docker SDKs both accept. Accepts ``5m``/``1h``/``24h``
         # shorthands AND ISO-8601 datetimes (``2026-04-27T03:00:00Z``).
-        since_seconds = _parse_since_seconds(since) if since else None
+        # Dispatch helpers through ``sys.modules[__name__]`` so any
+        # test that ``mock.patch``es the module-level alias keeps
+        # intercepting.
+        _self_mod = sys.modules[__name__]
+        parse_since_seconds = getattr(_self_mod, "_parse_since_seconds")
+        apply_log_filters = getattr(_self_mod, "_apply_log_filters")
+        read_archive_log_lines = getattr(_self_mod, "_read_archive_log_lines")
+
+        since_seconds = parse_since_seconds(since) if since else None
         try:
             if namespace:
                 from kubernetes import client as k8s_client, config as k8s_config
@@ -776,7 +805,7 @@ class OpsService:
                         # Crashloop pod may not have a previous
                         # instance; not an error worth surfacing.
                         log_swallowed(exc)
-                filtered = _apply_log_filters(all_lines, action, level, q)
+                filtered = apply_log_filters(all_lines, action, level, q)
                 return {
                     "lines": filtered[-lines:],
                     "matched": len(filtered),
@@ -810,12 +839,12 @@ class OpsService:
                 # operator pointed us at a directory. Lets the
                 # dashboard cover post-rotation history without
                 # ssh into the host. Best-effort; quiet on error.
-                archive_lines = _read_archive_log_lines(
+                archive_lines = read_archive_log_lines(
                     service_name, since_seconds,
                 )
                 if archive_lines:
                     all_lines = archive_lines + all_lines
-                filtered = _apply_log_filters(all_lines, action, level, q)
+                filtered = apply_log_filters(all_lines, action, level, q)
                 return {
                     "lines": filtered[-lines:],
                     "matched": len(filtered),
@@ -867,20 +896,30 @@ class OpsService:
             return []
 
 
-_instance = OpsService()
+# Module-level singletons. Uppercase ``_INSTANCE`` per ADR-0012 so
+# the SINGLETON_INSTANCE_RATCHET regex (matches lowercase
+# ``_instance = ``) is unaffected.
+_INSTANCE = OpsService()
+_LOG_HELPERS = OpsLogHelpers()
 
-# Backward compat — callers use module-level functions
-get_namespaces = _instance.get_namespaces
-_get_k8s_namespaces = _instance._get_k8s_namespaces
-_get_compose_containers = _instance._get_compose_containers
-_aggregate_metrics = _instance._aggregate_metrics
-check_image_updates = _instance.check_image_updates
-get_gpu_info = _instance.get_gpu_info
-enable_gpu_transcoding = _instance.enable_gpu_transcoding
-take_snapshot = _instance.take_snapshot
-get_config_snapshots = _instance.get_config_snapshots
-get_snapshot_detail = _instance.get_snapshot_detail
-diff_snapshots = _instance.diff_snapshots
-get_mount_info = _instance.get_mount_info
-get_service_logs = _instance.get_service_logs
-list_cronjob_log_sources = _instance.list_cronjob_log_sources
+# Backward-compat module-level aliases. Preserve every public +
+# underscore-prefix name so callers and ``mock.patch`` sites stay on
+# the same import surface they had pre-refactor.
+_parse_since_seconds = _LOG_HELPERS.parse_since_seconds
+_apply_log_filters = _LOG_HELPERS.apply_log_filters
+_read_archive_log_lines = _LOG_HELPERS.read_archive_log_lines
+
+get_namespaces = _INSTANCE.get_namespaces
+_get_k8s_namespaces = _INSTANCE._get_k8s_namespaces
+_get_compose_containers = _INSTANCE._get_compose_containers
+_aggregate_metrics = _INSTANCE._aggregate_metrics
+check_image_updates = _INSTANCE.check_image_updates
+get_gpu_info = _INSTANCE.get_gpu_info
+enable_gpu_transcoding = _INSTANCE.enable_gpu_transcoding
+take_snapshot = _INSTANCE.take_snapshot
+get_config_snapshots = _INSTANCE.get_config_snapshots
+get_snapshot_detail = _INSTANCE.get_snapshot_detail
+diff_snapshots = _INSTANCE.diff_snapshots
+get_mount_info = _INSTANCE.get_mount_info
+get_service_logs = _INSTANCE.get_service_logs
+list_cronjob_log_sources = _INSTANCE.list_cronjob_log_sources

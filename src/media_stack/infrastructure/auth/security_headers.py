@@ -48,6 +48,17 @@ CIA / AAA alignment
 - **Authentication** / **Authorization** live at the auth layer.
 - **Accounting**: every response's headers can be asserted in tests
   — `apply` is deterministic given the policy.
+
+Module layout (ADR-0012)
+------------------------
+All loose helpers live as instance methods on
+``SecurityHeaderEmitter`` (``apply_policy``, ``merged_headers``,
+``append_directive``). The two policy types remain frozen dataclasses
+because immutable value-object semantics are load-bearing for
+``with_overrides`` and the test ratchets. A process-wide
+``_INSTANCE`` exposes module-level aliases for every public + legacy
+underscore name so callers and ``mock.patch`` targets keep working
+without change.
 """
 
 from __future__ import annotations
@@ -82,28 +93,28 @@ class CSPPolicy:
     require_trusted_types_for: tuple[str, ...] = ()
 
     def render(self) -> str:
+        """Render directives in the canonical order, joined with ``; ``.
+
+        Empty directive tuples are omitted entirely (matches browser
+        tolerance: an absent directive falls back to ``default-src``).
+        """
         parts: list[str] = []
-        _append(parts, "default-src", self.default_src)
-        _append(parts, "script-src", self.script_src)
-        _append(parts, "style-src", self.style_src)
-        _append(parts, "img-src", self.img_src)
-        _append(parts, "font-src", self.font_src)
-        _append(parts, "connect-src", self.connect_src)
-        _append(parts, "frame-ancestors", self.frame_ancestors)
-        _append(parts, "base-uri", self.base_uri)
-        _append(parts, "form-action", self.form_action)
-        _append(parts, "object-src", self.object_src)
-        _append(
+        append = _INSTANCE.append_directive
+        append(parts, "default-src", self.default_src)
+        append(parts, "script-src", self.script_src)
+        append(parts, "style-src", self.style_src)
+        append(parts, "img-src", self.img_src)
+        append(parts, "font-src", self.font_src)
+        append(parts, "connect-src", self.connect_src)
+        append(parts, "frame-ancestors", self.frame_ancestors)
+        append(parts, "base-uri", self.base_uri)
+        append(parts, "form-action", self.form_action)
+        append(parts, "object-src", self.object_src)
+        append(
             parts, "require-trusted-types-for",
             self.require_trusted_types_for,
         )
         return "; ".join(parts)
-
-
-def _append(parts: list[str], name: str, values: tuple[str, ...]) -> None:
-    if not values:
-        return
-    parts.append(f"{name} {' '.join(values)}")
 
 
 # --------------------------------------------------------------------------
@@ -245,30 +256,70 @@ LEGACY_DASHBOARD_POLICY = SecurityHeaders(
 DEFAULT_POLICY = LEGACY_DASHBOARD_POLICY
 
 
-def apply_policy(handler: object, policy: SecurityHeaders | None = None) -> None:
-    """Convenience: send the given policy (or DEFAULT_POLICY) on
-    ``handler``. Keeps the call sites readable — ``apply_policy(self)``
-    at the top of a response path is cheaper to scan than a dozen
-    individual ``send_header`` calls.
+# --------------------------------------------------------------------------
+# Module-level emission helpers — class-wrapped per ADR-0012.
+# --------------------------------------------------------------------------
+
+
+class SecurityHeaderEmitter:
+    """Thin façade for the loose helpers this module used to expose.
+
+    All methods are plain instance methods (no ``@staticmethod``);
+    a single ``_INSTANCE`` is constructed at import time and every
+    public + legacy underscore name is re-exported as a module-level
+    alias so callers and ``mock.patch`` targets keep working.
     """
-    chosen = policy if policy is not None else DEFAULT_POLICY
-    chosen.apply(handler)
+
+    def append_directive(
+        self,
+        parts: list[str],
+        name: str,
+        values: tuple[str, ...],
+    ) -> None:
+        """Push ``"<name> <values...>"`` onto ``parts``, skipping empty
+        directive tuples. Used by ``CSPPolicy.render``."""
+        if not values:
+            return
+        parts.append(f"{name} {' '.join(values)}")
+
+    def apply_policy(
+        self,
+        handler: object,
+        policy: SecurityHeaders | None = None,
+    ) -> None:
+        """Convenience: send the given policy (or DEFAULT_POLICY) on
+        ``handler``. Keeps the call sites readable —
+        ``apply_policy(self)`` at the top of a response path is cheaper
+        to scan than a dozen individual ``send_header`` calls.
+        """
+        chosen = policy if policy is not None else DEFAULT_POLICY
+        chosen.apply(handler)
+
+    def merged_headers(
+        self,
+        policy: SecurityHeaders,
+        overrides: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Render ``policy`` to a dict, then merge ``overrides`` on top.
+
+        Used by handlers that need to add one or two extra headers
+        (e.g. ``Content-Type``, ``Content-Length``) without mutating the
+        shared policy object.
+        """
+        out = policy.as_header_dict()
+        if overrides:
+            out.update(overrides)
+        return out
 
 
-def merged_headers(
-    policy: SecurityHeaders,
-    overrides: Mapping[str, str] | None = None,
-) -> dict[str, str]:
-    """Render ``policy`` to a dict, then merge ``overrides`` on top.
+_INSTANCE = SecurityHeaderEmitter()
 
-    Used by handlers that need to add one or two extra headers
-    (e.g. ``Content-Type``, ``Content-Length``) without mutating the
-    shared policy object.
-    """
-    out = policy.as_header_dict()
-    if overrides:
-        out.update(overrides)
-    return out
+# Module-level aliases — every public + legacy underscore name is
+# bound here so existing imports + ``mock.patch`` targets keep
+# working unchanged.
+_append = _INSTANCE.append_directive
+apply_policy = _INSTANCE.apply_policy
+merged_headers = _INSTANCE.merged_headers
 
 
 __all__ = [
@@ -277,6 +328,7 @@ __all__ = [
     "LEGACY_DASHBOARD_POLICY",
     "STRICT_POLICY",
     "SecurityHeaders",
+    "SecurityHeaderEmitter",
     "apply_policy",
     "merged_headers",
 ]

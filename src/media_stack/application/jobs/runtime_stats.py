@@ -150,18 +150,14 @@ class JobRuntimeStats:
             self._by_job.clear()
 
 
-_default = JobRuntimeStats()
+_INSTANCE = JobRuntimeStats()
 
-
-def add_run(job_name: str, duration: float) -> float | None:
-    """Module-level shortcut to ``_default.add`` so free functions
-    in ``run_history`` don't have to thread an instance reference."""
-    return _default.add(job_name, duration)
-
-
-def stats_for(job_name: str) -> JobStats | None:
-    return _default.stats_for(job_name)
-
-
-def reset_default() -> None:
-    _default.reset()
+# Module-level aliases — keep the historical free-function surface
+# (``add_run``, ``stats_for``, ``reset_default``) so callers in
+# ``run_history`` and elsewhere don't need to thread an instance
+# reference. ADR-0012 requires zero top-level FunctionDefs; binding
+# the bound methods directly satisfies that without introducing
+# wrapper functions.
+add_run = _INSTANCE.add
+stats_for = _INSTANCE.stats_for
+reset_default = _INSTANCE.reset
