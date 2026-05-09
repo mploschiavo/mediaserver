@@ -33,14 +33,56 @@ class MetricsError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# Labels
+# Prom text-format helpers
 # ---------------------------------------------------------------------------
 
 
-def _escape(value: str) -> str:
-    """Escape backslash, newline and double-quote per Prom text format.
-    Backslash first so we don't double-escape our replacements."""
-    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+class _PromTextFormatter:
+    """Prometheus text-format 0.0.4 escaping and number rendering.
+
+    Absorbs the previously loose ``_escape`` / ``_fmt`` / ``_merged``
+    helpers plus ``labelset`` (suffix renderer for a ``MetricLabels``).
+    Stateless — instance methods, not staticmethods, keep the registry
+    accessor pattern uniform across the module.
+    """
+
+    def escape(self, value: str) -> str:
+        """Escape backslash, newline and double-quote per Prom text format.
+        Backslash first so we don't double-escape our replacements."""
+        return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+    def fmt(self, v: float) -> str:
+        """Render a number Prom-style: integers plain, floats via ``repr``."""
+        if isinstance(v, int) or (isinstance(v, float) and v.is_integer()):
+            return str(int(v))
+        return repr(float(v))
+
+    def labelset(self, lbls: "MetricLabels") -> str:
+        """Render a ``MetricLabels`` as ``{k1="v1",k2="v2"}`` (or ``""``)."""
+        if not lbls.pairs:
+            return ""
+        body = ",".join(f'{k}="{self.escape(v)}"' for k, v in lbls.pairs)
+        return "{" + body + "}"
+
+    def merged(
+        self, base: "MetricLabels", extra: tuple[tuple[str, str], ...]
+    ) -> str:
+        """``{...}`` suffix merging a base labelset with extras (e.g. ``le``)."""
+        combined = sorted(list(base.pairs) + list(extra), key=lambda kv: kv[0])
+        if not combined:
+            return ""
+        return "{" + ",".join(f'{k}="{self.escape(v)}"' for k, v in combined) + "}"
+
+
+_formatter = _PromTextFormatter()
+_escape = _formatter.escape
+_fmt = _formatter.fmt
+_merged = _formatter.merged
+
+
+# ---------------------------------------------------------------------------
+# Labels
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -61,26 +103,10 @@ class MetricLabels:
 
     def as_prom(self) -> str:
         """Render as ``{k1="v1",k2="v2"}``, or ``""`` when empty."""
-        if not self.pairs:
-            return ""
-        body = ",".join(f'{k}="{_escape(v)}"' for k, v in self.pairs)
-        return "{" + body + "}"
+        return _formatter.labelset(self)
 
     def keys(self) -> tuple[str, ...]:
         return tuple(k for k, _ in self.pairs)
-
-
-def _validate(declared: tuple[str, ...], supplied: dict[str, str]) -> MetricLabels:
-    """Require supplied keys == declared keys; raise otherwise."""
-    if not declared and not supplied:
-        return MetricLabels()
-    ds, ss = set(declared), set(supplied.keys())
-    if ds != ss:
-        raise MetricsError(
-            f"label mismatch: declared={sorted(ds)} supplied={sorted(ss)} "
-            f"missing={sorted(ds - ss)} extra={sorted(ss - ds)}"
-        )
-    return MetricLabels.from_kwargs(**supplied)
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +125,21 @@ class _MetricBase:
         self.label_names: tuple[str, ...] = tuple(label_names)
         self._lock = threading.Lock()
 
+    def _validate_labels(self, supplied: dict[str, str]) -> MetricLabels:
+        """Require supplied keys == declared label_names; raise otherwise."""
+        declared = self.label_names
+        if not declared and not supplied:
+            return MetricLabels()
+        ds, ss = set(declared), set(supplied.keys())
+        if ds != ss:
+            raise MetricsError(
+                f"label mismatch: declared={sorted(ds)} supplied={sorted(ss)} "
+                f"missing={sorted(ds - ss)} extra={sorted(ss - ds)}"
+            )
+        return MetricLabels.from_kwargs(**supplied)
+
     def _key(self, labels: dict[str, str]) -> MetricLabels:
-        return _validate(self.label_names, labels)
+        return self._validate_labels(labels)
 
 
 class Counter(_MetricBase):
@@ -242,21 +281,6 @@ class Histogram(_MetricBase):
 # ---------------------------------------------------------------------------
 
 
-def _fmt(v: float) -> str:
-    """Render a number Prom-style: integers plain, floats via ``repr``."""
-    if isinstance(v, int) or (isinstance(v, float) and v.is_integer()):
-        return str(int(v))
-    return repr(float(v))
-
-
-def _merged(base: MetricLabels, extra: tuple[tuple[str, str], ...]) -> str:
-    """``{...}`` suffix merging a base labelset with extras (e.g. ``le``)."""
-    combined = sorted(list(base.pairs) + list(extra), key=lambda kv: kv[0])
-    if not combined:
-        return ""
-    return "{" + ",".join(f'{k}="{_escape(v)}"' for k, v in combined) + "}"
-
-
 class MetricRegistry:
     """Name-keyed metric collection.
 
@@ -348,40 +372,57 @@ class MetricRegistry:
 
 
 # ---------------------------------------------------------------------------
-# Module-level default registry + convenience wrappers
+# Default registry accessor
 # ---------------------------------------------------------------------------
 
 
-_default_registry = MetricRegistry()
+class DefaultMetricsRegistryAccessor:
+    """Process-wide default ``MetricRegistry`` plus convenience wrappers.
+
+    Holds the single registry instance behind a thin facade so the
+    module-level surface (``default_registry``, ``get_counter``, ``get_gauge``,
+    ``get_histogram``, ``render_default``, ``_reset_default_registry_for_tests``)
+    is just method aliases off this class — no loose top-level functions.
+    """
+
+    def __init__(self) -> None:
+        self._registry = MetricRegistry()
+
+    def default_registry(self) -> MetricRegistry:
+        """Return the process-wide default registry."""
+        return self._registry
+
+    def get_counter(
+        self, name: str, help_text: str, label_names: Sequence[str] = ()
+    ) -> Counter:
+        return self._registry.counter(name, help_text, label_names)
+
+    def get_gauge(
+        self, name: str, help_text: str, label_names: Sequence[str] = ()
+    ) -> Gauge:
+        return self._registry.gauge(name, help_text, label_names)
+
+    def get_histogram(
+        self,
+        name: str,
+        help_text: str,
+        label_names: Sequence[str] = (),
+        buckets: Sequence[float] | None = None,
+    ) -> Histogram:
+        return self._registry.histogram(name, help_text, label_names, buckets)
+
+    def render_default(self) -> str:
+        return self._registry.render()
+
+    def _reset_default_registry_for_tests(self) -> None:
+        """Test-only: wipe the default registry. Not part of the public API."""
+        self._registry = MetricRegistry()
 
 
-def default_registry() -> MetricRegistry:
-    """Return the process-wide default registry."""
-    return _default_registry
-
-
-def get_counter(name: str, help_text: str, label_names: Sequence[str] = ()) -> Counter:
-    return _default_registry.counter(name, help_text, label_names)
-
-
-def get_gauge(name: str, help_text: str, label_names: Sequence[str] = ()) -> Gauge:
-    return _default_registry.gauge(name, help_text, label_names)
-
-
-def get_histogram(
-    name: str,
-    help_text: str,
-    label_names: Sequence[str] = (),
-    buckets: Sequence[float] | None = None,
-) -> Histogram:
-    return _default_registry.histogram(name, help_text, label_names, buckets)
-
-
-def render_default() -> str:
-    return _default_registry.render()
-
-
-def _reset_default_registry_for_tests() -> None:
-    """Test-only: wipe the default registry. Not part of the public API."""
-    global _default_registry
-    _default_registry = MetricRegistry()
+_default_accessor = DefaultMetricsRegistryAccessor()
+default_registry = _default_accessor.default_registry
+get_counter = _default_accessor.get_counter
+get_gauge = _default_accessor.get_gauge
+get_histogram = _default_accessor.get_histogram
+render_default = _default_accessor.render_default
+_reset_default_registry_for_tests = _default_accessor._reset_default_registry_for_tests

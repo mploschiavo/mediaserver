@@ -168,343 +168,357 @@ class RepairReport:
         }
 
 
-def resolve_history_path(explicit: str | None) -> Path:
-    """Return the explicit path if given, else the first candidate
-    that exists. Raises ``FileNotFoundError`` if nothing matches —
-    callers convert to a friendly error message."""
-    if explicit:
-        path = Path(explicit).expanduser().resolve()
-        if not path.is_file():
-            raise FileNotFoundError(f"history path not found: {path}")
-        return path
-    for cand in DEFAULT_HISTORY_CANDIDATES:
-        path = Path(cand).expanduser().resolve()
-        if path.is_file():
+class RunHistoryRepairer:
+    """Class-based home for the run-history repair helpers.
+
+    Plain instance methods — no shared mutable state on ``self``;
+    the singleton at module bottom backs the public function aliases
+    so existing callers keep working unchanged.
+    """
+
+    def resolve_history_path(self, explicit: str | None) -> Path:
+        """Return the explicit path if given, else the first candidate
+        that exists. Raises ``FileNotFoundError`` if nothing matches —
+        callers convert to a friendly error message."""
+        if explicit:
+            path = Path(explicit).expanduser().resolve()
+            if not path.is_file():
+                raise FileNotFoundError(f"history path not found: {path}")
             return path
-    raise FileNotFoundError(
-        "no run-history.jsonl found at any default location: "
-        + ", ".join(DEFAULT_HISTORY_CANDIDATES)
-    )
+        for cand in DEFAULT_HISTORY_CANDIDATES:
+            path = Path(cand).expanduser().resolve()
+            if path.is_file():
+                return path
+        raise FileNotFoundError(
+            "no run-history.jsonl found at any default location: "
+            + ", ".join(DEFAULT_HISTORY_CANDIDATES)
+        )
 
+    def read_records(self, path: Path) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as handle:
+            for raw in handle:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        return out
 
-def read_records(path: Path) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for raw in handle:
-            line = raw.strip()
-            if not line:
+    def write_records_atomic(self, path: Path, records: Iterable[dict[str, Any]]) -> None:
+        """Atomic rewrite — temp file in same dir + rename. The
+        controller's reader is single-threaded against the JSONL file so
+        a torn read is not a concern, but rename-over keeps the window
+        where the file is invalid down to zero bytes."""
+        tmp = path.with_suffix(path.suffix + ".repair.tmp")
+        with tmp.open("w", encoding="utf-8") as handle:
+            for r in records:
+                handle.write(json.dumps(r, ensure_ascii=False))
+                handle.write("\n")
+        os.replace(tmp, path)
+
+    def make_backup(self, path: Path) -> Path:
+        stamp = time.strftime("%Y%m%dT%H%M%S")
+        backup = path.with_suffix(path.suffix + f".bak-{stamp}")
+        shutil.copy2(path, backup)
+        return backup
+
+    def is_stale_running(self, record: dict[str, Any], cutoff: float) -> bool:
+        """A record is "stale running" when:
+           (a) status is ``running``, AND
+           (b) ``started_at`` is older than ``cutoff`` (epoch seconds).
+        No completed_at check is needed — if it had a completed_at we
+        wouldn't be looking at a status=running row."""
+        if record.get("status") != STATUS_RUNNING:
+            return False
+        try:
+            started_at = float(record.get("started_at") or 0.0)
+        except (TypeError, ValueError):
+            return False
+        return started_at > 0 and started_at <= cutoff
+
+    def fix_stuck_running(
+        self, records: list[dict[str, Any]], *, cutoff: float,
+        now: float, mark_as: str, report: RepairReport,
+    ) -> None:
+        """Mark each stale ``status=running`` record as terminal. The
+        ``elapsed`` field is filled in from the time the row was opened
+        so the UI shows a real duration instead of "running forever"."""
+        for record in records:
+            if record.get("status") != STATUS_RUNNING:
+                continue
+            if not self.is_stale_running(record, cutoff):
+                report.skipped_recent_running += 1
+                continue
+            before = {
+                "status": record.get("status"),
+                "completed_at": record.get("completed_at"),
+                "elapsed": record.get("elapsed"),
+                "error": record.get("error"),
+            }
+            try:
+                started_at = float(record.get("started_at") or 0.0)
+            except (TypeError, ValueError):
+                started_at = 0.0
+            elapsed = round(now - started_at, 3) if started_at > 0 else None
+            record["status"] = mark_as
+            record["completed_at"] = now
+            if elapsed is not None:
+                record["elapsed"] = elapsed
+            record["error"] = (
+                f"{ERROR_PREFIX}: status=running for >"
+                f"{int(report.older_than_seconds)}s, marked {mark_as}"
+            )
+            after = {
+                "status": record.get("status"),
+                "completed_at": record.get("completed_at"),
+                "elapsed": record.get("elapsed"),
+                "error": record.get("error"),
+            }
+            report.actions.append(
+                RepairAction(
+                    run_id=str(record.get("run_id", "")),
+                    job_name=str(record.get("job_name", "")),
+                    scenario=SCENARIO_FIX_STUCK_RUNNING,
+                    before=before,
+                    after=after,
+                )
+            )
+
+    def backfill_elapsed(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        report: RepairReport,
+    ) -> None:
+        """For terminal records that have both ``started_at`` and
+        ``completed_at`` but a missing ``elapsed`` field, compute it.
+        Touches no other fields."""
+        for record in records:
+            if record.get("status") not in TERMINAL_STATUSES:
+                continue
+            if record.get("elapsed") is not None:
                 continue
             try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
+                started_at = float(record.get("started_at") or 0.0)
+                completed_at = float(record.get("completed_at") or 0.0)
+            except (TypeError, ValueError):
                 continue
-    return out
-
-
-def write_records_atomic(path: Path, records: Iterable[dict[str, Any]]) -> None:
-    """Atomic rewrite — temp file in same dir + rename. The
-    controller's reader is single-threaded against the JSONL file so
-    a torn read is not a concern, but rename-over keeps the window
-    where the file is invalid down to zero bytes."""
-    tmp = path.with_suffix(path.suffix + ".repair.tmp")
-    with tmp.open("w", encoding="utf-8") as handle:
-        for r in records:
-            handle.write(json.dumps(r, ensure_ascii=False))
-            handle.write("\n")
-    os.replace(tmp, path)
-
-
-def make_backup(path: Path) -> Path:
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    backup = path.with_suffix(path.suffix + f".bak-{stamp}")
-    shutil.copy2(path, backup)
-    return backup
-
-
-def is_stale_running(record: dict[str, Any], cutoff: float) -> bool:
-    """A record is "stale running" when:
-       (a) status is ``running``, AND
-       (b) ``started_at`` is older than ``cutoff`` (epoch seconds).
-    No completed_at check is needed — if it had a completed_at we
-    wouldn't be looking at a status=running row."""
-    if record.get("status") != STATUS_RUNNING:
-        return False
-    try:
-        started_at = float(record.get("started_at") or 0.0)
-    except (TypeError, ValueError):
-        return False
-    return started_at > 0 and started_at <= cutoff
-
-
-def fix_stuck_running(
-    records: list[dict[str, Any]],
-    *,
-    cutoff: float,
-    now: float,
-    mark_as: str,
-    report: RepairReport,
-) -> None:
-    """Mark each stale ``status=running`` record as terminal. The
-    ``elapsed`` field is filled in from the time the row was opened
-    so the UI shows a real duration instead of "running forever"."""
-    for record in records:
-        if record.get("status") != STATUS_RUNNING:
-            continue
-        if not is_stale_running(record, cutoff):
-            report.skipped_recent_running += 1
-            continue
-        before = {
-            "status": record.get("status"),
-            "completed_at": record.get("completed_at"),
-            "elapsed": record.get("elapsed"),
-            "error": record.get("error"),
-        }
-        try:
-            started_at = float(record.get("started_at") or 0.0)
-        except (TypeError, ValueError):
-            started_at = 0.0
-        elapsed = round(now - started_at, 3) if started_at > 0 else None
-        record["status"] = mark_as
-        record["completed_at"] = now
-        if elapsed is not None:
-            record["elapsed"] = elapsed
-        record["error"] = (
-            f"{ERROR_PREFIX}: status=running for >"
-            f"{int(report.older_than_seconds)}s, marked {mark_as}"
-        )
-        after = {
-            "status": record.get("status"),
-            "completed_at": record.get("completed_at"),
-            "elapsed": record.get("elapsed"),
-            "error": record.get("error"),
-        }
-        report.actions.append(
-            RepairAction(
-                run_id=str(record.get("run_id", "")),
-                job_name=str(record.get("job_name", "")),
-                scenario=SCENARIO_FIX_STUCK_RUNNING,
-                before=before,
-                after=after,
+            if started_at <= 0 or completed_at <= 0 or completed_at < started_at:
+                continue
+            before = {"elapsed": record.get("elapsed")}
+            record["elapsed"] = round(completed_at - started_at, 3)
+            report.actions.append(
+                RepairAction(
+                    run_id=str(record.get("run_id", "")),
+                    job_name=str(record.get("job_name", "")),
+                    scenario=SCENARIO_BACKFILL_ELAPSED,
+                    before=before,
+                    after={"elapsed": record["elapsed"]},
+                )
             )
-        )
 
-
-def backfill_elapsed(
-    records: list[dict[str, Any]],
-    *,
-    report: RepairReport,
-) -> None:
-    """For terminal records that have both ``started_at`` and
-    ``completed_at`` but a missing ``elapsed`` field, compute it.
-    Touches no other fields."""
-    for record in records:
-        if record.get("status") not in TERMINAL_STATUSES:
-            continue
-        if record.get("elapsed") is not None:
-            continue
-        try:
-            started_at = float(record.get("started_at") or 0.0)
-            completed_at = float(record.get("completed_at") or 0.0)
-        except (TypeError, ValueError):
-            continue
-        if started_at <= 0 or completed_at <= 0 or completed_at < started_at:
-            continue
-        before = {"elapsed": record.get("elapsed")}
-        record["elapsed"] = round(completed_at - started_at, 3)
-        report.actions.append(
-            RepairAction(
-                run_id=str(record.get("run_id", "")),
-                job_name=str(record.get("job_name", "")),
-                scenario=SCENARIO_BACKFILL_ELAPSED,
-                before=before,
-                after={"elapsed": record["elapsed"]},
-            )
-        )
-
-
-def run_repair(
-    *,
-    history_path: Path,
-    apply: bool,
-    older_than_seconds: int,
-    mark_as: str,
-    scenarios: Sequence[str],
-    backup: bool,
-    now: float | None = None,
-) -> RepairReport:
-    """Pure entrypoint — separated from CLI so unit tests can drive
-    it without subprocess. Returns a ``RepairReport`` either way; the
-    caller is responsible for honoring ``apply``."""
-    now_ts = now if now is not None else time.time()
-    cutoff = now_ts - older_than_seconds
-    report = RepairReport(
-        history_path=str(history_path),
-        apply=apply,
-        scenarios=list(scenarios),
-        older_than_seconds=older_than_seconds,
-        mark_as=mark_as,
-    )
-    records = read_records(history_path)
-    report.total_records = len(records)
-
-    if SCENARIO_FIX_STUCK_RUNNING in scenarios:
-        fix_stuck_running(
-            records,
-            cutoff=cutoff,
-            now=now_ts,
+    def run_repair(
+        self,
+        *,
+        history_path: Path,
+        apply: bool,
+        older_than_seconds: int,
+        mark_as: str,
+        scenarios: Sequence[str],
+        backup: bool,
+        now: float | None = None,
+    ) -> RepairReport:
+        """Pure entrypoint — separated from CLI so unit tests can drive
+        it without subprocess. Returns a ``RepairReport`` either way; the
+        caller is responsible for honoring ``apply``."""
+        now_ts = now if now is not None else time.time()
+        cutoff = now_ts - older_than_seconds
+        report = RepairReport(
+            history_path=str(history_path),
+            apply=apply,
+            scenarios=list(scenarios),
+            older_than_seconds=older_than_seconds,
             mark_as=mark_as,
-            report=report,
         )
-    if SCENARIO_BACKFILL_ELAPSED in scenarios:
-        backfill_elapsed(records, report=report)
+        records = self.read_records(history_path)
+        report.total_records = len(records)
 
-    if not report.actions:
-        return report
-    if not apply:
-        return report
-    if backup:
-        report.backup_path = str(make_backup(history_path))
-    write_records_atomic(history_path, records)
-    return report
-
-
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="repair_run_history",
-        description=(
-            "Audit and repair the controller's run-history.jsonl. "
-            "Default behavior is dry-run; pass --apply to mutate."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "--history-path",
-        default=None,
-        help=(
-            "Path to run-history.jsonl. If omitted, the script searches "
-            "the default locations (CONFIG_ROOT-relative)."
-        ),
-    )
-    parser.add_argument(
-        "--apply",
-        action="store_true",
-        help="Actually rewrite the file. Without this flag the script is read-only.",
-    )
-    parser.add_argument(
-        "--older-than-minutes",
-        type=int,
-        default=DEFAULT_OLDER_THAN_MINUTES,
-        help=(
-            f"Staleness threshold for stuck-running records (default: "
-            f"{DEFAULT_OLDER_THAN_MINUTES} min). Records younger than "
-            "this are left alone — they may genuinely still be running."
-        ),
-    )
-    parser.add_argument(
-        "--mark-as",
-        choices=ALLOWED_REWRITE_STATUSES,
-        default=STATUS_ERROR,
-        help=(
-            "Terminal status to write on stuck records. ``error`` "
-            "(default) keeps anomaly trackers honest; ``cancelled`` "
-            "is appropriate when the operator triggered the cleanup; "
-            "``timeout`` matches the deadline-exceeded semantic."
-        ),
-    )
-    parser.add_argument(
-        "--scenarios",
-        default=",".join(DEFAULT_SCENARIOS),
-        help=(
-            "Comma-separated list of scenarios to run. Available: "
-            + ", ".join(ALL_SCENARIOS)
-            + f". Default: {','.join(DEFAULT_SCENARIOS)}"
-        ),
-    )
-    parser.add_argument(
-        "--no-backup",
-        dest="backup",
-        action="store_false",
-        default=True,
-        help="Skip the timestamped .bak-* backup before mutating.",
-    )
-    parser.add_argument(
-        "--json",
-        dest="json_output",
-        action="store_true",
-        help="Emit a JSON report on stdout instead of a human summary.",
-    )
-    return parser.parse_args(argv)
-
-
-def parse_scenarios(raw: str) -> list[str]:
-    out: list[str] = []
-    for piece in raw.split(","):
-        piece = piece.strip()
-        if not piece:
-            continue
-        if piece not in ALL_SCENARIOS:
-            raise SystemExit(
-                f"unknown scenario: {piece!r}. choices: {ALL_SCENARIOS}"
+        if SCENARIO_FIX_STUCK_RUNNING in scenarios:
+            self.fix_stuck_running(
+                records,
+                cutoff=cutoff,
+                now=now_ts,
+                mark_as=mark_as,
+                report=report,
             )
-        if piece in out:
-            continue
-        out.append(piece)
-    return out or list(DEFAULT_SCENARIOS)
+        if SCENARIO_BACKFILL_ELAPSED in scenarios:
+            self.backfill_elapsed(records, report=report)
 
+        if not report.actions:
+            return report
+        if not apply:
+            return report
+        if backup:
+            report.backup_path = str(self.make_backup(history_path))
+        self.write_records_atomic(history_path, records)
+        return report
 
-def print_human_summary(report: RepairReport) -> None:
-    print(f"history-path: {report.history_path}")
-    print(f"records:      {report.total_records}")
-    print(f"scenarios:    {', '.join(report.scenarios)}")
-    print(f"apply:        {report.apply}")
-    if report.actions:
-        print(f"actions:      {len(report.actions)}")
-        per_scenario: dict[str, int] = {}
-        for action in report.actions:
-            per_scenario[action.scenario] = per_scenario.get(action.scenario, 0) + 1
-        for scenario, count in sorted(per_scenario.items()):
-            print(f"  {scenario}: {count}")
-        print()
-        print("changes:")
-        for action in report.actions[:20]:
+    def parse_args(self, argv: Sequence[str] | None = None) -> argparse.Namespace:
+        parser = argparse.ArgumentParser(
+            prog="repair_run_history",
+            description=(
+                "Audit and repair the controller's run-history.jsonl. "
+                "Default behavior is dry-run; pass --apply to mutate."
+            ),
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        parser.add_argument(
+            "--history-path",
+            default=None,
+            help=(
+                "Path to run-history.jsonl. If omitted, the script searches "
+                "the default locations (CONFIG_ROOT-relative)."
+            ),
+        )
+        parser.add_argument(
+            "--apply",
+            action="store_true",
+            help="Actually rewrite the file. Without this flag the script is read-only.",
+        )
+        parser.add_argument(
+            "--older-than-minutes",
+            type=int,
+            default=DEFAULT_OLDER_THAN_MINUTES,
+            help=(
+                f"Staleness threshold for stuck-running records (default: "
+                f"{DEFAULT_OLDER_THAN_MINUTES} min). Records younger than "
+                "this are left alone — they may genuinely still be running."
+            ),
+        )
+        parser.add_argument(
+            "--mark-as",
+            choices=ALLOWED_REWRITE_STATUSES,
+            default=STATUS_ERROR,
+            help=(
+                "Terminal status to write on stuck records. ``error`` "
+                "(default) keeps anomaly trackers honest; ``cancelled`` "
+                "is appropriate when the operator triggered the cleanup; "
+                "``timeout`` matches the deadline-exceeded semantic."
+            ),
+        )
+        parser.add_argument(
+            "--scenarios",
+            default=",".join(DEFAULT_SCENARIOS),
+            help=(
+                "Comma-separated list of scenarios to run. Available: "
+                + ", ".join(ALL_SCENARIOS)
+                + f". Default: {','.join(DEFAULT_SCENARIOS)}"
+            ),
+        )
+        parser.add_argument(
+            "--no-backup",
+            dest="backup",
+            action="store_false",
+            default=True,
+            help="Skip the timestamped .bak-* backup before mutating.",
+        )
+        parser.add_argument(
+            "--json",
+            dest="json_output",
+            action="store_true",
+            help="Emit a JSON report on stdout instead of a human summary.",
+        )
+        return parser.parse_args(argv)
+
+    def parse_scenarios(self, raw: str) -> list[str]:
+        out: list[str] = []
+        for piece in raw.split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            if piece not in ALL_SCENARIOS:
+                raise SystemExit(
+                    f"unknown scenario: {piece!r}. choices: {ALL_SCENARIOS}"
+                )
+            if piece in out:
+                continue
+            out.append(piece)
+        return out or list(DEFAULT_SCENARIOS)
+
+    def print_human_summary(self, report: RepairReport) -> None:
+        print(f"history-path: {report.history_path}")
+        print(f"records:      {report.total_records}")
+        print(f"scenarios:    {', '.join(report.scenarios)}")
+        print(f"apply:        {report.apply}")
+        if report.actions:
+            print(f"actions:      {len(report.actions)}")
+            per_scenario: dict[str, int] = {}
+            for action in report.actions:
+                per_scenario[action.scenario] = per_scenario.get(action.scenario, 0) + 1
+            for scenario, count in sorted(per_scenario.items()):
+                print(f"  {scenario}: {count}")
+            print()
+            print("changes:")
+            for action in report.actions[:20]:
+                print(
+                    f"  [{action.scenario}] {action.job_name}"
+                    f" run_id={action.run_id} {action.before} -> {action.after}"
+                )
+            if len(report.actions) > 20:
+                print(f"  … {len(report.actions) - 20} more (see --json for full list)")
+        else:
+            print("actions:      0 (history is clean)")
+        if report.skipped_recent_running:
             print(
-                f"  [{action.scenario}] {action.job_name}"
-                f" run_id={action.run_id} {action.before} -> {action.after}"
+                f"skipped-recent-running: {report.skipped_recent_running} "
+                f"(within {report.older_than_seconds}s)"
             )
-        if len(report.actions) > 20:
-            print(f"  … {len(report.actions) - 20} more (see --json for full list)")
-    else:
-        print("actions:      0 (history is clean)")
-    if report.skipped_recent_running:
-        print(
-            f"skipped-recent-running: {report.skipped_recent_running} "
-            f"(within {report.older_than_seconds}s)"
+        if report.backup_path:
+            print(f"backup:       {report.backup_path}")
+
+    def main(self, argv: Sequence[str] | None = None) -> int:
+        args = self.parse_args(argv)
+        try:
+            history_path = self.resolve_history_path(args.history_path)
+        except FileNotFoundError as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            return 1
+        scenarios = self.parse_scenarios(args.scenarios)
+        report = self.run_repair(
+            history_path=history_path,
+            apply=bool(args.apply),
+            older_than_seconds=int(args.older_than_minutes) * 60,
+            mark_as=str(args.mark_as),
+            scenarios=scenarios,
+            backup=bool(args.backup),
         )
-    if report.backup_path:
-        print(f"backup:       {report.backup_path}")
+        if args.json_output:
+            print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        else:
+            self.print_human_summary(report)
+        return 0
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
-    try:
-        history_path = resolve_history_path(args.history_path)
-    except FileNotFoundError as exc:
-        sys.stderr.write(f"error: {exc}\n")
-        return 1
-    scenarios = parse_scenarios(args.scenarios)
-    report = run_repair(
-        history_path=history_path,
-        apply=bool(args.apply),
-        older_than_seconds=int(args.older_than_minutes) * 60,
-        mark_as=str(args.mark_as),
-        scenarios=scenarios,
-        backup=bool(args.backup),
-    )
-    if args.json_output:
-        print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
-    else:
-        print_human_summary(report)
-    return 0
+# Module-level singleton — backs the public function aliases below
+# so existing callers (`from … import run_repair`, `from … import main`)
+# keep working without code churn.
+_REPAIRER = RunHistoryRepairer()
+
+resolve_history_path = _REPAIRER.resolve_history_path
+read_records = _REPAIRER.read_records
+write_records_atomic = _REPAIRER.write_records_atomic
+make_backup = _REPAIRER.make_backup
+is_stale_running = _REPAIRER.is_stale_running
+fix_stuck_running = _REPAIRER.fix_stuck_running
+backfill_elapsed = _REPAIRER.backfill_elapsed
+run_repair = _REPAIRER.run_repair
+parse_args = _REPAIRER.parse_args
+parse_scenarios = _REPAIRER.parse_scenarios
+print_human_summary = _REPAIRER.print_human_summary
+main = _REPAIRER.main
 
 
 # NOTE: no ``if __name__ == "__main__"`` block here — this module is

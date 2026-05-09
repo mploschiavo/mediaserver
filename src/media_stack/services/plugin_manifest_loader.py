@@ -67,239 +67,247 @@ class AdapterHookDefaults:
         }
 
 
-def _iter_manifest_files(root: Path) -> Iterable[Path]:
-    if not root.exists() or not root.is_dir():
-        return ()
-    return sorted(path for path in root.rglob("manifest.json") if path.is_file())
+class PluginManifestLoader:
+    """Loads plugin manifests from YAML service definitions and legacy manifest.json files."""
 
+    def _iter_manifest_files(self, root: Path) -> Iterable[Path]:
+        if not root.exists() or not root.is_dir():
+            return ()
+        return sorted(path for path in root.rglob("manifest.json") if path.is_file())
 
-def _to_non_empty_str(value: Any) -> str:
-    token = str(value or "").strip()
-    return token
+    def _to_non_empty_str(self, value: Any) -> str:
+        token = str(value or "").strip()
+        return token
 
+    def _coerce_str_map(self, value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, str] = {}
+        for key, item in value.items():
+            k = self._to_non_empty_str(key)
+            v = self._to_non_empty_str(item)
+            if k and v:
+                out[k] = v
+        return out
 
-def _coerce_str_map(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    out: dict[str, str] = {}
-    for key, item in value.items():
-        k = _to_non_empty_str(key)
-        v = _to_non_empty_str(item)
-        if k and v:
-            out[k] = v
-    return out
-
-
-def _coerce_event_handler_map(value: Any) -> dict[str, dict[str, str]]:
-    if not isinstance(value, dict):
-        return {}
-    out: dict[str, dict[str, str]] = {}
-    for event_name, handler_map in value.items():
-        event_key_raw = _to_non_empty_str(event_name)
-        if not event_key_raw:
-            continue
-        if not isinstance(handler_map, dict):
-            continue
-        try:
-            event_key = RunnerEvent.from_value(event_key_raw).value
-        except ValueError:
-            continue
-        out[event_key] = _coerce_str_map(handler_map)
-    return out
-
-
-def _coerce_aliases(value: Any) -> tuple[str, ...]:
-    if not isinstance(value, list):
-        return ()
-    seen: list[str] = []
-    for item in value:
-        token = _to_non_empty_str(item).lower()
-        if token and token not in seen:
-            seen.append(token)
-    return tuple(seen)
-
-
-def _load_manifest(path: Path) -> PluginManifest:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Plugin manifest must be an object: {path}")
-
-    technology = _to_non_empty_str(payload.get("technology"))
-    if not technology:
-        raise ValueError(f"Plugin manifest missing required 'technology': {path}")
-
-    adapter_classes = _coerce_str_map(payload.get("adapter_classes"))
-    event_handlers = _coerce_event_handler_map(payload.get("event_handlers"))
-    legacy_operation_handlers = _coerce_str_map(payload.get("operation_handlers"))
-    if legacy_operation_handlers:
-        event_handlers.setdefault(RunnerEvent.RUN.value, {}).update(legacy_operation_handlers)
-
-    run_operation_handlers = dict(event_handlers.get(RunnerEvent.RUN.value, {}))
-
-    return PluginManifest(
-        technology=technology.lower(),
-        aliases=_coerce_aliases(payload.get("aliases")),
-        adapter_classes=adapter_classes,
-        before_common_steps=_coerce_str_map(payload.get("before_common_steps")),
-        app_service_classes=_coerce_str_map(payload.get("app_service_classes")),
-        service_technology_map=_coerce_str_map(payload.get("service_technology_map")),
-        event_handlers=event_handlers,
-        operation_handlers=run_operation_handlers,
-        capability_defaults=dict(payload.get("capability_defaults") or {}),
-        source_path=path,
-    )
-
-
-def _load_from_service_yamls() -> list[PluginManifest]:
-    """Load full plugin definitions from per-service YAML files (contracts/services/*.yaml).
-
-    This reads the complete plugin: section including adapter_classes,
-    app_service_classes, service_technology_map, event_handlers, and
-    before_common_steps — everything that was in legacy manifest.json files.
-    """
-    import yaml as _yaml
-
-    svc_dirs = [
-        Path(__file__).resolve().parents[2] / "contracts" / "services",
-        Path("/opt/media-stack/contracts/services"),
-        Path("contracts/services"),
-    ]
-    manifests: list[PluginManifest] = []
-    for svc_dir in svc_dirs:
-        if not svc_dir.is_dir() or not any(svc_dir.glob("*.yaml")):
-            continue
-        for yaml_file in sorted(svc_dir.glob("*.yaml")):
-            if yaml_file.name == "_template.yaml":
+    def _coerce_event_handler_map(self, value: Any) -> dict[str, dict[str, str]]:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, dict[str, str]] = {}
+        for event_name, handler_map in value.items():
+            event_key_raw = self._to_non_empty_str(event_name)
+            if not event_key_raw:
+                continue
+            if not isinstance(handler_map, dict):
                 continue
             try:
-                data = _yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
-                plugin = data.get("plugin")
-                if not isinstance(plugin, dict) or not plugin.get("technology"):
+                event_key = RunnerEvent.from_value(event_key_raw).value
+            except ValueError:
+                continue
+            out[event_key] = self._coerce_str_map(handler_map)
+        return out
+
+    def _coerce_aliases(self, value: Any) -> tuple[str, ...]:
+        if not isinstance(value, list):
+            return ()
+        seen: list[str] = []
+        for item in value:
+            token = self._to_non_empty_str(item).lower()
+            if token and token not in seen:
+                seen.append(token)
+        return tuple(seen)
+
+    def _load_manifest(self, path: Path) -> PluginManifest:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"Plugin manifest must be an object: {path}")
+
+        technology = self._to_non_empty_str(payload.get("technology"))
+        if not technology:
+            raise ValueError(f"Plugin manifest missing required 'technology': {path}")
+
+        adapter_classes = self._coerce_str_map(payload.get("adapter_classes"))
+        event_handlers = self._coerce_event_handler_map(payload.get("event_handlers"))
+        legacy_operation_handlers = self._coerce_str_map(payload.get("operation_handlers"))
+        if legacy_operation_handlers:
+            event_handlers.setdefault(RunnerEvent.RUN.value, {}).update(legacy_operation_handlers)
+
+        run_operation_handlers = dict(event_handlers.get(RunnerEvent.RUN.value, {}))
+
+        return PluginManifest(
+            technology=technology.lower(),
+            aliases=self._coerce_aliases(payload.get("aliases")),
+            adapter_classes=adapter_classes,
+            before_common_steps=self._coerce_str_map(payload.get("before_common_steps")),
+            app_service_classes=self._coerce_str_map(payload.get("app_service_classes")),
+            service_technology_map=self._coerce_str_map(payload.get("service_technology_map")),
+            event_handlers=event_handlers,
+            operation_handlers=run_operation_handlers,
+            capability_defaults=dict(payload.get("capability_defaults") or {}),
+            source_path=path,
+        )
+
+    def _load_from_service_yamls(self) -> list[PluginManifest]:
+        """Load full plugin definitions from per-service YAML files (contracts/services/*.yaml).
+
+        This reads the complete plugin: section including adapter_classes,
+        app_service_classes, service_technology_map, event_handlers, and
+        before_common_steps — everything that was in legacy manifest.json files.
+        """
+        import yaml as _yaml
+
+        svc_dirs = [
+            Path(__file__).resolve().parents[2] / "contracts" / "services",
+            Path("/opt/media-stack/contracts/services"),
+            Path("contracts/services"),
+        ]
+        manifests: list[PluginManifest] = []
+        for svc_dir in svc_dirs:
+            if not svc_dir.is_dir() or not any(svc_dir.glob("*.yaml")):
+                continue
+            for yaml_file in sorted(svc_dir.glob("*.yaml")):
+                if yaml_file.name == "_template.yaml":
                     continue
+                try:
+                    data = _yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+                    plugin = data.get("plugin")
+                    if not isinstance(plugin, dict) or not plugin.get("technology"):
+                        continue
 
-                adapter_classes = _coerce_str_map(plugin.get("adapter_classes"))
-                ac = plugin.get("adapter_class", "")
-                if ac and not adapter_classes:
-                    # Only use adapter_class as servarr default when no
-                    # explicit adapter_classes are declared
-                    adapter_classes["servarr"] = str(ac)
+                    adapter_classes = self._coerce_str_map(plugin.get("adapter_classes"))
+                    ac = plugin.get("adapter_class", "")
+                    if ac and not adapter_classes:
+                        # Only use adapter_class as servarr default when no
+                        # explicit adapter_classes are declared
+                        adapter_classes["servarr"] = str(ac)
 
-                event_handlers = _coerce_event_handler_map(plugin.get("event_handlers"))
-                legacy_ops = _coerce_str_map(plugin.get("operation_handlers"))
-                if legacy_ops:
-                    event_handlers.setdefault(RunnerEvent.RUN.value, {}).update(legacy_ops)
+                    event_handlers = self._coerce_event_handler_map(plugin.get("event_handlers"))
+                    legacy_ops = self._coerce_str_map(plugin.get("operation_handlers"))
+                    if legacy_ops:
+                        event_handlers.setdefault(RunnerEvent.RUN.value, {}).update(legacy_ops)
 
-                manifests.append(PluginManifest(
-                    technology=str(plugin["technology"]).lower(),
-                    aliases=_coerce_aliases(plugin.get("aliases")),
-                    adapter_classes=adapter_classes,
-                    before_common_steps=_coerce_str_map(plugin.get("before_common_steps")),
-                    app_service_classes=_coerce_str_map(plugin.get("app_service_classes")),
-                    service_technology_map=_coerce_str_map(plugin.get("service_technology_map")),
-                    event_handlers=event_handlers,
-                    operation_handlers=dict(event_handlers.get(RunnerEvent.RUN.value, {})),
-                    capability_defaults=dict(plugin.get("capabilities") or plugin.get("capability_defaults") or {}),
-                    source_path=yaml_file,
-                ))
-            except Exception as exc:
-                log_swallowed(exc)
-        break  # Use first directory found
-    return manifests
+                    manifests.append(PluginManifest(
+                        technology=str(plugin["technology"]).lower(),
+                        aliases=self._coerce_aliases(plugin.get("aliases")),
+                        adapter_classes=adapter_classes,
+                        before_common_steps=self._coerce_str_map(plugin.get("before_common_steps")),
+                        app_service_classes=self._coerce_str_map(plugin.get("app_service_classes")),
+                        service_technology_map=self._coerce_str_map(plugin.get("service_technology_map")),
+                        event_handlers=event_handlers,
+                        operation_handlers=dict(event_handlers.get(RunnerEvent.RUN.value, {})),
+                        capability_defaults=dict(plugin.get("capabilities") or plugin.get("capability_defaults") or {}),
+                        source_path=yaml_file,
+                    ))
+                except Exception as exc:
+                    log_swallowed(exc)
+            break  # Use first directory found
+        return manifests
+
+    def load_plugin_manifests(self, manifest_root: Path | None = None) -> list[PluginManifest]:
+        # Prefer per-service YAML files (contracts/services/*.yaml)
+        yaml_manifests = self._load_from_service_yamls()
+        if yaml_manifests:
+            # Check if YAML manifests have service class bindings (core manifest)
+            has_service_classes = any(m.app_service_classes for m in yaml_manifests)
+            if has_service_classes:
+                return yaml_manifests
+
+        # Fall back to legacy manifest.json files
+        root = manifest_root or DEFAULT_PLUGIN_MANIFESTS_DIR
+        manifests: list[PluginManifest] = []
+        for path in self._iter_manifest_files(root):
+            manifests.append(self._load_manifest(path))
+
+        # Supplement with any YAML-only technologies
+        legacy_techs = {m.technology for m in manifests}
+        for ym in yaml_manifests:
+            if ym.technology not in legacy_techs:
+                manifests.append(ym)
+
+        return manifests
+
+    def build_adapter_hook_defaults(self, manifests: list[PluginManifest]) -> AdapterHookDefaults:
+        technology_aliases: dict[str, str] = {}
+        adapter_classes: dict[str, str] = {}
+        download_client_adapter_classes: dict[str, str] = {}
+        media_server_adapter_classes: dict[str, str] = {}
+        before_common_steps: dict[str, str] = {}
+        app_service_classes: dict[str, str] = {}
+        app_service_classes_by_technology: dict[str, dict[str, str]] = {}
+        service_technology_map: dict[str, str] = {}
+        event_handlers: dict[str, dict[str, str]] = {}
+        operation_handlers: dict[str, str] = {}
+
+        for manifest in manifests:
+            technology = manifest.technology
+            for alias in manifest.aliases:
+                technology_aliases[alias] = technology
+
+            role_map = manifest.adapter_classes
+            servarr_spec = self._to_non_empty_str(role_map.get("servarr"))
+            if servarr_spec:
+                adapter_classes[technology] = servarr_spec
+
+            download_spec = self._to_non_empty_str(role_map.get("download_client"))
+            if download_spec:
+                download_client_adapter_classes[technology] = download_spec
+
+            media_server_spec = self._to_non_empty_str(role_map.get("media_server"))
+            if media_server_spec:
+                media_server_adapter_classes[technology] = media_server_spec
+
+            before_common_steps.update(manifest.before_common_steps)
+            manifest_services = {
+                str(key): str(value)
+                for key, value in (manifest.app_service_classes or {}).items()
+                if str(key).strip() and str(value).strip()
+            }
+            if manifest_services:
+                app_service_classes.update(manifest_services)
+                app_service_classes_by_technology.setdefault(technology, {}).update(manifest_services)
+            service_technology_map.update(manifest.service_technology_map)
+            for event_name, handler_map in (manifest.event_handlers or {}).items():
+                event_handlers.setdefault(event_name, {}).update(
+                    {
+                        str(handler_name): str(spec)
+                        for handler_name, spec in handler_map.items()
+                        if str(handler_name).strip() and str(spec).strip()
+                    }
+                )
+            operation_handlers.update(manifest.operation_handlers)
+
+        return AdapterHookDefaults(
+            technology_aliases=technology_aliases,
+            adapter_classes=adapter_classes,
+            download_client_adapter_classes=download_client_adapter_classes,
+            media_server_adapter_classes=media_server_adapter_classes,
+            before_common_steps=before_common_steps,
+            app_service_classes=app_service_classes,
+            app_service_classes_by_technology=app_service_classes_by_technology,
+            service_technology_map=service_technology_map,
+            event_handlers=event_handlers,
+            operation_handlers=operation_handlers,
+        )
+
+    def collect_capability_defaults(self, manifests: list[PluginManifest]) -> dict[str, dict[str, Any]]:
+        merged: dict[str, dict[str, Any]] = {}
+        for manifest in manifests:
+            defaults = manifest.capability_defaults
+            if not isinstance(defaults, dict) or not defaults:
+                continue
+            merged[manifest.technology] = dict(defaults)
+        return merged
 
 
-def load_plugin_manifests(manifest_root: Path | None = None) -> list[PluginManifest]:
-    # Prefer per-service YAML files (contracts/services/*.yaml)
-    yaml_manifests = _load_from_service_yamls()
-    if yaml_manifests:
-        # Check if YAML manifests have service class bindings (core manifest)
-        has_service_classes = any(m.app_service_classes for m in yaml_manifests)
-        if has_service_classes:
-            return yaml_manifests
+_LOADER = PluginManifestLoader()
 
-    # Fall back to legacy manifest.json files
-    root = manifest_root or DEFAULT_PLUGIN_MANIFESTS_DIR
-    manifests: list[PluginManifest] = []
-    for path in _iter_manifest_files(root):
-        manifests.append(_load_manifest(path))
-
-    # Supplement with any YAML-only technologies
-    legacy_techs = {m.technology for m in manifests}
-    for ym in yaml_manifests:
-        if ym.technology not in legacy_techs:
-            manifests.append(ym)
-
-    return manifests
-
-
-def build_adapter_hook_defaults(manifests: list[PluginManifest]) -> AdapterHookDefaults:
-    technology_aliases: dict[str, str] = {}
-    adapter_classes: dict[str, str] = {}
-    download_client_adapter_classes: dict[str, str] = {}
-    media_server_adapter_classes: dict[str, str] = {}
-    before_common_steps: dict[str, str] = {}
-    app_service_classes: dict[str, str] = {}
-    app_service_classes_by_technology: dict[str, dict[str, str]] = {}
-    service_technology_map: dict[str, str] = {}
-    event_handlers: dict[str, dict[str, str]] = {}
-    operation_handlers: dict[str, str] = {}
-
-    for manifest in manifests:
-        technology = manifest.technology
-        for alias in manifest.aliases:
-            technology_aliases[alias] = technology
-
-        role_map = manifest.adapter_classes
-        servarr_spec = _to_non_empty_str(role_map.get("servarr"))
-        if servarr_spec:
-            adapter_classes[technology] = servarr_spec
-
-        download_spec = _to_non_empty_str(role_map.get("download_client"))
-        if download_spec:
-            download_client_adapter_classes[technology] = download_spec
-
-        media_server_spec = _to_non_empty_str(role_map.get("media_server"))
-        if media_server_spec:
-            media_server_adapter_classes[technology] = media_server_spec
-
-        before_common_steps.update(manifest.before_common_steps)
-        manifest_services = {
-            str(key): str(value)
-            for key, value in (manifest.app_service_classes or {}).items()
-            if str(key).strip() and str(value).strip()
-        }
-        if manifest_services:
-            app_service_classes.update(manifest_services)
-            app_service_classes_by_technology.setdefault(technology, {}).update(manifest_services)
-        service_technology_map.update(manifest.service_technology_map)
-        for event_name, handler_map in (manifest.event_handlers or {}).items():
-            event_handlers.setdefault(event_name, {}).update(
-                {
-                    str(handler_name): str(spec)
-                    for handler_name, spec in handler_map.items()
-                    if str(handler_name).strip() and str(spec).strip()
-                }
-            )
-        operation_handlers.update(manifest.operation_handlers)
-
-    return AdapterHookDefaults(
-        technology_aliases=technology_aliases,
-        adapter_classes=adapter_classes,
-        download_client_adapter_classes=download_client_adapter_classes,
-        media_server_adapter_classes=media_server_adapter_classes,
-        before_common_steps=before_common_steps,
-        app_service_classes=app_service_classes,
-        app_service_classes_by_technology=app_service_classes_by_technology,
-        service_technology_map=service_technology_map,
-        event_handlers=event_handlers,
-        operation_handlers=operation_handlers,
-    )
-
-
-def collect_capability_defaults(manifests: list[PluginManifest]) -> dict[str, dict[str, Any]]:
-    merged: dict[str, dict[str, Any]] = {}
-    for manifest in manifests:
-        defaults = manifest.capability_defaults
-        if not isinstance(defaults, dict) or not defaults:
-            continue
-        merged[manifest.technology] = dict(defaults)
-    return merged
+_iter_manifest_files = _LOADER._iter_manifest_files
+_to_non_empty_str = _LOADER._to_non_empty_str
+_coerce_str_map = _LOADER._coerce_str_map
+_coerce_event_handler_map = _LOADER._coerce_event_handler_map
+_coerce_aliases = _LOADER._coerce_aliases
+_load_manifest = _LOADER._load_manifest
+_load_from_service_yamls = _LOADER._load_from_service_yamls
+load_plugin_manifests = _LOADER.load_plugin_manifests
+build_adapter_hook_defaults = _LOADER.build_adapter_hook_defaults
+collect_capability_defaults = _LOADER.collect_capability_defaults

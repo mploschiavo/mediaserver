@@ -2190,7 +2190,18 @@ class ApiKeyDiscoveryJobAdapters:
 # is exposed as a module-level alias to a method on one of the nine
 # singletons below. Internal cross-class calls go through
 # ``_self_module()`` so test-time monkeypatches on the module attribute
-# stay observable.
+# stay observable (an attribute lookup against the module hits the
+# alias the test just patched, not the bound method captured at class-
+# definition time).
+
+
+def _self_module():
+    """Return this module from ``sys.modules`` so internal cross-class
+    calls hit the module attribute — and therefore any active
+    ``mock.patch`` on it — instead of the bound method captured at
+    class-definition time."""
+    return sys.modules[__name__]
+
 
 _HTTP_REQUEST_FACTORY = _HttpRequestFactory()
 _LEGACY_ARGS_HELPERS = _LegacyArgsHelpers()

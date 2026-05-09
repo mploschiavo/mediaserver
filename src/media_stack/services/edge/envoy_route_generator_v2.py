@@ -52,450 +52,469 @@ from media_stack.api.services.config.routing.schema_v2 import (
 _CLUSTER_PREFIX = "service_"
 
 
-def _cluster_name(service_id: str) -> str:
-    return f"{_CLUSTER_PREFIX}{service_id}"
+class EnvoyRouteGeneratorV2:
+    """Pure ``RoutingConfigV2`` → Envoy route_config emitter.
 
-
-def _redirect_route_for_path_alias(p: PathAlias) -> dict[str, Any]:
-    """Emit an Envoy route that redirects ``from_path`` →
-    ``to_path`` with the configured response code (301/302/308).
-
-    Uses ``path_separated_prefix`` + ``prefix_rewrite`` so the suffix
-    is preserved: ``/app/jellyfin/movies/123`` redirects to
-    ``/app/jf/movies/123`` rather than bare ``/app/jf`` (which is what
-    a naive ``path_redirect`` would emit).
-
-    ``path_separated_prefix`` (Envoy ≥1.23) matches only at path
-    component boundaries — so ``/app/jellyfin`` matches ``/app/jellyfin``
-    and ``/app/jellyfin/...`` but NOT ``/app/jellyfinx``. This avoids
-    a false-positive when two services share a prefix root.
+    All previously loose helpers are bound here as plain instance
+    methods so they share a single namespace and can be subclassed /
+    composed by future emitters. The module exposes a singleton plus
+    underscore-prefixed alias bindings to preserve the historical API.
     """
-    return {
-        "match": {"path_separated_prefix": p.from_path},
-        "redirect": {
-            "prefix_rewrite": p.to_path,
-            "response_code": _envoy_redirect_code(p.code),
-        },
-    }
 
+    def _cluster_name(self, service_id: str) -> str:
+        return f"{_CLUSTER_PREFIX}{service_id}"
 
-def _redirect_route_to_canonical(canonical: str) -> dict[str, Any]:
-    """Emit a 'redirect everything to canonical host' route — used in
-    alias virtual_hosts so visitors of an alias hostname end up on the
-    canonical URL."""
-    return {
-        "match": {"prefix": "/"},
-        "redirect": {
-            "host_redirect": canonical,
-            "response_code": "MOVED_PERMANENTLY",
-        },
-    }
+    def _redirect_route_for_path_alias(self, p: PathAlias) -> dict[str, Any]:
+        """Emit an Envoy route that redirects ``from_path`` →
+        ``to_path`` with the configured response code (301/302/308).
 
+        Uses ``path_separated_prefix`` + ``prefix_rewrite`` so the suffix
+        is preserved: ``/app/jellyfin/movies/123`` redirects to
+        ``/app/jf/movies/123`` rather than bare ``/app/jf`` (which is what
+        a naive ``path_redirect`` would emit).
 
-def _service_route(
-    prefix: str,
-    service_id: str,
-    *,
-    host=None,
-    defaults=None,
-) -> dict[str, Any]:
-    """Forward a path prefix to the service's upstream cluster.
-
-    When ``host`` is provided, applies Tier-1 per-host knobs:
-
-      * ``maintenance`` → 503 direct_response (route bypassed entirely)
-      * ``timeout_seconds`` → ``route.timeout``
-      * ``websocket`` → ``route.upgrade_configs``
-      * ``headers.response_set`` → ``response_headers_to_add``
-      * ``headers.response_remove`` → ``response_headers_to_remove``
-
-    ``defaults`` fills any field the host left at zero / None /
-    empty. Operator-explicit values always win.
-    """
-    # Maintenance short-circuit — replace the entire route with a 503.
-    if host is not None and getattr(host, "maintenance", False):
+        ``path_separated_prefix`` (Envoy ≥1.23) matches only at path
+        component boundaries — so ``/app/jellyfin`` matches ``/app/jellyfin``
+        and ``/app/jellyfin/...`` but NOT ``/app/jellyfinx``. This avoids
+        a false-positive when two services share a prefix root.
+        """
         return {
-            "match": {"prefix": prefix},
-            "direct_response": {
-                "status": 503,
-                "body": {"inline_string": (
-                    f"Service '{service_id}' is in maintenance mode."
-                )},
+            "match": {"path_separated_prefix": p.from_path},
+            "redirect": {
+                "prefix_rewrite": p.to_path,
+                "response_code": self._envoy_redirect_code(p.code),
             },
         }
 
-    route_action: dict[str, Any] = {"cluster": _cluster_name(service_id)}
+    def _redirect_route_to_canonical(self, canonical: str) -> dict[str, Any]:
+        """Emit a 'redirect everything to canonical host' route — used in
+        alias virtual_hosts so visitors of an alias hostname end up on the
+        canonical URL."""
+        return {
+            "match": {"prefix": "/"},
+            "redirect": {
+                "host_redirect": canonical,
+                "response_code": "MOVED_PERMANENTLY",
+            },
+        }
 
-    if host is not None or defaults is not None:
-        timeout = 0
-        websocket = False
-        response_set: dict[str, str] = {}
-        response_remove: list[str] = []
-        rate_limit = None      # tier-2 (PR-8)
-        geo_acl = None         # tier-2 (PR-8)
+    def _service_route(
+        self,
+        prefix: str,
+        service_id: str,
+        *,
+        host=None,
+        defaults=None,
+    ) -> dict[str, Any]:
+        """Forward a path prefix to the service's upstream cluster.
 
-        if defaults is not None:
-            timeout = int(getattr(defaults, "timeout_seconds", 0) or 0)
-            websocket = bool(getattr(defaults, "websocket", False))
-            d_headers = getattr(defaults, "headers", None)
-            if d_headers is not None:
-                response_set.update(getattr(d_headers, "response_set", {}) or {})
-                response_remove.extend(
-                    getattr(d_headers, "response_remove", []) or [],
-                )
+        When ``host`` is provided, applies Tier-1 per-host knobs:
 
-        if host is not None:
-            host_to = int(getattr(host, "timeout_seconds", 0) or 0)
-            if host_to > 0:
-                timeout = host_to
-            if getattr(host, "websocket", False):
-                websocket = True
-            h_headers = getattr(host, "headers", None)
-            if h_headers is not None:
-                # Per-host headers MERGE on top of defaults — that's the
-                # natural intuition (a host extends the default set).
-                response_set.update(getattr(h_headers, "response_set", {}) or {})
-                # response_remove is additive too: if either layer
-                # strips a header, it's stripped.
-                for h in (getattr(h_headers, "response_remove", []) or []):
-                    if h not in response_remove:
-                        response_remove.append(h)
-            rate_limit = getattr(host, "rate_limit", None)
-            geo_acl = getattr(host, "geo_acl", None)
+          * ``maintenance`` → 503 direct_response (route bypassed entirely)
+          * ``timeout_seconds`` → ``route.timeout``
+          * ``websocket`` → ``route.upgrade_configs``
+          * ``headers.response_set`` → ``response_headers_to_add``
+          * ``headers.response_remove`` → ``response_headers_to_remove``
 
-        if timeout > 0:
-            # Envoy route timeout uses the gRPC duration string format
-            # ("60s", "30s", …). Zero = unset → Envoy's default 15s.
-            route_action["timeout"] = f"{timeout}s"
-        if websocket:
-            route_action["upgrade_configs"] = [{"upgrade_type": "websocket"}]
+        ``defaults`` fills any field the host left at zero / None /
+        empty. Operator-explicit values always win.
+        """
+        # Maintenance short-circuit — replace the entire route with a 503.
+        if host is not None and getattr(host, "maintenance", False):
+            return {
+                "match": {"prefix": prefix},
+                "direct_response": {
+                    "status": 503,
+                    "body": {"inline_string": (
+                        f"Service '{service_id}' is in maintenance mode."
+                    )},
+                },
+            }
 
-        route: dict[str, Any] = {
+        route_action: dict[str, Any] = {"cluster": self._cluster_name(service_id)}
+
+        if host is not None or defaults is not None:
+            timeout = 0
+            websocket = False
+            response_set: dict[str, str] = {}
+            response_remove: list[str] = []
+            rate_limit = None      # tier-2 (PR-8)
+            geo_acl = None         # tier-2 (PR-8)
+
+            if defaults is not None:
+                timeout = int(getattr(defaults, "timeout_seconds", 0) or 0)
+                websocket = bool(getattr(defaults, "websocket", False))
+                d_headers = getattr(defaults, "headers", None)
+                if d_headers is not None:
+                    response_set.update(getattr(d_headers, "response_set", {}) or {})
+                    response_remove.extend(
+                        getattr(d_headers, "response_remove", []) or [],
+                    )
+
+            if host is not None:
+                host_to = int(getattr(host, "timeout_seconds", 0) or 0)
+                if host_to > 0:
+                    timeout = host_to
+                if getattr(host, "websocket", False):
+                    websocket = True
+                h_headers = getattr(host, "headers", None)
+                if h_headers is not None:
+                    # Per-host headers MERGE on top of defaults — that's the
+                    # natural intuition (a host extends the default set).
+                    response_set.update(getattr(h_headers, "response_set", {}) or {})
+                    # response_remove is additive too: if either layer
+                    # strips a header, it's stripped.
+                    for h in (getattr(h_headers, "response_remove", []) or []):
+                        if h not in response_remove:
+                            response_remove.append(h)
+                rate_limit = getattr(host, "rate_limit", None)
+                geo_acl = getattr(host, "geo_acl", None)
+
+            if timeout > 0:
+                # Envoy route timeout uses the gRPC duration string format
+                # ("60s", "30s", …). Zero = unset → Envoy's default 15s.
+                route_action["timeout"] = f"{timeout}s"
+            if websocket:
+                route_action["upgrade_configs"] = [{"upgrade_type": "websocket"}]
+
+            route: dict[str, Any] = {
+                "match": {"prefix": prefix},
+                "route": route_action,
+            }
+            if response_set:
+                route["response_headers_to_add"] = [
+                    {
+                        "header": {"key": k, "value": v},
+                        "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
+                    }
+                    for k, v in response_set.items()
+                ]
+            if response_remove:
+                route["response_headers_to_remove"] = list(response_remove)
+
+            # Tier-2 rate-limit (PR-8). The route-level rate_limits block
+            # references descriptors the operator's listener-level filter
+            # consumes. We emit a single per-route descriptor; the global
+            # http_filters wiring is in PR-8.5 with the listener template.
+            if rate_limit is not None:
+                ps = int(getattr(rate_limit, "per_second", 0) or 0)
+                burst = int(getattr(rate_limit, "burst", 0) or 0)
+                if ps > 0:
+                    route["rate_limits"] = [{
+                        "actions": [{
+                            "generic_key": {
+                                "descriptor_value": (
+                                    f"per_route_{prefix.strip('/').replace('/', '_') or 'root'}"
+                                ),
+                            },
+                        }],
+                        "stage": 0,
+                    }]
+                    # Annotate the route so a downstream filter wiring step
+                    # (PR-8.5) can find which routes need rate-limit token
+                    # buckets configured. Envoy ignores unknown metadata
+                    # fields under typed_per_filter_config.
+                    route["typed_per_filter_config"] = route.get(
+                        "typed_per_filter_config", {},
+                    )
+                    route["typed_per_filter_config"]["envoy.filters.http.local_ratelimit"] = {
+                        "@type": "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit",
+                        "stat_prefix": "edge_rl",
+                        "token_bucket": {
+                            "max_tokens": burst if burst > 0 else ps,
+                            "tokens_per_fill": ps,
+                            "fill_interval": "1s",
+                        },
+                        "filter_enabled": {
+                            "runtime_key": "edge_rl_enabled",
+                            "default_value": {"numerator": 100, "denominator": "HUNDRED"},
+                        },
+                        "filter_enforced": {
+                            "runtime_key": "edge_rl_enforced",
+                            "default_value": {"numerator": 100, "denominator": "HUNDRED"},
+                        },
+                    }
+
+            # Tier-2 geo ACL (PR-8). Render allow/deny lists onto the
+            # route's request_headers_to_add for downstream filters that
+            # honour an X-Geo-Country header (Envoy doesn't ship a built-in
+            # geo filter; this lays the contract for a Wasm or Lua plugin
+            # to consume — full enforcement in PR-8.5).
+            if geo_acl is not None:
+                allow = list(getattr(geo_acl, "allow", []) or [])
+                deny = list(getattr(geo_acl, "deny", []) or [])
+                if allow or deny:
+                    route.setdefault("metadata", {}).setdefault("filter_metadata", {})[
+                        "edge.geo_acl"
+                    ] = {"allow": allow, "deny": deny}
+
+            return route
+
+        # No host context — the bare service-route case (e.g. an alias's
+        # canonical-only redirect). Return the minimum.
+        return {
             "match": {"prefix": prefix},
             "route": route_action,
         }
-        if response_set:
-            route["response_headers_to_add"] = [
-                {
-                    "header": {"key": k, "value": v},
-                    "append_action": "OVERWRITE_IF_EXISTS_OR_ADD",
-                }
-                for k, v in response_set.items()
-            ]
-        if response_remove:
-            route["response_headers_to_remove"] = list(response_remove)
 
-        # Tier-2 rate-limit (PR-8). The route-level rate_limits block
-        # references descriptors the operator's listener-level filter
-        # consumes. We emit a single per-route descriptor; the global
-        # http_filters wiring is in PR-8.5 with the listener template.
-        if rate_limit is not None:
-            ps = int(getattr(rate_limit, "per_second", 0) or 0)
-            burst = int(getattr(rate_limit, "burst", 0) or 0)
-            if ps > 0:
-                route["rate_limits"] = [{
-                    "actions": [{
-                        "generic_key": {
-                            "descriptor_value": (
-                                f"per_route_{prefix.strip('/').replace('/', '_') or 'root'}"
-                            ),
-                        },
-                    }],
-                    "stage": 0,
-                }]
-                # Annotate the route so a downstream filter wiring step
-                # (PR-8.5) can find which routes need rate-limit token
-                # buckets configured. Envoy ignores unknown metadata
-                # fields under typed_per_filter_config.
-                route["typed_per_filter_config"] = route.get(
-                    "typed_per_filter_config", {},
-                )
-                route["typed_per_filter_config"]["envoy.filters.http.local_ratelimit"] = {
-                    "@type": "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit",
-                    "stat_prefix": "edge_rl",
-                    "token_bucket": {
-                        "max_tokens": burst if burst > 0 else ps,
-                        "tokens_per_fill": ps,
-                        "fill_interval": "1s",
-                    },
-                    "filter_enabled": {
-                        "runtime_key": "edge_rl_enabled",
-                        "default_value": {"numerator": 100, "denominator": "HUNDRED"},
-                    },
-                    "filter_enforced": {
-                        "runtime_key": "edge_rl_enforced",
-                        "default_value": {"numerator": 100, "denominator": "HUNDRED"},
-                    },
-                }
+    def _apex_route(self, cfg: RoutingConfigV2) -> dict[str, Any] | None:
+        """Build the apex route (exact "/" match) or None if action=NONE."""
+        apex = cfg.apex
+        if apex.action == ApexAction.NONE:
+            return None
+        if apex.action == ApexAction.REDIRECT:
+            return {
+                "match": {"path": "/"},
+                "redirect": {
+                    "path_redirect": apex.target,
+                    "response_code": self._envoy_redirect_code(apex.code),
+                },
+            }
+        if apex.action == ApexAction.SERVICE:
+            return {
+                "match": {"path": "/"},
+                "route": {"cluster": self._cluster_name(apex.target)},
+            }
+        if apex.action == ApexAction.STATIC:
+            # Envoy serves static responses via the
+            # `direct_response` route action. Body lives in
+            # `direct_response.body.inline_string`. The 200 default is
+            # right for "static landing page"; operators can override
+            # with apex.code if they want a different status.
+            return {
+                "match": {"path": "/"},
+                "direct_response": {
+                    "status": apex.code if apex.code != 302 else 200,
+                    "body": {"inline_string": apex.target},
+                },
+            }
+        return None  # unreachable; kept for future enum members
 
-        # Tier-2 geo ACL (PR-8). Render allow/deny lists onto the
-        # route's request_headers_to_add for downstream filters that
-        # honour an X-Geo-Country header (Envoy doesn't ship a built-in
-        # geo filter; this lays the contract for a Wasm or Lua plugin
-        # to consume — full enforcement in PR-8.5).
-        if geo_acl is not None:
-            allow = list(getattr(geo_acl, "allow", []) or [])
-            deny = list(getattr(geo_acl, "deny", []) or [])
-            if allow or deny:
-                route.setdefault("metadata", {}).setdefault("filter_metadata", {})[
-                    "edge.geo_acl"
-                ] = {"allow": allow, "deny": deny}
+    def _catch_all_route(self, cfg: RoutingConfigV2) -> dict[str, Any] | None:
+        """Final fallthrough route, evaluated only if nothing earlier
+        matched. ``NOT_FOUND`` is the default; explicit redirects/services/
+        blocks override it."""
+        catch = cfg.catch_all
+        if catch.action == CatchAllAction.NOT_FOUND:
+            # Envoy returns 404 by default when no route matches, so the
+            # explicit catch-all is only useful when the operator wants a
+            # custom body. Skip emission otherwise — keeps the route_config
+            # tight.
+            if not catch.custom_404_body:
+                return None
+            return {
+                "match": {"prefix": "/"},
+                "direct_response": {
+                    "status": 404,
+                    "body": {"inline_string": catch.custom_404_body},
+                },
+            }
+        if catch.action == CatchAllAction.REDIRECT:
+            return {
+                "match": {"prefix": "/"},
+                "redirect": {
+                    "path_redirect": catch.target,
+                    "response_code": self._envoy_redirect_code(catch.code),
+                },
+            }
+        if catch.action == CatchAllAction.SERVICE:
+            return {
+                "match": {"prefix": "/"},
+                "route": {"cluster": self._cluster_name(catch.target)},
+            }
+        if catch.action == CatchAllAction.BLOCK:
+            # 444 is nginx's "no response — close connection" code; Envoy
+            # doesn't have a dedicated equivalent, but `direct_response`
+            # with status 444 is the closest signal. Operators using
+            # block-mode are typically chaining a firewall rule on top.
+            return {
+                "match": {"prefix": "/"},
+                "direct_response": {"status": 444},
+            }
+        return None  # unreachable
 
-        return route
-
-    # No host context — the bare service-route case (e.g. an alias's
-    # canonical-only redirect). Return the minimum.
-    return {
-        "match": {"prefix": prefix},
-        "route": route_action,
-    }
-
-
-def _apex_route(cfg: RoutingConfigV2) -> dict[str, Any] | None:
-    """Build the apex route (exact "/" match) or None if action=NONE."""
-    apex = cfg.apex
-    if apex.action == ApexAction.NONE:
-        return None
-    if apex.action == ApexAction.REDIRECT:
+    def _envoy_redirect_code(self, http_code: int) -> str:
+        """Map an HTTP redirect code to the Envoy enum string."""
         return {
-            "match": {"path": "/"},
-            "redirect": {
-                "path_redirect": apex.target,
-                "response_code": _envoy_redirect_code(apex.code),
-            },
-        }
-    if apex.action == ApexAction.SERVICE:
-        return {
-            "match": {"path": "/"},
-            "route": {"cluster": _cluster_name(apex.target)},
-        }
-    if apex.action == ApexAction.STATIC:
-        # Envoy serves static responses via the
-        # `direct_response` route action. Body lives in
-        # `direct_response.body.inline_string`. The 200 default is
-        # right for "static landing page"; operators can override
-        # with apex.code if they want a different status.
-        return {
-            "match": {"path": "/"},
-            "direct_response": {
-                "status": apex.code if apex.code != 302 else 200,
-                "body": {"inline_string": apex.target},
-            },
-        }
-    return None  # unreachable; kept for future enum members
+            301: "MOVED_PERMANENTLY",
+            302: "FOUND",
+            303: "SEE_OTHER",
+            307: "TEMPORARY_REDIRECT",
+            308: "PERMANENT_REDIRECT",
+        }.get(int(http_code), "FOUND")
 
+    def _split_hosts_by_role(self, cfg: RoutingConfigV2) -> tuple[list, list]:
+        """Bucket host entries by whether they own the gateway host or
+        not. The gateway host vhost is special — it carries the apex,
+        catch-all, and path_aliases routes. Subdomain hosts are simpler
+        (one prefix → one cluster)."""
+        gateway_hosts: list = []
+        other_hosts: list = []
+        gw = cfg.gateway_host
+        for h in cfg.hosts:
+            if h.canonical == gw or gw in h.aliases:
+                gateway_hosts.append(h)
+            else:
+                other_hosts.append(h)
+        return gateway_hosts, other_hosts
 
-def _catch_all_route(cfg: RoutingConfigV2) -> dict[str, Any] | None:
-    """Final fallthrough route, evaluated only if nothing earlier
-    matched. ``NOT_FOUND`` is the default; explicit redirects/services/
-    blocks override it."""
-    catch = cfg.catch_all
-    if catch.action == CatchAllAction.NOT_FOUND:
-        # Envoy returns 404 by default when no route matches, so the
-        # explicit catch-all is only useful when the operator wants a
-        # custom body. Skip emission otherwise — keeps the route_config
-        # tight.
-        if not catch.custom_404_body:
+    def _build_subdomain_vhost(self, host, defaults=None) -> dict[str, Any]:
+        """A subdomain host gets a vhost matching just its canonical and
+        a single forward route. ``defaults`` is threaded through so
+        inherited timeouts/headers/websocket land on the route action."""
+        routes = [self._service_route("/", host.service_id,
+                                      host=host, defaults=defaults)]
+        return {
+            "name": f"vh_{host.role or host.service_id}_{host.canonical}",
+            "domains": [host.canonical],
+            "routes": routes,
+        }
+
+    def _build_alias_redirect_vhost(self, host) -> dict[str, Any] | None:
+        """If the host has aliases, emit a separate vhost matching them
+        and redirecting to the canonical."""
+        if not host.aliases:
             return None
         return {
-            "match": {"prefix": "/"},
-            "direct_response": {
-                "status": 404,
-                "body": {"inline_string": catch.custom_404_body},
-            },
+            "name": f"vh_{host.role or host.service_id}_aliases",
+            "domains": list(host.aliases),
+            "routes": [self._redirect_route_to_canonical(host.canonical)],
         }
-    if catch.action == CatchAllAction.REDIRECT:
+
+    def _build_gateway_vhost(
+        self,
+        cfg: RoutingConfigV2,
+        gateway_hosts: Iterable,
+        other_hosts: Iterable,
+    ) -> dict[str, Any] | None:
+        """Build the virtual_host for the gateway hostname.
+
+        The gateway host carries:
+
+          * path_aliases (highest priority)
+          * one path_prefix route per gateway-host service (e.g.
+            m.iomio.io/apps/ → homepage)
+          * one path_prefix route per *other* host that has a
+            ``path_prefix`` set (path-strategy surfacing)
+          * apex
+          * catch_all
+
+        Returns None if there's no gateway hostname at all (purely
+        subdomain-routed configs).
+        """
+        gw = cfg.gateway_host
+        if not gw:
+            return None
+
+        routes: list[dict[str, Any]] = []
+
+        # 1. path_aliases — most specific match first (alphabetical-by-from
+        # for stable diffs).
+        for p in sorted(cfg.path_aliases, key=lambda x: x.from_path):
+            if p.from_path and p.to_path:
+                routes.append(self._redirect_route_for_path_alias(p))
+
+        # 2. path_prefix routes — every host with a path_prefix gets
+        # surfaced under the gateway. Subdomain-only hosts (no path_prefix)
+        # are reached via their own vhosts; we don't double-route them.
+        pp_hosts = [h for h in cfg.hosts if h.path_prefix]
+        pp_hosts.sort(key=lambda h: h.path_prefix or "")
+        for h in pp_hosts:
+            prefix = h.path_prefix
+            if not prefix.endswith("/"):
+                prefix = prefix + "/"
+            routes.append(self._service_route(prefix, h.service_id,
+                                              host=h, defaults=cfg.defaults))
+
+        # 3. Service routes for hosts whose canonical IS the gateway host
+        # but with no path_prefix (e.g. "m.iomio.io" → homepage at root).
+        # Only emit when no other route has already claimed "/".
+        for h in gateway_hosts:
+            if not h.path_prefix:
+                # Skip if apex already redirects "/", which evaluates first
+                # via exact-path matching anyway.
+                routes.append(self._service_route("/", h.service_id,
+                                                  host=h, defaults=cfg.defaults))
+
+        # 4. Apex route (exact "/" match — Envoy evaluates exact-path
+        # before prefix, so this naturally beats the catch-all).
+        apex = self._apex_route(cfg)
+        if apex is not None:
+            routes.append(apex)
+
+        # 5. Catch-all (prefix "/", last resort).
+        ca = self._catch_all_route(cfg)
+        if ca is not None:
+            routes.append(ca)
+
+        # Mark the parameter as intentionally unused if no hosts present
+        # (kept for symmetry; future versions may surface stub redirects).
+        _ = other_hosts
+
+        if not routes:
+            return None
+
         return {
-            "match": {"prefix": "/"},
-            "redirect": {
-                "path_redirect": catch.target,
-                "response_code": _envoy_redirect_code(catch.code),
-            },
+            "name": f"vh_gateway_{gw}",
+            "domains": [gw],
+            "routes": routes,
         }
-    if catch.action == CatchAllAction.SERVICE:
+
+    def generate_route_config_v2(self, cfg: RoutingConfigV2) -> dict[str, Any]:
+        """Build the full Envoy ``route_config`` from a v2 config.
+
+        Output shape::
+
+            {
+              "name": "main",
+              "virtual_hosts": [
+                {"name": ..., "domains": [...], "routes": [...]},
+                ...
+              ]
+            }
+
+        The result is deterministic — vhosts are sorted by canonical
+        domain so a config that hasn't changed produces byte-identical
+        output. This is what makes the byte-stable ratchet (R-5) safe.
+        """
+        gateway_hosts, other_hosts = self._split_hosts_by_role(cfg)
+
+        vhosts: list[dict[str, Any]] = []
+
+        # Gateway vhost (path_aliases + apex + catch_all + path-prefixed
+        # service routes live here).
+        gw_vhost = self._build_gateway_vhost(cfg, gateway_hosts, other_hosts)
+        if gw_vhost is not None:
+            vhosts.append(gw_vhost)
+
+        # Subdomain hosts that are not the gateway — one vhost per
+        # canonical, plus an alias-redirect vhost when aliases exist.
+        for h in sorted(other_hosts, key=lambda x: x.canonical):
+            vhosts.append(self._build_subdomain_vhost(h, defaults=cfg.defaults))
+            alias_vhost = self._build_alias_redirect_vhost(h)
+            if alias_vhost is not None:
+                vhosts.append(alias_vhost)
+
         return {
-            "match": {"prefix": "/"},
-            "route": {"cluster": _cluster_name(catch.target)},
-        }
-    if catch.action == CatchAllAction.BLOCK:
-        # 444 is nginx's "no response — close connection" code; Envoy
-        # doesn't have a dedicated equivalent, but `direct_response`
-        # with status 444 is the closest signal. Operators using
-        # block-mode are typically chaining a firewall rule on top.
-        return {
-            "match": {"prefix": "/"},
-            "direct_response": {"status": 444},
-        }
-    return None  # unreachable
-
-
-def _envoy_redirect_code(http_code: int) -> str:
-    """Map an HTTP redirect code to the Envoy enum string."""
-    return {
-        301: "MOVED_PERMANENTLY",
-        302: "FOUND",
-        303: "SEE_OTHER",
-        307: "TEMPORARY_REDIRECT",
-        308: "PERMANENT_REDIRECT",
-    }.get(int(http_code), "FOUND")
-
-
-def _split_hosts_by_role(cfg: RoutingConfigV2) -> tuple[list, list]:
-    """Bucket host entries by whether they own the gateway host or
-    not. The gateway host vhost is special — it carries the apex,
-    catch-all, and path_aliases routes. Subdomain hosts are simpler
-    (one prefix → one cluster)."""
-    gateway_hosts: list = []
-    other_hosts: list = []
-    gw = cfg.gateway_host
-    for h in cfg.hosts:
-        if h.canonical == gw or gw in h.aliases:
-            gateway_hosts.append(h)
-        else:
-            other_hosts.append(h)
-    return gateway_hosts, other_hosts
-
-
-def _build_subdomain_vhost(host, defaults=None) -> dict[str, Any]:
-    """A subdomain host gets a vhost matching just its canonical and
-    a single forward route. ``defaults`` is threaded through so
-    inherited timeouts/headers/websocket land on the route action."""
-    routes = [_service_route("/", host.service_id,
-                              host=host, defaults=defaults)]
-    return {
-        "name": f"vh_{host.role or host.service_id}_{host.canonical}",
-        "domains": [host.canonical],
-        "routes": routes,
-    }
-
-
-def _build_alias_redirect_vhost(host) -> dict[str, Any] | None:
-    """If the host has aliases, emit a separate vhost matching them
-    and redirecting to the canonical."""
-    if not host.aliases:
-        return None
-    return {
-        "name": f"vh_{host.role or host.service_id}_aliases",
-        "domains": list(host.aliases),
-        "routes": [_redirect_route_to_canonical(host.canonical)],
-    }
-
-
-def _build_gateway_vhost(
-    cfg: RoutingConfigV2,
-    gateway_hosts: Iterable,
-    other_hosts: Iterable,
-) -> dict[str, Any] | None:
-    """Build the virtual_host for the gateway hostname.
-
-    The gateway host carries:
-
-      * path_aliases (highest priority)
-      * one path_prefix route per gateway-host service (e.g.
-        m.iomio.io/apps/ → homepage)
-      * one path_prefix route per *other* host that has a
-        ``path_prefix`` set (path-strategy surfacing)
-      * apex
-      * catch_all
-
-    Returns None if there's no gateway hostname at all (purely
-    subdomain-routed configs).
-    """
-    gw = cfg.gateway_host
-    if not gw:
-        return None
-
-    routes: list[dict[str, Any]] = []
-
-    # 1. path_aliases — most specific match first (alphabetical-by-from
-    # for stable diffs).
-    for p in sorted(cfg.path_aliases, key=lambda x: x.from_path):
-        if p.from_path and p.to_path:
-            routes.append(_redirect_route_for_path_alias(p))
-
-    # 2. path_prefix routes — every host with a path_prefix gets
-    # surfaced under the gateway. Subdomain-only hosts (no path_prefix)
-    # are reached via their own vhosts; we don't double-route them.
-    pp_hosts = [h for h in cfg.hosts if h.path_prefix]
-    pp_hosts.sort(key=lambda h: h.path_prefix or "")
-    for h in pp_hosts:
-        prefix = h.path_prefix
-        if not prefix.endswith("/"):
-            prefix = prefix + "/"
-        routes.append(_service_route(prefix, h.service_id,
-                                       host=h, defaults=cfg.defaults))
-
-    # 3. Service routes for hosts whose canonical IS the gateway host
-    # but with no path_prefix (e.g. "m.iomio.io" → homepage at root).
-    # Only emit when no other route has already claimed "/".
-    for h in gateway_hosts:
-        if not h.path_prefix:
-            # Skip if apex already redirects "/", which evaluates first
-            # via exact-path matching anyway.
-            routes.append(_service_route("/", h.service_id,
-                                           host=h, defaults=cfg.defaults))
-
-    # 4. Apex route (exact "/" match — Envoy evaluates exact-path
-    # before prefix, so this naturally beats the catch-all).
-    apex = _apex_route(cfg)
-    if apex is not None:
-        routes.append(apex)
-
-    # 5. Catch-all (prefix "/", last resort).
-    ca = _catch_all_route(cfg)
-    if ca is not None:
-        routes.append(ca)
-
-    # Mark the parameter as intentionally unused if no hosts present
-    # (kept for symmetry; future versions may surface stub redirects).
-    _ = other_hosts
-
-    if not routes:
-        return None
-
-    return {
-        "name": f"vh_gateway_{gw}",
-        "domains": [gw],
-        "routes": routes,
-    }
-
-
-def generate_route_config_v2(cfg: RoutingConfigV2) -> dict[str, Any]:
-    """Build the full Envoy ``route_config`` from a v2 config.
-
-    Output shape::
-
-        {
-          "name": "main",
-          "virtual_hosts": [
-            {"name": ..., "domains": [...], "routes": [...]},
-            ...
-          ]
+            "name": "main",
+            "virtual_hosts": vhosts,
         }
 
-    The result is deterministic — vhosts are sorted by canonical
-    domain so a config that hasn't changed produces byte-identical
-    output. This is what makes the byte-stable ratchet (R-5) safe.
-    """
-    gateway_hosts, other_hosts = _split_hosts_by_role(cfg)
 
-    vhosts: list[dict[str, Any]] = []
+# Module-level singleton + alias bindings preserve the historical
+# free-function API. Call sites importing ``_cluster_name``,
+# ``generate_route_config_v2``, etc. continue to work unchanged.
+_GENERATOR = EnvoyRouteGeneratorV2()
 
-    # Gateway vhost (path_aliases + apex + catch_all + path-prefixed
-    # service routes live here).
-    gw_vhost = _build_gateway_vhost(cfg, gateway_hosts, other_hosts)
-    if gw_vhost is not None:
-        vhosts.append(gw_vhost)
-
-    # Subdomain hosts that are not the gateway — one vhost per
-    # canonical, plus an alias-redirect vhost when aliases exist.
-    for h in sorted(other_hosts, key=lambda x: x.canonical):
-        vhosts.append(_build_subdomain_vhost(h, defaults=cfg.defaults))
-        alias_vhost = _build_alias_redirect_vhost(h)
-        if alias_vhost is not None:
-            vhosts.append(alias_vhost)
-
-    return {
-        "name": "main",
-        "virtual_hosts": vhosts,
-    }
+_cluster_name = _GENERATOR._cluster_name
+_redirect_route_for_path_alias = _GENERATOR._redirect_route_for_path_alias
+_redirect_route_to_canonical = _GENERATOR._redirect_route_to_canonical
+_service_route = _GENERATOR._service_route
+_apex_route = _GENERATOR._apex_route
+_catch_all_route = _GENERATOR._catch_all_route
+_envoy_redirect_code = _GENERATOR._envoy_redirect_code
+_split_hosts_by_role = _GENERATOR._split_hosts_by_role
+_build_subdomain_vhost = _GENERATOR._build_subdomain_vhost
+_build_alias_redirect_vhost = _GENERATOR._build_alias_redirect_vhost
+_build_gateway_vhost = _GENERATOR._build_gateway_vhost
+generate_route_config_v2 = _GENERATOR.generate_route_config_v2
