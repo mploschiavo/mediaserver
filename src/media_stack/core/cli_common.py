@@ -2,7 +2,6 @@
 """Shared helpers for migrated script CLIs."""
 
 from __future__ import annotations
-from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z
 
 import os
 import subprocess
@@ -14,32 +13,93 @@ from typing import Mapping, Sequence
 
 from media_stack.core.exceptions import MediaStackError
 from media_stack.core.platforms.kubernetes.kube_client import resolve_kubectl_binary
+from media_stack.core.time_utils import ISO_8601_TZ_OFFSET, ISO_8601_UTC_Z  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
-# Logging helpers
+# CLI helpers (class-based per ADR-0012)
 # ---------------------------------------------------------------------------
 
-def ts() -> str:
-    """ISO timestamp for log lines."""
-    return time.strftime(ISO_8601_TZ_OFFSET)
+
+class CliCommonHelpers:
+    """Class-based wrapper for shared CLI helpers (ADR-0012)."""
+
+    def ts(self) -> str:
+        """ISO timestamp for log lines."""
+        return time.strftime(ISO_8601_TZ_OFFSET)
+
+    def info(self, message: str) -> None:
+        print(f"[{sys.modules[__name__].ts()}] [INFO] {message}", flush=True)
+
+    def warn(self, message: str) -> None:
+        print(
+            f"[{sys.modules[__name__].ts()}] [WARN] {message}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def err(self, message: str) -> None:
+        print(
+            f"[{sys.modules[__name__].ts()}] [ERR] {message}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    def run_command(
+        self,
+        cmd: Sequence[str],
+        *,
+        check: bool = True,
+        input_text: str | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        proc = subprocess.run(
+            list(cmd),
+            check=False,
+            capture_output=True,
+            text=True,
+            input=input_text,
+            env=(dict(os.environ) | dict(env)) if env is not None else None,
+        )
+        if check and proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip() or f"exit code {proc.returncode}"
+            raise MediaStackError(f"Command failed ({' '.join(cmd)}): {detail}")
+        return proc
+
+    def kube_cmd(self) -> list[str]:
+        return resolve_kubectl_binary()
+
+    def repo_root_from_script_file(self, script_file: str) -> Path:
+        resolved = Path(script_file).resolve()
+        for candidate in (resolved.parent, *resolved.parents):
+            if (candidate / "contracts" / "media-stack.config.json").exists() and (
+                candidate / "src" / "media_stack"
+            ).exists():
+                return candidate
+        # Fallback for expected src/media_stack/... paths.
+        if len(resolved.parents) >= 5:
+            return resolved.parents[4]
+        return resolved.parent
 
 
-def info(message: str) -> None:
-    print(f"[{ts()}] [INFO] {message}", flush=True)
+_INSTANCE = CliCommonHelpers()
 
-
-def warn(message: str) -> None:
-    print(f"[{ts()}] [WARN] {message}", file=sys.stderr, flush=True)
-
-
-def err(message: str) -> None:
-    print(f"[{ts()}] [ERR] {message}", file=sys.stderr, flush=True)
+# Module-level aliases preserve every public name with the same signature so
+# `from media_stack.core.cli_common import ts, info, warn, err, ...` keeps
+# working for every CLI that imports them.
+ts = _INSTANCE.ts
+info = _INSTANCE.info
+warn = _INSTANCE.warn
+err = _INSTANCE.err
+run_command = _INSTANCE.run_command
+kube_cmd = _INSTANCE.kube_cmd
+repo_root_from_script_file = _INSTANCE.repo_root_from_script_file
 
 
 # ---------------------------------------------------------------------------
 # Phase tracking
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PhaseTracker:
@@ -55,7 +115,7 @@ class PhaseTracker:
     def start(self, phase_name: str) -> None:
         self.current_phase = phase_name
         self.current_start = int(time.time())
-        info(f"[PHASE] START: {phase_name}")
+        sys.modules[__name__].info(f"[PHASE] START: {phase_name}")
 
     def end(self, result: str) -> None:
         now = int(time.time())
@@ -64,61 +124,25 @@ class PhaseTracker:
             self.names.append(self.current_phase)
             self.results.append(result)
             self.seconds.append(elapsed)
+            module = sys.modules[__name__]
             if result == "ok":
-                info(f"[PHASE] DONE: {self.current_phase} ({elapsed}s)")
+                module.info(f"[PHASE] DONE: {self.current_phase} ({elapsed}s)")
             elif result == "skipped":
-                info(f"[PHASE] SKIP: {self.current_phase} ({elapsed}s)")
+                module.info(f"[PHASE] SKIP: {self.current_phase} ({elapsed}s)")
             else:
-                warn(f"[PHASE] FAIL: {self.current_phase} ({elapsed}s)")
+                module.warn(f"[PHASE] FAIL: {self.current_phase} ({elapsed}s)")
         self.current_phase = ""
         self.current_start = 0
 
     def summary(self) -> None:
         total = int(time.time()) - self.run_start_epoch
-        info(f"Phase Summary (total {total}s)")
+        module = sys.modules[__name__]
+        module.info(f"Phase Summary (total {total}s)")
         if not self.names:
-            info("  (no phases recorded)")
+            module.info("  (no phases recorded)")
             return
         for idx, name in enumerate(self.names):
-            info(f"  {name} => {self.results[idx]} ({self.seconds[idx]}s)")
+            module.info(f"  {name} => {self.results[idx]} ({self.seconds[idx]}s)")
 
     # Alias used by some callers.
     print_summary = summary
-
-
-def run_command(
-    cmd: Sequence[str],
-    *,
-    check: bool = True,
-    input_text: str | None = None,
-    env: Mapping[str, str] | None = None,
-) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
-        list(cmd),
-        check=False,
-        capture_output=True,
-        text=True,
-        input=input_text,
-        env=(dict(os.environ) | dict(env)) if env is not None else None,
-    )
-    if check and proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip() or f"exit code {proc.returncode}"
-        raise MediaStackError(f"Command failed ({' '.join(cmd)}): {detail}")
-    return proc
-
-
-def kube_cmd() -> list[str]:
-    return resolve_kubectl_binary()
-
-
-def repo_root_from_script_file(script_file: str) -> Path:
-    resolved = Path(script_file).resolve()
-    for candidate in (resolved.parent, *resolved.parents):
-        if (candidate / "contracts" / "media-stack.config.json").exists() and (
-            candidate / "src" / "media_stack"
-        ).exists():
-            return candidate
-    # Fallback for expected src/media_stack/... paths.
-    if len(resolved.parents) >= 5:
-        return resolved.parents[4]
-    return resolved.parent

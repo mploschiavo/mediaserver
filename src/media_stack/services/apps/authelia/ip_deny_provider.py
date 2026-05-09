@@ -63,6 +63,7 @@ our managed rule is lost. Two safeguards:
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -115,10 +116,10 @@ class AutheliaIPDenyProvider:
 
     def __init__(
         self,
-        config_path: Path,
+        config_path: Path | None = None,
         reload_hook: ReloadHook | None = None,
     ) -> None:
-        self._path = Path(config_path)
+        self._path = Path(config_path) if config_path is not None else None
         self._reload_hook = reload_hook
 
     # ---- IPDenyProvider -------------------------------------------------
@@ -144,8 +145,11 @@ class AutheliaIPDenyProvider:
         that the reload hook still fires (explicit re-sync is
         sometimes useful operationally).
         """
+        cidr = rule.cidr
+        mod = sys.modules[__name__]
+
         def _mutate(current: dict[str, Any]) -> dict[str, Any]:
-            return _merge_deny(current, add=rule.cidr, remove=None)
+            return mod._merge_deny(current, add=cidr, remove=None)
 
         self._editor().edit(_mutate)
         self._signal_reload()
@@ -158,9 +162,10 @@ class AutheliaIPDenyProvider:
         bare addresses ("203.0.113.45") and have them match /32 form.
         """
         normalised = IPDeny(cidr=cidr).cidr
+        mod = sys.modules[__name__]
 
         def _mutate(current: dict[str, Any]) -> dict[str, Any]:
-            return _merge_deny(current, add=None, remove=normalised)
+            return mod._merge_deny(current, add=None, remove=normalised)
 
         self._editor().edit(_mutate)
         self._signal_reload()
@@ -168,175 +173,192 @@ class AutheliaIPDenyProvider:
     # ---- Internals ------------------------------------------------------
 
     def _editor(self) -> SafeYamlEditor:
-        return SafeYamlEditor(self._path, validator=_validate_authelia_config)
+        if self._path is None:
+            raise AutheliaIPDenyError(
+                "AutheliaIPDenyProvider has no config_path bound; "
+                "construct an instance with config_path before editing",
+            )
+        return SafeYamlEditor(
+            self._path,
+            validator=sys.modules[__name__]._validate_authelia_config,
+        )
 
     def _read_managed_rule(self) -> _ManagedRuleView | None:
-        if not self._path.is_file():
+        if self._path is None or not self._path.is_file():
             return None
         import yaml
         try:
             data = yaml.safe_load(self._path.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError:
             return None
-        return _find_managed_rule(data)
+        return sys.modules[__name__]._find_managed_rule(data)
 
     def _signal_reload(self) -> None:
         if self._reload_hook is None:
             return
         self._reload_hook()
 
+    # ---- Pure helpers (instance methods, no IO) -------------------------
 
-# --------------------------------------------------------------------------
-# Pure helpers (easier to test, no IO).
-# --------------------------------------------------------------------------
+    def _find_managed_rule(self, data: dict[str, Any]) -> _ManagedRuleView | None:
+        """Locate our managed rule in ``access_control.rules``.
 
+        Returns None when the rule isn't present. Raises
+        ``AutheliaIPDenyError`` if MULTIPLE candidates match — a human
+        has edited our slot and we refuse to silently pick one.
+        """
+        mod = sys.modules[__name__]
+        rules = mod._rules_list(data)
+        matches: list[tuple[int, dict[str, Any]]] = []
+        for idx, rule in enumerate(rules):
+            if mod._is_managed_rule(rule):
+                matches.append((idx, rule))
+        if not matches:
+            return None
+        if len(matches) > 1:
+            raise AutheliaIPDenyError(
+                "multiple candidate managed rules in access_control.rules — "
+                "refusing to guess which one is ours",
+            )
+        idx, rule = matches[0]
+        networks = tuple(str(n) for n in (rule.get("networks") or []))
+        return _ManagedRuleView(index=idx, networks=networks)
 
-def _find_managed_rule(data: dict[str, Any]) -> _ManagedRuleView | None:
-    """Locate our managed rule in ``access_control.rules``.
-
-    Returns None when the rule isn't present. Raises
-    ``AutheliaIPDenyError`` if MULTIPLE candidates match — a human
-    has edited our slot and we refuse to silently pick one.
-    """
-    rules = _rules_list(data)
-    matches: list[tuple[int, dict[str, Any]]] = []
-    for idx, rule in enumerate(rules):
-        if _is_managed_rule(rule):
-            matches.append((idx, rule))
-    if not matches:
-        return None
-    if len(matches) > 1:
-        raise AutheliaIPDenyError(
-            "multiple candidate managed rules in access_control.rules — "
-            "refusing to guess which one is ours",
-        )
-    idx, rule = matches[0]
-    networks = tuple(str(n) for n in (rule.get("networks") or []))
-    return _ManagedRuleView(index=idx, networks=networks)
-
-
-def _is_managed_rule(rule: Any) -> bool:
-    if not isinstance(rule, dict):
-        return False
-    if set(rule.keys()) != _MANAGED_KEY_SET:
-        return False
-    if rule.get("domain") != _MANAGED_DOMAIN:
-        return False
-    if rule.get("policy") != _MANAGED_POLICY:
-        return False
-    if not isinstance(rule.get("networks"), list):
-        return False
-    return True
-
-
-def _rules_list(data: dict[str, Any]) -> list[Any]:
-    ac = data.get("access_control") or {}
-    if not isinstance(ac, dict):
-        return []
-    rules = ac.get("rules") or []
-    if not isinstance(rules, list):
-        return []
-    return rules
-
-
-def _merge_deny(
-    current: dict[str, Any],
-    *,
-    add: str | None,
-    remove: str | None,
-) -> dict[str, Any]:
-    """Pure merge: return an updated document with our managed rule
-    updated according to ``add`` / ``remove``.
-
-    One of ``add`` or ``remove`` must be non-None; both being None is
-    a caller bug. Not exposed; used only by the mutator lambdas.
-    """
-    if add is None and remove is None:
-        raise ValueError("_merge_deny requires either add or remove")
-
-    data = dict(current)
-    ac = dict(data.get("access_control") or {})
-    rules = list(ac.get("rules") or [])
-    # Find existing managed rule, capturing its index.
-    managed_idx = -1
-    managed_networks: list[str] = []
-    for idx, rule in enumerate(rules):
-        if _is_managed_rule(rule):
-            if managed_idx != -1:
-                raise AutheliaIPDenyError(
-                    "duplicate managed rules present; cannot merge",
-                )
-            managed_idx = idx
-            managed_networks = list(rule.get("networks") or [])
-
-    # Apply the requested change.
-    new_networks = list(managed_networks)
-    if add is not None and add not in new_networks:
-        new_networks.append(add)
-    if remove is not None and remove in new_networks:
-        new_networks.remove(remove)
-    # Deduplicate while preserving first-seen order (set() doesn't).
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for n in new_networks:
-        if n in seen:
-            continue
-        seen.add(n)
-        ordered.append(n)
-    new_networks = ordered
-
-    # Write back.
-    if not new_networks:
-        # Remove the managed rule entirely — Authelia rejects
-        # empty-networks entries at validation.
-        if managed_idx != -1:
-            rules.pop(managed_idx)
-    else:
-        new_rule = {
-            "domain": _MANAGED_DOMAIN,
-            "policy": _MANAGED_POLICY,
-            "networks": new_networks,
-        }
-        if managed_idx == -1:
-            # Pin to position 0 so it takes precedence over any
-            # admin-authored allow rules.
-            rules.insert(0, new_rule)
-        else:
-            rules[managed_idx] = new_rule
-
-    ac["rules"] = rules
-    data["access_control"] = ac
-    return data
-
-
-def _validate_authelia_config(data: dict[str, Any]) -> None:
-    """SafeYamlEditor validator — ensures we never write a shape that
-    Authelia would reject on reload.
-
-    We only validate the parts we touched. A busted ``configuration.yml``
-    elsewhere is out of scope for this writer; the config generator
-    owns the broader contract.
-    """
-    ac = data.get("access_control")
-    if ac is None:
-        return  # file may not have access_control yet; our writer adds it
-    if not isinstance(ac, dict):
-        raise ValueError("access_control must be a mapping")
-    rules = ac.get("rules")
-    if rules is None:
-        return
-    if not isinstance(rules, list):
-        raise ValueError("access_control.rules must be a list")
-    for i, rule in enumerate(rules):
+    def _is_managed_rule(self, rule: Any) -> bool:
         if not isinstance(rule, dict):
-            raise ValueError(f"access_control.rules[{i}] must be a mapping")
-        if _is_managed_rule(rule):
-            networks = rule["networks"]
-            if not networks:
-                raise ValueError(
-                    f"access_control.rules[{i}] is our managed rule but "
-                    "has empty networks — Authelia would reject this",
-                )
+            return False
+        if set(rule.keys()) != _MANAGED_KEY_SET:
+            return False
+        if rule.get("domain") != _MANAGED_DOMAIN:
+            return False
+        if rule.get("policy") != _MANAGED_POLICY:
+            return False
+        if not isinstance(rule.get("networks"), list):
+            return False
+        return True
+
+    def _rules_list(self, data: dict[str, Any]) -> list[Any]:
+        ac = data.get("access_control") or {}
+        if not isinstance(ac, dict):
+            return []
+        rules = ac.get("rules") or []
+        if not isinstance(rules, list):
+            return []
+        return rules
+
+    def _merge_deny(
+        self,
+        current: dict[str, Any],
+        *,
+        add: str | None,
+        remove: str | None,
+    ) -> dict[str, Any]:
+        """Pure merge: return an updated document with our managed rule
+        updated according to ``add`` / ``remove``.
+
+        One of ``add`` or ``remove`` must be non-None; both being None is
+        a caller bug. Not exposed; used only by the mutator lambdas.
+        """
+        if add is None and remove is None:
+            raise ValueError("_merge_deny requires either add or remove")
+
+        mod = sys.modules[__name__]
+        data = dict(current)
+        ac = dict(data.get("access_control") or {})
+        rules = list(ac.get("rules") or [])
+        # Find existing managed rule, capturing its index.
+        managed_idx = -1
+        managed_networks: list[str] = []
+        for idx, rule in enumerate(rules):
+            if mod._is_managed_rule(rule):
+                if managed_idx != -1:
+                    raise AutheliaIPDenyError(
+                        "duplicate managed rules present; cannot merge",
+                    )
+                managed_idx = idx
+                managed_networks = list(rule.get("networks") or [])
+
+        # Apply the requested change.
+        new_networks = list(managed_networks)
+        if add is not None and add not in new_networks:
+            new_networks.append(add)
+        if remove is not None and remove in new_networks:
+            new_networks.remove(remove)
+        # Deduplicate while preserving first-seen order (set() doesn't).
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for n in new_networks:
+            if n in seen:
+                continue
+            seen.add(n)
+            ordered.append(n)
+        new_networks = ordered
+
+        # Write back.
+        if not new_networks:
+            # Remove the managed rule entirely — Authelia rejects
+            # empty-networks entries at validation.
+            if managed_idx != -1:
+                rules.pop(managed_idx)
+        else:
+            new_rule = {
+                "domain": _MANAGED_DOMAIN,
+                "policy": _MANAGED_POLICY,
+                "networks": new_networks,
+            }
+            if managed_idx == -1:
+                # Pin to position 0 so it takes precedence over any
+                # admin-authored allow rules.
+                rules.insert(0, new_rule)
+            else:
+                rules[managed_idx] = new_rule
+
+        ac["rules"] = rules
+        data["access_control"] = ac
+        return data
+
+    def _validate_authelia_config(self, data: dict[str, Any]) -> None:
+        """SafeYamlEditor validator — ensures we never write a shape that
+        Authelia would reject on reload.
+
+        We only validate the parts we touched. A busted ``configuration.yml``
+        elsewhere is out of scope for this writer; the config generator
+        owns the broader contract.
+        """
+        mod = sys.modules[__name__]
+        ac = data.get("access_control")
+        if ac is None:
+            return  # file may not have access_control yet; our writer adds it
+        if not isinstance(ac, dict):
+            raise ValueError("access_control must be a mapping")
+        rules = ac.get("rules")
+        if rules is None:
+            return
+        if not isinstance(rules, list):
+            raise ValueError("access_control.rules must be a list")
+        for i, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                raise ValueError(f"access_control.rules[{i}] must be a mapping")
+            if mod._is_managed_rule(rule):
+                networks = rule["networks"]
+                if not networks:
+                    raise ValueError(
+                        f"access_control.rules[{i}] is our managed rule but "
+                        "has empty networks — Authelia would reject this",
+                    )
+
+
+# Module-level singleton + aliases so loose-helper call sites and
+# ``mock.patch`` targets continue to resolve. All public/private helper
+# names dispatch through ``sys.modules[__name__].<name>`` inside the
+# class so test-time monkeypatching of these aliases takes effect.
+_INSTANCE = AutheliaIPDenyProvider()
+
+_find_managed_rule = _INSTANCE._find_managed_rule
+_is_managed_rule = _INSTANCE._is_managed_rule
+_rules_list = _INSTANCE._rules_list
+_merge_deny = _INSTANCE._merge_deny
+_validate_authelia_config = _INSTANCE._validate_authelia_config
 
 
 __all__ = [

@@ -587,65 +587,86 @@ class PromiseRegistryLoader:
         return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def default_registry_path() -> Path:
-    """Return the legacy ``contracts/promises/promises.yaml`` path
-    (or the env override). Preserved for callers that still want a
-    single registry-file path."""
-    return ContractsLocator().legacy_promises_yaml()
+class PromisesRegistry:
+    """Module-level facade for the promises registry surface.
 
+    ADR-0012 — folds the legacy loose helpers (``default_registry_path``,
+    ``default_contracts_root``, ``load_registry``, ``_load_single_yaml``,
+    ``_parse_promise``) into instance methods so the module exposes
+    zero top-level ``FunctionDef`` AST nodes. Module-level aliases
+    below dispatch through ``sys.modules[__name__]`` so tests that
+    ``mock.patch`` a public name still intercept the call."""
 
-def default_contracts_root() -> Path:
-    """Return the resolved ``contracts/`` directory."""
-    return ContractsLocator().root()
+    def __init__(
+        self,
+        *,
+        entry_parser: PromiseEntryParser | None = None,
+    ) -> None:
+        self._entry_parser = entry_parser or PromiseEntryParser()
 
+    def default_registry_path(self) -> Path:
+        """Return the legacy ``contracts/promises/promises.yaml`` path
+        (or the env override). Preserved for callers that still want a
+        single registry-file path."""
+        return ContractsLocator().legacy_promises_yaml()
 
-def load_registry(path: Path | None = None) -> list[Promise]:
-    """Parse the registry and return the typed promise list.
+    def default_contracts_root(self) -> Path:
+        """Return the resolved ``contracts/`` directory."""
+        return ContractsLocator().root()
 
-    When ``path`` is provided, ONLY that single YAML file is read
-    (legacy contract — preserves test-fixture behaviour). When
-    ``path`` is None, the loader aggregates from per-service
-    contracts + cross-cutting / legacy promises.yaml and validates
-    cross-file invariants."""
-    if path is not None:
-        return _load_single_yaml(path)
-    return list(PromiseRegistryLoader().aggregate().promises)
+    def load_registry(self, path: Path | None = None) -> list[Promise]:
+        """Parse the registry and return the typed promise list.
 
+        When ``path`` is provided, ONLY that single YAML file is read
+        (legacy contract — preserves test-fixture behaviour). When
+        ``path`` is None, the loader aggregates from per-service
+        contracts + cross-cutting / legacy promises.yaml and validates
+        cross-file invariants."""
+        if path is not None:
+            import sys
+            return sys.modules[__name__]._load_single_yaml(path)
+        return list(PromiseRegistryLoader().aggregate().promises)
 
-def _load_single_yaml(path: Path) -> list[Promise]:
-    if not path.is_file():
-        logger.warning(
-            "promise registry missing at %s; returning empty list", path,
-        )
-        return []
-    import yaml
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(raw, dict):
-        raise PromiseRegistryError(
-            f"top-level YAML must be a dict, got {type(raw).__name__}",
-        )
-    entries = raw.get("promises") or []
-    if not isinstance(entries, list):
-        raise PromiseRegistryError("``promises:`` must be a list")
-    parser = PromiseEntryParser()
-    out: list[Promise] = []
-    for idx, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise PromiseRegistryError(
-                f"promise entry #{idx} is not a dict (got "
-                f"{type(entry).__name__})",
+    def _load_single_yaml(self, path: Path) -> list[Promise]:
+        if not path.is_file():
+            logger.warning(
+                "promise registry missing at %s; returning empty list", path,
             )
-        out.append(parser.parse(entry))
-    return out
+            return []
+        import yaml
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(raw, dict):
+            raise PromiseRegistryError(
+                f"top-level YAML must be a dict, got {type(raw).__name__}",
+            )
+        entries = raw.get("promises") or []
+        if not isinstance(entries, list):
+            raise PromiseRegistryError("``promises:`` must be a list")
+        parser = PromiseEntryParser()
+        out: list[Promise] = []
+        for idx, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise PromiseRegistryError(
+                    f"promise entry #{idx} is not a dict (got "
+                    f"{type(entry).__name__})",
+                )
+            out.append(parser.parse(entry))
+        return out
+
+    def _parse_promise(self, entry: Mapping[str, Any]) -> Promise:
+        """Backwards-compat shim around ``PromiseEntryParser``. New
+        code should construct + use a parser directly."""
+        return self._entry_parser.parse(entry)
 
 
-_default_entry_parser = PromiseEntryParser()
+_INSTANCE = PromisesRegistry()
+_default_entry_parser = _INSTANCE._entry_parser
 
-
-def _parse_promise(entry: Mapping[str, Any]) -> Promise:
-    """Backwards-compat shim around ``PromiseEntryParser``. New
-    code should construct + use a parser directly."""
-    return _default_entry_parser.parse(entry)
+default_registry_path = _INSTANCE.default_registry_path
+default_contracts_root = _INSTANCE.default_contracts_root
+load_registry = _INSTANCE.load_registry
+_load_single_yaml = _INSTANCE._load_single_yaml
+_parse_promise = _INSTANCE._parse_promise
 
 
 __all__ = [
@@ -655,6 +676,7 @@ __all__ = [
     "PromiseEntryParser",
     "PromiseRegistryLoader",
     "PromiseRegistryResult",
+    "PromisesRegistry",
     "default_contracts_root",
     "default_registry_path",
     "load_registry",

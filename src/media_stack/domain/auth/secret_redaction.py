@@ -31,6 +31,12 @@ Rules
    ``bearer``, ``secret``, ``session_token``) gets those values
    replaced with ``"[redacted]"``. Use this on logging payloads
    where you can't enumerate every possible key.
+
+ADR-0012 shape
+--------------
+All helpers live as plain instance methods on :class:`SecretRedaction`
+(no ``@staticmethod``). A module-level singleton plus aliases preserve
+the existing import surface (``from ... import fingerprint``).
 """
 
 from __future__ import annotations
@@ -67,96 +73,6 @@ _SECRET_KEY_PATTERNS: tuple[str, ...] = (
 
 _REDACTED_PLACEHOLDER = "[redacted]"
 
-
-def fingerprint(value: str) -> str:
-    """Return a short non-reversible-enough identifier for a secret.
-
-    Empty input returns the empty string. Anything under 8 chars is
-    hidden entirely because showing ``abc...abc`` for a 6-char
-    secret trivially leaks it.
-    """
-    if not value:
-        return ""
-    if len(value) < 8:
-        return _REDACTED_PLACEHOLDER
-    if len(value) < _MIN_FINGERPRINT_LEN:
-        head_tail = 2
-        return f"{value[:head_tail]}{_FINGERPRINT_MARKER}{value[-head_tail:]}"
-    return (
-        f"{value[:_FINGERPRINT_HEAD]}"
-        f"{_FINGERPRINT_MARKER}"
-        f"{value[-_FINGERPRINT_TAIL:]}"
-    )
-
-
-def redact_api_key_map(
-    keys: Mapping[str, str],
-    *,
-    source: str = "",
-) -> dict[str, dict[str, Any]]:
-    """Turn ``{service_id: raw_key}`` into a safe-to-echo shape.
-
-    Each service gets ``{has_key, fingerprint, source}`` — the raw
-    key is never in the returned structure. Use for any response
-    body or log line that needs to describe the key surface.
-
-    ``source`` is an optional label describing where the key came
-    from (``"file"``, ``"env"``, ``"sqlite"``) so the admin UI can
-    distinguish a rotated-on-disk key from an env-var fallback.
-    """
-    out: dict[str, dict[str, Any]] = {}
-    for svc_id, raw in keys.items():
-        value = raw or ""
-        out[svc_id] = {
-            "has_key": bool(value),
-            "fingerprint": fingerprint(value) if value else "",
-            "source": source,
-        }
-    return out
-
-
-def redact_if_secret_key(payload: Any) -> Any:
-    """Recursively redact secret-named fields in an arbitrary payload.
-
-    For dicts: any key matching ``_SECRET_KEY_PATTERNS`` (case
-    insensitive, substring) has its value replaced with
-    ``"[redacted]"``. Keys that aren't in that list are recursed
-    into. For lists: recurse into each element. For anything else:
-    return as-is.
-
-    Used to scrub log lines / telemetry / debug snapshots where an
-    explicit field-by-field redaction isn't practical.
-    """
-    if isinstance(payload, Mapping):
-        out: dict[str, Any] = {}
-        for k, v in payload.items():
-            if _looks_secret(k):
-                out[k] = _REDACTED_PLACEHOLDER
-            else:
-                out[k] = redact_if_secret_key(v)
-        return out
-    if isinstance(payload, list):
-        return [redact_if_secret_key(item) for item in payload]
-    if isinstance(payload, tuple):
-        return tuple(redact_if_secret_key(item) for item in payload)
-    return payload
-
-
-def _looks_secret(key: Any) -> bool:
-    """True if the (dict-key) name matches a known secret pattern.
-
-    We don't use regex for simplicity and speed — these are fixed
-    substring tests run in a tight loop during logging.
-    """
-    if not isinstance(key, str):
-        return False
-    k = key.lower()
-    for pat in _SECRET_KEY_PATTERNS:
-        if pat in k:
-            return True
-    return False
-
-
 # A regex to spot accidental embedded secrets in free-text — useful
 # for scrubbing logged URLs like ``https://host/api?api_key=XYZ``.
 # Matches ``api_key=<non-space>`` and similar. Not exhaustive; the
@@ -167,21 +83,127 @@ _URL_SECRET_RE = re.compile(
 )
 
 
-def redact_url_query(text: str) -> str:
-    """Replace ``?api_key=...`` and similar in any text with
-    ``?api_key=[redacted]``. Use on URLs flowing into audit / log
-    entries — some outbound HTTP calls still carry secrets as query
-    params (tracked for fix; see ``docs/security-a11y-contract.md``
-    § 3).
+class SecretRedaction:
+    """Bundle of redaction helpers (ADR-0012 class form).
+
+    Instances are stateless; the module-level :data:`_INSTANCE` plus
+    aliases below are the canonical entry points so the existing
+    ``from ... import fingerprint`` API stays unchanged.
     """
-    if not text:
-        return text
-    return _URL_SECRET_RE.sub(
-        lambda m: f"{m.group(1)}={_REDACTED_PLACEHOLDER}", text,
-    )
+
+    def fingerprint(self, value: str) -> str:
+        """Return a short non-reversible-enough identifier for a secret.
+
+        Empty input returns the empty string. Anything under 8 chars is
+        hidden entirely because showing ``abc...abc`` for a 6-char
+        secret trivially leaks it.
+        """
+        if not value:
+            return ""
+        if len(value) < 8:
+            return _REDACTED_PLACEHOLDER
+        if len(value) < _MIN_FINGERPRINT_LEN:
+            head_tail = 2
+            return f"{value[:head_tail]}{_FINGERPRINT_MARKER}{value[-head_tail:]}"
+        return (
+            f"{value[:_FINGERPRINT_HEAD]}"
+            f"{_FINGERPRINT_MARKER}"
+            f"{value[-_FINGERPRINT_TAIL:]}"
+        )
+
+    def redact_api_key_map(
+        self,
+        keys: Mapping[str, str],
+        *,
+        source: str = "",
+    ) -> dict[str, dict[str, Any]]:
+        """Turn ``{service_id: raw_key}`` into a safe-to-echo shape.
+
+        Each service gets ``{has_key, fingerprint, source}`` — the raw
+        key is never in the returned structure. Use for any response
+        body or log line that needs to describe the key surface.
+
+        ``source`` is an optional label describing where the key came
+        from (``"file"``, ``"env"``, ``"sqlite"``) so the admin UI can
+        distinguish a rotated-on-disk key from an env-var fallback.
+        """
+        out: dict[str, dict[str, Any]] = {}
+        for svc_id, raw in keys.items():
+            value = raw or ""
+            out[svc_id] = {
+                "has_key": bool(value),
+                "fingerprint": self.fingerprint(value) if value else "",
+                "source": source,
+            }
+        return out
+
+    def redact_if_secret_key(self, payload: Any) -> Any:
+        """Recursively redact secret-named fields in an arbitrary payload.
+
+        For dicts: any key matching ``_SECRET_KEY_PATTERNS`` (case
+        insensitive, substring) has its value replaced with
+        ``"[redacted]"``. Keys that aren't in that list are recursed
+        into. For lists: recurse into each element. For anything else:
+        return as-is.
+
+        Used to scrub log lines / telemetry / debug snapshots where an
+        explicit field-by-field redaction isn't practical.
+        """
+        if isinstance(payload, Mapping):
+            out: dict[str, Any] = {}
+            for k, v in payload.items():
+                if self._looks_secret(k):
+                    out[k] = _REDACTED_PLACEHOLDER
+                else:
+                    out[k] = self.redact_if_secret_key(v)
+            return out
+        if isinstance(payload, list):
+            return [self.redact_if_secret_key(item) for item in payload]
+        if isinstance(payload, tuple):
+            return tuple(self.redact_if_secret_key(item) for item in payload)
+        return payload
+
+    def _looks_secret(self, key: Any) -> bool:
+        """True if the (dict-key) name matches a known secret pattern.
+
+        We don't use regex for simplicity and speed — these are fixed
+        substring tests run in a tight loop during logging.
+        """
+        if not isinstance(key, str):
+            return False
+        k = key.lower()
+        for pat in _SECRET_KEY_PATTERNS:
+            if pat in k:
+                return True
+        return False
+
+    def redact_url_query(self, text: str) -> str:
+        """Replace ``?api_key=...`` and similar in any text with
+        ``?api_key=[redacted]``. Use on URLs flowing into audit / log
+        entries — some outbound HTTP calls still carry secrets as query
+        params (tracked for fix; see ``docs/security-a11y-contract.md``
+        § 3).
+        """
+        if not text:
+            return text
+        return _URL_SECRET_RE.sub(
+            lambda m: f"{m.group(1)}={_REDACTED_PLACEHOLDER}", text,
+        )
+
+
+_INSTANCE = SecretRedaction()
+
+# Module-level aliases preserve every public name so existing
+# ``from media_stack.domain.auth.secret_redaction import fingerprint``
+# style imports keep working unchanged.
+fingerprint = _INSTANCE.fingerprint
+redact_api_key_map = _INSTANCE.redact_api_key_map
+redact_if_secret_key = _INSTANCE.redact_if_secret_key
+redact_url_query = _INSTANCE.redact_url_query
 
 
 __all__ = [
+    "SecretRedaction",
     "fingerprint",
     "redact_api_key_map",
     "redact_if_secret_key",

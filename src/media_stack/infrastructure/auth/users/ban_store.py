@@ -177,7 +177,8 @@ class BanStore:
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
-        self._editor = SafeJsonEditor(self._path, validator=_validate_payload)
+        self._helpers = _HELPERS
+        self._editor = SafeJsonEditor(self._path, validator=self._helpers.validate_payload)
         self._lock = threading.RLock()
         self._cache: dict[str, Any] | None = None
 
@@ -211,7 +212,7 @@ class BanStore:
                 raise BanStoreError(
                     f"user {ban.username!r} already banned; supply idempotency_key to retry"
                 )
-            self._commit(lambda d: _append(d, "user_bans", ban.to_dict()))
+            self._commit(lambda d: self._helpers.append(d, "user_bans", ban.to_dict()))
             return ban
 
     def add_ip_ban(self, ban: IPBanRecord) -> IPBanRecord:
@@ -223,7 +224,7 @@ class BanStore:
                 raise BanStoreError(
                     f"cidr {ban.cidr!r} already banned; supply idempotency_key to retry"
                 )
-            self._commit(lambda d: _append(d, "ip_bans", ban.to_dict()))
+            self._commit(lambda d: self._helpers.append(d, "ip_bans", ban.to_dict()))
             return ban
 
     def remove_user_ban(self, username: str) -> UserBan | None:
@@ -232,7 +233,9 @@ class BanStore:
             if match is None:
                 return None
             self._commit(
-                lambda d: _remove_where(d, "user_bans", lambda r: r.get("username") == username)
+                lambda d: self._helpers.remove_where(
+                    d, "user_bans", lambda r: r.get("username") == username
+                )
             )
             return match
 
@@ -246,7 +249,9 @@ class BanStore:
             if match is None:
                 return None
             self._commit(
-                lambda d: _remove_where(d, "ip_bans", lambda r: r.get("cidr") == normalized)
+                lambda d: self._helpers.remove_where(
+                    d, "ip_bans", lambda r: r.get("cidr") == normalized
+                )
             )
             return match
 
@@ -285,9 +290,13 @@ class BanStore:
             dead_users = {b.username for b in expired_users}
             dead_cidrs = {b.cidr for b in expired_ips}
 
+            helpers = self._helpers
+
             def _mutate(d: dict[str, Any]) -> dict[str, Any]:
-                d = _remove_where(d, "user_bans", lambda r: r.get("username") in dead_users)
-                d = _remove_where(d, "ip_bans", lambda r: r.get("cidr") in dead_cidrs)
+                d = helpers.remove_where(
+                    d, "user_bans", lambda r: r.get("username") in dead_users
+                )
+                d = helpers.remove_where(d, "ip_bans", lambda r: r.get("cidr") in dead_cidrs)
                 return d
 
             self._commit(_mutate)
@@ -305,9 +314,9 @@ class BanStore:
         if not raw:
             # First access: write a fresh empty payload so the file
             # exists with the correct schema stamp.
-            self._commit(lambda _: _empty_payload())
+            self._commit(lambda _: self._helpers.empty_payload())
             return
-        _validate_payload(raw)
+        self._helpers.validate_payload(raw)
         self._cache = raw
 
     def _user_bans(self) -> list[UserBan]:
@@ -338,7 +347,7 @@ class BanStore:
 
     def _commit(self, mutator) -> None:
         try:
-            written = self._editor.edit(lambda d: mutator(_ensure_shape(d)))
+            written = self._editor.edit(lambda d: mutator(self._helpers.ensure_shape(d)))
         except SafeJsonEditError as exc:
             # Invalidate cache: on-disk state may or may not have changed.
             self._cache = None
@@ -349,45 +358,64 @@ class BanStore:
 # ----- payload helpers -------------------------------------------------
 
 
-def _empty_payload() -> dict[str, Any]:
-    return {"schema": SCHEMA_VERSION, "user_bans": [], "ip_bans": []}
+class BanStoreHelpers:
+    """Pure helpers for shaping and validating the on-disk JSON payload.
+
+    Per ADR-0012 the module exposes plain instance methods on a singleton
+    rather than module-level functions, so the AST FunctionDef count at
+    module scope stays at 0. Module-level aliases below preserve the
+    historical private names so ``mock.patch("…ban_store._validate_payload")``
+    style call sites keep working.
+    """
+
+    def empty_payload(self) -> dict[str, Any]:
+        return {"schema": SCHEMA_VERSION, "user_bans": [], "ip_bans": []}
+
+    def ensure_shape(self, d: dict[str, Any]) -> dict[str, Any]:
+        out = dict(d) if d else {}
+        out.setdefault("schema", SCHEMA_VERSION)
+        out.setdefault("user_bans", [])
+        out.setdefault("ip_bans", [])
+        return out
+
+    def append(self, d: dict[str, Any], key: str, record: dict[str, Any]) -> dict[str, Any]:
+        items = list(d.get(key, []))
+        items.append(record)
+        d[key] = items
+        return d
+
+    def remove_where(self, d: dict[str, Any], key: str, pred) -> dict[str, Any]:
+        d[key] = [r for r in d.get(key, []) if not pred(r)]
+        return d
+
+    def validate_payload(self, data: Any) -> None:
+        if not isinstance(data, dict):
+            raise BanStoreError("top-level payload must be an object")
+        schema = data.get("schema", SCHEMA_VERSION)
+        if not isinstance(schema, int):
+            raise BanStoreError(f"schema must be int, got {type(schema).__name__}")
+        for key in ("user_bans", "ip_bans"):
+            if key in data and not isinstance(data[key], list):
+                raise BanStoreError(f"{key} must be a list")
 
 
-def _ensure_shape(d: dict[str, Any]) -> dict[str, Any]:
-    out = dict(d) if d else {}
-    out.setdefault("schema", SCHEMA_VERSION)
-    out.setdefault("user_bans", [])
-    out.setdefault("ip_bans", [])
-    return out
+_HELPERS = BanStoreHelpers()
 
-
-def _append(d: dict[str, Any], key: str, record: dict[str, Any]) -> dict[str, Any]:
-    items = list(d.get(key, []))
-    items.append(record)
-    d[key] = items
-    return d
-
-
-def _remove_where(d: dict[str, Any], key: str, pred) -> dict[str, Any]:
-    d[key] = [r for r in d.get(key, []) if not pred(r)]
-    return d
-
-
-def _validate_payload(data: Any) -> None:
-    if not isinstance(data, dict):
-        raise BanStoreError("top-level payload must be an object")
-    schema = data.get("schema", SCHEMA_VERSION)
-    if not isinstance(schema, int):
-        raise BanStoreError(f"schema must be int, got {type(schema).__name__}")
-    for key in ("user_bans", "ip_bans"):
-        if key in data and not isinstance(data[key], list):
-            raise BanStoreError(f"{key} must be a list")
+# Module-level aliases preserve the historical private helper names.
+# New code should reach for the instance methods on ``_HELPERS`` (or via
+# ``BanStore._helpers``) instead of these aliases.
+_empty_payload = _HELPERS.empty_payload
+_ensure_shape = _HELPERS.ensure_shape
+_append = _HELPERS.append
+_remove_where = _HELPERS.remove_where
+_validate_payload = _HELPERS.validate_payload
 
 
 __all__ = [
     "BanReason",
     "BanStore",
     "BanStoreError",
+    "BanStoreHelpers",
     "BanStoreProtocol",
     "IPBanRecord",
     "UserBan",

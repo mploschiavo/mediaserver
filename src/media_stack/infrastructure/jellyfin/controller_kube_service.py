@@ -9,74 +9,100 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 from typing import Any
 import logging
 
 
-def choose_kubectl() -> list[str]:
-    if shutil.which("microk8s"):
-        return ["microk8s", "kubectl"]
-    if shutil.which("kubectl"):
-        return ["kubectl"]
-    raise RuntimeError("Neither 'microk8s' nor 'kubectl' is available in PATH.")
+class JellyfinControllerKubeService:
+    """kubectl/microk8s helpers for the Jellyfin bootstrap CLI.
 
+    ADR-0012 — every former loose helper is now a plain instance
+    method on this class. Module-level aliases at the bottom of the
+    file preserve the public import API. Methods that call other
+    helpers route through ``sys.modules[__name__]`` so existing test
+    suites that ``patch.object(module, "run_cmd", ...)`` keep
+    intercepting correctly (see
+    ``tests/unit/apps/jellyfin/test_jellyfin_bootstrap_kube_service.py``).
+    """
 
-def run_cmd(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
-    if check and proc.returncode != 0:
-        raise RuntimeError(
-            f"Command failed ({proc.returncode}): {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    def choose_kubectl(self) -> list[str]:
+        if shutil.which("microk8s"):
+            return ["microk8s", "kubectl"]
+        if shutil.which("kubectl"):
+            return ["kubectl"]
+        raise RuntimeError("Neither 'microk8s' nor 'kubectl' is available in PATH.")
+
+    def run_cmd(
+        self, cmd: list[str], check: bool = True
+    ) -> subprocess.CompletedProcess[str]:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
         )
-    return proc
+        if check and proc.returncode != 0:
+            raise RuntimeError(
+                f"Command failed ({proc.returncode}): {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+            )
+        return proc
 
+    def get_secret(
+        self, kubectl: list[str], namespace: str, secret_name: str
+    ) -> dict[str, str]:
+        # ADR-0012 design principle 3 — route through module alias so
+        # ``patch.object(module, "run_cmd", ...)`` in tests intercepts.
+        _module = sys.modules[__name__]
+        proc = _module.run_cmd(
+            kubectl + ["-n", namespace, "get", "secret", secret_name, "-o", "json"],
+            check=False,
+        )
+        if proc.returncode != 0:
+            return {}
+        raw = json.loads(proc.stdout)
+        data = raw.get("data") or {}
+        decoded: dict[str, str] = {}
+        for key, value in data.items():
+            try:
+                decoded[key] = base64.b64decode(value).decode("utf-8")
+            except Exception:
+                decoded[key] = ""
+        return decoded
 
-def get_secret(kubectl: list[str], namespace: str, secret_name: str) -> dict[str, str]:
-    proc = run_cmd(
-        kubectl + ["-n", namespace, "get", "secret", secret_name, "-o", "json"],
-        check=False,
-    )
-    if proc.returncode != 0:
-        return {}
-    raw = json.loads(proc.stdout)
-    data = raw.get("data") or {}
-    decoded: dict[str, str] = {}
-    for key, value in data.items():
-        try:
-            decoded[key] = base64.b64decode(value).decode("utf-8")
-        except Exception:
-            decoded[key] = ""
-    return decoded
+    def patch_secret(
+        self,
+        kubectl: list[str],
+        namespace: str,
+        secret_name: str,
+        values: dict[str, str],
+    ) -> None:
+        patch: dict[str, Any] = {"stringData": values}
+        # ADR-0012 design principle 3 — route through module alias so
+        # ``patch.object(module, "run_cmd", ...)`` in tests intercepts.
+        _module = sys.modules[__name__]
+        _module.run_cmd(
+            kubectl
+            + [
+                "-n",
+                namespace,
+                "patch",
+                "secret",
+                secret_name,
+                "--type",
+                "merge",
+                "-p",
+                json.dumps(patch),
+            ]
+        )
 
-
-def patch_secret(
-    kubectl: list[str],
-    namespace: str,
-    secret_name: str,
-    values: dict[str, str],
-) -> None:
-    patch: dict[str, Any] = {"stringData": values}
-    run_cmd(
-        kubectl
-        + [
-            "-n",
-            namespace,
-            "patch",
-            "secret",
-            secret_name,
-            "--type",
-            "merge",
-            "-p",
-            json.dumps(patch),
-        ]
-    )
-
-
-def pick_free_local_port() -> int:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return int(port)
+    def pick_free_local_port(self) -> int:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        return int(port)
 
 
 class PortForward:
@@ -123,3 +149,15 @@ class PortForward:
             raise RuntimeError(
                 f"kubectl port-forward exited early (code={self.proc.returncode}). stdout={out} stderr={err}"
             )
+
+
+# Module-level singleton + aliases (ADR-0012 design principle 2) —
+# preserves the public import API used by
+# ``cli_ensure_controller_main`` and ``controller_db_discovery_service``.
+_INSTANCE = JellyfinControllerKubeService()
+
+choose_kubectl = _INSTANCE.choose_kubectl
+run_cmd = _INSTANCE.run_cmd
+get_secret = _INSTANCE.get_secret
+patch_secret = _INSTANCE.patch_secret
+pick_free_local_port = _INSTANCE.pick_free_local_port

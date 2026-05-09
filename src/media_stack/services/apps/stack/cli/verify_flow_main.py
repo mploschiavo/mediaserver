@@ -20,33 +20,6 @@ class VerifyFlowConfig:
     namespace: str
 
 
-def parse_config(argv: list[str] | None = None) -> VerifyFlowConfig:
-    parser = argparse.ArgumentParser(
-        prog="bin/verify-flow.sh",
-        description="Verify bootstrap wiring from latest media-stack bootstrap logs and live checks.",
-    )
-    parser.add_argument("namespace", nargs="?", default="")
-    args = parser.parse_args(argv)
-    namespace = (
-        str(args.namespace or "").strip()
-        or os.environ.get("NAMESPACE", "media-stack").strip()
-        or "media-stack"
-    )
-    return VerifyFlowConfig(namespace=namespace)
-
-
-def _ok(msg: str) -> None:
-    print(f"[OK] {msg}")
-
-
-def _warn(msg: str) -> None:
-    print(f"[WARN] {msg}", file=sys.stderr)
-
-
-def _info(msg: str) -> None:
-    print(f"[INFO] {msg}")
-
-
 class FlowVerifier:
     def __init__(self, cfg: VerifyFlowConfig) -> None:
         self.cfg = cfg
@@ -61,23 +34,25 @@ class FlowVerifier:
         return proc.stdout or ""
 
     def _check_log(self, pattern: str, label: str, *, optional: bool = False) -> None:
+        module = sys.modules[__name__]
         if re.search(pattern, self.bootstrap_log, flags=re.IGNORECASE | re.MULTILINE):
-            _ok(label)
+            module._ok(label)
             return
         if optional:
-            _info(f"{label} (not configured)")
+            module._info(f"{label} (not configured)")
             return
-        _warn(label)
+        module._warn(label)
 
     def _check_writable(self, deploy: str, path: str, label: str) -> None:
+        module = sys.modules[__name__]
         proc = run_command(
             self._ns_cmd(["exec", f"deploy/{deploy}", "--", "sh", "-lc", f"test -w '{path}'"]),
             check=False,
         )
         if proc.returncode == 0:
-            _ok(label)
+            module._ok(label)
         else:
-            _warn(label)
+            module._warn(label)
 
     def _check_arr_remote_mapping(
         self,
@@ -88,6 +63,7 @@ class FlowVerifier:
         local_path: str,
         label: str,
     ) -> None:
+        module = sys.modules[__name__]
         remote_norm = remote_path.rstrip("/")
         local_norm = local_path.rstrip("/")
         shell = (
@@ -99,15 +75,15 @@ class FlowVerifier:
             check=False,
         )
         if proc.returncode != 0:
-            _warn(label)
+            module._warn(label)
             return
         try:
             payload = json.loads(proc.stdout or "[]")
         except json.JSONDecodeError:
-            _warn(label)
+            module._warn(label)
             return
         if not isinstance(payload, list):
-            _warn(label)
+            module._warn(label)
             return
         matched = any(
             str(item.get("remotePath", "")).rstrip("/") == remote_norm
@@ -116,11 +92,12 @@ class FlowVerifier:
             if isinstance(item, dict)
         )
         if matched:
-            _ok(label)
+            module._ok(label)
         else:
-            _warn(label)
+            module._warn(label)
 
     def _check_homepage_hosts(self) -> None:
+        module = sys.modules[__name__]
         ingress_hosts = self._kube_stdout(
             [
                 "get",
@@ -141,7 +118,7 @@ class FlowVerifier:
             ]
         )
         if not ingress_hosts or not hp_services.strip():
-            _warn(
+            module._warn(
                 "Homepage ingress/service check skipped (missing ingress hosts or homepage config)"
             )
             return
@@ -151,9 +128,9 @@ class FlowVerifier:
                 missing.append(host)
         if missing:
             for host in missing:
-                _warn(f"Homepage services.yaml missing host: {host}")
+                module._warn(f"Homepage services.yaml missing host: {host}")
         else:
-            _ok("Homepage services.yaml contains all ingress hosts")
+            module._ok("Homepage services.yaml contains all ingress hosts")
 
         for card, label in (
             ("Jellyfin Setup QR", "Homepage onboarding includes Jellyfin QR card"),
@@ -162,11 +139,12 @@ class FlowVerifier:
             ("TCL Quick Start", "Homepage onboarding includes TCL quick steps"),
         ):
             if card in hp_services:
-                _ok(label)
+                module._ok(label)
             else:
-                _warn(label)
+                module._warn(label)
 
     def _check_cronjob(self) -> None:
+        module = sys.modules[__name__]
         proc = run_command(
             self._ns_cmd(
                 [
@@ -181,11 +159,12 @@ class FlowVerifier:
         )
         schedule = (proc.stdout or "").strip()
         if proc.returncode == 0:
-            _ok(f"Bootstrap reconcile CronJob present (schedule={schedule or 'unknown'})")
+            module._ok(f"Bootstrap reconcile CronJob present (schedule={schedule or 'unknown'})")
         else:
-            _warn("Bootstrap reconcile CronJob present")
+            module._warn("Bootstrap reconcile CronJob present")
 
     def _check_sab_defaults(self) -> None:
+        module = sys.modules[__name__]
         checks = [
             (
                 "SAB download_dir defaults to /data/usenet/incomplete",
@@ -202,9 +181,9 @@ class FlowVerifier:
                 check=False,
             )
             if proc.returncode == 0:
-                _ok(label)
+                module._ok(label)
             else:
-                _warn(label)
+                module._warn(label)
 
     def _print_media_counts(self) -> None:
         print("\nCurrent media file counts from Jellyfin pod mounts")
@@ -403,13 +382,46 @@ Interpretation:
         return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    try:
-        verifier = FlowVerifier(parse_config(argv))
-        return verifier.run()
-    except (ConfigError, MediaStackError, OSError, ValueError) as exc:
-        print(f"[ERR] {exc}", file=sys.stderr)
-        return 1
+class VerifyFlowCommand:
+    def parse_config(self, argv: list[str] | None = None) -> VerifyFlowConfig:
+        parser = argparse.ArgumentParser(
+            prog="bin/verify-flow.sh",
+            description="Verify bootstrap wiring from latest media-stack bootstrap logs and live checks.",
+        )
+        parser.add_argument("namespace", nargs="?", default="")
+        args = parser.parse_args(argv)
+        namespace = (
+            str(args.namespace or "").strip()
+            or os.environ.get("NAMESPACE", "media-stack").strip()
+            or "media-stack"
+        )
+        return VerifyFlowConfig(namespace=namespace)
+
+    def _ok(self, msg: str) -> None:
+        print(f"[OK] {msg}")
+
+    def _warn(self, msg: str) -> None:
+        print(f"[WARN] {msg}", file=sys.stderr)
+
+    def _info(self, msg: str) -> None:
+        print(f"[INFO] {msg}")
+
+    def main(self, argv: list[str] | None = None) -> int:
+        module = sys.modules[__name__]
+        try:
+            verifier = FlowVerifier(module.parse_config(argv))
+            return verifier.run()
+        except (ConfigError, MediaStackError, OSError, ValueError) as exc:
+            print(f"[ERR] {exc}", file=sys.stderr)
+            return 1
+
+
+_INSTANCE = VerifyFlowCommand()
+parse_config = _INSTANCE.parse_config
+_ok = _INSTANCE._ok
+_warn = _INSTANCE._warn
+_info = _INSTANCE._info
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":
