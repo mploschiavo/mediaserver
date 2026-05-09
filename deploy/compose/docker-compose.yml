@@ -759,7 +759,7 @@ services:
 
   media-stack-ui:
     container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-ui
-    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.82}
+    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.83}
     restart: unless-stopped
     depends_on:
       media-stack-controller:
