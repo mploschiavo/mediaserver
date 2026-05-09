@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 
+from typing import Any
+
 from media_stack.core.logging_utils import log_swallowed
 import argparse
 import importlib
@@ -195,7 +197,7 @@ class ControllerJobHandlers:
                     # Errors already recorded in state by _exec_spec.
                     log_swallowed(exc)
 
-    def resolve_handler(self, spec: str):
+    def resolve_handler(self, spec: str) -> Any:
         """Import a handler from 'module.path:function_name' spec.
 
         Returns None if the module doesn't exist (app removed) instead of

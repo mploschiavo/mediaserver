@@ -897,32 +897,8 @@ class ControllerServeCommand:
             runtime_platform.log("[INFO] Shutting down bootstrap service")
             server.shutdown()
 
-    def main(self) -> None:
-        """Module-level entry point.
-
-        ``controller_serve`` is normally driven from
-        ``controller_main.py`` (the unified CLI) via ``_run_serve``; the
-        ``main`` shim exists so the module satisfies the ADR-0012
-        public-name contract (every command module exposes ``main``)
-        and so ``python -m media_stack.cli.commands.controller_serve``
-        Just Works for ad-hoc invocations. Delegates straight to the
-        unified CLI's argparse + dispatch so the surface stays single-
-        sourced.
-        """
-        from media_stack.cli.commands.controller_main import (
-            main as _controller_main,
-        )
-
-        _controller_main()
-
-
 _INSTANCE = ControllerServeCommand()
 _validate_key_against_service = _INSTANCE._validate_key_against_service
 _run_boot_configure_auth = _INSTANCE._run_boot_configure_auth
 _load_boot_profile = _INSTANCE._load_boot_profile
 _run_serve = _INSTANCE._run_serve
-main = _INSTANCE.main
-
-
-if __name__ == "__main__":
-    main()

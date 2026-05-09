@@ -79,16 +79,16 @@ class RuntimeBuilder:
                 continue
         return None
 
-    def resolve_jellyfin_configs(self, *args, **kwargs):
+    def resolve_jellyfin_configs(self, *args: Any, **kwargs: Any) -> Any:
         return self._load_media_server_config_resolver().resolve_jellyfin_configs(*args, **kwargs)
 
-    def populate_prowlarr_service_dicts(self, *args, **kwargs):
+    def populate_prowlarr_service_dicts(self, *args: Any, **kwargs: Any) -> Any:
         return self._load_indexer_manager_key_reader().populate_prowlarr_service_dicts(*args, **kwargs)
 
-    def read_prowlarr_api_key(self, *args, **kwargs):
+    def read_prowlarr_api_key(self, *args: Any, **kwargs: Any) -> Any:
         return self._load_indexer_manager_key_reader().read_prowlarr_api_key(*args, **kwargs)
 
-    def resolve_prowlarr_wiring(self, *args, **kwargs):
+    def resolve_prowlarr_wiring(self, *args: Any, **kwargs: Any) -> Any:
         return self._load_indexer_manager_key_reader().resolve_prowlarr_wiring(*args, **kwargs)
 
 
