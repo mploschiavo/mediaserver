@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -11,32 +12,53 @@ from .enums import RunnerEvent
 OperationHandler = Callable[..., Any]
 
 
-def _load_handler_from_spec(spec: str) -> OperationHandler:
-    handler = load_adapter_class(spec, base_class=None, role="operation_handler")
-    if not callable(handler):
-        raise TypeError(f"Operation handler spec '{spec}' does not resolve to a callable.")
-    return handler
+class RunnerOperationHelpers:
+    """Helper surface for ``RunnerOperationRegistry``.
+
+    Plain instance methods only (ADR-0012). Module-level ``_INSTANCE``
+    plus aliases preserve the underscore-prefixed import + ``mock.patch``
+    surface (``_load_handler_from_spec``, ``_coerce_event_key``,
+    ``_normalize_event_handler_specs``) so existing call sites keep
+    working unchanged.
+    """
+
+    def load_handler_from_spec(self, spec: str) -> OperationHandler:
+        handler = load_adapter_class(spec, base_class=None, role="operation_handler")
+        if not callable(handler):
+            raise TypeError(f"Operation handler spec '{spec}' does not resolve to a callable.")
+        return handler
+
+    def coerce_event_key(self, raw_event: str) -> str:
+        return RunnerEvent.from_value(raw_event).value
+
+    def normalize_event_handler_specs(
+        self, specs: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
+        # Dispatch through the module so ``mock.patch`` on the alias keeps
+        # intercepting (ADR-0012 design principle 3).
+        _module = sys.modules[__name__]
+        normalized: dict[str, dict[str, Any]] = {}
+        for key, value in specs.items():
+            event_key_raw = str(key or "").strip()
+            if not event_key_raw:
+                continue
+            if isinstance(value, dict):
+                event_key = _module._coerce_event_key(event_key_raw)
+                normalized[event_key] = dict(value)
+                continue
+
+            # Backward-compat: treat flat maps as RUN event handlers.
+            handler_key = event_key_raw
+            normalized.setdefault(RunnerEvent.RUN.value, {})[handler_key] = value
+        return normalized
 
 
-def _coerce_event_key(raw_event: str) -> str:
-    return RunnerEvent.from_value(raw_event).value
+# Module-level singleton + aliases (ADR-0012 pattern).
+_INSTANCE = RunnerOperationHelpers()
 
-
-def _normalize_event_handler_specs(specs: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    normalized: dict[str, dict[str, Any]] = {}
-    for key, value in specs.items():
-        event_key_raw = str(key or "").strip()
-        if not event_key_raw:
-            continue
-        if isinstance(value, dict):
-            event_key = _coerce_event_key(event_key_raw)
-            normalized[event_key] = dict(value)
-            continue
-
-        # Backward-compat: treat flat maps as RUN event handlers.
-        handler_key = event_key_raw
-        normalized.setdefault(RunnerEvent.RUN.value, {})[handler_key] = value
-    return normalized
+_load_handler_from_spec = _INSTANCE.load_handler_from_spec
+_coerce_event_key = _INSTANCE.coerce_event_key
+_normalize_event_handler_specs = _INSTANCE.normalize_event_handler_specs
 
 
 @dataclass
@@ -58,6 +80,9 @@ class RunnerOperationRegistry:
         handler_specs: dict[str, Any] | None = None,
         event_handler_specs: dict[str, Any] | None = None,
     ) -> "RunnerOperationRegistry":
+        # Dispatch through the module so ``mock.patch`` on the helper
+        # aliases keeps intercepting (ADR-0012 design principle 3).
+        _module = sys.modules[__name__]
         merged_events: dict[str, dict[str, OperationHandler]] = {}
 
         base_flat = dict(handlers or {})
@@ -74,7 +99,7 @@ class RunnerOperationRegistry:
                         "adapter_hooks.event_handlers values must be objects/maps "
                         f"(invalid event '{event_name}')."
                     )
-                event_key = _coerce_event_key(str(event_name or ""))
+                event_key = _module._coerce_event_key(str(event_name or ""))
                 merged_events.setdefault(event_key, {}).update(
                     {
                         str(handler_name or "").strip(): handler
@@ -97,7 +122,7 @@ class RunnerOperationRegistry:
         if not isinstance(event_handler_specs, dict):
             raise ValueError("adapter_hooks.event_handlers must be an object/map.")
 
-        normalized_specs = _normalize_event_handler_specs(event_handler_specs)
+        normalized_specs = _module._normalize_event_handler_specs(event_handler_specs)
         for event_name, specs in normalized_specs.items():
             merged = merged_events.setdefault(event_name, {})
             for handler_name, spec in specs.items():
@@ -107,7 +132,7 @@ class RunnerOperationRegistry:
                 if spec is None or str(spec).strip() == "":
                     merged.pop(key, None)
                     continue
-                merged[key] = _load_handler_from_spec(str(spec))
+                merged[key] = _module._load_handler_from_spec(str(spec))
 
         run_handlers = dict(merged_events.get(RunnerEvent.RUN.value, {}))
         return cls(handlers=run_handlers, event_handlers=merged_events)
@@ -119,7 +144,12 @@ class RunnerOperationRegistry:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        event_key = event.value if isinstance(event, RunnerEvent) else _coerce_event_key(str(event))
+        _module = sys.modules[__name__]
+        event_key = (
+            event.value
+            if isinstance(event, RunnerEvent)
+            else _module._coerce_event_key(str(event))
+        )
         handler_key = str(handler or "").strip()
         event_map = self.event_handlers.get(event_key, {})
         fn = event_map.get(handler_key)
@@ -143,12 +173,22 @@ class RunnerOperationRegistry:
         return handler(*args, **kwargs)
 
     def has_event_handler(self, event: RunnerEvent | str, handler: str) -> bool:
-        event_key = event.value if isinstance(event, RunnerEvent) else _coerce_event_key(str(event))
+        _module = sys.modules[__name__]
+        event_key = (
+            event.value
+            if isinstance(event, RunnerEvent)
+            else _module._coerce_event_key(str(event))
+        )
         handler_key = str(handler or "").strip()
         return handler_key in self.event_handlers.get(event_key, {})
 
     def handlers_for_event(self, event: RunnerEvent | str) -> dict[str, OperationHandler]:
-        event_key = event.value if isinstance(event, RunnerEvent) else _coerce_event_key(str(event))
+        _module = sys.modules[__name__]
+        event_key = (
+            event.value
+            if isinstance(event, RunnerEvent)
+            else _module._coerce_event_key(str(event))
+        )
         return dict(self.event_handlers.get(event_key, {}))
 
 

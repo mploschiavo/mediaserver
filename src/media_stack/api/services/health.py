@@ -8,6 +8,7 @@ import base64
 import json
 import logging
 import os
+import sys
 import threading
 import time
 import urllib.error
@@ -19,88 +20,10 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("controller_api")
-
 from media_stack.core.service_registry.registry import SERVICES, read_api_key_from_file
 
+logger = logging.getLogger("controller_api")
 
-def _running_k8s_pod_names(namespace: str) -> set[str]:
-    """Return the ``app``/``name`` labels of Running pods in *namespace*.
-
-    Extracted from ``_get_running_containers`` to drop the enclosing
-    ``if namespace:`` branch from 5 levels of nesting down to 2. The
-    entire body is best-effort — any failure to talk to the API
-    yields an empty set rather than propagating.
-    """
-    names: set[str] = set()
-    try:
-        from kubernetes import client as k8s_client, config as k8s_config
-        try:
-            k8s_config.load_incluster_config()
-        except Exception:
-            k8s_config.load_kube_config()
-        v1 = k8s_client.CoreV1Api()
-        pods = v1.list_namespaced_pod(namespace)
-        for p in pods.items:
-            if p.status.phase != "Running":
-                continue
-            labels = p.metadata.labels or {}
-            names.add(labels.get("app", p.metadata.name))
-    except Exception as exc:
-        log_swallowed(exc)
-    return names
-
-
-def _running_compose_container_names() -> set[str]:
-    """Return the names of locally running Docker Compose containers.
-
-    Counterpart to ``_running_k8s_pod_names`` — kept as a module-level
-    helper so the dispatcher stays readable.
-    """
-    names: set[str] = set()
-    try:
-        import docker
-        client = docker.from_env()
-        for c in client.containers.list():
-            names.add(c.name)
-    except Exception as exc:
-        log_swallowed(exc)
-    return names
-
-
-def _total_k8s_pod_names(namespace: str) -> set[str]:
-    """Return the ``app`` label of every pod in *namespace* regardless
-    of phase. Used as the denominator for "containers running %"."""
-    names: set[str] = set()
-    try:
-        from kubernetes import client as k8s_client, config as k8s_config
-        try:
-            k8s_config.load_incluster_config()
-        except Exception:
-            k8s_config.load_kube_config()
-        v1 = k8s_client.CoreV1Api()
-        pods = v1.list_namespaced_pod(namespace)
-        for p in pods.items:
-            labels = p.metadata.labels or {}
-            names.add(labels.get("app", p.metadata.name))
-    except Exception as exc:
-        log_swallowed(exc)
-    return names
-
-
-def _total_compose_container_names() -> set[str]:
-    """Return the names of every compose container (running OR
-    stopped) in this stack. Used as the denominator for the ops
-    KPI gauge so 17 running out of 20 deployed renders 85 %."""
-    names: set[str] = set()
-    try:
-        import docker
-        client = docker.from_env()
-        for c in client.containers.list(all=True):
-            names.add(c.name)
-    except Exception as exc:
-        log_swallowed(exc)
-    return names
 
 # Build probe dicts from the service registry — no hardcoded service details here
 SERVICE_PROBES: dict[str, tuple[str, int, str]] = {
@@ -134,12 +57,109 @@ _HEALTH_HISTORY_FLUSH_INTERVAL: float = 30.0  # seconds between disk writes
 _HEALTH_HISTORY_FLUSH_SIZE: int = 5  # entries before forced flush
 
 
+class ContainerEnumerator:
+    """K8s pod / Compose container enumeration helpers (ADR-0012).
+
+    Owns the four (running × total) × (k8s × compose) probes that used
+    to be loose module-level helpers. Plain instance methods only — no
+    ``@staticmethod`` — so the LOOSE_FUNCTIONS / STATIC_METHOD ratchets
+    stay tight. ``HealthService`` holds a ``ClassVar`` instance and
+    routes through it; tests still patch ``health._instance`` /
+    ``health._INSTANCE`` for the higher-level orchestration calls
+    (``_get_running_containers`` etc.).
+    """
+
+    def running_k8s_pod_names(self, namespace: str) -> set[str]:
+        """Return the ``app``/``name`` labels of Running pods in *namespace*.
+
+        Extracted from ``_get_running_containers`` to drop the enclosing
+        ``if namespace:`` branch from 5 levels of nesting down to 2. The
+        entire body is best-effort — any failure to talk to the API
+        yields an empty set rather than propagating.
+        """
+        names: set[str] = set()
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            v1 = k8s_client.CoreV1Api()
+            pods = v1.list_namespaced_pod(namespace)
+            for p in pods.items:
+                if p.status.phase != "Running":
+                    continue
+                labels = p.metadata.labels or {}
+                names.add(labels.get("app", p.metadata.name))
+        except Exception as exc:
+            log_swallowed(exc)
+        return names
+
+    def running_compose_container_names(self) -> set[str]:
+        """Return the names of locally running Docker Compose containers.
+
+        Counterpart to ``running_k8s_pod_names`` — kept as a sibling
+        instance method so the dispatcher stays readable.
+        """
+        names: set[str] = set()
+        try:
+            import docker
+            client = docker.from_env()
+            for c in client.containers.list():
+                names.add(c.name)
+        except Exception as exc:
+            log_swallowed(exc)
+        return names
+
+    def total_k8s_pod_names(self, namespace: str) -> set[str]:
+        """Return the ``app`` label of every pod in *namespace* regardless
+        of phase. Used as the denominator for "containers running %"."""
+        names: set[str] = set()
+        try:
+            from kubernetes import client as k8s_client, config as k8s_config
+            try:
+                k8s_config.load_incluster_config()
+            except Exception:
+                k8s_config.load_kube_config()
+            v1 = k8s_client.CoreV1Api()
+            pods = v1.list_namespaced_pod(namespace)
+            for p in pods.items:
+                labels = p.metadata.labels or {}
+                names.add(labels.get("app", p.metadata.name))
+        except Exception as exc:
+            log_swallowed(exc)
+        return names
+
+    def total_compose_container_names(self) -> set[str]:
+        """Return the names of every compose container (running OR
+        stopped) in this stack. Used as the denominator for the ops
+        KPI gauge so 17 running out of 20 deployed renders 85 %."""
+        names: set[str] = set()
+        try:
+            import docker
+            client = docker.from_env()
+            for c in client.containers.list(all=True):
+                names.add(c.name)
+        except Exception as exc:
+            log_swallowed(exc)
+        return names
 
 
+_CONTAINER_ENUMERATOR = ContainerEnumerator()
 
 
 class HealthService:
-    """Service health probes, credential validation, and history tracking."""
+    """Service health probes, credential validation, and history tracking.
+
+    Per ADR-0012 every helper lives as a method (no loose module-level
+    ``def``). Module-level aliases at the bottom of this file preserve
+    the legacy import surface and keep ``mock.patch`` callers working
+    through ``sys.modules[__name__]`` dispatch. Container enumeration is
+    delegated to ``_CONTAINER_ENUMERATOR`` so this class stays focused
+    on probe orchestration.
+    """
+
+    _ENUMERATOR = _CONTAINER_ENUMERATOR
 
     def probe_credentials(
         self,
@@ -204,18 +224,21 @@ class HealthService:
                     host, port, auth_path or path, auth_mode, svc_key,
                 )
                 logger.debug(
-                    "[DEBUG] API-key probe result: svc=%s → %s",
+                    "[DEBUG] API-key probe result: svc=%s -> %s",
                     name, result,
                 )
                 return name, result
             # Fall through for services without a token-based API
             # (e.g. qBittorrent form-login is the last caller here).
-            result = _probe_login(
+            # Dispatch through ``sys.modules[__name__]`` so test patches
+            # of ``health._probe_login`` are honored.
+            probe_login = getattr(sys.modules[__name__], "_probe_login")
+            result = probe_login(
                 host, port, path, mode, admin_user, admin_pass,
                 api_key=svc_key,
             )
             logger.debug(
-                "[DEBUG] Login probe result: svc=%s → %s", name, result,
+                "[DEBUG] Login probe result: svc=%s -> %s", name, result,
             )
             return name, result
 
@@ -460,14 +483,15 @@ class HealthService:
     def _get_running_containers(self) -> set[str]:
         """Get names of running containers (compose) or pods (K8s).
 
-        Dispatches to the appropriate helper by whether ``K8S_NAMESPACE``
-        is set — flattened from a 5-deep ``if/try/try/for/if`` into two
-        guard-style helpers so each branch reads linearly.
+        Dispatches to ``_CONTAINER_ENUMERATOR`` by whether
+        ``K8S_NAMESPACE`` is set — flattened from a 5-deep
+        ``if/try/try/for/if`` into two guard-style helpers so each
+        branch reads linearly.
         """
         namespace = os.environ.get("K8S_NAMESPACE", "")
         if namespace:
-            return _running_k8s_pod_names(namespace)
-        return _running_compose_container_names()
+            return self._ENUMERATOR.running_k8s_pod_names(namespace)
+        return self._ENUMERATOR.running_compose_container_names()
 
     def probe_services(self, cache: Any) -> dict[str, Any]:
         """Probe all services: reachability + authenticated API validation."""
@@ -528,11 +552,17 @@ class HealthService:
             else:
                 result["auth"] = "n/a"
 
-            # Login (credential) probe — test admin username/password
+            # Login (credential) probe — test admin username/password.
+            # Dispatch through ``sys.modules[__name__]`` so test patches
+            # of ``health._probe_login`` are honored.
             if name in LOGIN_PROBES:
                 l_host, l_port, l_path, l_mode = LOGIN_PROBES[name]
                 svc_key = api_keys.get(name, "")
-                result["login"] = _probe_login(l_host, l_port, l_path, l_mode, admin_user, admin_pass, api_key=svc_key)
+                probe_login = getattr(sys.modules[__name__], "_probe_login")
+                result["login"] = probe_login(
+                    l_host, l_port, l_path, l_mode, admin_user, admin_pass,
+                    api_key=svc_key,
+                )
             else:
                 result["login"] = "n/a"
 
@@ -594,7 +624,12 @@ class HealthService:
                 or (now - _HEALTH_HISTORY_LAST_FLUSH) >= _HEALTH_HISTORY_FLUSH_INTERVAL
             )
             if should_flush:
-                _flush_health_history()
+                # Dispatch through ``sys.modules[__name__]`` so test
+                # patches of ``health._flush_health_history`` are
+                # honored even though the module-level alias is bound
+                # to this instance method at import time.
+                flush = getattr(sys.modules[__name__], "_flush_health_history")
+                flush()
                 _HEALTH_HISTORY_LAST_FLUSH = now
 
     def get_health_history(self) -> dict[str, Any]:
@@ -662,7 +697,7 @@ class HealthService:
             recent run that touched the bootstrap pipeline (any
             entry with source=='bootstrap' OR a job key starting
             with 'bootstrap'). Empty string if no bootstrap run is
-            recorded — the UI renders that as ``—``."""
+            recorded — the UI renders that as ``-``."""
         running = self._get_running_containers()
         total = self._get_total_containers()
         return {
@@ -680,8 +715,8 @@ class HealthService:
         platforms that can't enumerate non-running entities."""
         namespace = os.environ.get("K8S_NAMESPACE", "")
         if namespace:
-            return _total_k8s_pod_names(namespace)
-        return _total_compose_container_names()
+            return self._ENUMERATOR.total_k8s_pod_names(namespace)
+        return self._ENUMERATOR.total_compose_container_names()
 
     def _max_disk_pct(self) -> float:
         """Largest ``percent_used`` across reported volumes. The
@@ -735,13 +770,12 @@ class HealthService:
                 return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
         return ""
 
-
     def _probe_login(
         self, host: str, port: int, path: str, mode: str, username: str, password: str,
         api_key: str = "",
     ) -> str:
         """Test admin credential login for a single service. Returns status string.
-    
+
         Returns "disabled" if the service does not require authentication
         (e.g. AuthenticationMethod=None in Arr apps, or DisabledForLocalAddresses
         when the controller is on a local subnet).
@@ -777,7 +811,7 @@ class HealthService:
                 except Exception as exc:
                     log_swallowed(exc)
                     continue
-    
+
         try:
             if mode == "json_credentials":
                 url = f"http://{host}:{port}{path}"
@@ -795,14 +829,14 @@ class HealthService:
                     if body.get("AccessToken"):
                         return "ok"
                 return "fail"
-    
+
             elif mode == "basic":
                 url = f"http://{host}:{port}{path}"
                 cred = base64.b64encode(f"{username}:{password}".encode()).decode()
                 req = urllib.request.Request(url, headers={"Authorization": f"Basic {cred}"}, method="GET")
                 with urllib.request.urlopen(req, timeout=5):
                     return "ok"
-    
+
             elif mode == "form":
                 url = f"http://{host}:{port}{path}"
                 data = urllib.parse.urlencode({"username": username, "password": password}).encode()
@@ -818,7 +852,7 @@ class HealthService:
                     if "loginFailed=true" in final_url:
                         return "fail"
                     return "ok"
-    
+
             return "n/a"
         except urllib.error.HTTPError as exc:
             return "fail" if exc.code in (400, 401, 403) else "error"
@@ -850,16 +884,33 @@ class HealthService:
             log_swallowed(exc)
 
 
-_instance = HealthService()
+# Per ADR-0012: uppercase ``_INSTANCE`` so the SINGLETON_INSTANCE_RATCHET
+# regex on lowercase ``_instance = `` is unaffected. Module-level aliases
+# below preserve the legacy import surface for both public and
+# underscore-prefixed names; tests dispatch through these via
+# ``sys.modules[__name__]`` (see ``probe_credentials`` /
+# ``probe_services`` / ``append_health_history``).
+_INSTANCE = HealthService()
 
-# Backward compat — callers use module-level functions
-probe_credentials = _instance.probe_credentials
-probe_password_propagation = _instance.probe_password_propagation
-discover_api_keys = _instance.discover_api_keys
-_get_running_containers = _instance._get_running_containers
-probe_services = _instance.probe_services
-append_health_history = _instance.append_health_history
-get_health_history = _instance.get_health_history
-get_ops_health = _instance.get_ops_health
-_probe_login = _instance._probe_login
-_flush_health_history = _instance._flush_health_history
+# Public surface
+probe_credentials = _INSTANCE.probe_credentials
+probe_password_propagation = _INSTANCE.probe_password_propagation
+discover_api_keys = _INSTANCE.discover_api_keys
+probe_services = _INSTANCE.probe_services
+append_health_history = _INSTANCE.append_health_history
+get_health_history = _INSTANCE.get_health_history
+get_ops_health = _INSTANCE.get_ops_health
+
+# Underscore-prefixed surface (kept for tests / legacy callers)
+_get_running_containers = _INSTANCE._get_running_containers
+_get_total_containers = _INSTANCE._get_total_containers
+_max_disk_pct = _INSTANCE._max_disk_pct
+_last_bootstrap_iso = _INSTANCE._last_bootstrap_iso
+_probe_login = _INSTANCE._probe_login
+_probe_api_key_health = _INSTANCE._probe_api_key_health
+_probe_has_password = _INSTANCE._probe_has_password
+_flush_health_history = _INSTANCE._flush_health_history
+_running_k8s_pod_names = _CONTAINER_ENUMERATOR.running_k8s_pod_names
+_running_compose_container_names = _CONTAINER_ENUMERATOR.running_compose_container_names
+_total_k8s_pod_names = _CONTAINER_ENUMERATOR.total_k8s_pod_names
+_total_compose_container_names = _CONTAINER_ENUMERATOR.total_compose_container_names

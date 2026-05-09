@@ -344,8 +344,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_ok(self, mock_urlopen, mock_containers, mock_keys):
         mock_resp = MagicMock()
@@ -377,8 +377,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen", side_effect=Exception("connection refused"))
     def test_probe_error(self, mock_urlopen, mock_containers, mock_keys):
         cache = self._make_cache(None)
@@ -394,8 +394,8 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
     })
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={"sonarr": "my-key"})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={"sonarr": "my-key"})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_with_auth_header(self, mock_urlopen, mock_containers, mock_keys):
         mock_resp = MagicMock()
@@ -416,8 +416,8 @@ class TestProbeServices(unittest.TestCase):
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "X-Api-Key"),
     })
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_no_key_auth(self, mock_urlopen, mock_containers, mock_keys):
         mock_resp = MagicMock()
@@ -436,8 +436,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value={"radarr"})
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value={"radarr"})
     @patch("urllib.request.urlopen")
     def test_probe_disabled_service(self, mock_urlopen, mock_containers, mock_keys):
         """Service not in running set should be reported as disabled."""
@@ -454,8 +454,8 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "test123"})
     @patch("urllib.request.urlopen")
     def test_probe_login_ok(self, mock_urlopen, mock_containers, mock_keys):
@@ -488,8 +488,8 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch.dict(os.environ, {"STACK_ADMIN_USERNAME": "admin", "STACK_ADMIN_PASSWORD": "wrong"})
     @patch("urllib.request.urlopen")
     def test_probe_login_fail(self, mock_urlopen, mock_containers, mock_keys):
@@ -524,8 +524,8 @@ class TestProbeServices(unittest.TestCase):
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_login_disabled(self, mock_urlopen, mock_containers, mock_keys):
         """Login probe returns 'disabled' when basic-mode pre-check gets 200 (no auth)."""
@@ -546,8 +546,8 @@ class TestProbeServices(unittest.TestCase):
     })
     @patch.object(health_mod, "AUTH_PROBES", {})
     @patch.object(health_mod, "LOGIN_PROBES", {})
-    @patch.object(health_mod._instance, "discover_api_keys", return_value={})
-    @patch.object(health_mod._instance, "_get_running_containers", return_value=set())
+    @patch.object(health_mod._INSTANCE, "discover_api_keys", return_value={})
+    @patch.object(health_mod._INSTANCE, "_get_running_containers", return_value=set())
     @patch("urllib.request.urlopen")
     def test_probe_login_na(self, mock_urlopen, mock_containers, mock_keys):
         """Services without login_mode should get login='n/a'."""
@@ -797,9 +797,9 @@ class TestProbeCredentials(unittest.TestCase):
     # to "no_key" when ``discover_api_keys`` returns no key for the
     # service. The tests below patch both branches + populate the key
     # cache so they exercise the orchestration, not the discovery gap.
-    @patch.object(health_mod._instance, "discover_api_keys",
+    @patch.object(health_mod._INSTANCE, "discover_api_keys",
                   return_value={"sonarr": "k1", "jf": "k2"})
-    @patch.object(health_mod._instance, "_probe_api_key_health", return_value="ok")
+    @patch.object(health_mod._INSTANCE, "_probe_api_key_health", return_value="ok")
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
         "jf": ("jf", 8096, "/Users/AuthenticateByName", "json_credentials"),
@@ -813,9 +813,9 @@ class TestProbeCredentials(unittest.TestCase):
         self.assertIn("sonarr", result["credentials"])
         self.assertIn("jf", result["credentials"])
 
-    @patch.object(health_mod._instance, "discover_api_keys",
+    @patch.object(health_mod._INSTANCE, "discover_api_keys",
                   return_value={"sonarr": "k1", "jf": "k2"})
-    @patch.object(health_mod._instance, "_probe_api_key_health", return_value="ok")
+    @patch.object(health_mod._INSTANCE, "_probe_api_key_health", return_value="ok")
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
         "jf": ("jf", 8096, "/Users/AuthenticateByName", "json_credentials"),
@@ -828,9 +828,9 @@ class TestProbeCredentials(unittest.TestCase):
         self.assertIn("sonarr", result["credentials"])
         self.assertNotIn("jf", result["credentials"])
 
-    @patch.object(health_mod._instance, "discover_api_keys",
+    @patch.object(health_mod._INSTANCE, "discover_api_keys",
                   return_value={"sonarr": "k1"})
-    @patch.object(health_mod._instance, "_probe_api_key_health", return_value="fail")
+    @patch.object(health_mod._INSTANCE, "_probe_api_key_health", return_value="fail")
     @patch.object(health_mod, "LOGIN_PROBES", {
         "sonarr": ("sonarr", 8989, "/api/v3/system/status", "basic"),
     })
@@ -893,7 +893,7 @@ class TestGetOpsHealth(unittest.TestCase):
 
     def test_containers_uses_running_set(self):
         with patch.object(
-            health_mod._instance, "_get_running_containers",
+            health_mod._INSTANCE, "_get_running_containers",
             return_value={"sonarr", "radarr", "jellyfin"},
         ), patch.object(health_mod, "_PROCESS_START_TIME", time.time()):
             result = health_mod.get_ops_health()

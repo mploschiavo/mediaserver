@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,15 +15,6 @@ SUPPORTED_BOOTSTRAP_CONFIG_VERSION = 2
 _TOP_LEVEL_SCHEMA_PATH = (
     Path(__file__).resolve().parents[1] / "contracts" / "top_level_config_schema.json"
 )
-
-
-def _expect_int(data: dict[str, Any], key: str) -> int:
-    if key not in data:
-        raise ValueError(f"$.{key} is required")
-    value = data.get(key)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"$.{key} must be an integer")
-    return int(value)
 
 
 @dataclass(frozen=True)
@@ -58,53 +50,80 @@ class ConfigOverlaySettings:
         )
 
 
-def _load_top_level_schema() -> tuple[dict[str, str], set[str]]:
-    payload = json.loads(_TOP_LEVEL_SCHEMA_PATH.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("Top-level config schema must be an object")
+class TopLevelConfigSchemaHelpers:
+    """Schema loader + value-shape validators for the top-level bootstrap config.
 
-    allowed_raw = payload.get("allowed_keys") or {}
-    if not isinstance(allowed_raw, dict):
-        raise ValueError("top_level_config_schema.allowed_keys must be an object")
+    Plain instance methods only (ADR-0012). Module-level ``_INSTANCE`` plus
+    aliases preserve the public + underscore-prefixed import API so existing
+    importers (``bootstrap_config_generator``, the validator test suite) and
+    any future ``mock.patch`` calls keep working unchanged.
+    """
 
-    allowed: dict[str, str] = {}
-    for key, value in allowed_raw.items():
-        token = str(key or "").strip()
-        expected = str(value or "").strip().lower()
-        if token and expected:
-            allowed[token] = expected
+    def __init__(self, schema_path: Path = _TOP_LEVEL_SCHEMA_PATH) -> None:
+        self._schema_path: Path = schema_path
 
-    required_raw = payload.get("required_keys") or []
-    if not isinstance(required_raw, list):
-        raise ValueError("top_level_config_schema.required_keys must be an array")
-    required = {str(item or "").strip() for item in required_raw if str(item or "").strip()}
-    return allowed, required
-
-
-def _validate_expected_type(key: str, value: Any, expected: str) -> None:
-    if expected == "object":
-        if not isinstance(value, dict):
-            raise ValueError(f"$.{key} must be an object")
-        return
-    if expected == "array":
-        if not isinstance(value, list):
-            raise ValueError(f"$.{key} must be an array")
-        return
-    if expected == "string":
-        if not isinstance(value, str):
-            raise ValueError(f"$.{key} must be a string")
-        return
-    if expected == "boolean":
-        if not isinstance(value, bool):
-            raise ValueError(f"$.{key} must be a boolean")
-        return
-    if expected == "integer":
+    def expect_int(self, data: dict[str, Any], key: str) -> int:
+        if key not in data:
+            raise ValueError(f"$.{key} is required")
+        value = data.get(key)
         if not isinstance(value, int) or isinstance(value, bool):
             raise ValueError(f"$.{key} must be an integer")
-        return
-    if expected == "number":
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"$.{key} must be a number")
+        return int(value)
+
+    def load_top_level_schema(self) -> tuple[dict[str, str], set[str]]:
+        payload = json.loads(self._schema_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Top-level config schema must be an object")
+
+        allowed_raw = payload.get("allowed_keys") or {}
+        if not isinstance(allowed_raw, dict):
+            raise ValueError("top_level_config_schema.allowed_keys must be an object")
+
+        allowed: dict[str, str] = {}
+        for key, value in allowed_raw.items():
+            token = str(key or "").strip()
+            expected = str(value or "").strip().lower()
+            if token and expected:
+                allowed[token] = expected
+
+        required_raw = payload.get("required_keys") or []
+        if not isinstance(required_raw, list):
+            raise ValueError("top_level_config_schema.required_keys must be an array")
+        required = {str(item or "").strip() for item in required_raw if str(item or "").strip()}
+        return allowed, required
+
+    def validate_expected_type(self, key: str, value: Any, expected: str) -> None:
+        if expected == "object":
+            if not isinstance(value, dict):
+                raise ValueError(f"$.{key} must be an object")
+            return
+        if expected == "array":
+            if not isinstance(value, list):
+                raise ValueError(f"$.{key} must be an array")
+            return
+        if expected == "string":
+            if not isinstance(value, str):
+                raise ValueError(f"$.{key} must be a string")
+            return
+        if expected == "boolean":
+            if not isinstance(value, bool):
+                raise ValueError(f"$.{key} must be a boolean")
+            return
+        if expected == "integer":
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(f"$.{key} must be an integer")
+            return
+        if expected == "number":
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(f"$.{key} must be a number")
+
+
+# Module-level singleton + aliases (ADR-0012 pattern).
+_INSTANCE = TopLevelConfigSchemaHelpers()
+
+_expect_int = _INSTANCE.expect_int
+_load_top_level_schema = _INSTANCE.load_top_level_schema
+_validate_expected_type = _INSTANCE.validate_expected_type
 
 
 @dataclass(frozen=True)
@@ -131,7 +150,10 @@ class TopLevelBootstrapConfig:
                 "Migrate your bootstrap config before running."
             )
 
-        allowed_keys, required_keys = _load_top_level_schema()
+        # Dispatch through the module so ``mock.patch`` of the alias keeps
+        # intercepting (ADR-0012 design principle 3).
+        _module = sys.modules[__name__]
+        allowed_keys, required_keys = _module._load_top_level_schema()
         for required in required_keys:
             if required not in src:
                 raise ValueError(f"$.{required} is required")
@@ -149,7 +171,7 @@ class TopLevelBootstrapConfig:
             expected = allowed_keys.get(key)
             if not expected:
                 continue
-            _validate_expected_type(key, value, expected)
+            _module._validate_expected_type(key, value, expected)
 
         arr_apps_raw = src.get("arr_apps") or []
         if not isinstance(arr_apps_raw, list):

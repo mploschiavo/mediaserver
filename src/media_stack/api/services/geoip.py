@@ -27,35 +27,6 @@ from pathlib import Path
 from typing import Any
 
 
-# Lazy-loaded mmdb reader; survives across calls.
-_READER: Any = None
-_READER_LOCK = threading.Lock()
-_READER_TRIED = False
-
-
-def _reader() -> Any | None:
-    """Get the geoip2 reader if available; cache it."""
-    global _READER, _READER_TRIED
-    if _READER_TRIED:
-        return _READER
-    with _READER_LOCK:
-        if _READER_TRIED:
-            return _READER
-        _READER_TRIED = True
-        db_path = os.environ.get(
-            "GEOIP_DB_PATH",
-            "/var/lib/media-stack/geoip/GeoLite2-Country.mmdb",
-        )
-        if not Path(db_path).is_file():
-            return None
-        try:
-            import geoip2.database  # type: ignore[import-untyped]
-            _READER = geoip2.database.Reader(db_path)
-        except Exception:  # noqa: BLE001
-            _READER = None
-        return _READER
-
-
 # Coarse fallback — major /8 blocks → country code. Built from
 # IANA's IPv4 address space registry; covers the most-trafficked
 # allocations. Operators wanting accuracy install the mmdb.
@@ -115,60 +86,102 @@ _FALLBACK_NETS: list[tuple[ipaddress.IPv4Network, str]] = [
     (ipaddress.ip_network(cidr), code) for cidr, code in _FALLBACK_BLOCKS
 ]
 
-
-def _is_public(ip: str) -> bool:
-    """Skip private / loopback / multicast / link-local — they're
-    operator-internal and shouldn't get a flag."""
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    return not (
-        addr.is_private
-        or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_multicast
-        or addr.is_reserved
-        or addr.is_unspecified
-    )
+_DEFAULT_GEOIP_DB_PATH = "/var/lib/media-stack/geoip/GeoLite2-Country.mmdb"
 
 
-def lookup_country(ip: str | None) -> str | None:
-    """Return a 2-letter country code (or 2-letter region code like
-    ``AP`` from the fallback table) for a public IPv4 address.
-    Returns ``None`` for private IPs, IPv6 (until we extend),
-    malformed input, or any lookup failure."""
-    if not ip or not _is_public(ip):
-        return None
-    # Strip whitespace + take just the first IP if it's actually an
-    # XFF-style chain ("a.b.c.d, e.f.g.h").
-    first_ip = ip.split(",")[0].strip()
-    reader = _reader()
-    if reader is not None:
+class GeoipService:
+    """GeoIP country lookups with mmdb-preferred + CIDR-fallback dispatch.
+
+    Holds the lazy-loaded ``geoip2.database.Reader`` (when available) plus
+    the once-only init flag, behind a lock so concurrent first calls
+    don't double-open the database.
+    """
+
+    def __init__(self) -> None:
+        # Lazy-loaded mmdb reader; survives across calls.
+        self._reader_obj: Any = None
+        self._reader_lock = threading.Lock()
+        self._reader_tried = False
+
+    def reader(self) -> Any | None:
+        """Get the geoip2 reader if available; cache it."""
+        if self._reader_tried:
+            return self._reader_obj
+        with self._reader_lock:
+            if self._reader_tried:
+                return self._reader_obj
+            self._reader_tried = True
+            db_path = os.environ.get("GEOIP_DB_PATH", _DEFAULT_GEOIP_DB_PATH)
+            if not Path(db_path).is_file():
+                return None
+            try:
+                import geoip2.database  # type: ignore[import-untyped]
+                self._reader_obj = geoip2.database.Reader(db_path)
+            except Exception:  # noqa: BLE001
+                self._reader_obj = None
+            return self._reader_obj
+
+    def is_public(self, ip: str) -> bool:
+        """Skip private / loopback / multicast / link-local — they're
+        operator-internal and shouldn't get a flag."""
         try:
-            r = reader.country(first_ip)
-            return r.country.iso_code
-        except Exception:  # noqa: BLE001
-            pass
-    # Fallback table.
-    try:
-        addr = ipaddress.ip_address(first_ip)
-    except ValueError:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        return not (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_multicast
+            or addr.is_reserved
+            or addr.is_unspecified
+        )
+
+    def lookup_country(self, ip: str | None) -> str | None:
+        """Return a 2-letter country code (or 2-letter region code like
+        ``AP`` from the fallback table) for a public IPv4 address.
+        Returns ``None`` for private IPs, IPv6 (until we extend),
+        malformed input, or any lookup failure."""
+        if not ip or not self.is_public(ip):
+            return None
+        # Strip whitespace + take just the first IP if it's actually an
+        # XFF-style chain ("a.b.c.d, e.f.g.h").
+        first_ip = ip.split(",")[0].strip()
+        reader = self.reader()
+        if reader is not None:
+            try:
+                r = reader.country(first_ip)
+                return r.country.iso_code
+            except Exception:  # noqa: BLE001
+                pass
+        # Fallback table.
+        try:
+            addr = ipaddress.ip_address(first_ip)
+        except ValueError:
+            return None
+        if not isinstance(addr, ipaddress.IPv4Address):
+            return None
+        for net, code in _FALLBACK_NETS:
+            if addr in net:
+                return code
         return None
-    if not isinstance(addr, ipaddress.IPv4Address):
-        return None
-    for net, code in _FALLBACK_NETS:
-        if addr in net:
-            return code
-    return None
+
+    def country_flag(self, code: str | None) -> str:
+        """Country code → flag emoji. Generated from regional indicator
+        symbols: 'A' = U+1F1E6, so 'US' = U+1F1FA + U+1F1F8."""
+        if not code or len(code) != 2:
+            return ""
+        code = code.upper()
+        if not code.isalpha():
+            return ""
+        return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in code)
 
 
-# Country code → flag emoji. Generated from regional indicator
-# symbols: 'A' = U+1F1E6, so 'US' = U+1F1FA + U+1F1F8.
-def country_flag(code: str | None) -> str:
-    if not code or len(code) != 2:
-        return ""
-    code = code.upper()
-    if not code.isalpha():
-        return ""
-    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in code)
+_INSTANCE = GeoipService()
+
+# Module-level aliases — preserve the legacy underscore-prefixed names
+# (used internally + by tests via mock.patch) plus the public surface.
+_reader = _INSTANCE.reader
+_is_public = _INSTANCE.is_public
+lookup_country = _INSTANCE.lookup_country
+country_flag = _INSTANCE.country_flag
