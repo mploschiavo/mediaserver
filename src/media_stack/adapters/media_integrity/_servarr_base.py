@@ -116,7 +116,7 @@ class UrllibHttpClient:
                 status = exc.code
                 if status in (301, 302, 303, 307, 308):
                     location = exc.headers.get("Location", "") if exc.headers else ""
-                    new_url = _safe_redirect_target(current_url, location)
+                    new_url = self._safe_redirect_target(current_url, location)
                     if not new_url:
                         return HttpResponse(status=status, body=exc.read() or b"")
                     exc.close()
@@ -134,23 +134,34 @@ class UrllibHttpClient:
                 return HttpResponse(status=status, body=exc.read() or b"")
         return HttpResponse(status=status, body=b"too many redirects")
 
+    def _safe_redirect_target(self, source_url: str, location: str) -> str:
+        """Resolve ``location`` against ``source_url`` and refuse cross-host
+        redirects (SSRF guard). Returns the absolute target or ``""`` if
+        the redirect must not be followed."""
+        if not location:
+            return ""
+        try:
+            src = urllib.parse.urlsplit(source_url)
+            target = urllib.parse.urlsplit(
+                urllib.parse.urljoin(source_url, location),
+            )
+        except ValueError:
+            return ""
+        if not target.scheme or not target.netloc:
+            return ""
+        if target.scheme != src.scheme or target.netloc != src.netloc:
+            return ""
+        return urllib.parse.urlunsplit(target)
 
-def _safe_redirect_target(source_url: str, location: str) -> str:
-    """Resolve ``location`` against ``source_url`` and refuse cross-host
-    redirects (SSRF guard). Returns the absolute target or ``""`` if
-    the redirect must not be followed."""
-    if not location:
-        return ""
-    try:
-        src = urllib.parse.urlsplit(source_url)
-        target = urllib.parse.urlsplit(urllib.parse.urljoin(source_url, location))
-    except ValueError:
-        return ""
-    if not target.scheme or not target.netloc:
-        return ""
-    if target.scheme != src.scheme or target.netloc != src.netloc:
-        return ""
-    return urllib.parse.urlunsplit(target)
+
+_INSTANCE = UrllibHttpClient()
+
+# Module-level alias preserves the legacy underscore-prefixed import
+# name (``from _servarr_base import _safe_redirect_target``) for any
+# caller / test that imports the helper directly. The body doesn't
+# read instance state so the singleton-bound method is functionally
+# equivalent to the original loose helper.
+_safe_redirect_target = _INSTANCE._safe_redirect_target
 
 
 # ---------------------------------------------------------------------------
@@ -404,8 +415,7 @@ class _ServarrBaseAdapter:
 
     # -- Capability probing ---------------------------------------------
 
-    @staticmethod
-    def _extract_quality(quality_obj: Any) -> tuple[str, int]:
+    def _extract_quality(self, quality_obj: Any) -> tuple[str, int]:
         """Pull ``(name, id)`` out of a Servarr ``quality`` envelope.
 
         Shape: ``{"quality": {"id": 7, "name": "Bluray-1080p", ...},

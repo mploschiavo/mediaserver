@@ -27,6 +27,7 @@ from being brought into compliance.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -265,16 +266,33 @@ class ServarrConfigEnforcer:
                 logger.debug("audit refused enforce_failed", exc_info=True)
 
 
-def _redact(text: str) -> str:
-    """Drop ``X-Api-Key`` / ``apikey`` / url-embedded secrets from
-    error strings before they reach the audit log. Defensive — the
-    Servarr error body echoes the request context in some versions."""
-    if not text:
-        return ""
-    # A conservative scrub: if a string looks like ``apikey=...`` or
-    # has a 32+ hex run (typical *arr key shape), strip it.
-    import re
+class _ErrorRedactor:
+    """Sibling helper for the enforcer — scrubs ``X-Api-Key`` /
+    ``apikey`` / url-embedded secrets from error strings before
+    they reach the audit log. Defensive — the Servarr error body
+    echoes the request context in some versions.
+    """
 
-    redacted = re.sub(r"(?i)(apikey|api_key|x-api-key)\s*[=:]\s*\S+", r"\1=REDACTED", text)
-    redacted = re.sub(r"[a-f0-9]{32,}", "REDACTED", redacted)
-    return redacted[:500]  # cap runaway errors
+    _APIKEY_PATTERN = re.compile(
+        r"(?i)(apikey|api_key|x-api-key)\s*[=:]\s*\S+",
+    )
+    _HEX_RUN_PATTERN = re.compile(r"[a-f0-9]{32,}")
+    _MAX_LEN = 500
+
+    def redact(self, text: str) -> str:
+        if not text:
+            return ""
+        # A conservative scrub: if a string looks like ``apikey=...`` or
+        # has a 32+ hex run (typical *arr key shape), strip it.
+        redacted = self._APIKEY_PATTERN.sub(r"\1=REDACTED", text)
+        redacted = self._HEX_RUN_PATTERN.sub("REDACTED", redacted)
+        return redacted[: self._MAX_LEN]  # cap runaway errors
+
+
+# Module-level alias preserves the legacy underscore-prefixed import
+# name (``from enforcer import _redact``) used by tests and by
+# ``subtitle_reconciler`` / ``reconciler`` which dispatch through
+# ``sys.modules[__name__]._redact`` so monkeypatched aliases on this
+# module still intercept the call site.
+_INSTANCE = _ErrorRedactor()
+_redact = _INSTANCE.redact

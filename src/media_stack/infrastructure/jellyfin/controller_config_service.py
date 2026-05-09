@@ -49,8 +49,5 @@ class JellyfinBootstrapConfigService:
         )
 
 
-def parse_jellyfin_bootstrap_config(
-    argv: Sequence[str] | None = None,
-) -> JellyfinBootstrapConfig:
-    """Backward-compatible alias delegating to ``JellyfinBootstrapConfigService``."""
-    return JellyfinBootstrapConfigService().parse(argv)
+_INSTANCE = JellyfinBootstrapConfigService()
+parse_jellyfin_bootstrap_config = _INSTANCE.parse

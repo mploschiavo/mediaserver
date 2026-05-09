@@ -29,6 +29,7 @@ rewrite, and idempotent behavior.
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any
 
 from media_stack.application.jobs import run_history_repair
@@ -43,41 +44,64 @@ from media_stack.application.jobs.run_history import (
 logger = logging.getLogger(__name__)
 
 
-def close_stale_runs(_ctx: JobContext) -> dict[str, Any]:
-    """One auto-heal cycle. Returns the framework-expected result
-    dict:
+class CloseStaleRunsHandler:
+    """Job-framework handler for the ``jobs:close-stale-runs`` cycle.
 
-      * ``skipped: nothing_stale`` when the probe is green (most ticks)
-      * ``status: ok, closed: N`` when records were closed
-      * Raises on a structural error (history file unreadable, etc.)
-        so JobRunner records terminal ``error`` and the operator
-        sees it in /api/runs.
+    Invokes the run-history repair tool when the probe finds stale
+    ``status=running`` records; returns ``{"skipped": "nothing_stale"}``
+    on the steady-state happy path.
     """
-    stale = count_stale_running(_STALE_RUNNING_THRESHOLD_SECONDS)
-    if stale == 0:
-        return {"skipped": "nothing_stale"}
 
-    history_path = run_history_repair.resolve_history_path(
-        str(resolve_run_history_path()),
-    )
-    report = run_history_repair.run_repair(
-        history_path=history_path,
-        apply=True,
-        older_than_seconds=_STALE_RUNNING_THRESHOLD_SECONDS,
-        mark_as=run_history_repair.STATUS_ERROR,
-        scenarios=[run_history_repair.SCENARIO_FIX_STUCK_RUNNING],
-        backup=False,
-    )
-    closed = len(report.actions)
-    if closed:
-        logger.info(
-            "[close_stale_runs] closed %d stale running record(s); "
-            "first run_id=%s",
-            closed,
-            report.actions[0].run_id if report.actions else "",
+    def close_stale_runs(self, _ctx: JobContext) -> dict[str, Any]:
+        """One auto-heal cycle. Returns the framework-expected result
+        dict:
+
+          * ``skipped: nothing_stale`` when the probe is green (most
+            ticks)
+          * ``status: ok, closed: N`` when records were closed
+          * Raises on a structural error (history file unreadable, etc.)
+            so JobRunner records terminal ``error`` and the operator
+            sees it in /api/runs.
+        """
+        # Dispatch through ``sys.modules[__name__]`` so tests that
+        # ``mock.patch("…close_stale_runs.count_stale_running", …)``
+        # intercept the call: the test patches the module-level name,
+        # not the original at ``run_history.count_stale_running``.
+        _mod = sys.modules[__name__]
+        stale = _mod.count_stale_running(_STALE_RUNNING_THRESHOLD_SECONDS)
+        if stale == 0:
+            return {"skipped": "nothing_stale"}
+
+        history_path = _mod.run_history_repair.resolve_history_path(
+            str(_mod.resolve_run_history_path()),
         )
-    return {
-        "status": "ok",
-        "closed": closed,
-        "stale_observed": stale,
-    }
+        report = _mod.run_history_repair.run_repair(
+            history_path=history_path,
+            apply=True,
+            older_than_seconds=_STALE_RUNNING_THRESHOLD_SECONDS,
+            mark_as=_mod.run_history_repair.STATUS_ERROR,
+            scenarios=[_mod.run_history_repair.SCENARIO_FIX_STUCK_RUNNING],
+            backup=False,
+        )
+        closed = len(report.actions)
+        if closed:
+            logger.info(
+                "[close_stale_runs] closed %d stale running record(s); "
+                "first run_id=%s",
+                closed,
+                report.actions[0].run_id if report.actions else "",
+            )
+        return {
+            "status": "ok",
+            "closed": closed,
+            "stale_observed": stale,
+        }
+
+
+_INSTANCE = CloseStaleRunsHandler()
+
+# Module-level alias preserves the legacy public-import + contract-handler
+# path (``…close_stale_runs:close_stale_runs``) which the contract YAML
+# at ``contracts/services/guardrails.yaml`` registers and which tests
+# import directly.
+close_stale_runs = _INSTANCE.close_stale_runs

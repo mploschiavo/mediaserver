@@ -13,17 +13,21 @@ from media_stack.adapters.compose.edge.providers.traefik.patch_service import (
 )
 
 
-def _build_runtime_patcher(context: ComposeEdgeProviderRuntimeContext) -> ComposeEdgeRuntimePatchFn:
-    patch_service = ComposeTraefikPatchService(
-        label_service=context.label_service,
-        spec_resolver=context.spec_resolver,
-        dynamic_config_service=context.route_graph_service,
-        artifacts_service=context.artifacts_service,
-        info=context.info,
-    )
+class ComposeTraefikRuntimePatcher:
+    """Bound ``ComposeEdgeRuntimePatchFn`` for the Traefik provider.
 
-    def _apply(services: dict[str, dict[str, object]]) -> ComposeEdgeRuntimePatchResult:
-        result = patch_service.apply_dynamic_file_patch(services)
+    Holds the per-context ``ComposeTraefikPatchService`` and exposes
+    ``__call__`` so the instance satisfies the ``Callable[[dict], …]``
+    shape demanded by ``ComposeEdgeRuntimePatchFn``.
+    """
+
+    def __init__(self, *, patch_service: ComposeTraefikPatchService) -> None:
+        self._patch_service = patch_service
+
+    def __call__(
+        self, services: dict[str, dict[str, object]],
+    ) -> ComposeEdgeRuntimePatchResult:
+        result = self._patch_service.apply_dynamic_file_patch(services)
         return ComposeEdgeRuntimePatchResult(
             provider="traefik",
             applied=bool(result.applied),
@@ -36,11 +40,36 @@ def _build_runtime_patcher(context: ComposeEdgeProviderRuntimeContext) -> Compos
             },
         )
 
-    return _apply
+
+class ComposeTraefikPluginBuilder:
+    """Composes the per-context ``ComposeTraefikPatchService`` and
+    returns a callable patcher; matches the
+    ``ComposeEdgeProviderPlugin.build_runtime_patcher`` contract.
+    """
+
+    def build_runtime_patcher(
+        self, context: ComposeEdgeProviderRuntimeContext,
+    ) -> ComposeEdgeRuntimePatchFn:
+        patch_service = ComposeTraefikPatchService(
+            label_service=context.label_service,
+            spec_resolver=context.spec_resolver,
+            dynamic_config_service=context.route_graph_service,
+            artifacts_service=context.artifacts_service,
+            info=context.info,
+        )
+        return ComposeTraefikRuntimePatcher(patch_service=patch_service)
+
+
+_INSTANCE = ComposeTraefikPluginBuilder()
+
+# Module-level alias preserves the legacy underscore-prefixed import
+# name (``from plugin import _build_runtime_patcher``) for callers /
+# tests that pulled the builder helper directly.
+_build_runtime_patcher = _INSTANCE.build_runtime_patcher
 
 
 PLUGIN = ComposeEdgeProviderPlugin(
     key="traefik",
     aliases=(),
-    build_runtime_patcher=_build_runtime_patcher,
+    build_runtime_patcher=_INSTANCE.build_runtime_patcher,
 )

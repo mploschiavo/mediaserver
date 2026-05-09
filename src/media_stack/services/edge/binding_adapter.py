@@ -70,11 +70,26 @@ class EdgeBindingAdapter(Protocol):
         ...
 
 
-def detect_active_adapter(adapters: list[EdgeBindingAdapter]) -> EdgeBindingAdapter | None:
-    """Return the first adapter whose ``detect()`` returns True. The
-    order of ``adapters`` is the precedence (K8s before Compose since
-    K8s is the more specific environment)."""
-    for a in adapters:
-        if a.detect():
-            return a
-    return None
+class EdgeBindingAdapterRegistry:
+    """Registry-style helper for resolving the live edge-binding
+    adapter.
+
+    Kept as a class (rather than a free helper) so future precedence
+    rules — e.g. environment-aware overrides, allow-listing — slot in
+    as named methods alongside ``detect_active``.
+    """
+
+    def detect_active(
+        self, adapters: list[EdgeBindingAdapter]
+    ) -> EdgeBindingAdapter | None:
+        """Return the first adapter whose ``detect()`` returns True. The
+        order of ``adapters`` is the precedence (K8s before Compose since
+        K8s is the more specific environment)."""
+        for a in adapters:
+            if a.detect():
+                return a
+        return None
+
+
+_INSTANCE = EdgeBindingAdapterRegistry()
+detect_active_adapter = _INSTANCE.detect_active

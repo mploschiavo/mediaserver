@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-
-from media_stack.core.logging_utils import log_swallowed
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from media_stack.core.exceptions import ConfigError, DockerError
-import logging
-
-
-def _is_not_found(exc: Exception) -> bool:
-    status_code = int(getattr(exc, "status_code", 0) or 0)
-    name = exc.__class__.__name__.lower()
-    message = str(exc).lower()
-    return status_code == 404 or "notfound" in name or "not found" in message
+from media_stack.core.logging_utils import log_swallowed
 
 
 @dataclass(frozen=True)
@@ -30,6 +22,19 @@ class DockerContainerState:
 @dataclass
 class DockerClient:
     client: Any
+
+    def _is_not_found(self, exc: Exception) -> bool:
+        """Map Docker SDK 'missing resource' exceptions to a bool.
+
+        The SDK surfaces 404s either as ``status_code=404`` on
+        ``APIError``, as a ``NotFound`` subclass, or in the message
+        body — depending on which transport hit. We accept all three
+        so callers that branch on "absent vs. genuine failure" don't
+        need to know which path raised."""
+        status_code = int(getattr(exc, "status_code", 0) or 0)
+        name = exc.__class__.__name__.lower()
+        message = str(exc).lower()
+        return status_code == 404 or "notfound" in name or "not found" in message
 
     @classmethod
     def from_environment(cls) -> "DockerClient":
@@ -61,7 +66,7 @@ class DockerClient:
             self.client.images.get(image)
             return True
         except Exception as exc:
-            if _is_not_found(exc):
+            if self._is_not_found(exc):
                 return False
             raise DockerError(f"Failed reading image '{image}': {exc}") from exc
 
@@ -70,7 +75,7 @@ class DockerClient:
             self.client.networks.get(name)
             return
         except Exception as exc:
-            if not _is_not_found(exc):
+            if not self._is_not_found(exc):
                 raise DockerError(f"Failed reading network '{name}': {exc}") from exc
         try:
             self.client.networks.create(name=name, driver=driver)
@@ -81,7 +86,7 @@ class DockerClient:
         try:
             network = self.client.networks.get(name)
         except Exception as exc:
-            if _is_not_found(exc):
+            if self._is_not_found(exc):
                 return False
             raise DockerError(f"Failed reading network '{name}': {exc}") from exc
         try:
@@ -115,7 +120,7 @@ class DockerClient:
         try:
             return self.client.containers.get(name)
         except Exception as exc:
-            if _is_not_found(exc):
+            if self._is_not_found(exc):
                 return None
             raise DockerError(f"Failed reading container '{name}': {exc}") from exc
 
@@ -173,3 +178,11 @@ class DockerClient:
                 else None
             ),
         )
+
+
+# Singleton bound only so the legacy module-level ``_is_not_found``
+# alias keeps working for any caller that may still import it. The
+# helper does not touch ``self.client``, so the placeholder client
+# field is safe.
+_INSTANCE = DockerClient(client=None)
+_is_not_found = _INSTANCE._is_not_found

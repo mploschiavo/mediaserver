@@ -2,35 +2,46 @@
 
 from __future__ import annotations
 
+import importlib as _importlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
-
-import importlib as _importlib
 
 from .enums import RunnerEvent
 
 
-def _load_indexer_token_aliases() -> dict[str, str]:
-    from media_stack.core.service_registry.registry import SERVICES
-    for svc in SERVICES:
-        if not svc.indexer_path:
-            continue
-        try:
-            mod = _importlib.import_module(f"media_stack.services.apps.{svc.id}.runtime_compat")
-            return getattr(mod, "LEGACY_ARG_TOKEN_ALIASES", {})
-        except (ImportError, ModuleNotFoundError):
-            continue
-    return {}
+class _IndexerTokenAliasesLoader:
+    """Bootstrap-time helper that resolves ``LEGACY_ARG_TOKEN_ALIASES``
+    from the first registered indexer's runtime_compat module.
+
+    Lives at module scope so the class-level
+    ``DEFAULT_ARG_TOKEN_ATTRS`` literal can reference it before the
+    primary service singleton is built.
+    """
+
+    def load(self) -> dict[str, str]:
+        from media_stack.core.service_registry.registry import SERVICES
+        for svc in SERVICES:
+            if not svc.indexer_path:
+                continue
+            try:
+                mod = _importlib.import_module(
+                    f"media_stack.services.apps.{svc.id}.runtime_compat"
+                )
+                return getattr(mod, "LEGACY_ARG_TOKEN_ALIASES", {})
+            except (ImportError, ModuleNotFoundError):
+                continue
+        return {}
 
 
-_PROWLARR_TOKEN_ALIASES = _load_indexer_token_aliases()
+_LOADER_INSTANCE = _IndexerTokenAliasesLoader()
+_PROWLARR_TOKEN_ALIASES = _LOADER_INSTANCE.load()
 
 
 class RunnerPhasePlanService:
     RunOptionalStepFn = Callable[..., None]
     InvokeEventFn = Callable[..., Any]
     LogFn = Callable[[str], None]
-    
+
     DEFAULT_ARG_TOKEN_ATTRS: dict[str, str] = {
         "cfg": "cfg",
         "config_root": "config_root",
@@ -52,10 +63,10 @@ class RunnerPhasePlanService:
         # Legacy arg-token aliases from app-layer compat modules.
         **_PROWLARR_TOKEN_ALIASES,
     }
-    
-    
+
+
     def _load_indexer_token_aliases(self) -> dict[str, str]:
-        return _load_indexer_token_aliases()
+        return _LOADER_INSTANCE.load()
 
     def _resolve_runtime_bool_attr(self, runtime: Any, attr: str, default: bool) -> bool:
         if hasattr(runtime, attr):
@@ -275,13 +286,13 @@ class RunnerPhasePlanService:
         return True
 
 
-_instance = RunnerPhasePlanService()
-run_phase_plan = _instance.run_phase_plan
-_has_runtime_value = _instance._has_runtime_value
-_load_indexer_token_aliases = _instance._load_indexer_token_aliases
-_resolve_runtime_bool_attr = _instance._resolve_runtime_bool_attr
-_resolve_step_args = _instance._resolve_step_args
-_resolve_step_callable = _instance._resolve_step_callable
-_resolve_step_event_and_handler = _instance._resolve_step_event_and_handler
-_resolve_steps_for_phase = _instance._resolve_steps_for_phase
-DEFAULT_ARG_TOKEN_ATTRS = _instance.DEFAULT_ARG_TOKEN_ATTRS
+_INSTANCE = RunnerPhasePlanService()
+run_phase_plan = _INSTANCE.run_phase_plan
+_has_runtime_value = _INSTANCE._has_runtime_value
+_load_indexer_token_aliases = _INSTANCE._load_indexer_token_aliases
+_resolve_runtime_bool_attr = _INSTANCE._resolve_runtime_bool_attr
+_resolve_step_args = _INSTANCE._resolve_step_args
+_resolve_step_callable = _INSTANCE._resolve_step_callable
+_resolve_step_event_and_handler = _INSTANCE._resolve_step_event_and_handler
+_resolve_steps_for_phase = _INSTANCE._resolve_steps_for_phase
+DEFAULT_ARG_TOKEN_ATTRS = _INSTANCE.DEFAULT_ARG_TOKEN_ATTRS

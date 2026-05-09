@@ -188,6 +188,25 @@ class APITokenAggregator:
         self._providers: dict[str, APITokenProvider] = {p.name: p for p in providers}
         self._audit = audit_log
 
+    # -- sort helpers ----------------------------------------------------
+
+    def _neg_key(self, s: str) -> tuple[int, str]:
+        """Return a sort key that orders ``s`` descending when combined with
+        an ascending ``sort``. ISO-8601 timestamps (``YYYY-MM-DDTHH:MM:SSZ``)
+        sort lexicographically in chronological order, so negating is as
+        simple as inverting each codepoint via a reverse-order key.
+
+        Using a tuple ``(-len, inverted)`` keeps empty strings at the end
+        (unknown created_at shouldn't outrank a known one).
+        """
+        if not s:
+            # Unknown created_at sinks to the bottom of its provider group.
+            return (1, "")
+        # 0x10FFFF is the max code point; subtracting produces the
+        # lexicographic inverse so ascending sort => descending order.
+        inverted = "".join(chr(0x10FFFF - ord(c)) for c in s)
+        return (0, inverted)
+
     # -- listing ---------------------------------------------------------
 
     def list_for_user(
@@ -245,7 +264,7 @@ class APITokenAggregator:
             for tok in tokens:
                 records.append(APITokenRecord.from_api_token(name, tok))
 
-        records.sort(key=lambda r: (r.provider, _neg_key(r.created_at)))
+        records.sort(key=lambda r: (r.provider, self._neg_key(r.created_at)))
         return records
 
     # -- revocation ------------------------------------------------------
@@ -351,26 +370,14 @@ class APITokenAggregator:
 
 
 # ---------------------------------------------------------------------------
-# Sort helpers
+# Module-level instance + aliases
 # ---------------------------------------------------------------------------
 
-
-def _neg_key(s: str) -> tuple:
-    """Return a sort key that orders ``s`` descending when combined with
-    an ascending ``sort``. ISO-8601 timestamps (``YYYY-MM-DDTHH:MM:SSZ``)
-    sort lexicographically in chronological order, so negating is as
-    simple as inverting each codepoint via a reverse-order key.
-
-    Using a tuple ``(-len, inverted)`` keeps empty strings at the end
-    (unknown created_at shouldn't outrank a known one).
-    """
-    if not s:
-        # Unknown created_at sinks to the bottom of its provider group.
-        return (1, "")
-    # 0x10FFFF is the max code point; subtracting produces the
-    # lexicographic inverse so ascending sort ⇒ descending order.
-    inverted = "".join(chr(0x10FFFF - ord(c)) for c in s)
-    return (0, inverted)
+# Default singleton used purely so the legacy module-level ``_neg_key``
+# alias keeps working. Production callers always go through an
+# explicitly-constructed ``APITokenAggregator`` with real providers.
+_INSTANCE = APITokenAggregator()
+_neg_key = _INSTANCE._neg_key
 
 
 __all__ = [

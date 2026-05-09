@@ -2,27 +2,46 @@
 
 from __future__ import annotations
 
+import importlib as _importlib
 from typing import Any
 
 from .apps.download_clients.runtime_compat import (
     LEGACY_KWARG_MAP as _DL_CLIENT_COMPAT,
     DownloadClientRuntimeCompatMixin,
 )
-import importlib as _importlib
 
-def _load_indexer_compat():
-    from media_stack.core.service_registry.registry import SERVICES
-    for svc in SERVICES:
-        if not svc.indexer_path:
-            continue
-        try:
-            return _importlib.import_module(f"media_stack.services.apps.{svc.id}.runtime_compat")
-        except (ImportError, ModuleNotFoundError):
-            continue
-    # Fallback: empty compat
-    class _EmptyCompat:
-        LEGACY_KWARG_MAP = {}
-    return _EmptyCompat()
+
+class _EmptyIndexerCompat:
+    """Fallback compat module returned when no app-layer indexer compat is registered."""
+
+    LEGACY_KWARG_MAP: dict[str, Any] = {}
+
+
+class IndexerCompatLoader:
+    """Resolves the first registered indexer's runtime_compat module.
+
+    The bootstrap layer uses this to merge legacy kwarg shims for the
+    chosen indexer (Prowlarr today; future swap-ins via the service
+    registry). When no indexer is registered we return a stub with
+    empty maps so downstream merge expressions stay safe.
+    """
+
+    def load(self) -> Any:
+        from media_stack.core.service_registry.registry import SERVICES
+        for svc in SERVICES:
+            if not svc.indexer_path:
+                continue
+            try:
+                return _importlib.import_module(
+                    f"media_stack.services.apps.{svc.id}.runtime_compat"
+                )
+            except (ImportError, ModuleNotFoundError):
+                continue
+        return _EmptyIndexerCompat()
+
+
+_INSTANCE = IndexerCompatLoader()
+_load_indexer_compat = _INSTANCE.load
 
 _indexer_compat = _load_indexer_compat()
 _PROWLARR_COMPAT = _indexer_compat.LEGACY_KWARG_MAP

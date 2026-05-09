@@ -25,6 +25,7 @@ Design notes:
 
 from __future__ import annotations
 
+import builtins as _builtins
 from typing import Any, Mapping
 
 
@@ -36,25 +37,37 @@ _SAFE_BUILTINS = {
 }
 
 
-def evaluate(expr: str, scope: Mapping[str, Any]) -> tuple[bool, str]:
-    """Evaluate the assert expression. Returns ``(ok, detail)``.
+class AssertExpressionEvaluator:
+    """Sandboxed evaluator for promise ``assert:`` expressions.
 
-    ``ok=True`` means the expression returned truthy. ``ok=False``
-    with detail starting ``assert eval error:`` means the expression
-    raised; otherwise it returned a falsy value.
+    Single auditable site for the dynamically-evaluated YAML
+    expressions. Both the orchestrator's dispatcher and the legacy
+    ``probe_promises`` CLI go through this class so any future
+    security review only has one place to inspect.
     """
-    import builtins as _b
-    expr = (expr or "").strip().replace("\n", " ")
-    if not expr:
-        return (False, "empty assert expression")
-    globals_dict = {"__builtins__": _SAFE_BUILTINS, **dict(scope)}
-    try:
-        ok = bool(_b.eval(expr, globals_dict))  # noqa: S307
-    except Exception as exc:  # noqa: BLE001 - surface as detail
-        return (False, f"assert eval error: {exc}")
-    if not ok:
-        return (False, "assert returned False")
-    return (True, "ok")
+
+    def evaluate(self, expr: str, scope: Mapping[str, Any]) -> tuple[bool, str]:
+        """Evaluate the assert expression. Returns ``(ok, detail)``.
+
+        ``ok=True`` means the expression returned truthy. ``ok=False``
+        with detail starting ``assert eval error:`` means the expression
+        raised; otherwise it returned a falsy value.
+        """
+        expr = (expr or "").strip().replace("\n", " ")
+        if not expr:
+            return (False, "empty assert expression")
+        globals_dict = {"__builtins__": _SAFE_BUILTINS, **dict(scope)}
+        try:
+            ok = bool(_builtins.eval(expr, globals_dict))  # noqa: S307
+        except Exception as exc:  # noqa: BLE001 - surface as detail
+            return (False, f"assert eval error: {exc}")
+        if not ok:
+            return (False, "assert returned False")
+        return (True, "ok")
 
 
-__all__ = ["evaluate"]
+_INSTANCE = AssertExpressionEvaluator()
+evaluate = _INSTANCE.evaluate
+
+
+__all__ = ["AssertExpressionEvaluator", "evaluate"]

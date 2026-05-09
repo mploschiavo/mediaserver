@@ -46,51 +46,69 @@ _DEFAULT_V4_PREFIX_BITS = 24
 _DEFAULT_V6_PREFIX_BITS = 48
 
 
-def ip_prefix_for(ip: str, *, v4_bits: int = _DEFAULT_V4_PREFIX_BITS,
-                  v6_bits: int = _DEFAULT_V6_PREFIX_BITS) -> str:
-    """Return the network-prefix CIDR that brackets a single IP.
-
-    The result is the ``str(ip_network(..., strict=False))`` canonical
-    form, e.g. ``"203.0.113.0/24"`` for an IPv4 host or
-    ``"2001:db8::/48"`` for an IPv6 host. We truncate to a coarse
-    prefix on purpose: a stable binding key must survive a mobile
-    client moving between cell towers on the same carrier ASN, a
-    residential ISP rotating the last octet on DHCP lease renewal,
-    or IPv6 temporary-address regeneration every few hours. /24 and
-    /48 are the empirical cut points where those churn sources stop
-    and intentional network moves begin.
-
-    Args:
-        ip: The observed client IP as a string. Leading/trailing
-            whitespace is tolerated. Anything that isn't a valid
-            IPv4 or IPv6 literal returns ``""`` rather than raising
-            -- the callers (login path, session binding) cannot abort
-            on a malformed header from an untrusted client.
-        v4_bits: Prefix width for IPv4 (default 24).
-        v6_bits: Prefix width for IPv6 (default 48).
-
-    Returns:
-        A CIDR string, or ``""`` if the input is not parseable.
+class IPPrefixCalculator:
+    """Pure helper that derives a coarse network prefix from a raw IP
+    string. Lives at module scope so the prefix arithmetic is reusable
+    by login-history indexing + session-token binding without dragging
+    SessionStore state in.
     """
-    if not isinstance(ip, str):
-        return ""
-    text = ip.strip()
-    if not text:
-        return ""
-    try:
-        addr = ipaddress.ip_address(text)
-    except ValueError:
-        return ""
-    try:
-        if isinstance(addr, ipaddress.IPv4Address):
-            network = ipaddress.ip_network(f"{addr}/{int(v4_bits)}",
-                                            strict=False)
-        else:
-            network = ipaddress.ip_network(f"{addr}/{int(v6_bits)}",
-                                            strict=False)
-    except (ValueError, TypeError):
-        return ""
-    return str(network)
+
+    def compute(
+        self,
+        ip: str,
+        *,
+        v4_bits: int = _DEFAULT_V4_PREFIX_BITS,
+        v6_bits: int = _DEFAULT_V6_PREFIX_BITS,
+    ) -> str:
+        """Return the network-prefix CIDR that brackets a single IP.
+
+        The result is the ``str(ip_network(..., strict=False))`` canonical
+        form, e.g. ``"203.0.113.0/24"`` for an IPv4 host or
+        ``"2001:db8::/48"`` for an IPv6 host. We truncate to a coarse
+        prefix on purpose: a stable binding key must survive a mobile
+        client moving between cell towers on the same carrier ASN, a
+        residential ISP rotating the last octet on DHCP lease renewal,
+        or IPv6 temporary-address regeneration every few hours. /24 and
+        /48 are the empirical cut points where those churn sources stop
+        and intentional network moves begin.
+
+        Args:
+            ip: The observed client IP as a string. Leading/trailing
+                whitespace is tolerated. Anything that isn't a valid
+                IPv4 or IPv6 literal returns ``""`` rather than raising
+                -- the callers (login path, session binding) cannot abort
+                on a malformed header from an untrusted client.
+            v4_bits: Prefix width for IPv4 (default 24).
+            v6_bits: Prefix width for IPv6 (default 48).
+
+        Returns:
+            A CIDR string, or ``""`` if the input is not parseable.
+        """
+        if not isinstance(ip, str):
+            return ""
+        text = ip.strip()
+        if not text:
+            return ""
+        try:
+            addr = ipaddress.ip_address(text)
+        except ValueError:
+            return ""
+        try:
+            if isinstance(addr, ipaddress.IPv4Address):
+                network = ipaddress.ip_network(
+                    f"{addr}/{int(v4_bits)}", strict=False
+                )
+            else:
+                network = ipaddress.ip_network(
+                    f"{addr}/{int(v6_bits)}", strict=False
+                )
+        except (ValueError, TypeError):
+            return ""
+        return str(network)
+
+
+_INSTANCE = IPPrefixCalculator()
+ip_prefix_for = _INSTANCE.compute
 
 
 class BindingStatus(str, Enum):
