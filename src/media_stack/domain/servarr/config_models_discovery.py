@@ -6,19 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any, Union
 
 
-def _to_int(value: Any) -> int | None:
-    try:
-        if value is None or str(value).strip() == "":
-            return None
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _to_str(value: Any) -> str:
-    return str(value or "").strip()
-
-
 @dataclass(frozen=True)
 class DiscoveryListContract:
     implementation: str
@@ -94,38 +81,57 @@ _DISCOVERY_CONTRACTS: dict[str, DiscoveryListContract] = {
 }
 
 
-def resolve_discovery_list_contract(implementation: str) -> DiscoveryListContract:
-    token = str(implementation or "").strip().lower()
-    if token in _DISCOVERY_CONTRACTS:
-        return _DISCOVERY_CONTRACTS[token]
-    return DiscoveryListContract(
-        implementation=str(implementation or "").strip() or "unknown",
-        provider="generic",
-    )
+class ServarrConfigModelsDiscovery:
+    def _to_int(self, value: Any) -> int | None:
+        try:
+            if value is None or str(value).strip() == "":
+                return None
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _to_str(self, value: Any) -> str:
+        return str(value or "").strip()
+
+    def resolve_discovery_list_contract(self, implementation: str) -> DiscoveryListContract:
+        token = str(implementation or "").strip().lower()
+        if token in _DISCOVERY_CONTRACTS:
+            return _DISCOVERY_CONTRACTS[token]
+        return DiscoveryListContract(
+            implementation=str(implementation or "").strip() or "unknown",
+            provider="generic",
+        )
+
+    def parse_discovery_provider_options(
+        self,
+        contract: DiscoveryListContract,
+        field_overrides: dict[str, Any],
+    ) -> DiscoveryProviderOptions:
+        provider = contract.provider
+        if provider == "tmdb":
+            return TmdbPopularImportOptions(
+                tmdb_list_type=self._to_int(field_overrides.get("tMDbListType")),
+            )
+        if provider == "lastfm":
+            return LastFmTagOptions(
+                tag_id=self._to_str(field_overrides.get("tagId")),
+                count=self._to_int(field_overrides.get("count")),
+            )
+        if provider == "goodreads":
+            return GoodreadsListImportOptions(
+                list_id=self._to_str(field_overrides.get("listId")),
+            )
+        if provider == "trakt":
+            return TraktPopularImportOptions(
+                access_token=self._to_str(field_overrides.get("accessToken")),
+                refresh_token=self._to_str(field_overrides.get("refreshToken")),
+                list_type=self._to_str(field_overrides.get("listType")),
+            )
+        return GenericDiscoveryProviderOptions(values=dict(field_overrides))
 
 
-def parse_discovery_provider_options(
-    contract: DiscoveryListContract,
-    field_overrides: dict[str, Any],
-) -> DiscoveryProviderOptions:
-    provider = contract.provider
-    if provider == "tmdb":
-        return TmdbPopularImportOptions(
-            tmdb_list_type=_to_int(field_overrides.get("tMDbListType")),
-        )
-    if provider == "lastfm":
-        return LastFmTagOptions(
-            tag_id=_to_str(field_overrides.get("tagId")),
-            count=_to_int(field_overrides.get("count")),
-        )
-    if provider == "goodreads":
-        return GoodreadsListImportOptions(
-            list_id=_to_str(field_overrides.get("listId")),
-        )
-    if provider == "trakt":
-        return TraktPopularImportOptions(
-            access_token=_to_str(field_overrides.get("accessToken")),
-            refresh_token=_to_str(field_overrides.get("refreshToken")),
-            list_type=_to_str(field_overrides.get("listType")),
-        )
-    return GenericDiscoveryProviderOptions(values=dict(field_overrides))
+_INSTANCE = ServarrConfigModelsDiscovery()
+_to_int = _INSTANCE._to_int
+_to_str = _INSTANCE._to_str
+resolve_discovery_list_contract = _INSTANCE.resolve_discovery_list_contract
+parse_discovery_provider_options = _INSTANCE.parse_discovery_provider_options

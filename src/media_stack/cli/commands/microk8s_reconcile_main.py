@@ -52,142 +52,6 @@ class Microk8sReconcileState:
     rollout_failures: int = 0
 
 
-def _load_reconcile_hooks(config_file: Path) -> dict[str, object]:
-    if not config_file.exists():
-        raise ConfigError(f"Bootstrap config not found: {config_file}")
-    try:
-        payload = json.loads(config_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ConfigError(f"Invalid JSON in bootstrap config {config_file}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise ConfigError(f"Bootstrap config root must be an object: {config_file}")
-
-    # Merge platform-specific adapter hooks (e.g. adapter-hooks.k8s.yaml)
-    from media_stack.services.controller_component_resolver import _merge_platform_adapter_hooks
-    payload = _merge_platform_adapter_hooks(payload, config_file.parent)
-
-    adapter_hooks = payload.get("adapter_hooks")
-    if not isinstance(adapter_hooks, dict):
-        raise ConfigError("adapter_hooks must be an object in bootstrap config")
-
-    reconcile_hooks = adapter_hooks.get("microk8s_reconcile")
-    if not isinstance(reconcile_hooks, dict):
-        raise ConfigError("adapter_hooks.microk8s_reconcile must be an object")
-    return reconcile_hooks
-
-
-def _parse_phase_plan(raw_plan: object) -> tuple[ReconcilePhaseStep, ...]:
-    if not isinstance(raw_plan, list) or not raw_plan:
-        raise ConfigError("adapter_hooks.microk8s_reconcile.phase_plan must be a non-empty array")
-    steps: list[ReconcilePhaseStep] = []
-    for idx, item in enumerate(raw_plan):
-        if not isinstance(item, dict):
-            raise ConfigError(
-                "adapter_hooks.microk8s_reconcile.phase_plan" f"[{idx}] must be an object"
-            )
-        event_raw = str(item.get("event") or "").strip()
-        handler = str(item.get("handler") or "").strip()
-        phase_name = str(item.get("phase_name") or "").strip() or handler
-        if not event_raw:
-            raise ConfigError(
-                "adapter_hooks.microk8s_reconcile.phase_plan" f"[{idx}].event is required"
-            )
-        if not handler:
-            raise ConfigError(
-                "adapter_hooks.microk8s_reconcile.phase_plan" f"[{idx}].handler is required"
-            )
-        try:
-            event = RunnerEvent.from_value(event_raw)
-        except ValueError as exc:
-            raise ConfigError(
-                "adapter_hooks.microk8s_reconcile.phase_plan"
-                f"[{idx}].event '{event_raw}' is not a valid RunnerEvent"
-            ) from exc
-
-        steps.append(
-            ReconcilePhaseStep(
-                phase_name=phase_name,
-                event=event,
-                handler=handler,
-                enabled=bool(item.get("enabled", True)),
-                when=item.get("when", True),
-            )
-        )
-    return tuple(steps)
-
-
-def parse_config(argv: list[str] | None = None) -> Microk8sReconcileConfig:
-    parser = argparse.ArgumentParser(
-        prog="bin/microk8s-reconcile.sh",
-        description="Reconcile manifests from config-defined RECONCILE phase plan.",
-    )
-    parser.add_argument("--include-optional", action="store_true", default=False)
-    args = parser.parse_args(argv)
-
-    root_dir = repo_root_from_script_file(__file__)
-    config_file = Path(
-        str(os.environ.get("CONFIG_FILE") or root_dir / "contracts" / "media-stack.config.json")
-    ).resolve()
-    hooks = _load_reconcile_hooks(config_file)
-
-    raw_optional_deployments = hooks.get("optional_deployments")
-    if not isinstance(raw_optional_deployments, list):
-        raise ConfigError("adapter_hooks.microk8s_reconcile.optional_deployments must be an array")
-    optional_deployments = tuple(
-        str(item or "").strip() for item in raw_optional_deployments if str(item or "").strip()
-    )
-
-    raw_optional_manifests = hooks.get("optional_manifest_paths")
-    if not isinstance(raw_optional_manifests, list):
-        raise ConfigError(
-            "adapter_hooks.microk8s_reconcile.optional_manifest_paths must be an array"
-        )
-    optional_manifest_paths = tuple(
-        (root_dir / str(item or "").strip()).resolve()
-        for item in raw_optional_manifests
-        if str(item or "").strip()
-    )
-
-    raw_conditional_manifests = hooks.get("conditional_manifests") or []
-    if not isinstance(raw_conditional_manifests, list):
-        raise ConfigError("adapter_hooks.microk8s_reconcile.conditional_manifests must be an array")
-    conditional_manifest_rules: list[ConditionalManifestRule] = []
-    for idx, item in enumerate(raw_conditional_manifests):
-        if not isinstance(item, dict):
-            raise ConfigError(
-                "adapter_hooks.microk8s_reconcile.conditional_manifests"
-                f"[{idx}] must be an object"
-            )
-        deployment = str(item.get("deployment") or "").strip()
-        manifest = str(item.get("manifest_path") or "").strip()
-        message = str(item.get("message") or "").strip()
-        if not deployment or not manifest:
-            raise ConfigError(
-                "adapter_hooks.microk8s_reconcile.conditional_manifests"
-                f"[{idx}] requires deployment and manifest_path"
-            )
-        conditional_manifest_rules.append(
-            ConditionalManifestRule(
-                deployment=deployment,
-                manifest_path=(root_dir / manifest).resolve(),
-                message=message,
-            )
-        )
-
-    phase_plan = _parse_phase_plan(hooks.get("phase_plan"))
-
-    return Microk8sReconcileConfig(
-        namespace=os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack",
-        wait_timeout=os.environ.get("WAIT_TIMEOUT", "20m").strip() or "20m",
-        include_optional=bool(args.include_optional),
-        root_dir=root_dir,
-        optional_deployments=optional_deployments,
-        optional_manifest_paths=optional_manifest_paths,
-        conditional_manifest_rules=tuple(conditional_manifest_rules),
-        phase_plan=phase_plan,
-    )
-
-
 class Microk8sReconcileRunner:
     def __init__(self, cfg: Microk8sReconcileConfig) -> None:
         self.cfg = cfg
@@ -355,13 +219,154 @@ class Microk8sReconcileRunner:
         return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    try:
-        cfg = parse_config(argv)
-        return Microk8sReconcileRunner(cfg).run()
-    except (ConfigError, MediaStackError, OSError, ValueError) as exc:
-        print(f"[ERR] {exc}", file=sys.stderr)
-        return 1
+class Microk8sReconcileCommand:
+    def _load_reconcile_hooks(self, config_file: Path) -> dict[str, object]:
+        if not config_file.exists():
+            raise ConfigError(f"Bootstrap config not found: {config_file}")
+        try:
+            payload = json.loads(config_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ConfigError(f"Invalid JSON in bootstrap config {config_file}: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise ConfigError(f"Bootstrap config root must be an object: {config_file}")
+
+        # Merge platform-specific adapter hooks (e.g. adapter-hooks.k8s.yaml)
+        from media_stack.services.controller_component_resolver import _merge_platform_adapter_hooks
+        payload = _merge_platform_adapter_hooks(payload, config_file.parent)
+
+        adapter_hooks = payload.get("adapter_hooks")
+        if not isinstance(adapter_hooks, dict):
+            raise ConfigError("adapter_hooks must be an object in bootstrap config")
+
+        reconcile_hooks = adapter_hooks.get("microk8s_reconcile")
+        if not isinstance(reconcile_hooks, dict):
+            raise ConfigError("adapter_hooks.microk8s_reconcile must be an object")
+        return reconcile_hooks
+
+    def _parse_phase_plan(self, raw_plan: object) -> tuple[ReconcilePhaseStep, ...]:
+        if not isinstance(raw_plan, list) or not raw_plan:
+            raise ConfigError("adapter_hooks.microk8s_reconcile.phase_plan must be a non-empty array")
+        steps: list[ReconcilePhaseStep] = []
+        for idx, item in enumerate(raw_plan):
+            if not isinstance(item, dict):
+                raise ConfigError(
+                    "adapter_hooks.microk8s_reconcile.phase_plan" f"[{idx}] must be an object"
+                )
+            event_raw = str(item.get("event") or "").strip()
+            handler = str(item.get("handler") or "").strip()
+            phase_name = str(item.get("phase_name") or "").strip() or handler
+            if not event_raw:
+                raise ConfigError(
+                    "adapter_hooks.microk8s_reconcile.phase_plan" f"[{idx}].event is required"
+                )
+            if not handler:
+                raise ConfigError(
+                    "adapter_hooks.microk8s_reconcile.phase_plan" f"[{idx}].handler is required"
+                )
+            try:
+                event = RunnerEvent.from_value(event_raw)
+            except ValueError as exc:
+                raise ConfigError(
+                    "adapter_hooks.microk8s_reconcile.phase_plan"
+                    f"[{idx}].event '{event_raw}' is not a valid RunnerEvent"
+                ) from exc
+
+            steps.append(
+                ReconcilePhaseStep(
+                    phase_name=phase_name,
+                    event=event,
+                    handler=handler,
+                    enabled=bool(item.get("enabled", True)),
+                    when=item.get("when", True),
+                )
+            )
+        return tuple(steps)
+
+    def parse_config(self, argv: list[str] | None = None) -> Microk8sReconcileConfig:
+        parser = argparse.ArgumentParser(
+            prog="bin/microk8s-reconcile.sh",
+            description="Reconcile manifests from config-defined RECONCILE phase plan.",
+        )
+        parser.add_argument("--include-optional", action="store_true", default=False)
+        args = parser.parse_args(argv)
+
+        root_dir = repo_root_from_script_file(__file__)
+        config_file = Path(
+            str(os.environ.get("CONFIG_FILE") or root_dir / "contracts" / "media-stack.config.json")
+        ).resolve()
+        hooks = sys.modules[__name__]._load_reconcile_hooks(config_file)
+
+        raw_optional_deployments = hooks.get("optional_deployments")
+        if not isinstance(raw_optional_deployments, list):
+            raise ConfigError("adapter_hooks.microk8s_reconcile.optional_deployments must be an array")
+        optional_deployments = tuple(
+            str(item or "").strip() for item in raw_optional_deployments if str(item or "").strip()
+        )
+
+        raw_optional_manifests = hooks.get("optional_manifest_paths")
+        if not isinstance(raw_optional_manifests, list):
+            raise ConfigError(
+                "adapter_hooks.microk8s_reconcile.optional_manifest_paths must be an array"
+            )
+        optional_manifest_paths = tuple(
+            (root_dir / str(item or "").strip()).resolve()
+            for item in raw_optional_manifests
+            if str(item or "").strip()
+        )
+
+        raw_conditional_manifests = hooks.get("conditional_manifests") or []
+        if not isinstance(raw_conditional_manifests, list):
+            raise ConfigError("adapter_hooks.microk8s_reconcile.conditional_manifests must be an array")
+        conditional_manifest_rules: list[ConditionalManifestRule] = []
+        for idx, item in enumerate(raw_conditional_manifests):
+            if not isinstance(item, dict):
+                raise ConfigError(
+                    "adapter_hooks.microk8s_reconcile.conditional_manifests"
+                    f"[{idx}] must be an object"
+                )
+            deployment = str(item.get("deployment") or "").strip()
+            manifest = str(item.get("manifest_path") or "").strip()
+            message = str(item.get("message") or "").strip()
+            if not deployment or not manifest:
+                raise ConfigError(
+                    "adapter_hooks.microk8s_reconcile.conditional_manifests"
+                    f"[{idx}] requires deployment and manifest_path"
+                )
+            conditional_manifest_rules.append(
+                ConditionalManifestRule(
+                    deployment=deployment,
+                    manifest_path=(root_dir / manifest).resolve(),
+                    message=message,
+                )
+            )
+
+        phase_plan = sys.modules[__name__]._parse_phase_plan(hooks.get("phase_plan"))
+
+        return Microk8sReconcileConfig(
+            namespace=os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack",
+            wait_timeout=os.environ.get("WAIT_TIMEOUT", "20m").strip() or "20m",
+            include_optional=bool(args.include_optional),
+            root_dir=root_dir,
+            optional_deployments=optional_deployments,
+            optional_manifest_paths=optional_manifest_paths,
+            conditional_manifest_rules=tuple(conditional_manifest_rules),
+            phase_plan=phase_plan,
+        )
+
+    def main(self, argv: list[str] | None = None) -> int:
+        try:
+            cfg = sys.modules[__name__].parse_config(argv)
+            return Microk8sReconcileRunner(cfg).run()
+        except (ConfigError, MediaStackError, OSError, ValueError) as exc:
+            print(f"[ERR] {exc}", file=sys.stderr)
+            return 1
+
+
+_INSTANCE = Microk8sReconcileCommand()
+_load_reconcile_hooks = _INSTANCE._load_reconcile_hooks
+_parse_phase_plan = _INSTANCE._parse_phase_plan
+parse_config = _INSTANCE.parse_config
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":

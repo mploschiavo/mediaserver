@@ -18,26 +18,33 @@ from media_stack.core.defaults import default_controller_image
 from media_stack.core.exceptions import ConfigError, KubernetesError
 from media_stack.core.platforms.kubernetes.kube_client import KubernetesClient
 
-# Module logger for diagnostic/kubectl pass-through output. The top-level
-# info()/warn()/err() helpers below remain print-based because they emit
-# user-facing CLI progress lines with wall-clock timestamps.
+# Module logger for diagnostic/kubectl pass-through output. The
+# CliLogHelpers.info/warn/err methods below remain print-based because they
+# emit user-facing CLI progress lines with wall-clock timestamps.
 logger = logging.getLogger("prowlarr_auto_indexers")
 
 
-def ts() -> str:
-    return time.strftime(ISO_8601_TZ_OFFSET)
+class CliLogHelpers:
+    """Plain instance methods for CLI log output, dispatched as module-level aliases."""
+
+    def ts(self) -> str:
+        return time.strftime(ISO_8601_TZ_OFFSET)
+
+    def info(self, message: str) -> None:
+        print(f"[{sys.modules[__name__].ts()}] [INFO] {message}")
+
+    def warn(self, message: str) -> None:
+        print(f"[{sys.modules[__name__].ts()}] [WARN] {message}", file=sys.stderr)
+
+    def err(self, message: str) -> None:
+        print(f"[{sys.modules[__name__].ts()}] [ERR] {message}", file=sys.stderr)
 
 
-def info(message: str) -> None:
-    print(f"[{ts()}] [INFO] {message}")
-
-
-def warn(message: str) -> None:
-    print(f"[{ts()}] [WARN] {message}", file=sys.stderr)
-
-
-def err(message: str) -> None:
-    print(f"[{ts()}] [ERR] {message}", file=sys.stderr)
+_CLI_LOG_HELPERS_INSTANCE = CliLogHelpers()
+ts = _CLI_LOG_HELPERS_INSTANCE.ts
+info = _CLI_LOG_HELPERS_INSTANCE.info
+warn = _CLI_LOG_HELPERS_INSTANCE.warn
+err = _CLI_LOG_HELPERS_INSTANCE.err
 
 
 @dataclass(frozen=True)
@@ -322,8 +329,7 @@ class ProwlarrAutoIndexerRunner:
         except json.JSONDecodeError:
             return {"items": []}
 
-    @staticmethod
-    def _pod_items(payload: Any) -> list[dict[str, Any]]:
+    def _pod_items(self, payload: Any) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             items = payload.get("items")
             return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []

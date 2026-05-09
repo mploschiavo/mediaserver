@@ -112,6 +112,80 @@ class SessionDTO:
         }
 
 
+class _SessionAggregatorHelpers:
+    """Module-local helpers grouped as instance methods.
+
+    Per ADR-0012, top-level ``def`` is forbidden in service modules.
+    A single ``_INSTANCE`` is constructed at import time and aliased
+    to the underscore-prefixed names the rest of the module uses.
+    """
+
+    def default_classify(self, source: str) -> str:
+        """Default device classifier — ``classify_class`` enum value."""
+        if not source:
+            return ""
+        return classify_class(source).value
+
+    def float_to_iso(self, ts: Any) -> str:
+        """Convert a ``Session.last_used_at`` epoch float to ISO-Z.
+
+        Returns "" for zero / missing / non-float inputs so the UI
+        treats the session as "never used since mint".
+        """
+        try:
+            f = float(ts)
+        except (TypeError, ValueError):
+            return ""
+        if f <= 0:
+            return ""
+        return (
+            datetime.fromtimestamp(f, tz=timezone.utc)
+            .strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+        )
+
+    def dedup_and_sort(
+        self, dtos: list[SessionDTO],
+    ) -> list[SessionDTO]:
+        """Deduplicate by ``(provider, session_id)`` and sort.
+
+        Order: ``last_activity`` desc, ``connected_since`` desc,
+        ``provider`` asc. ISO-Z strings sort lexically in chronological
+        order so string sort works directly.
+        """
+        seen: dict[tuple[str, str], SessionDTO] = {}
+        for d in dtos:
+            # First-wins — controller rows are inserted first and
+            # therefore win a tie against a later duplicate provider row.
+            seen.setdefault((d.provider, d.session_id), d)
+        out = list(seen.values())
+        out.sort(
+            key=lambda d: (
+                self.neg_iso(d.last_activity),
+                self.neg_iso(d.connected_since),
+                d.provider,
+            )
+        )
+        return out
+
+    def neg_iso(self, s: str) -> tuple:
+        """Sort key that orders ``s`` descending under ascending sort.
+
+        ``(-len, inverted)`` puts empty strings last and inverts each
+        codepoint so ascending sort = descending chronological order.
+        """
+        if not s:
+            return (1, "")
+        inverted = "".join(chr(0x10FFFF - ord(c)) for c in s)
+        return (0, inverted)
+
+
+_INSTANCE = _SessionAggregatorHelpers()
+_default_classify = _INSTANCE.default_classify
+_float_to_iso = _INSTANCE.float_to_iso
+_dedup_and_sort = _INSTANCE.dedup_and_sort
+_neg_iso = _INSTANCE.neg_iso
+
+
 class SessionAggregator:
     """Fan out across every ``SessionAdminProvider`` + the controller's
     own ``SessionStore`` to produce a single deduplicated list.
@@ -342,71 +416,6 @@ class SessionAggregator:
                 username, client_ip, exc,
             )
             return False
-
-
-# ---------------------------------------------------------------------------
-# Module-local helpers
-# ---------------------------------------------------------------------------
-
-
-def _default_classify(source: str) -> str:
-    """Default device classifier — ``classify_class`` enum value."""
-    if not source:
-        return ""
-    return classify_class(source).value
-
-
-def _float_to_iso(ts: Any) -> str:
-    """Convert a ``Session.last_used_at`` epoch float to ISO-Z.
-
-    Returns "" for zero / missing / non-float inputs so the UI
-    treats the session as "never used since mint".
-    """
-    try:
-        f = float(ts)
-    except (TypeError, ValueError):
-        return ""
-    if f <= 0:
-        return ""
-    return (
-        datetime.fromtimestamp(f, tz=timezone.utc)
-        .strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
-    )
-
-
-def _dedup_and_sort(dtos: list[SessionDTO]) -> list[SessionDTO]:
-    """Deduplicate by ``(provider, session_id)`` and sort.
-
-    Order: ``last_activity`` desc, ``connected_since`` desc,
-    ``provider`` asc. ISO-Z strings sort lexically in chronological
-    order so string sort works directly.
-    """
-    seen: dict[tuple[str, str], SessionDTO] = {}
-    for d in dtos:
-        # First-wins — controller rows are inserted first and
-        # therefore win a tie against a later duplicate provider row.
-        seen.setdefault((d.provider, d.session_id), d)
-    out = list(seen.values())
-    out.sort(
-        key=lambda d: (
-            _neg_iso(d.last_activity),
-            _neg_iso(d.connected_since),
-            d.provider,
-        )
-    )
-    return out
-
-
-def _neg_iso(s: str) -> tuple:
-    """Sort key that orders ``s`` descending under ascending sort.
-
-    ``(-len, inverted)`` puts empty strings last and inverts each
-    codepoint so ascending sort = descending chronological order.
-    """
-    if not s:
-        return (1, "")
-    inverted = "".join(chr(0x10FFFF - ord(c)) for c in s)
-    return (0, inverted)
 
 
 __all__ = [

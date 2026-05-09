@@ -266,7 +266,7 @@ class ProfileConfig:
 
 
 # ---------------------------------------------------------------------------
-# Loader
+# Loader (class-based per ADR-0012)
 # ---------------------------------------------------------------------------
 
 _PROFILE_SEARCH_PATHS = [
@@ -275,63 +275,78 @@ _PROFILE_SEARCH_PATHS = [
 ]
 
 
-def _find_profile_path() -> Path | None:
-    """Find the profile YAML from env var or well-known paths."""
-    env_path = os.environ.get("BOOTSTRAP_PROFILE_FILE", "").strip()
-    if env_path:
-        p = Path(env_path)
-        if p.is_file():
-            return p
-    for p in _PROFILE_SEARCH_PATHS:
-        if p.is_file():
-            return p
-    return None
+class ProfileConfigLoader:
+    """Loads ProfileConfig from disk and caches a module-level singleton.
 
-
-def load_profile_config(profile_path: Path | str | None = None) -> ProfileConfig:
-    """Load ProfileConfig from a profile YAML file.
-
-    Args:
-        profile_path: Explicit path. If None, searches BOOTSTRAP_PROFILE_FILE
-                      env var and well-known paths.
-
-    Returns:
-        Frozen ProfileConfig instance.
-
-    Raises:
-        FileNotFoundError: If no profile YAML is found.
+    Plain instance methods (no @staticmethod) so subclassing/mocking works
+    uniformly. The module exposes a single shared `_INSTANCE` and
+    re-exports each method as a module-level alias for backward compat.
     """
-    if profile_path is not None:
-        path = Path(profile_path)
-    else:
-        path = _find_profile_path()
 
-    if path is None or not path.is_file():
-        # Return defaults when no profile is available (tests, minimal deploys)
-        return ProfileConfig.from_dict({})
+    def __init__(self) -> None:
+        self._search_paths: list[Path] = list(_PROFILE_SEARCH_PATHS)
+        self._cached: ProfileConfig | None = None
 
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return ProfileConfig.from_dict(data)
+    def _find_profile_path(self) -> Path | None:
+        """Find the profile YAML from env var or well-known paths."""
+        env_path = os.environ.get("BOOTSTRAP_PROFILE_FILE", "").strip()
+        if env_path:
+            p = Path(env_path)
+            if p.is_file():
+                return p
+        for p in self._search_paths:
+            if p.is_file():
+                return p
+        return None
+
+    def load_profile_config(
+        self, profile_path: Path | str | None = None
+    ) -> ProfileConfig:
+        """Load ProfileConfig from a profile YAML file.
+
+        Args:
+            profile_path: Explicit path. If None, searches
+                          BOOTSTRAP_PROFILE_FILE env var and well-known
+                          paths.
+
+        Returns:
+            Frozen ProfileConfig instance.
+
+        Raises:
+            FileNotFoundError: If no profile YAML is found.
+        """
+        if profile_path is not None:
+            path: Path | None = Path(profile_path)
+        else:
+            path = self._find_profile_path()
+
+        if path is None or not path.is_file():
+            # Defaults when no profile is available (tests, minimal deploys)
+            return ProfileConfig.from_dict({})
+
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return ProfileConfig.from_dict(data)
+
+    def get_profile_config(self) -> ProfileConfig:
+        """Get the cached ProfileConfig singleton.
+
+        Loads from the profile YAML on first call, then returns the
+        cached instance. Thread-safe for reads (frozen dataclass).
+        """
+        if self._cached is None:
+            self._cached = self.load_profile_config()
+        return self._cached
+
+    def reload_profile_config(self) -> ProfileConfig:
+        """Reload the profile from disk and update the cache."""
+        self._cached = self.load_profile_config()
+        return self._cached
 
 
-# Module-level singleton (lazy, loaded on first access)
-_cached: ProfileConfig | None = None
+# Module-level singleton + aliases (ADR-0012 pattern)
+_INSTANCE = ProfileConfigLoader()
 
-
-def get_profile_config() -> ProfileConfig:
-    """Get the cached ProfileConfig singleton.
-
-    Loads from the profile YAML on first call, then returns the
-    cached instance. Thread-safe for reads (frozen dataclass).
-    """
-    global _cached
-    if _cached is None:
-        _cached = load_profile_config()
-    return _cached
-
-
-def reload_profile_config() -> ProfileConfig:
-    """Reload the profile from disk and update the cache."""
-    global _cached
-    _cached = load_profile_config()
-    return _cached
+_find_profile_path = _INSTANCE._find_profile_path
+load_profile_config = _INSTANCE.load_profile_config
+get_profile_config = _INSTANCE.get_profile_config
+reload_profile_config = _INSTANCE.reload_profile_config

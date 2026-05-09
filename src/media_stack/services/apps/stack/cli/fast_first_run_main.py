@@ -18,42 +18,43 @@ class FastFirstRunConfig:
     kubectl_cmd: str
 
 
-def parse_config(argv: list[str] | None = None) -> FastFirstRunConfig:
-    parser = argparse.ArgumentParser(
-        prog="bin/fast-first-run.sh",
-        description=(
-            "Print fastest first-run wiring flow for media-stack "
-            "(URLs, setup order, API key helper commands)."
-        ),
-    )
-    parser.add_argument("node_ip")
-    args = parser.parse_args(argv)
-    node_ip = str(args.node_ip or "").strip()
-    namespace = os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack"
+class FastFirstRunCommand:
+    """CLI command for printing the fast first-run flow."""
 
-    try:
-        kubectl = " ".join(kube_cmd())
-    except Exception:
-        print(
-            "[WARN] Neither microk8s nor kubectl found. API key fetch commands will be shown but not tested.",
-            file=sys.stderr,
+    def parse_config(self, argv: list[str] | None = None) -> FastFirstRunConfig:
+        parser = argparse.ArgumentParser(
+            prog="bin/fast-first-run.sh",
+            description=(
+                "Print fastest first-run wiring flow for media-stack "
+                "(URLs, setup order, API key helper commands)."
+            ),
         )
-        kubectl = "kubectl"
-    return FastFirstRunConfig(node_ip=node_ip, namespace=namespace, kubectl_cmd=kubectl)
+        parser.add_argument("node_ip")
+        args = parser.parse_args(argv)
+        node_ip = str(args.node_ip or "").strip()
+        namespace = os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack"
 
+        try:
+            kubectl = " ".join(kube_cmd())
+        except Exception:
+            print(
+                "[WARN] Neither microk8s nor kubectl found. API key fetch commands will be shown but not tested.",
+                file=sys.stderr,
+            )
+            kubectl = "kubectl"
+        return FastFirstRunConfig(node_ip=node_ip, namespace=namespace, kubectl_cmd=kubectl)
 
-def _print_api_key_cmd(app: str, port: int, kubectl_cmd: str, namespace: str) -> None:
-    print(f"\n{app} API key:")
-    print(
-        f"  {kubectl_cmd} -n {namespace} exec deploy/{app} -- sh -c "
-        "\"sed -n 's:.*<ApiKey>\\\\(.*\\\\)</ApiKey>.*:\\\\1:p' /config/config.xml | head -n1\""
-    )
-    print(f"  URL: http://{app}:{port}")
+    def _print_api_key_cmd(self, app: str, port: int, kubectl_cmd: str, namespace: str) -> None:
+        print(f"\n{app} API key:")
+        print(
+            f"  {kubectl_cmd} -n {namespace} exec deploy/{app} -- sh -c "
+            "\"sed -n 's:.*<ApiKey>\\\\(.*\\\\)</ApiKey>.*:\\\\1:p' /config/config.xml | head -n1\""
+        )
+        print(f"  URL: http://{app}:{port}")
 
-
-def run(cfg: FastFirstRunConfig) -> int:
-    print(
-        f"""Fast first-run for media-stack
+    def run(self, cfg: FastFirstRunConfig) -> int:
+        print(
+            f"""Fast first-run for media-stack
 ==============================
 
 Use these URLs in your browser:
@@ -100,29 +101,36 @@ Recommended fastest order (about 15-25 minutes):
 
 API key helpers (run on this host):
 """
-    )
-    _print_api_key_cmd("sonarr", 8989, cfg.kubectl_cmd, cfg.namespace)
-    _print_api_key_cmd("radarr", 7878, cfg.kubectl_cmd, cfg.namespace)
-    _print_api_key_cmd("lidarr", 8686, cfg.kubectl_cmd, cfg.namespace)
-    _print_api_key_cmd("readarr", 8787, cfg.kubectl_cmd, cfg.namespace)
-    _print_api_key_cmd("prowlarr", 9696, cfg.kubectl_cmd, cfg.namespace)
-    print(
-        """
+        )
+        self._print_api_key_cmd("sonarr", 8989, cfg.kubectl_cmd, cfg.namespace)
+        self._print_api_key_cmd("radarr", 7878, cfg.kubectl_cmd, cfg.namespace)
+        self._print_api_key_cmd("lidarr", 8686, cfg.kubectl_cmd, cfg.namespace)
+        self._print_api_key_cmd("readarr", 8787, cfg.kubectl_cmd, cfg.namespace)
+        self._print_api_key_cmd("prowlarr", 9696, cfg.kubectl_cmd, cfg.namespace)
+        print(
+            """
 
 Optional sanity checks:
   bash bin/microk8s-smoke-test.sh <NODE_IP>
   microk8s kubectl -n media-stack get pods
 """.rstrip()
-    )
-    return 0
+        )
+        return 0
+
+    def main(self, argv: list[str] | None = None) -> int:
+        module = sys.modules[__name__]
+        try:
+            return module.run(module.parse_config(argv))
+        except Exception as exc:  # pragma: no cover - defensive CLI guard
+            print(f"[ERR] {exc}", file=sys.stderr)
+            return 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    try:
-        return run(parse_config(argv))
-    except Exception as exc:  # pragma: no cover - defensive CLI guard
-        print(f"[ERR] {exc}", file=sys.stderr)
-        return 1
+_INSTANCE = FastFirstRunCommand()
+parse_config = _INSTANCE.parse_config
+_print_api_key_cmd = _INSTANCE._print_api_key_cmd
+run = _INSTANCE.run
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":
