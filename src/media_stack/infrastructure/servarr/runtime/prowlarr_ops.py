@@ -20,20 +20,17 @@ from .factory import _arr_indexer_sync_service, _prowlarr_service
 
 class ServarrProwlarrOps:
 
-    @staticmethod
-    def _normalize_url_base(value: object) -> str:
+    def _normalize_url_base(self, value: object) -> str:
         return normalize_url_base(value)
 
-    @staticmethod
-    def _join_url_base(base_url: str, url_base: str) -> str:
+    def _join_url_base(self, base_url: str, url_base: str) -> str:
         root = str(base_url or "").rstrip("/")
-        base = _normalize_url_base(url_base)
+        base = self._normalize_url_base(url_base)
         if not base:
             return root
         return f"{root}{base}"
 
-    @staticmethod
-    def _lookup_url_base(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
+    def _lookup_url_base(self, mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
         if not isinstance(mapping, dict):
             return ""
         lowered = {
@@ -46,29 +43,27 @@ class ServarrProwlarrOps:
             candidate = lowered.get(token)
             if candidate is None:
                 continue
-            value = _normalize_url_base(candidate)
+            value = self._normalize_url_base(candidate)
             if value:
                 return value
         return ""
 
-    @staticmethod
-    def _path_aware_prowlarr_url(cfg: dict[str, Any] | None, prowlarr_url: str) -> str:
+    def _path_aware_prowlarr_url(self, cfg: dict[str, Any] | None, prowlarr_url: str) -> str:
         app_auth = cfg.get("app_auth") if isinstance(cfg, dict) else None
         if not isinstance(app_auth, dict):
             return str(prowlarr_url or "").strip()
-        path_base = _lookup_url_base(
+        path_base = self._lookup_url_base(
             app_auth.get("path_prefix_url_base_by_app") or {},
             ("prowlarr",),
-        ) or _lookup_url_base(
+        ) or self._lookup_url_base(
             app_auth.get("url_base_by_app") or {},
             ("prowlarr",),
         )
         if not path_base:
             return str(prowlarr_url or "").strip()
-        return _join_url_base(str(prowlarr_url or "").strip(), path_base)
+        return self._join_url_base(str(prowlarr_url or "").strip(), path_base)
 
-    @staticmethod
-    def _prowlarr_precheck_service(cfg=None) -> Any:
+    def _prowlarr_precheck_service(self, cfg=None) -> Any:
         service_cls = resolve_app_service_class(
             "prowlarr_precheck_service",
             object,
@@ -82,8 +77,7 @@ class ServarrProwlarrOps:
             ensure_app_auth_settings=ensure_app_auth_settings,
         )
 
-    @staticmethod
-    def _prowlarr_flaresolverr_service(cfg=None) -> Any:
+    def _prowlarr_flaresolverr_service(self, cfg=None) -> Any:
         service_cls = resolve_app_service_class(
             "prowlarr_flaresolverr_service",
             object,
@@ -102,8 +96,7 @@ class ServarrProwlarrOps:
             ),
         )
 
-    @staticmethod
-    def _prowlarr_indexer_pipeline_service(cfg=None) -> Any:
+    def _prowlarr_indexer_pipeline_service(self, cfg=None) -> Any:
         service_cls = resolve_app_service_class(
             "prowlarr_indexer_pipeline_service",
             object,
@@ -112,11 +105,11 @@ class ServarrProwlarrOps:
         return service_cls(
             log=log,
             bool_cfg=bool_cfg,
-            ensure_flaresolverr_proxy=ensure_prowlarr_flaresolverr_proxy,
-            ensure_indexer=ensure_prowlarr_indexer,
-            auto_add_tested_indexers=auto_add_tested_indexers,
-            trigger_sync=trigger_prowlarr_sync,
-            sync_arr_indexers_from_prowlarr=sync_arr_indexers_from_prowlarr,
+            ensure_flaresolverr_proxy=self.ensure_prowlarr_flaresolverr_proxy,
+            ensure_indexer=self.ensure_prowlarr_indexer,
+            auto_add_tested_indexers=self.auto_add_tested_indexers,
+            trigger_sync=self.trigger_prowlarr_sync,
+            sync_arr_indexers_from_prowlarr=self.sync_arr_indexers_from_prowlarr,
         )
 
     def run_prowlarr_indexer_pipeline(self,
@@ -130,7 +123,7 @@ class ServarrProwlarrOps:
         arr_apps_raw,
         app_keys,
     ):
-        return _prowlarr_indexer_pipeline_service().run(
+        return self._prowlarr_indexer_pipeline_service().run(
             cfg=cfg,
             # Bootstrap automation must use direct in-network service URLs.
             # Gateway/path-prefix URLs are for browser routing and can return
@@ -146,7 +139,7 @@ class ServarrProwlarrOps:
         )
 
     def ensure_prowlarr_ready(self, cfg, prowlarr_url, prowlarr_key, app_auth_cfg, wait_timeout):
-        return _prowlarr_precheck_service().ensure_ready(
+        return self._prowlarr_precheck_service().ensure_ready(
             prowlarr_url=str(prowlarr_url or "").strip(),
             prowlarr_key=prowlarr_key,
             app_auth_cfg=app_auth_cfg,
@@ -192,7 +185,7 @@ class ServarrProwlarrOps:
         )
 
     def ensure_prowlarr_flaresolverr_proxy(self, cfg, prowlarr_url, prowlarr_key, wait_timeout):
-        _prowlarr_flaresolverr_service().ensure_from_config(
+        self._prowlarr_flaresolverr_service().ensure_from_config(
             cfg=cfg,
             prowlarr_url=prowlarr_url,
             prowlarr_key=prowlarr_key,

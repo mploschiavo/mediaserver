@@ -10,23 +10,23 @@ import importlib as _importlib
 from .enums import RunnerEvent
 
 
+def _load_indexer_token_aliases() -> dict[str, str]:
+    from media_stack.core.service_registry.registry import SERVICES
+    for svc in SERVICES:
+        if not svc.indexer_path:
+            continue
+        try:
+            mod = _importlib.import_module(f"media_stack.services.apps.{svc.id}.runtime_compat")
+            return getattr(mod, "LEGACY_ARG_TOKEN_ALIASES", {})
+        except (ImportError, ModuleNotFoundError):
+            continue
+    return {}
+
+
+_PROWLARR_TOKEN_ALIASES = _load_indexer_token_aliases()
+
+
 class RunnerPhasePlanService:
-    @staticmethod
-    def _load_indexer_token_aliases():
-        from media_stack.core.service_registry.registry import SERVICES
-        for svc in SERVICES:
-            if not svc.indexer_path:
-                continue
-            try:
-                mod = _importlib.import_module(f"media_stack.services.apps.{svc.id}.runtime_compat")
-                return getattr(mod, "LEGACY_ARG_TOKEN_ALIASES", {})
-            except (ImportError, ModuleNotFoundError):
-                continue
-        return {}
-    
-    _PROWLARR_TOKEN_ALIASES = _load_indexer_token_aliases()
-    from .enums import RunnerEvent
-    
     RunOptionalStepFn = Callable[..., None]
     InvokeEventFn = Callable[..., Any]
     LogFn = Callable[[str], None]
@@ -54,8 +54,10 @@ class RunnerPhasePlanService:
     }
     
     
-    @staticmethod
-    def _resolve_runtime_bool_attr(runtime: Any, attr: str, default: bool) -> bool:
+    def _load_indexer_token_aliases(self) -> dict[str, str]:
+        return _load_indexer_token_aliases()
+
+    def _resolve_runtime_bool_attr(self, runtime: Any, attr: str, default: bool) -> bool:
         if hasattr(runtime, attr):
             return bool(getattr(runtime, attr))
         feature_flags = getattr(runtime, "feature_flags", None)
@@ -64,8 +66,7 @@ class RunnerPhasePlanService:
         return default
     
     
-    @staticmethod
-    def _has_runtime_value(runtime: Any, attr: str) -> bool:
+    def _has_runtime_value(self, runtime: Any, attr: str) -> bool:
         if hasattr(runtime, attr):
             value = getattr(runtime, attr)
         else:
@@ -80,8 +81,8 @@ class RunnerPhasePlanService:
         return bool(value)
     
     
-    @staticmethod
     def _resolve_step_args(
+        self,
         runtime: Any,
         step_cfg: dict[str, Any],
         *,
@@ -104,9 +105,8 @@ class RunnerPhasePlanService:
         return tuple(args)
     
     
-    @staticmethod
     def _resolve_steps_for_phase(
-        plan_cfg: dict[str, Any], phase_name: str
+        self, plan_cfg: dict[str, Any], phase_name: str
     ) -> tuple[list[dict[str, Any]], str, bool]:
         phase_cfg = plan_cfg.get(phase_name)
         if isinstance(phase_cfg, list):
@@ -124,8 +124,7 @@ class RunnerPhasePlanService:
         )
     
     
-    @staticmethod
-    def _resolve_step_event_and_handler(step_cfg: dict[str, Any]) -> tuple[str, str]:
+    def _resolve_step_event_and_handler(self, step_cfg: dict[str, Any]) -> tuple[str, str]:
         event_raw = str(step_cfg.get("event") or "").strip()
         handler_raw = str(step_cfg.get("handler") or "").strip()
         operation_raw = str(step_cfg.get("operation") or "").strip()
@@ -142,8 +141,8 @@ class RunnerPhasePlanService:
         return event_key, handler_raw
     
     
-    @staticmethod
     def _resolve_step_callable(
+        self,
         step: dict[str, Any],
         *,
         runtime: Any,
@@ -152,23 +151,23 @@ class RunnerPhasePlanService:
         resolved_tokens: dict[str, str],
     ) -> Callable[[], None] | None:
         """Resolve a single step config into a callable (or None if disabled/skipped)."""
-        event_name, handler_name = _resolve_step_event_and_handler(step)
+        event_name, handler_name = self._resolve_step_event_and_handler(step)
         if not event_name or not handler_name:
             return None
-        args = _resolve_step_args(runtime, step, arg_token_attrs=resolved_tokens)
+        args = self._resolve_step_args(runtime, step, arg_token_attrs=resolved_tokens)
     
         enabled = bool(step.get("enabled", True))
         enabled_attr = str(step.get("enabled_attr") or "").strip()
         if enabled_attr:
-            enabled = _resolve_runtime_bool_attr(runtime, enabled_attr, False)
+            enabled = self._resolve_runtime_bool_attr(runtime, enabled_attr, False)
         enabled_when_attr = str(step.get("enabled_when_attr") or "").strip()
         if enabled_when_attr:
-            enabled = enabled and _has_runtime_value(runtime, enabled_when_attr)
+            enabled = enabled and self._has_runtime_value(runtime, enabled_when_attr)
     
         required = bool(step.get("required", False))
         required_attr = str(step.get("required_attr") or "").strip()
         if required_attr:
-            required = _resolve_runtime_bool_attr(runtime, required_attr, False)
+            required = self._resolve_runtime_bool_attr(runtime, required_attr, False)
     
         use_optional = bool(step.get("optional", False)) or bool(enabled_attr or required_attr)
         if use_optional:
@@ -222,7 +221,7 @@ class RunnerPhasePlanService:
         sequentially (the original behaviour).
         """
     
-        steps, complete_message, parallel = _resolve_steps_for_phase(plan_cfg, phase_name)
+        steps, complete_message, parallel = self._resolve_steps_for_phase(plan_cfg, phase_name)
         if not steps:
             return False
     
@@ -236,13 +235,13 @@ class RunnerPhasePlanService:
         else:
             raise ValueError("run_phase_plan requires invoke_event (or legacy invoke_operation).")
     
-        resolved_tokens = arg_token_attrs or DEFAULT_ARG_TOKEN_ATTRS
+        resolved_tokens = arg_token_attrs or self.DEFAULT_ARG_TOKEN_ATTRS
     
         # Resolve all steps into callables.
         callables: list[tuple[str, Callable[[], None]]] = []
         for step in steps:
             handler_name = str(step.get("handler") or step.get("operation") or "?")
-            fn = _resolve_step_callable(
+            fn = self._resolve_step_callable(
                 step,
                 runtime=runtime,
                 invoke=invoke,
@@ -286,4 +285,3 @@ _resolve_step_callable = _instance._resolve_step_callable
 _resolve_step_event_and_handler = _instance._resolve_step_event_and_handler
 _resolve_steps_for_phase = _instance._resolve_steps_for_phase
 DEFAULT_ARG_TOKEN_ATTRS = _instance.DEFAULT_ARG_TOKEN_ATTRS
-_PROWLARR_TOKEN_ALIASES = _instance._PROWLARR_TOKEN_ALIASES

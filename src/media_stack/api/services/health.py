@@ -323,9 +323,8 @@ class HealthService:
             "total": len(results),
         }
 
-    @staticmethod
     def _probe_api_key_health(
-        host: str, port: int, path: str, auth_mode: str, api_key: str,
+        self, host: str, port: int, path: str, auth_mode: str, api_key: str,
     ) -> str:
         """GET the service's auth-check path with the token header.
 
@@ -351,9 +350,8 @@ class HealthService:
             )
             return "error"
 
-    @staticmethod
     def _probe_has_password(
-        *,
+        self, *,
         host: str, port: int, api_key: str, admin_user: str,
         user_list_path: str, has_password_key: str, auth_header: str,
     ) -> str:
@@ -459,8 +457,7 @@ class HealthService:
 
         return keys
 
-    @staticmethod
-    def _get_running_containers() -> set[str]:
+    def _get_running_containers(self) -> set[str]:
         """Get names of running containers (compose) or pods (K8s).
 
         Dispatches to the appropriate helper by whether ``K8S_NAMESPACE``
@@ -676,8 +673,7 @@ class HealthService:
             "last_bootstrap_at": self._last_bootstrap_iso(),
         }
 
-    @staticmethod
-    def _get_total_containers() -> set[str]:
+    def _get_total_containers(self) -> set[str]:
         """Containers/pods in the namespace regardless of phase. The
         denominator for the running-% gauge so 17 running out of 20
         deployed renders correctly. Falls back to running-only on
@@ -687,8 +683,7 @@ class HealthService:
             return _total_k8s_pod_names(namespace)
         return _total_compose_container_names()
 
-    @staticmethod
-    def _max_disk_pct() -> float:
+    def _max_disk_pct(self) -> float:
         """Largest ``percent_used`` across reported volumes. The
         dashboard tile shows a single number; pick the worst so a
         full /media volume doesn't get hidden behind a 2%-used /config."""
@@ -705,8 +700,7 @@ class HealthService:
             log_swallowed(exc)
             return 0.0
 
-    @staticmethod
-    def _last_bootstrap_iso() -> str:
+    def _last_bootstrap_iso(self) -> str:
         """Find the most recent bootstrap-flavored run in
         ``job-history.json`` and return its ts as an ISO string.
 
@@ -742,9 +736,8 @@ class HealthService:
         return ""
 
 
-    @staticmethod
     def _probe_login(
-        host: str, port: int, path: str, mode: str, username: str, password: str,
+        self, host: str, port: int, path: str, mode: str, username: str, password: str,
         api_key: str = "",
     ) -> str:
         """Test admin credential login for a single service. Returns status string.
@@ -838,8 +831,7 @@ class HealthService:
             logger.debug("Login probe %s:%d unexpected error: %s", host, port, exc)
             return "error"
 
-    @staticmethod
-    def _flush_health_history() -> None:
+    def _flush_health_history(self) -> None:
         """Write buffered entries to disk. Must be called under _HEALTH_HISTORY_LOCK."""
         if not _HEALTH_HISTORY_BUFFER:
             return

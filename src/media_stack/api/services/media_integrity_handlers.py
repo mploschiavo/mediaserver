@@ -100,7 +100,7 @@ class MediaIntegrityHandlers:
                 {"error": "media-integrity service not configured"},
             )
             return
-        if not _is_authenticated(actor):
+        if not self._is_authenticated(actor):
             handler._json_response(
                 HTTPStatus.UNAUTHORIZED, {"error": "authentication required"}
             )
@@ -136,7 +136,7 @@ class MediaIntegrityHandlers:
         # Split path from query string. Routes are matched on the bare
         # path; ``?dry_run=1`` etc. are parsed into ``query``.
         bare_path, _, raw_qs = path.partition("?")
-        query = _parse_query(raw_qs)
+        query = self._parse_query(raw_qs)
         if bare_path not in self._POST_EXACT:
             handler._json_response(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
@@ -219,8 +219,7 @@ class MediaIntegrityHandlers:
 
     # -- helpers -------------------------------------------------------
 
-    @staticmethod
-    def _idem_key(handler: Any) -> str:
+    def _idem_key(self, handler: Any) -> str:
         headers = getattr(handler, "headers", None)
         if headers is None:
             return ""
@@ -229,37 +228,34 @@ class MediaIntegrityHandlers:
         except Exception:
             return ""
 
-    @staticmethod
-    def _require_admin(actor: Actor) -> None:
+    def _require_admin(self, actor: Actor) -> None:
         """Explicit check mirroring ``@requires_admin`` without needing
         the decorator plumbing (which expects a service method
         signature)."""
         if not actor.is_admin:
             raise AuthorizationError("admin required")
 
+    def _is_authenticated(self, actor: Actor) -> bool:
+        """A resolved actor with a non-empty username is authenticated.
 
-def _is_authenticated(actor: Actor) -> bool:
-    """A resolved actor with a non-empty username is authenticated.
+        We deliberately do NOT require ``is_admin`` here: Security-tab
+        observers with read-only role still see the media-integrity
+        status card."""
+        return bool(actor and actor.is_authenticated)
 
-    We deliberately do NOT require ``is_admin`` here: Security-tab
-    observers with read-only role still see the media-integrity
-    status card."""
-    return bool(actor and actor.is_authenticated)
+    def _parse_query(self, raw: str) -> dict[str, str]:
+        """Parse a raw query string (no leading ``?``) into a flat dict.
 
-
-def _parse_query(raw: str) -> dict[str, str]:
-    """Parse a raw query string (no leading ``?``) into a flat dict.
-
-    Last-write wins on duplicate keys. Only single-value pairs are
-    needed; anything richer (multi-value, arrays) is out of scope
-    for the current media-integrity surface."""
-    out: dict[str, str] = {}
-    if not raw:
+        Last-write wins on duplicate keys. Only single-value pairs are
+        needed; anything richer (multi-value, arrays) is out of scope
+        for the current media-integrity surface."""
+        out: dict[str, str] = {}
+        if not raw:
+            return out
+        from urllib.parse import parse_qsl
+        for k, v in parse_qsl(raw, keep_blank_values=True):
+            out[k] = v
         return out
-    from urllib.parse import parse_qsl
-    for k, v in parse_qsl(raw, keep_blank_values=True):
-        out[k] = v
-    return out
 
 
 _instance = MediaIntegrityHandlers()

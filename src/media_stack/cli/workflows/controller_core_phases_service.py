@@ -26,10 +26,39 @@ class ControllerCorePhasesConfig:
     phase_skip_flags: dict[str, bool]
 
 
+class PhaseNameFormatter:
+    """Render ``{component_key}``/``{component}``/``{component|unbound}``
+    tokens in a phase-name template. Shared helper so the two callers
+    (``ControllerCorePhasesService`` and ``ControllerAllRunner``) can't
+    drift on the substitution rules."""
+
+    def format_phase_name(
+        self,
+        template: str,
+        *,
+        component_key: str = "",
+        component_technology: str = "",
+    ) -> str:
+        raw = str(template or "").strip()
+        if not raw:
+            return ""
+        out = raw.replace("{component_key}", component_key)
+        out = out.replace("{component|unbound}", component_technology or "unbound")
+        out = out.replace("{component}", component_technology)
+        return out
+
+
+_PHASE_NAME_FORMATTER = PhaseNameFormatter()
+# Public module-level alias bound to the singleton's instance method,
+# preserving the import API for external callers (controller_all_main).
+format_phase_name = _PHASE_NAME_FORMATTER.format_phase_name
+
+
 class ControllerCorePhasesService:
     def __init__(self, cfg: ControllerCorePhasesConfig) -> None:
         self.cfg = cfg
         self.plan: ControllerComponentPlan = resolve_bootstrap_component_plan(self.cfg.config_file)
+        self._phase_name_formatter = _PHASE_NAME_FORMATTER
 
     def _phase_script(self, phase_key: str, technology: str) -> str:
         return resolve_runner_phase_script(
@@ -71,30 +100,11 @@ class ControllerCorePhasesService:
         component_key: str = "",
         component_technology: str = "",
     ) -> str:
-        return format_phase_name(
+        return self._phase_name_formatter.format_phase_name(
             template,
             component_key=component_key,
             component_technology=component_technology,
         )
-
-
-def format_phase_name(
-    template: str,
-    *,
-    component_key: str = "",
-    component_technology: str = "",
-) -> str:
-    """Replace ``{component_key}``, ``{component}``, and
-    ``{component|unbound}`` tokens in a phase-name template. Shared
-    helper so the two callers (ControllerCorePhasesService and
-    ControllerAllRunner) can't drift on the substitution rules."""
-    raw = str(template or "").strip()
-    if not raw:
-        return ""
-    out = raw.replace("{component_key}", component_key)
-    out = out.replace("{component|unbound}", component_technology or "unbound")
-    out = out.replace("{component}", component_technology)
-    return out
 
     def run(
         self,

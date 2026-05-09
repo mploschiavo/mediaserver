@@ -51,25 +51,22 @@ class JellyfinPrewarmDependencies:
 class JellyfinPrewarmService:
     deps: JellyfinPrewarmDependencies
 
-    @staticmethod
-    def _normalize_text_list(values: Any, fallback: list[str] | None = None) -> list[str]:
+    def _normalize_text_list(self, values: Any, fallback: list[str] | None = None) -> list[str]:
         return normalize_text_list(values, fallback)
 
-    @staticmethod
     def _candidate_image_paths(
+        self,
         directory: Path,
         preferred_names: list[str],
         allowed_extensions: set[str],
     ) -> list[Path]:
         return candidate_image_paths(directory, preferred_names, allowed_extensions)
 
-    @staticmethod
-    def _extract_epub_cover_bytes(epub_path: Path) -> bytes | None:
+    def _extract_epub_cover_bytes(self, epub_path: Path) -> bytes | None:
         return extract_epub_cover_bytes(epub_path)
 
-    @staticmethod
     def _populate_sidecar_defaults(
-        sidecar_cfg: dict[str, Any], media_type_name: str,
+        self, sidecar_cfg: dict[str, Any], media_type_name: str,
     ) -> dict[str, Any]:
         """Inject substrate-default paths from the media-type catalog
         when the operator config omitted them.
@@ -131,12 +128,10 @@ class JellyfinPrewarmService:
         cfg["music_sidecar_artwork"] = sidecar
         ensure_music_sidecar_artwork(self, cfg)
 
-    @staticmethod
-    def _item_has_artwork(item: dict[str, Any]) -> bool:
+    def _item_has_artwork(self, item: dict[str, Any]) -> bool:
         return item_has_artwork(item)
 
-    @staticmethod
-    def _item_has_overview(item: dict[str, Any]) -> bool:
+    def _item_has_overview(self, item: dict[str, Any]) -> bool:
         return item_has_overview(item)
 
     def _run_metadata_backfill(

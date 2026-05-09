@@ -56,7 +56,7 @@ class AdminService:
         ms = next((s for s in SERVICES if s.category == "media"), None)
         if not ms:
             return {"status": "error", "error": "No media server in service registry"}
-        ops = _load_app_admin_ops(ms.id)
+        ops = self._load_app_admin_ops(ms.id)
         if ops and hasattr(ops, "hard_reset"):
             return ops.hard_reset(username, password)
         return {"status": "error", "error": f"No hard_reset handler for {ms.id}"}
@@ -71,7 +71,7 @@ class AdminService:
         if not svc:
             return {"status": "error", "error": f"Unknown service '{service_id}'"}
 
-        ops = _load_app_admin_ops(service_id)
+        ops = self._load_app_admin_ops(service_id)
         if ops and hasattr(ops, "hard_reset"):
             username = options.get("username", os.environ.get("STACK_ADMIN_USERNAME", "admin"))
             password = options.get("password", os.environ.get("STACK_ADMIN_PASSWORD", ""))
@@ -184,8 +184,8 @@ class AdminService:
         restarted = self._restart_after_rotation(file_based_services)
         return {"status": "rotated", "keys": list(rotated.keys()), "errors": errors, "restarted": restarted}
 
-    @staticmethod
     def _rotate_sqlite_key(
+        self,
         svc: Any, config_root: str,
         rotated: dict[str, str], errors: list[str],
     ) -> None:
@@ -210,8 +210,8 @@ class AdminService:
         except Exception as exc:
             errors.append(f"{svc.id}: {exc}")
 
-    @staticmethod
     def _rotate_file_key(
+        self,
         svc: Any, config_root: str,
         rotated: dict[str, str], errors: list[str],
         file_based_services: list[str],
@@ -281,8 +281,8 @@ class AdminService:
         restarted = self._restart_file_based_services(updated)
         return {"status": "updated", "services": updated, "errors": errors, "restarted": restarted}
 
-    @staticmethod
     def _reset_via_app_admin_ops(
+        self,
         _filter: set[str] | None,
         username: str,
         old_password: str,
@@ -300,7 +300,7 @@ class AdminService:
         for svc in SERVICES:
             if _filter is not None and svc.id not in _filter:
                 continue
-            ops = _load_app_admin_ops(svc.id)
+            ops = self._load_app_admin_ops(svc.id)
             if ops and hasattr(ops, "reset_password"):
                 ok, err = ops.reset_password(svc, username, old_password, new_password, config_root)
                 if ok:
@@ -355,8 +355,8 @@ class AdminService:
             except Exception as exc:
                 errors.append(f"{svc.id}: {exc}")
 
-    @staticmethod
     def _reset_via_password_config(
+        self,
         _filter: set[str] | None,
         username: str,
         new_password: str,
@@ -496,10 +496,9 @@ class AdminService:
             log_swallowed(exc)
 
 
-    @staticmethod
-    def _load_app_admin_ops(service_id: str) -> Any:
+    def _load_app_admin_ops(self, service_id: str) -> Any:
         """Try to import services.apps.<service_id>.admin_ops module.
-    
+
         Returns the module or None if it doesn't exist.
         """
         try:
