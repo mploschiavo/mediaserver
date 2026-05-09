@@ -38,6 +38,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -67,179 +68,193 @@ _KEY_HOST = ("host", "authority", "request_authority")
 _KEY_UA = ("user_agent", "request_user_agent")
 
 
-def _first(d: dict[str, Any], keys: tuple[str, ...]) -> Any:
-    for k in keys:
-        if k in d and d[k] not in (None, ""):
-            return d[k]
-    return None
+class EnvoyAccessLogService:
+    """Tail + parse Envoy access logs from file/k8s/docker sources."""
 
+    def first(self, d: dict[str, Any], keys: tuple[str, ...]) -> Any:
+        for k in keys:
+            if k in d and d[k] not in (None, ""):
+                return d[k]
+        return None
 
-def _parse_line(line: str) -> dict[str, Any]:
-    """Parse one access-log line into the wire shape. JSON-typed
-    lines unpack into structured fields; anything else returns just
-    a ``raw`` field so the UI can render the original text."""
-    line = line.strip()
-    if not line:
-        return {}
-    if line.startswith("{") and line.endswith("}"):
-        try:
-            obj = json.loads(line)
-        except json.JSONDecodeError:
-            return {"raw": line}
-        return {
-            "ts": _first(obj, _KEY_TS),
-            "method": _first(obj, _KEY_METHOD),
-            "path": _first(obj, _KEY_PATH),
-            "status": _first(obj, _KEY_STATUS),
-            "upstream": _first(obj, _KEY_UPSTREAM),
-            "upstream_host": _first(obj, _KEY_UPSTREAM_HOST),
-            "duration_ms": _first(obj, _KEY_DURATION),
-            "client_ip": _first(obj, _KEY_CLIENT),
-            "x_forwarded_for": _first(obj, _KEY_XFF),
-            "cf_connecting_ip": _first(obj, _KEY_CF),
-            "x_real_ip": _first(obj, _KEY_REAL_IP),
-            "host": _first(obj, _KEY_HOST),
-            "user_agent": _first(obj, _KEY_UA),
-            "raw": line,
-        }
-    return {"raw": line}
-
-
-def _read_file(path: Path, limit: int) -> list[str]:
-    if not path.is_file():
-        return []
-    # Read the tail efficiently — for large files we don't want to
-    # slurp the whole thing. Read in 64KB chunks from the end.
-    try:
-        with path.open("rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            block = 65536
-            data = b""
-            pos = size
-            while pos > 0 and data.count(b"\n") <= limit:
-                pos = max(0, pos - block)
-                f.seek(pos)
-                data = f.read(size - pos)
-            text = data.decode("utf-8", errors="replace")
-            lines = text.splitlines()
-            return lines[-limit:]
-    except OSError:
-        return []
-
-
-def _k8s_tail(limit: int) -> list[str]:
-    """Fetch the last N stdout lines from the Envoy pod via the
-    Kubernetes Python client.
-
-    The controller image ships kubernetes>=35; ``kubectl`` is NOT
-    installed (extra ~50MB binary for one feature). The K8s API
-    server's ``GET /api/v1/namespaces/{ns}/pods/{name}/log?tailLines=N``
-    returns the same content, and the bundled controller
-    ServiceAccount has the ``pods/log`` verb.
-
-    ``ENVOY_POD_LABEL`` defaults to ``app=envoy`` (matches the
-    bundled K8s manifests in deploy/k8s/base/edge/). Operators with a
-    custom label set the env to override.
-    """
-    namespace = os.environ.get("MEDIA_STACK_NAMESPACE", "media-stack")
-    pod_label = os.environ.get("ENVOY_POD_LABEL", "app=envoy")
-    container = os.environ.get("ENVOY_CONTAINER_NAME", "envoy")
-    try:
-        # Lazy import — kubernetes is heavy; only paid when an
-        # operator actually opens the live-tail panel.
-        from kubernetes import client, config
-        try:
-            config.load_incluster_config()
-        except Exception:  # noqa: BLE001
+    def parse_line(self, line: str) -> dict[str, Any]:
+        """Parse one access-log line into the wire shape. JSON-typed
+        lines unpack into structured fields; anything else returns just
+        a ``raw`` field so the UI can render the original text."""
+        line = line.strip()
+        if not line:
+            return {}
+        if line.startswith("{") and line.endswith("}"):
             try:
-                config.load_kube_config()
-            except Exception:  # noqa: BLE001
-                return []
-        v1 = client.CoreV1Api()
-        # Resolve the label to a concrete pod name (pick the first
-        # ready pod). Multiple replicas would need fan-out; the
-        # bundled deploy is single-replica so first-pod is correct.
-        pods = v1.list_namespaced_pod(
-            namespace=namespace,
-            label_selector=pod_label,
-            limit=5,
-        )
-        if not pods.items:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                return {"raw": line}
+            return {
+                "ts": self.first(obj, _KEY_TS),
+                "method": self.first(obj, _KEY_METHOD),
+                "path": self.first(obj, _KEY_PATH),
+                "status": self.first(obj, _KEY_STATUS),
+                "upstream": self.first(obj, _KEY_UPSTREAM),
+                "upstream_host": self.first(obj, _KEY_UPSTREAM_HOST),
+                "duration_ms": self.first(obj, _KEY_DURATION),
+                "client_ip": self.first(obj, _KEY_CLIENT),
+                "x_forwarded_for": self.first(obj, _KEY_XFF),
+                "cf_connecting_ip": self.first(obj, _KEY_CF),
+                "x_real_ip": self.first(obj, _KEY_REAL_IP),
+                "host": self.first(obj, _KEY_HOST),
+                "user_agent": self.first(obj, _KEY_UA),
+                "raw": line,
+            }
+        return {"raw": line}
+
+    def read_file(self, path: Path, limit: int) -> list[str]:
+        if not path.is_file():
             return []
-        pod_name = pods.items[0].metadata.name
-        # tailLines = limit; container = the envoy sidecar (ignores
-        # init containers). We avoid streaming/follow — the panel
-        # polls every 5s, which is plenty without sustaining an
-        # open watch.
-        log_text: str = v1.read_namespaced_pod_log(
-            name=pod_name,
-            namespace=namespace,
-            container=container,
-            tail_lines=limit,
-            timestamps=False,
-        )
-        return log_text.splitlines() if log_text else []
-    except Exception:  # noqa: BLE001
-        # Anything wrong (RBAC denied, pod renamed, API unreachable)
-        # falls through to the docker compose path so a misconfigured
-        # K8s deploy doesn't black-hole the panel.
-        return []
+        # Read the tail efficiently — for large files we don't want to
+        # slurp the whole thing. Read in 64KB chunks from the end.
+        try:
+            with path.open("rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                block = 65536
+                data = b""
+                pos = size
+                while pos > 0 and data.count(b"\n") <= limit:
+                    pos = max(0, pos - block)
+                    f.seek(pos)
+                    data = f.read(size - pos)
+                text = data.decode("utf-8", errors="replace")
+                lines = text.splitlines()
+                return lines[-limit:]
+        except OSError:
+            return []
+
+    def k8s_tail(self, limit: int) -> list[str]:
+        """Fetch the last N stdout lines from the Envoy pod via the
+        Kubernetes Python client.
+
+        The controller image ships kubernetes>=35; ``kubectl`` is NOT
+        installed (extra ~50MB binary for one feature). The K8s API
+        server's ``GET /api/v1/namespaces/{ns}/pods/{name}/log?tailLines=N``
+        returns the same content, and the bundled controller
+        ServiceAccount has the ``pods/log`` verb.
+
+        ``ENVOY_POD_LABEL`` defaults to ``app=envoy`` (matches the
+        bundled K8s manifests in deploy/k8s/base/edge/). Operators with a
+        custom label set the env to override.
+        """
+        namespace = os.environ.get("MEDIA_STACK_NAMESPACE", "media-stack")
+        pod_label = os.environ.get("ENVOY_POD_LABEL", "app=envoy")
+        container = os.environ.get("ENVOY_CONTAINER_NAME", "envoy")
+        try:
+            # Lazy import — kubernetes is heavy; only paid when an
+            # operator actually opens the live-tail panel.
+            from kubernetes import client, config
+            try:
+                config.load_incluster_config()
+            except Exception:  # noqa: BLE001
+                try:
+                    config.load_kube_config()
+                except Exception:  # noqa: BLE001
+                    return []
+            v1 = client.CoreV1Api()
+            # Resolve the label to a concrete pod name (pick the first
+            # ready pod). Multiple replicas would need fan-out; the
+            # bundled deploy is single-replica so first-pod is correct.
+            pods = v1.list_namespaced_pod(
+                namespace=namespace,
+                label_selector=pod_label,
+                limit=5,
+            )
+            if not pods.items:
+                return []
+            pod_name = pods.items[0].metadata.name
+            # tailLines = limit; container = the envoy sidecar (ignores
+            # init containers). We avoid streaming/follow — the panel
+            # polls every 5s, which is plenty without sustaining an
+            # open watch.
+            log_text: str = v1.read_namespaced_pod_log(
+                name=pod_name,
+                namespace=namespace,
+                container=container,
+                tail_lines=limit,
+                timestamps=False,
+            )
+            return log_text.splitlines() if log_text else []
+        except Exception:  # noqa: BLE001
+            # Anything wrong (RBAC denied, pod renamed, API unreachable)
+            # falls through to the docker compose path so a misconfigured
+            # K8s deploy doesn't black-hole the panel.
+            return []
+
+    def docker_tail(self, limit: int) -> list[str]:
+        """docker compose logs envoy --tail=<limit>. Returns [] if
+        docker is absent or the call fails."""
+        if not shutil.which("docker"):
+            return []
+        try:
+            proc = subprocess.run(
+                ["docker", "compose", "logs", "envoy", "--tail", str(limit)],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return []
+        if proc.returncode != 0:
+            return []
+        return proc.stdout.decode("utf-8", errors="replace").splitlines()
+
+    def tail_envoy_access_log(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Return up to ``limit`` recent access-log entries, parsed.
+        Newest last (chronological order, matching Envoy's emission)."""
+        # Dispatch through sys.modules so tests that mock.patch the
+        # module-level aliases (_read_file, _k8s_tail, _docker_tail,
+        # _parse_line) intercept the calls.
+        mod = sys.modules[__name__]
+        lines: list[str] = []
+
+        explicit = os.environ.get("ENVOY_ACCESS_LOG_PATH", "").strip()
+        if explicit:
+            lines = mod._read_file(Path(explicit), limit)
+        if not lines and os.environ.get("KUBERNETES_SERVICE_HOST"):
+            lines = mod._k8s_tail(limit)
+        if not lines:
+            lines = mod._docker_tail(limit)
+
+        rows: list[dict[str, Any]] = []
+        for line in lines:
+            parsed = mod._parse_line(line)
+            if parsed:
+                rows.append(parsed)
+        rows = rows[-limit:]
+
+        # GeoIP enrichment — adds ``country`` (2-letter code) + ``flag``
+        # (emoji) to each row for public IPs. Private/LAN IPs return None
+        # so the UI can hide those columns for them. Uses the operator-
+        # supplied GeoLite2 mmdb when available; falls back to a coarse
+        # bundled CIDR table.
+        try:
+            from .geoip import lookup_country, country_flag
+            for r in rows:
+                ip = r.get("client_ip")
+                country = lookup_country(ip) if ip else None
+                r["country"] = country
+                r["flag"] = country_flag(country) if country else ""
+        except Exception:  # noqa: BLE001
+            # GeoIP is purely additive — never break the panel because
+            # of a lookup failure.
+            pass
+        return rows
 
 
-def _docker_tail(limit: int) -> list[str]:
-    """docker compose logs envoy --tail=<limit>. Returns [] if
-    docker is absent or the call fails."""
-    if not shutil.which("docker"):
-        return []
-    try:
-        proc = subprocess.run(
-            ["docker", "compose", "logs", "envoy", "--tail", str(limit)],
-            capture_output=True,
-            timeout=5,
-            check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return []
-    if proc.returncode != 0:
-        return []
-    return proc.stdout.decode("utf-8", errors="replace").splitlines()
+_INSTANCE = EnvoyAccessLogService()
 
-
-def tail_envoy_access_log(limit: int = 50) -> list[dict[str, Any]]:
-    """Return up to ``limit`` recent access-log entries, parsed.
-    Newest last (chronological order, matching Envoy's emission)."""
-    lines: list[str] = []
-
-    explicit = os.environ.get("ENVOY_ACCESS_LOG_PATH", "").strip()
-    if explicit:
-        lines = _read_file(Path(explicit), limit)
-    if not lines and os.environ.get("KUBERNETES_SERVICE_HOST"):
-        lines = _k8s_tail(limit)
-    if not lines:
-        lines = _docker_tail(limit)
-
-    rows: list[dict[str, Any]] = []
-    for line in lines:
-        parsed = _parse_line(line)
-        if parsed:
-            rows.append(parsed)
-    rows = rows[-limit:]
-
-    # GeoIP enrichment — adds ``country`` (2-letter code) + ``flag``
-    # (emoji) to each row for public IPs. Private/LAN IPs return None
-    # so the UI can hide those columns for them. Uses the operator-
-    # supplied GeoLite2 mmdb when available; falls back to a coarse
-    # bundled CIDR table.
-    try:
-        from .geoip import lookup_country, country_flag
-        for r in rows:
-            ip = r.get("client_ip")
-            country = lookup_country(ip) if ip else None
-            r["country"] = country
-            r["flag"] = country_flag(country) if country else ""
-    except Exception:  # noqa: BLE001
-        # GeoIP is purely additive — never break the panel because
-        # of a lookup failure.
-        pass
-    return rows
+# Module-level aliases — preserve the legacy underscore-prefixed names
+# (used internally + by tests via mock.patch) plus the public surface.
+_first = _INSTANCE.first
+_parse_line = _INSTANCE.parse_line
+_read_file = _INSTANCE.read_file
+_k8s_tail = _INSTANCE.k8s_tail
+_docker_tail = _INSTANCE.docker_tail
+tail_envoy_access_log = _INSTANCE.tail_envoy_access_log

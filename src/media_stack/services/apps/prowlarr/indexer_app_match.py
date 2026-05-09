@@ -49,6 +49,9 @@ correct: each *arr gets exactly the indexers that work for its
 content type. ``addOnly`` sync (FIX C) plus this per-app
 tagging (FIX B) plus no-quarantine-during-discovery (FIX A) =
 stable indexer state across reconciles.
+
+Class-based per ADR-0012 — module-level aliases preserve the
+public import API.
 """
 
 from __future__ import annotations
@@ -101,412 +104,427 @@ _DEFAULT_CACHE_PATH = Path(
 # skip the probe for indexers already in the cache.
 _CACHE_TTL_HOURS = int(os.environ.get("INDEXER_APP_MATCH_TTL_HOURS", "168"))
 
+# Per-app probe term. An EMPTY ``query=`` returned 0 hits for many
+# broad indexers (TPB, 1337x, etc.) when combined with a category
+# filter — Cardigann definitions translate the empty query into a
+# request that the upstream tracker can't satisfy. The fix is a
+# short, well-seeded term that any tracker covering the app's
+# content type WILL have. Public-domain / well-known content keeps
+# this safe as a probe (no risk of returning nothing for legal
+# reasons). (v1.0.140 — root-caused after Pirate Bay returned 100
+# hits for "Inception" with no category filter and 0 hits for the
+# same query with categories=2000.)
+_PROBE_QUERY: dict[str, str] = {
+    "sonarr":  "office",   # broad TV title — eztv, TPB, etc. carry it.
+    "radarr":  "inception",  # Famous movie — every movie tracker has it.
+    "lidarr":  "metallica",  # Major artist — universal music coverage.
+    "readarr": "shakespeare",  # Classic author — universal book coverage.
+}
 
-def _load_cache(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {"version": _CACHE_VERSION, "indexers": {}}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        if data.get("version") != _CACHE_VERSION:
+
+class IndexerAppMatcher:
+    """Per-app indexer matching pipeline (ADR-0012 class wrapper)."""
+
+    def _load_cache(self, path: Path) -> dict[str, Any]:
+        if not path.exists():
             return {"version": _CACHE_VERSION, "indexers": {}}
-        if not isinstance(data.get("indexers"), dict):
-            data["indexers"] = {}
-        return data
-    except Exception as exc:
-        _log.debug("indexer-app-match cache read failed: %s", exc)
-        return {"version": _CACHE_VERSION, "indexers": {}}
-
-
-def _save_cache(path: Path, data: dict[str, Any]) -> None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data["updated_at_epoch"] = int(time.time())
-        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    except Exception as exc:
-        _log.debug("indexer-app-match cache write failed: %s", exc)
-
-
-def _ensure_prowlarr_tag(
-    *,
-    prowlarr_url: str,
-    api_key: str,
-    http_request,
-    label: str,
-) -> int | None:
-    """Return the Prowlarr tag id for ``label``, creating it if
-    missing. Returns None on hard failure (caller logs)."""
-    status, body, _ = http_request(
-        prowlarr_url, "/api/v1/tag", api_key=api_key,
-    )
-    if status == 200 and isinstance(body, list):
-        match = next(
-            (t for t in body
-             if str(t.get("label", "")).strip().lower() == label.lower()),
-            None,
-        )
-        if match and match.get("id") is not None:
-            try:
-                return int(match["id"])
-            except (TypeError, ValueError):
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
-    status, body, raw = http_request(
-        prowlarr_url, "/api/v1/tag", api_key=api_key,
-        method="POST", payload={"label": label},
-    )
-    if status not in (200, 201, 202):
-        return None
-    if isinstance(body, dict) and body.get("id") is not None:
         try:
-            return int(body["id"])
-        except (TypeError, ValueError):
-            return None
-    return None
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("version") != _CACHE_VERSION:
+                return {"version": _CACHE_VERSION, "indexers": {}}
+            if not isinstance(data.get("indexers"), dict):
+                data["indexers"] = {}
+            return data
+        except Exception as exc:
+            _log.debug("indexer-app-match cache read failed: %s", exc)
+            return {"version": _CACHE_VERSION, "indexers": {}}
 
+    def _save_cache(self, path: Path, data: dict[str, Any]) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data["updated_at_epoch"] = int(time.time())
+            path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        except Exception as exc:
+            _log.debug("indexer-app-match cache write failed: %s", exc)
 
-def _probe_indexer_for_app(
-    *,
-    prowlarr_url: str,
-    api_key: str,
-    http_request,
-    indexer_id: int,
-    app: str,
-) -> bool:
-    """True if the indexer returns ≥1 result for the app's
-    categories. Uses Prowlarr's ``/api/v1/search`` with type=search
-    and the app's category set, scoped to the single indexer.
-
-    Prowlarr's ``/api/v1/search`` requires ``categories`` as
-    REPEATED query params (``categories=5000&categories=5010``);
-    a comma-separated list returns HTTP 400 with
-    ``"value '5000,5010,...' is not a valid categories value"``.
-    That 400 had silently classified every indexer as "no app
-    match" and poisoned the indexer-app-match cache for the
-    project's whole history. (Fixed v1.0.122.)
-    """
-    cats = APP_CATEGORIES.get(app, [])
-    if not cats:
-        return False
-    # Per-app probe term. An EMPTY ``query=`` returned 0 hits for many
-    # broad indexers (TPB, 1337x, etc.) when combined with a category
-    # filter — Cardigann definitions translate the empty query into a
-    # request that the upstream tracker can't satisfy. The fix is a
-    # short, well-seeded term that any tracker covering the app's
-    # content type WILL have. Public-domain / well-known content keeps
-    # this safe as a probe (no risk of returning nothing for legal
-    # reasons). (v1.0.140 — root-caused after Pirate Bay returned 100
-    # hits for "Inception" with no category filter and 0 hits for the
-    # same query with categories=2000.)
-    _PROBE_QUERY = {
-        "sonarr":  "office",   # broad TV title — eztv, TPB, etc. carry it.
-        "radarr":  "inception",  # Famous movie — every movie tracker has it.
-        "lidarr":  "metallica",  # Major artist — universal music coverage.
-        "readarr": "shakespeare",  # Classic author — universal book coverage.
-    }
-    query = _PROBE_QUERY.get(app, "linux")
-    cat_qs = "&".join(f"categories={c}" for c in cats)
-    from urllib.parse import quote as _quote
-    path = (
-        f"/api/v1/search?type=search&query={_quote(query)}&{cat_qs}"
-        f"&indexerIds={indexer_id}&limit=5"
-    )
-    status, body, _ = http_request(prowlarr_url, path, api_key=api_key)
-    if status != 200:
-        return False
-    if not isinstance(body, list):
-        return False
-    return len(body) > 0
-
-
-def _resolve_per_indexer_apps(
-    *,
-    prowlarr_url: str,
-    api_key: str,
-    http_request,
-    indexer: dict[str, Any],
-    cache: dict[str, Any],
-    log,
-) -> set[str]:
-    """Return the set of app names the indexer should sync to.
-    Reads from cache first; only probes when the cache entry is
-    missing or expired."""
-    iid = indexer.get("id")
-    impl = indexer.get("implementation", "")
-    name = indexer.get("name", "")
-    if iid is None:
-        return set()
-    cache_key = f"{iid}:{impl}:{name}"
-    entry = cache["indexers"].get(cache_key) or {}
-    now = int(time.time())
-    ttl_seconds = max(1, _CACHE_TTL_HOURS) * 3600
-    age = now - int(entry.get("probed_at_epoch") or 0)
-
-    matched: set[str] = set()
-    if age < ttl_seconds and isinstance(entry.get("apps"), list):
-        matched = set(entry["apps"])
-        return matched
-
-    # Fresh probe.
-    apps_with_results: list[str] = []
-    for app, cats in APP_CATEGORIES.items():
-        # Capability pre-filter: skip the search if the indexer
-        # doesn't even claim to support any of the app's
-        # categories.  Cheap win — the schema check is local.
-        cap_cats = (indexer.get("capabilities") or {}).get("categories") or []
-        cap_ids: set[int] = set()
-        for c in cap_cats:
-            try:
-                cap_ids.add(int(c.get("id")))
-            except (TypeError, ValueError):
-                logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
-            for sub in (c.get("subCategories") or []):
+    def _ensure_prowlarr_tag(
+        self,
+        *,
+        prowlarr_url: str,
+        api_key: str,
+        http_request,
+        label: str,
+    ) -> int | None:
+        """Return the Prowlarr tag id for ``label``, creating it if
+        missing. Returns None on hard failure (caller logs)."""
+        status, body, _ = http_request(
+            prowlarr_url, "/api/v1/tag", api_key=api_key,
+        )
+        if status == 200 and isinstance(body, list):
+            match = next(
+                (t for t in body
+                 if str(t.get("label", "")).strip().lower() == label.lower()),
+                None,
+            )
+            if match and match.get("id") is not None:
                 try:
-                    cap_ids.add(int(sub.get("id")))
+                    return int(match["id"])
                 except (TypeError, ValueError):
                     logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
-        if cap_ids and not any(c in cap_ids for c in cats):
-            continue
-        if _probe_indexer_for_app(
-            prowlarr_url=prowlarr_url,
-            api_key=api_key,
-            http_request=http_request,
-            indexer_id=int(iid),
-            app=app,
-        ):
-            apps_with_results.append(app)
-    cache["indexers"][cache_key] = {
-        "id": int(iid),
-        "implementation": impl,
-        "name": name,
-        "apps": apps_with_results,
-        "probed_at_epoch": now,
-    }
-    if apps_with_results:
-        log(f"[OK] indexer-app-match: {name} → {','.join(apps_with_results)}")
-    else:
-        log(f"[INFO] indexer-app-match: {name} → no app match (capability claims didn't survive probe)")
-    return set(apps_with_results)
-
-
-def apply_indexer_app_tags(
-    *,
-    prowlarr_url: str,
-    prowlarr_api_key: str,
-    http_request,
-    log,
-    cache_path: Path | None = None,
-) -> dict[str, Any]:
-    """Run the full tagging pipeline.
-
-    1. Ensure Prowlarr has a tag per app (sync-sonarr, etc.).
-    2. For each indexer, probe per app + tag accordingly.
-    3. For each Prowlarr application, set its ``tags`` field to
-       its sync-tag so Prowlarr's normal ApplicationIndexerSync
-       only pushes matching indexers.
-
-    Returns a summary ``{tags: {app: id}, indexers_classified: N,
-    cache_hits: N, app_tag_set: {app: bool}}``."""
-    cache_path = cache_path or _DEFAULT_CACHE_PATH
-    cache = _load_cache(cache_path)
-
-    # Step 1 — tags.
-    tag_ids: dict[str, int] = {}
-    for app, label in APP_TAGS.items():
-        tid = _ensure_prowlarr_tag(
-            prowlarr_url=prowlarr_url,
-            api_key=prowlarr_api_key,
-            http_request=http_request,
-            label=label,
+        status, body, raw = http_request(
+            prowlarr_url, "/api/v1/tag", api_key=api_key,
+            method="POST", payload={"label": label},
         )
-        if tid is None:
-            log(f"[WARN] indexer-app-match: failed to ensure tag '{label}'")
-            continue
-        tag_ids[app] = tid
-
-    # Step 2 — probe + tag indexers.
-    status, indexers, _ = http_request(
-        prowlarr_url, "/api/v1/indexer", api_key=prowlarr_api_key,
-    )
-    if status != 200 or not isinstance(indexers, list):
-        return {"error": f"failed to list indexers (HTTP {status})"}
-
-    # Which download-client protocols are actually available?
-    # If SABnzbd is off (usenet disabled), usenet-only indexers
-    # must NOT be tagged — Sonarr/Radarr would try to grab the
-    # NZB, hand it to their only download client (qBit), which
-    # reads the NZB bytes as a torrent and crashes with
-    # ``MonoTorrent.TorrentException: Invalid torrent file``.
-    # Every grab attempt then fills the *arr queue with
-    # ``downloadClientUnavailable`` and qBit stays at zero.
-    # (v1.0.130 — 7th bug in the qBit-not-downloading chain.)
-    _arr_status, _arr_proxies, _ = http_request(
-        prowlarr_url, "/api/v1/applications", api_key=prowlarr_api_key,
-    )
-    # Query Prowlarr's download client list: Prowlarr proxies DLs
-    # to the *arrs; it's enough to know whether any *arr has at
-    # least one torrent + usenet client respectively by checking
-    # the indexer's protocol against our local SAB-enabled flag.
-    # Simpler heuristic: SAB is the only usenet client we ship.
-    # If the SABnzbd service is unreachable OR explicitly off,
-    # usenet indexers can't produce grabs.
-    sab_reachable = False
-    try:
-        _s, _b, _ = http_request(
-            service_internal_url("sabnzbd"), "/sabnzbd/api?mode=version",
-            api_key="",
-        )
-        sab_reachable = (_s == 200)
-    except Exception:
-        sab_reachable = False
-
-    cache_hits = 0
-    classified = 0
-    for idx in indexers:
-        iid = idx.get("id")
-        if iid is None:
-            continue
-        # Usenet indexers are useless without a usenet download
-        # client. SAB is the only one we ship; when it's
-        # unreachable, ACTIVELY UNTAG any usenet indexer that
-        # carries our sync-* tags so Prowlarr stops pushing them
-        # to *arrs. Without the un-tag step, indexers tagged
-        # under a previous code revision stay tagged forever and
-        # the *arr keeps grabbing NZBs into its torrent client
-        # (the v1.0.130 skip-on-tag fix prevented NEW tagging
-        # but didn't repair the old state). Self-healing on every
-        # tag run.
-        if idx.get("protocol") == "usenet" and not sab_reachable:
-            current_tags = list(idx.get("tags") or [])
-            sync_tag_id_set_for_purge = set()
-            # Re-fetch tag ids defensively in case tag_ids was
-            # not yet populated (e.g. a tag-ensure failed earlier).
+        if status not in (200, 201, 202):
+            return None
+        if isinstance(body, dict) and body.get("id") is not None:
             try:
-                _st, _tags_list, _ = http_request(
-                    prowlarr_url, "/api/v1/tag",
-                    api_key=prowlarr_api_key,
-                )
-                if _st == 200 and isinstance(_tags_list, list):
-                    sync_tag_id_set_for_purge = {
-                        int(t["id"]) for t in _tags_list
-                        if str(t.get("label", "")).startswith("sync-")
-                        and t.get("id") is not None
-                    }
-            except Exception:
-                sync_tag_id_set_for_purge = set(tag_ids.values())
-            stripped = [t for t in current_tags if t not in sync_tag_id_set_for_purge]
-            if sorted(stripped) != sorted(current_tags):
-                body = dict(idx)
-                body["tags"] = stripped
-                _st, _, _ = http_request(
-                    prowlarr_url, f"/api/v1/indexer/{iid}",
-                    api_key=prowlarr_api_key,
-                    method="PUT", payload=body,
-                )
-                if _st in (200, 201, 202):
-                    log(
-                        f"[OK] indexer-app-match: untagged usenet "
-                        f"indexer '{idx.get('name','?')}' (SAB not "
-                        f"reachable)"
+                return int(body["id"])
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _probe_indexer_for_app(
+        self,
+        *,
+        prowlarr_url: str,
+        api_key: str,
+        http_request,
+        indexer_id: int,
+        app: str,
+    ) -> bool:
+        """True if the indexer returns >=1 result for the app's
+        categories. Uses Prowlarr's ``/api/v1/search`` with type=search
+        and the app's category set, scoped to the single indexer.
+
+        Prowlarr's ``/api/v1/search`` requires ``categories`` as
+        REPEATED query params (``categories=5000&categories=5010``);
+        a comma-separated list returns HTTP 400 with
+        ``"value '5000,5010,...' is not a valid categories value"``.
+        That 400 had silently classified every indexer as "no app
+        match" and poisoned the indexer-app-match cache for the
+        project's whole history. (Fixed v1.0.122.)
+        """
+        cats = APP_CATEGORIES.get(app, [])
+        if not cats:
+            return False
+        query = _PROBE_QUERY.get(app, "linux")
+        cat_qs = "&".join(f"categories={c}" for c in cats)
+        from urllib.parse import quote as _quote
+        path = (
+            f"/api/v1/search?type=search&query={_quote(query)}&{cat_qs}"
+            f"&indexerIds={indexer_id}&limit=5"
+        )
+        status, body, _ = http_request(prowlarr_url, path, api_key=api_key)
+        if status != 200:
+            return False
+        if not isinstance(body, list):
+            return False
+        return len(body) > 0
+
+    def _resolve_per_indexer_apps(
+        self,
+        *,
+        prowlarr_url: str,
+        api_key: str,
+        http_request,
+        indexer: dict[str, Any],
+        cache: dict[str, Any],
+        log,
+    ) -> set[str]:
+        """Return the set of app names the indexer should sync to.
+        Reads from cache first; only probes when the cache entry is
+        missing or expired."""
+        iid = indexer.get("id")
+        impl = indexer.get("implementation", "")
+        name = indexer.get("name", "")
+        if iid is None:
+            return set()
+        cache_key = f"{iid}:{impl}:{name}"
+        entry = cache["indexers"].get(cache_key) or {}
+        now = int(time.time())
+        ttl_seconds = max(1, _CACHE_TTL_HOURS) * 3600
+        age = now - int(entry.get("probed_at_epoch") or 0)
+
+        matched: set[str] = set()
+        if age < ttl_seconds and isinstance(entry.get("apps"), list):
+            matched = set(entry["apps"])
+            return matched
+
+        # Fresh probe.
+        apps_with_results: list[str] = []
+        for app, cats in APP_CATEGORIES.items():
+            # Capability pre-filter: skip the search if the indexer
+            # doesn't even claim to support any of the app's
+            # categories.  Cheap win — the schema check is local.
+            cap_cats = (indexer.get("capabilities") or {}).get("categories") or []
+            cap_ids: set[int] = set()
+            for c in cap_cats:
+                try:
+                    cap_ids.add(int(c.get("id")))
+                except (TypeError, ValueError):
+                    logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
+                for sub in (c.get("subCategories") or []):
+                    try:
+                        cap_ids.add(int(sub.get("id")))
+                    except (TypeError, ValueError):
+                        logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
+            if cap_ids and not any(c in cap_ids for c in cats):
+                continue
+            if self._probe_indexer_for_app(
+                prowlarr_url=prowlarr_url,
+                api_key=api_key,
+                http_request=http_request,
+                indexer_id=int(iid),
+                app=app,
+            ):
+                apps_with_results.append(app)
+        cache["indexers"][cache_key] = {
+            "id": int(iid),
+            "implementation": impl,
+            "name": name,
+            "apps": apps_with_results,
+            "probed_at_epoch": now,
+        }
+        if apps_with_results:
+            log(f"[OK] indexer-app-match: {name} → {','.join(apps_with_results)}")
+        else:
+            log(f"[INFO] indexer-app-match: {name} → no app match (capability claims didn't survive probe)")
+        return set(apps_with_results)
+
+    def apply_indexer_app_tags(
+        self,
+        *,
+        prowlarr_url: str,
+        prowlarr_api_key: str,
+        http_request,
+        log,
+        cache_path: Path | None = None,
+    ) -> dict[str, Any]:
+        """Run the full tagging pipeline.
+
+        1. Ensure Prowlarr has a tag per app (sync-sonarr, etc.).
+        2. For each indexer, probe per app + tag accordingly.
+        3. For each Prowlarr application, set its ``tags`` field to
+           its sync-tag so Prowlarr's normal ApplicationIndexerSync
+           only pushes matching indexers.
+
+        Returns a summary ``{tags: {app: id}, indexers_classified: N,
+        cache_hits: N, app_tag_set: {app: bool}}``."""
+        cache_path = cache_path or _DEFAULT_CACHE_PATH
+        cache = self._load_cache(cache_path)
+
+        # Step 1 — tags.
+        tag_ids: dict[str, int] = {}
+        for app, label in APP_TAGS.items():
+            tid = self._ensure_prowlarr_tag(
+                prowlarr_url=prowlarr_url,
+                api_key=prowlarr_api_key,
+                http_request=http_request,
+                label=label,
+            )
+            if tid is None:
+                log(f"[WARN] indexer-app-match: failed to ensure tag '{label}'")
+                continue
+            tag_ids[app] = tid
+
+        # Step 2 — probe + tag indexers.
+        status, indexers, _ = http_request(
+            prowlarr_url, "/api/v1/indexer", api_key=prowlarr_api_key,
+        )
+        if status != 200 or not isinstance(indexers, list):
+            return {"error": f"failed to list indexers (HTTP {status})"}
+
+        # Which download-client protocols are actually available?
+        # If SABnzbd is off (usenet disabled), usenet-only indexers
+        # must NOT be tagged — Sonarr/Radarr would try to grab the
+        # NZB, hand it to their only download client (qBit), which
+        # reads the NZB bytes as a torrent and crashes with
+        # ``MonoTorrent.TorrentException: Invalid torrent file``.
+        # Every grab attempt then fills the *arr queue with
+        # ``downloadClientUnavailable`` and qBit stays at zero.
+        # (v1.0.130 — 7th bug in the qBit-not-downloading chain.)
+        _arr_status, _arr_proxies, _ = http_request(
+            prowlarr_url, "/api/v1/applications", api_key=prowlarr_api_key,
+        )
+        # Query Prowlarr's download client list: Prowlarr proxies DLs
+        # to the *arrs; it's enough to know whether any *arr has at
+        # least one torrent + usenet client respectively by checking
+        # the indexer's protocol against our local SAB-enabled flag.
+        # Simpler heuristic: SAB is the only usenet client we ship.
+        # If the SABnzbd service is unreachable OR explicitly off,
+        # usenet indexers can't produce grabs.
+        sab_reachable = False
+        try:
+            _s, _b, _ = http_request(
+                service_internal_url("sabnzbd"), "/sabnzbd/api?mode=version",
+                api_key="",
+            )
+            sab_reachable = (_s == 200)
+        except Exception:
+            sab_reachable = False
+
+        cache_hits = 0
+        classified = 0
+        for idx in indexers:
+            iid = idx.get("id")
+            if iid is None:
+                continue
+            # Usenet indexers are useless without a usenet download
+            # client. SAB is the only one we ship; when it's
+            # unreachable, ACTIVELY UNTAG any usenet indexer that
+            # carries our sync-* tags so Prowlarr stops pushing them
+            # to *arrs. Without the un-tag step, indexers tagged
+            # under a previous code revision stay tagged forever and
+            # the *arr keeps grabbing NZBs into its torrent client
+            # (the v1.0.130 skip-on-tag fix prevented NEW tagging
+            # but didn't repair the old state). Self-healing on every
+            # tag run.
+            if idx.get("protocol") == "usenet" and not sab_reachable:
+                current_tags = list(idx.get("tags") or [])
+                sync_tag_id_set_for_purge = set()
+                # Re-fetch tag ids defensively in case tag_ids was
+                # not yet populated (e.g. a tag-ensure failed earlier).
+                try:
+                    _st, _tags_list, _ = http_request(
+                        prowlarr_url, "/api/v1/tag",
+                        api_key=prowlarr_api_key,
                     )
+                    if _st == 200 and isinstance(_tags_list, list):
+                        sync_tag_id_set_for_purge = {
+                            int(t["id"]) for t in _tags_list
+                            if str(t.get("label", "")).startswith("sync-")
+                            and t.get("id") is not None
+                        }
+                except Exception:
+                    sync_tag_id_set_for_purge = set(tag_ids.values())
+                stripped = [t for t in current_tags if t not in sync_tag_id_set_for_purge]
+                if sorted(stripped) != sorted(current_tags):
+                    body = dict(idx)
+                    body["tags"] = stripped
+                    _st, _, _ = http_request(
+                        prowlarr_url, f"/api/v1/indexer/{iid}",
+                        api_key=prowlarr_api_key,
+                        method="PUT", payload=body,
+                    )
+                    if _st in (200, 201, 202):
+                        log(
+                            f"[OK] indexer-app-match: untagged usenet "
+                            f"indexer '{idx.get('name','?')}' (SAB not "
+                            f"reachable)"
+                        )
+                    else:
+                        log(
+                            f"[WARN] indexer-app-match: failed to untag "
+                            f"usenet indexer '{idx.get('name','?')}' "
+                            f"(HTTP {_st})"
+                        )
                 else:
                     log(
-                        f"[WARN] indexer-app-match: failed to untag "
-                        f"usenet indexer '{idx.get('name','?')}' "
-                        f"(HTTP {_st})"
+                        f"[INFO] indexer-app-match: skipping usenet "
+                        f"indexer '{idx.get('name','?')}' (SAB not "
+                        f"reachable — no usenet download client)"
                     )
-            else:
-                log(
-                    f"[INFO] indexer-app-match: skipping usenet "
-                    f"indexer '{idx.get('name','?')}' (SAB not "
-                    f"reachable — no usenet download client)"
-                )
-            continue
-        cache_key_prefix = f"{iid}:"
-        had_cache = any(
-            k.startswith(cache_key_prefix) for k in cache["indexers"]
-        )
-        matched_apps = _resolve_per_indexer_apps(
-            prowlarr_url=prowlarr_url,
-            api_key=prowlarr_api_key,
-            http_request=http_request,
-            indexer=idx,
-            cache=cache,
-            log=log,
-        )
-        if had_cache:
-            cache_hits += 1
-        classified += 1
-
-        desired_tag_ids = sorted({
-            tag_ids[app] for app in matched_apps if app in tag_ids
-        })
-        # Preserve any non-sync-* tags the operator added manually.
-        current_tags = list(idx.get("tags") or [])
-        sync_tag_id_set = set(tag_ids.values())
-        non_sync_tags = [t for t in current_tags if t not in sync_tag_id_set]
-        new_tags = sorted(set(non_sync_tags) | set(desired_tag_ids))
-        if sorted(current_tags) == new_tags:
-            continue
-        body = dict(idx)
-        body["tags"] = new_tags
-        st, _, _ = http_request(
-            prowlarr_url, f"/api/v1/indexer/{iid}",
-            api_key=prowlarr_api_key,
-            method="PUT", payload=body,
-        )
-        if st in (200, 201, 202):
-            log(
-                f"[OK] indexer-app-match: tagged {idx.get('name','?')} "
-                f"with {desired_tag_ids}"
-            )
-        else:
-            log(
-                f"[WARN] indexer-app-match: failed to tag "
-                f"{idx.get('name','?')} (HTTP {st})"
-            )
-
-    _save_cache(cache_path, cache)
-
-    # Step 3 — set each Prowlarr application's tags field.
-    status, apps, _ = http_request(
-        prowlarr_url, "/api/v1/applications", api_key=prowlarr_api_key,
-    )
-    app_tag_set: dict[str, bool] = {}
-    if status == 200 and isinstance(apps, list):
-        for prow_app in apps:
-            impl = str(prow_app.get("implementation", "")).lower()
-            target_tag = tag_ids.get(impl)
-            if target_tag is None:
                 continue
-            current = list(prow_app.get("tags") or [])
+            cache_key_prefix = f"{iid}:"
+            had_cache = any(
+                k.startswith(cache_key_prefix) for k in cache["indexers"]
+            )
+            matched_apps = self._resolve_per_indexer_apps(
+                prowlarr_url=prowlarr_url,
+                api_key=prowlarr_api_key,
+                http_request=http_request,
+                indexer=idx,
+                cache=cache,
+                log=log,
+            )
+            if had_cache:
+                cache_hits += 1
+            classified += 1
+
+            desired_tag_ids = sorted({
+                tag_ids[app] for app in matched_apps if app in tag_ids
+            })
+            # Preserve any non-sync-* tags the operator added manually.
+            current_tags = list(idx.get("tags") or [])
             sync_tag_id_set = set(tag_ids.values())
-            other_tags = [t for t in current if t not in sync_tag_id_set]
-            desired = sorted(set(other_tags) | {target_tag})
-            if sorted(current) == desired:
-                app_tag_set[impl] = True
+            non_sync_tags = [t for t in current_tags if t not in sync_tag_id_set]
+            new_tags = sorted(set(non_sync_tags) | set(desired_tag_ids))
+            if sorted(current_tags) == new_tags:
                 continue
-            body = dict(prow_app)
-            body["tags"] = desired
+            body = dict(idx)
+            body["tags"] = new_tags
             st, _, _ = http_request(
-                prowlarr_url, f"/api/v1/applications/{prow_app.get('id')}",
+                prowlarr_url, f"/api/v1/indexer/{iid}",
                 api_key=prowlarr_api_key,
                 method="PUT", payload=body,
             )
             if st in (200, 201, 202):
-                app_tag_set[impl] = True
                 log(
-                    f"[OK] indexer-app-match: {prow_app.get('name','?')} "
-                    f"now filters by tag '{APP_TAGS[impl]}'"
+                    f"[OK] indexer-app-match: tagged {idx.get('name','?')} "
+                    f"with {desired_tag_ids}"
                 )
             else:
-                app_tag_set[impl] = False
                 log(
-                    f"[WARN] indexer-app-match: failed to set tag on "
-                    f"{prow_app.get('name','?')} (HTTP {st})"
+                    f"[WARN] indexer-app-match: failed to tag "
+                    f"{idx.get('name','?')} (HTTP {st})"
                 )
 
-    return {
-        "tags": tag_ids,
-        "indexers_classified": classified,
-        "cache_hits": cache_hits,
-        "app_tag_set": app_tag_set,
-    }
+        self._save_cache(cache_path, cache)
+
+        # Step 3 — set each Prowlarr application's tags field.
+        status, apps, _ = http_request(
+            prowlarr_url, "/api/v1/applications", api_key=prowlarr_api_key,
+        )
+        app_tag_set: dict[str, bool] = {}
+        if status == 200 and isinstance(apps, list):
+            for prow_app in apps:
+                impl = str(prow_app.get("implementation", "")).lower()
+                target_tag = tag_ids.get(impl)
+                if target_tag is None:
+                    continue
+                current = list(prow_app.get("tags") or [])
+                sync_tag_id_set = set(tag_ids.values())
+                other_tags = [t for t in current if t not in sync_tag_id_set]
+                desired = sorted(set(other_tags) | {target_tag})
+                if sorted(current) == desired:
+                    app_tag_set[impl] = True
+                    continue
+                body = dict(prow_app)
+                body["tags"] = desired
+                st, _, _ = http_request(
+                    prowlarr_url, f"/api/v1/applications/{prow_app.get('id')}",
+                    api_key=prowlarr_api_key,
+                    method="PUT", payload=body,
+                )
+                if st in (200, 201, 202):
+                    app_tag_set[impl] = True
+                    log(
+                        f"[OK] indexer-app-match: {prow_app.get('name','?')} "
+                        f"now filters by tag '{APP_TAGS[impl]}'"
+                    )
+                else:
+                    app_tag_set[impl] = False
+                    log(
+                        f"[WARN] indexer-app-match: failed to set tag on "
+                        f"{prow_app.get('name','?')} (HTTP {st})"
+                    )
+
+        return {
+            "tags": tag_ids,
+            "indexers_classified": classified,
+            "cache_hits": cache_hits,
+            "app_tag_set": app_tag_set,
+        }
+
+
+_INSTANCE = IndexerAppMatcher()
+
+# Module-level aliases — preserve the public + underscore-prefixed
+# import API per ADR-0012 design principle 2.
+apply_indexer_app_tags = _INSTANCE.apply_indexer_app_tags
+_load_cache = _INSTANCE._load_cache
+_save_cache = _INSTANCE._save_cache
+_ensure_prowlarr_tag = _INSTANCE._ensure_prowlarr_tag
+_probe_indexer_for_app = _INSTANCE._probe_indexer_for_app
+_resolve_per_indexer_apps = _INSTANCE._resolve_per_indexer_apps

@@ -42,6 +42,7 @@ ladder in one monolithic enforcer.
 from __future__ import annotations
 
 import logging
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -109,6 +110,105 @@ class BazarrReconcileReport:
 class BazarrEnforceReport:
     changed_paths: tuple[str, ...] = ()
     failures: tuple[str, ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers (instance methods on a sibling helper class so the module
+# stays free of top-level FunctionDefs per ADR-0012). Module-level aliases
+# below keep the legacy ``_group_subtitles`` / ``_redact`` / ... import names
+# working for tests.
+# ---------------------------------------------------------------------------
+
+
+class _SubtitleReconcilerHelpers:
+    """Pure functions shared by the reconciler and settings enforcer.
+
+    Plain instance methods, no ``@staticmethod`` (per ADR-0012). A single
+    module-level instance below exposes them as ``_group_subtitles`` etc.
+    """
+
+    def group_subtitles(
+        self,
+        subs: Iterable[SubtitleFile],
+    ) -> dict[tuple[str, bool, bool], list[SubtitleFile]]:
+        """Group by ``(language, forced, hi)``. ``release_id`` /
+        ``release_kind`` are invariant across all subs in a single
+        ``list_subtitles_for`` call so we key only on the 3 axes that
+        distinguish legitimate variants."""
+        groups: dict[tuple[str, bool, bool], list[SubtitleFile]] = defaultdict(list)
+        for sub in subs:
+            groups[(sub.language, sub.forced, sub.hi)].append(sub)
+        return groups
+
+    def pick_subtitle_winner(
+        self, members: list[SubtitleFile], adapter: BazarrApp
+    ) -> tuple[SubtitleFile | None, list[SubtitleFile]]:
+        if not members:
+            return None, []
+        if len(members) == 1:
+            return members[0], []
+        ordered = sorted(members, key=lambda s: self._winner_sort_key(s, adapter))
+        top = ordered[0]
+        runner = ordered[1]
+        if (
+            adapter.subtitle_score(top) == adapter.subtitle_score(runner)
+            and top.added_at == runner.added_at
+            and top.size == runner.size
+        ):
+            return None, []
+        return top, ordered[1:]
+
+    def _winner_sort_key(
+        self, sub: SubtitleFile, adapter: BazarrApp
+    ) -> tuple[int, str, int]:
+        return (-adapter.subtitle_score(sub), sub.added_at, sub.size)
+
+    def get_dotted(self, obj: dict[str, Any], path: str) -> Any:
+        parts = path.split(".")
+        cur: Any = obj
+        for part in parts:
+            if isinstance(cur, dict) and part in cur:
+                cur = cur[part]
+            else:
+                return None
+        return cur
+
+    def set_dotted(self, obj: dict[str, Any], path: str, value: Any) -> None:
+        parts = path.split(".")
+        cur: dict[str, Any] = obj
+        for part in parts[:-1]:
+            nxt = cur.get(part)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                cur[part] = nxt
+            cur = nxt
+        cur[parts[-1]] = value
+
+    def deep_copy_dict(self, obj: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if isinstance(v, dict):
+                out[k] = self.deep_copy_dict(v)
+            elif isinstance(v, list):
+                out[k] = list(v)
+            else:
+                out[k] = v
+        return out
+
+    def redact(self, text: str) -> str:
+        if not text:
+            return ""
+        import re
+        redacted = re.sub(
+            r"(?i)(apikey|api_key|x-api-key)\s*[=:]\s*\S+",
+            r"\1=REDACTED",
+            text,
+        )
+        redacted = re.sub(r"[a-f0-9]{32,}", "REDACTED", redacted)
+        return redacted[:500]
+
+
+_helpers = _SubtitleReconcilerHelpers()
 
 
 # ---------------------------------------------------------------------------
@@ -186,12 +286,13 @@ class BazarrSubtitleReconciler:
         dry_run: bool,
     ) -> list[SubtitleResolution | SubtitleReview]:
         subs = adapter.list_subtitles_for(release.id, release.kind)
-        groups = _group_subtitles(subs)
+        _mod = sys.modules[__name__]
+        groups = _mod._group_subtitles(subs)
         out: list[SubtitleResolution | SubtitleReview] = []
         for (lang, forced, hi), members in groups.items():
             if len(members) < 2:
                 continue
-            winner, losers = _pick_subtitle_winner(members, adapter)
+            winner, losers = _mod._pick_subtitle_winner(members, adapter)
             if winner is None:
                 review = self._emit_review(
                     adapter,
@@ -352,7 +453,7 @@ class BazarrSubtitleReconciler:
         *,
         actor: str,
     ) -> None:
-        error = _redact(str(exc))
+        error = sys.modules[__name__]._redact(str(exc))
         failures.append(f"{release_id or '*'}: {error}")
         if self._bus is not None:
             try:
@@ -395,11 +496,12 @@ class BazarrSettingsEnforcer:
         self._bus = event_bus
 
     def apply(self, adapter: BazarrApp, *, actor: str = "system") -> BazarrEnforceReport:
+        _mod = sys.modules[__name__]
         failures: list[str] = []
         try:
             current = adapter.get_settings()
         except Exception as exc:
-            error = _redact(str(exc))
+            error = _mod._redact(str(exc))
             failures.append(f"settings: {error}")
             self._emit_failed(adapter, error=error, actor=actor)
             return BazarrEnforceReport(failures=tuple(failures))
@@ -407,18 +509,18 @@ class BazarrSettingsEnforcer:
         if not patch:
             return BazarrEnforceReport()
         changed: list[str] = []
-        merged = _deep_copy_dict(current)
+        merged = _mod._deep_copy_dict(current)
         for dotted_path, value in patch.items():
-            before = _get_dotted(merged, dotted_path)
+            before = _mod._get_dotted(merged, dotted_path)
             if before != value:
-                _set_dotted(merged, dotted_path, value)
+                _mod._set_dotted(merged, dotted_path, value)
                 changed.append(dotted_path)
         if not changed:
             return BazarrEnforceReport()
         try:
             adapter.put_settings(merged)
         except Exception as exc:
-            error = _redact(str(exc))
+            error = _mod._redact(str(exc))
             failures.append(f"settings: {error}")
             self._emit_failed(adapter, error=error, actor=actor)
             return BazarrEnforceReport(failures=tuple(failures))
@@ -481,85 +583,18 @@ class BazarrSettingsEnforcer:
 
 
 # ---------------------------------------------------------------------------
-# Pure helpers (unit-testable in isolation)
+# Public module-level aliases (one per helper). These keep the historical
+# import surface (``from ...subtitle_reconciler import _redact``) working
+# while the implementations live as plain instance methods on
+# ``_SubtitleReconcilerHelpers`` above. Internal callers dispatch through
+# ``sys.modules[__name__]._helper_name`` so tests can monkey-patch the
+# aliases here and have the impl pick them up.
 # ---------------------------------------------------------------------------
 
 
-def _group_subtitles(
-    subs: Iterable[SubtitleFile],
-) -> dict[tuple[str, bool, bool], list[SubtitleFile]]:
-    """Group by ``(language, forced, hi)``. ``release_id`` /
-    ``release_kind`` are invariant across all subs in a single
-    ``list_subtitles_for`` call so we key only on the 3 axes that
-    distinguish legitimate variants."""
-    groups: dict[tuple[str, bool, bool], list[SubtitleFile]] = defaultdict(list)
-    for sub in subs:
-        groups[(sub.language, sub.forced, sub.hi)].append(sub)
-    return groups
-
-
-def _pick_subtitle_winner(
-    members: list[SubtitleFile], adapter: BazarrApp
-) -> tuple[SubtitleFile | None, list[SubtitleFile]]:
-    if not members:
-        return None, []
-    if len(members) == 1:
-        return members[0], []
-
-    def sort_key(s: SubtitleFile) -> tuple[int, str, int]:
-        return (-adapter.subtitle_score(s), s.added_at, s.size)
-
-    ordered = sorted(members, key=sort_key)
-    top = ordered[0]
-    runner = ordered[1]
-    if (
-        adapter.subtitle_score(top) == adapter.subtitle_score(runner)
-        and top.added_at == runner.added_at
-        and top.size == runner.size
-    ):
-        return None, []
-    return top, ordered[1:]
-
-
-def _get_dotted(obj: dict[str, Any], path: str) -> Any:
-    parts = path.split(".")
-    cur: Any = obj
-    for part in parts:
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        else:
-            return None
-    return cur
-
-
-def _set_dotted(obj: dict[str, Any], path: str, value: Any) -> None:
-    parts = path.split(".")
-    cur: dict[str, Any] = obj
-    for part in parts[:-1]:
-        nxt = cur.get(part)
-        if not isinstance(nxt, dict):
-            nxt = {}
-            cur[part] = nxt
-        cur = nxt
-    cur[parts[-1]] = value
-
-
-def _deep_copy_dict(obj: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for k, v in obj.items():
-        if isinstance(v, dict):
-            out[k] = _deep_copy_dict(v)
-        elif isinstance(v, list):
-            out[k] = list(v)
-        else:
-            out[k] = v
-    return out
-
-
-def _redact(text: str) -> str:
-    if not text:
-        return ""
-    import re
-    redacted = re.sub(r"(?i)(apikey|api_key|x-api-key)\s*[=:]\s*\S+", r"\1=REDACTED", text)
-    redacted = re.sub(r"[a-f0-9]{32,}", "REDACTED", redacted)
-    return redacted[:500]
+_group_subtitles = _helpers.group_subtitles
+_pick_subtitle_winner = _helpers.pick_subtitle_winner
+_get_dotted = _helpers.get_dotted
+_set_dotted = _helpers.set_dotted
+_deep_copy_dict = _helpers.deep_copy_dict
+_redact = _helpers.redact

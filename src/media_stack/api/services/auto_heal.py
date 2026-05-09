@@ -519,74 +519,7 @@ class AutoHealService:
 
 
 # ----------------------------------------------------------------------
-# Default restart + audit hooks
-# ----------------------------------------------------------------------
-
-
-def _default_restart(service_id: str) -> bool:
-    """Best-effort restart. Tries Docker first (fast, in-process),
-    then K8s pod-delete. Returns True if either worked."""
-    try:
-        import docker  # type: ignore
-        from media_stack.core.docker_resolver import (
-            resolve_compose_container,
-        )
-        client = docker.from_env()
-        container = resolve_compose_container(client, service_id)
-        if container is not None:
-            container.restart(timeout=15)
-            return True
-    except Exception as exc:
-        _log.debug("[DEBUG] auto-heal docker restart failed: %s", exc)
-    try:
-        from kubernetes import client, config  # type: ignore
-        try:
-            config.load_incluster_config()
-        except Exception:
-            config.load_kube_config()
-        v1 = client.CoreV1Api()
-        ns = os.environ.get("K8S_NAMESPACE", "media-stack")
-        pods = v1.list_namespaced_pod(
-            namespace=ns, label_selector=f"app={service_id}",
-        )
-        for pod in pods.items:
-            v1.delete_namespaced_pod(name=pod.metadata.name, namespace=ns)
-        return bool(pods.items)
-    except Exception as exc:
-        _log.debug("[DEBUG] auto-heal k8s restart failed: %s", exc)
-    return False
-
-
-def _default_audit(event: HealEvent) -> None:
-    """Write a heal event to the user-mgmt audit log. Falls back
-    to silent skip if the user service isn't available — the heal
-    still happened, we just don't have a chained record of it."""
-    try:
-        from media_stack.core.auth.users.user_service_factory import (
-            build_default_service,
-        )
-        svc = build_default_service()
-        if svc is None or not hasattr(svc, "_audit"):
-            return
-        svc._audit.append(
-            actor="auto-heal",
-            action="auto_heal",
-            target=event.service_id,
-            result="ok" if event.action == "restored" else event.action,
-            detail={
-                "cause": event.cause,
-                "snapshot": event.snapshot,
-                "target": event.target,
-                "restarted": event.restarted,
-                "explanation": event.detail,
-            },
-        )
-    except Exception as exc:  # noqa: BLE001
-        _log.debug("[DEBUG] auto-heal audit fallback skipped: %s", exc)
-
-
-# ----------------------------------------------------------------------
-# Module-level singleton + endpoint helpers
+# Default restart + audit hooks + module-level singleton/endpoints
 # ----------------------------------------------------------------------
 
 
@@ -594,28 +527,104 @@ _DEFAULT: AutoHealService | None = None
 _DEFAULT_LOCK = threading.Lock()
 
 
-def default() -> AutoHealService:
-    global _DEFAULT
-    if _DEFAULT is None:
-        with _DEFAULT_LOCK:
-            if _DEFAULT is None:
-                _DEFAULT = AutoHealService()
-    return _DEFAULT
+class _AutoHealModuleAccess:
+    """Module-level access surface for auto-heal.
+
+    ADR-0012 sibling class: holds the default restart/audit hooks
+    plus the singleton accessor + thin endpoint shims as plain
+    instance methods. Module-level aliases below bind them so the
+    public import surface (``from .auto_heal import status, ...``)
+    is unchanged."""
+
+    def _default_restart(self, service_id: str) -> bool:
+        """Best-effort restart. Tries Docker first (fast, in-process),
+        then K8s pod-delete. Returns True if either worked."""
+        try:
+            import docker  # type: ignore
+            from media_stack.core.docker_resolver import (
+                resolve_compose_container,
+            )
+            client = docker.from_env()
+            container = resolve_compose_container(client, service_id)
+            if container is not None:
+                container.restart(timeout=15)
+                return True
+        except Exception as exc:
+            _log.debug("[DEBUG] auto-heal docker restart failed: %s", exc)
+        try:
+            from kubernetes import client, config  # type: ignore
+            try:
+                config.load_incluster_config()
+            except Exception:
+                config.load_kube_config()
+            v1 = client.CoreV1Api()
+            ns = os.environ.get("K8S_NAMESPACE", "media-stack")
+            pods = v1.list_namespaced_pod(
+                namespace=ns, label_selector=f"app={service_id}",
+            )
+            for pod in pods.items:
+                v1.delete_namespaced_pod(name=pod.metadata.name, namespace=ns)
+            return bool(pods.items)
+        except Exception as exc:
+            _log.debug("[DEBUG] auto-heal k8s restart failed: %s", exc)
+        return False
+
+    def _default_audit(self, event: HealEvent) -> None:
+        """Write a heal event to the user-mgmt audit log. Falls back
+        to silent skip if the user service isn't available — the heal
+        still happened, we just don't have a chained record of it."""
+        try:
+            from media_stack.core.auth.users.user_service_factory import (
+                build_default_service,
+            )
+            svc = build_default_service()
+            if svc is None or not hasattr(svc, "_audit"):
+                return
+            svc._audit.append(
+                actor="auto-heal",
+                action="auto_heal",
+                target=event.service_id,
+                result="ok" if event.action == "restored" else event.action,
+                detail={
+                    "cause": event.cause,
+                    "snapshot": event.snapshot,
+                    "target": event.target,
+                    "restarted": event.restarted,
+                    "explanation": event.detail,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("[DEBUG] auto-heal audit fallback skipped: %s", exc)
+
+    def default(self) -> AutoHealService:
+        global _DEFAULT
+        if _DEFAULT is None:
+            with _DEFAULT_LOCK:
+                if _DEFAULT is None:
+                    _DEFAULT = AutoHealService()
+        return _DEFAULT
+
+    def status(self) -> dict:
+        svc = self.default()
+        return {
+            "enabled": svc.enabled,
+            "recent_events": svc.recent_events(),
+        }
+
+    def run_cycle(self) -> dict:
+        return self.default().run_cycle()
+
+    def set_enabled(self, value: bool) -> dict:
+        svc = self.default()
+        svc.set_enabled(value)
+        return {"enabled": svc.enabled}
 
 
-def status() -> dict:
-    svc = default()
-    return {
-        "enabled": svc.enabled,
-        "recent_events": svc.recent_events(),
-    }
+_ACCESS = _AutoHealModuleAccess()
 
-
-def run_cycle() -> dict:
-    return default().run_cycle()
-
-
-def set_enabled(value: bool) -> dict:
-    svc = default()
-    svc.set_enabled(value)
-    return {"enabled": svc.enabled}
+_default_restart = _ACCESS._default_restart
+_default_audit = _ACCESS._default_audit
+default = _ACCESS.default
+status = _ACCESS.status
+run_cycle = _ACCESS.run_cycle
+set_enabled = _ACCESS.set_enabled

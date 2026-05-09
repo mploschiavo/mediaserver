@@ -23,163 +23,176 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import sys
 from typing import Any
-
-logger = logging.getLogger("controller_api")
 
 from media_stack.services.apps.stack.routing_defaults import (
     DASHBOARD_SERVICE_ID,
 )
 
+logger = logging.getLogger("controller_api")
 
-def get_sw_config() -> dict[str, Any]:
-    """Build the service-worker configuration payload.
 
-    Shape::
+class SwConfigService:
+    """Build service-worker configuration payloads.
 
-        {
-          "version": 1,
-          "basepath": "/app/media-stack-ui",
-          "denylist_patterns": [
-            "^/api/",
-            "^/app/(?!media-stack-ui(?:/|$))"
-          ],
-          "allowed_app_prefixes": ["/app/media-stack-ui"],
-          "sister_app_prefixes": ["/app/sonarr", "/app/jellyfin", ...]
+    Methods are plain instance methods so test suites can monkey-patch
+    individual helpers via ``sys.modules[__name__]`` aliases.
+    """
+
+    def get_sw_config(self) -> dict[str, Any]:
+        """Build the service-worker configuration payload.
+
+        Shape::
+
+            {
+              "version": 1,
+              "basepath": "/app/media-stack-ui",
+              "denylist_patterns": [
+                "^/api/",
+                "^/app/(?!media-stack-ui(?:/|$))"
+              ],
+              "allowed_app_prefixes": ["/app/media-stack-ui"],
+              "sister_app_prefixes": ["/app/sonarr", "/app/jellyfin", ...]
+            }
+
+        ``denylist_patterns`` is what the SW plugs straight into
+        ``navigationRoute`` matching — pre-compiled regex strings so the
+        SW doesn't re-derive them from the prefix lists.
+        ``allowed_app_prefixes`` and ``sister_app_prefixes`` are also
+        surfaced so future SW logic (e.g. background sync per app) can
+        use them without re-parsing the patterns.
+
+        Falls back to safe defaults when the registry can't be loaded —
+        a misconfigured controller still serves a usable SW config
+        rather than an empty payload.
+        """
+        mod = sys.modules[__name__]
+        basepath = mod._resolve_dashboard_basepath()
+        sister_prefixes = mod._list_sister_app_prefixes(basepath=basepath)
+        denylist_patterns = mod._build_denylist_patterns(
+            basepath=basepath,
+            sister_prefixes=sister_prefixes,
+        )
+        return {
+            "version": 1,
+            "basepath": basepath,
+            "denylist_patterns": denylist_patterns,
+            "allowed_app_prefixes": [basepath],
+            "sister_app_prefixes": sister_prefixes,
         }
 
-    ``denylist_patterns`` is what the SW plugs straight into
-    ``navigationRoute`` matching — pre-compiled regex strings so the
-    SW doesn't re-derive them from the prefix lists.
-    ``allowed_app_prefixes`` and ``sister_app_prefixes`` are also
-    surfaced so future SW logic (e.g. background sync per app) can
-    use them without re-parsing the patterns.
+    def _resolve_dashboard_basepath(self) -> str:
+        """Return the dashboard's mount point, e.g.
+        ``"/app/media-stack-ui"`` (no trailing slash).
 
-    Falls back to safe defaults when the registry can't be loaded —
-    a misconfigured controller still serves a usable SW config
-    rather than an empty payload.
-    """
-    basepath = _resolve_dashboard_basepath()
-    sister_prefixes = _list_sister_app_prefixes(basepath=basepath)
-    denylist_patterns = _build_denylist_patterns(
-        basepath=basepath,
-        sister_prefixes=sister_prefixes,
-    )
-    return {
-        "version": 1,
-        "basepath": basepath,
-        "denylist_patterns": denylist_patterns,
-        "allowed_app_prefixes": [basepath],
-        "sister_app_prefixes": sister_prefixes,
-    }
+        Resolution order:
 
+          1. ``DASHBOARD_BASEPATH_OVERRIDE`` env — escape hatch for
+             non-default deploys.
+          2. Profile's ``routing.app_path_prefix`` + the dashboard
+             service id — the canonical source of truth.
+          3. Hardcoded default ``/app/media-stack-ui`` — only hit when
+             the profile is unreachable AND the env override isn't set.
+        """
+        mod = sys.modules[__name__]
+        override = os.environ.get("DASHBOARD_BASEPATH_OVERRIDE", "").strip()
+        if override:
+            return mod._normalize_path(override)
 
-def _resolve_dashboard_basepath() -> str:
-    """Return the dashboard's mount point, e.g.
-    ``"/app/media-stack-ui"`` (no trailing slash).
+        app_prefix = mod._read_app_path_prefix_from_profile()
+        return mod._normalize_path(f"{app_prefix}/{DASHBOARD_SERVICE_ID}")
 
-    Resolution order:
+    def _read_app_path_prefix_from_profile(self) -> str:
+        """Best-effort read of ``routing.app_path_prefix`` from the
+        bootstrap profile YAML. Returns ``"/app"`` on any error so a
+        misconfigured profile doesn't break the SW config endpoint."""
+        try:
+            # Imported lazily to avoid a circular import via
+            # ``api.services.config`` during module load.
+            from media_stack.api.services.config._routing import (
+                get_routing as _get_routing,
+            )
+            cfg = _get_routing()
+            prefix = (cfg or {}).get("app_path_prefix")
+            if isinstance(prefix, str) and prefix.strip():
+                return prefix.strip()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "[sw_config] falling back to default /app prefix: %s", exc,
+            )
+        return "/app"
 
-      1. ``DASHBOARD_BASEPATH_OVERRIDE`` env — escape hatch for
-         non-default deploys.
-      2. Profile's ``routing.app_path_prefix`` + the dashboard
-         service id — the canonical source of truth.
-      3. Hardcoded default ``/app/media-stack-ui`` — only hit when
-         the profile is unreachable AND the env override isn't set.
-    """
-    override = os.environ.get("DASHBOARD_BASEPATH_OVERRIDE", "").strip()
-    if override:
-        return _normalize_path(override)
+    def _list_sister_app_prefixes(self, *, basepath: str) -> list[str]:
+        """Enumerate ``/app/<service>`` prefixes for every registered
+        service that ISN'T the dashboard. Used by the SW to recognize
+        paths it should pass through to the network (Envoy)."""
+        mod = sys.modules[__name__]
+        try:
+            from media_stack.core.service_registry.registry import SERVICES
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[sw_config] registry unavailable: %s", exc)
+            return []
+        app_prefix = mod._read_app_path_prefix_from_profile()
+        out: list[str] = []
+        for s in SERVICES:
+            sid = getattr(s, "id", "")
+            if not sid or sid == DASHBOARD_SERVICE_ID:
+                continue
+            prefix = mod._normalize_path(f"{app_prefix}/{sid}")
+            if prefix != basepath:
+                out.append(prefix)
+        out.sort()
+        return out
 
-    app_prefix = _read_app_path_prefix_from_profile()
-    return _normalize_path(f"{app_prefix}/{DASHBOARD_SERVICE_ID}")
+    def _build_denylist_patterns(
+        self,
+        *,
+        basepath: str,
+        sister_prefixes: list[str],
+    ) -> list[str]:
+        """Assemble the regex strings the SW navigates against. Two
+        patterns by default:
 
+          * ``^/api/`` — controller REST surface; SW should never
+            substitute the SPA shell for a JSON 401/404.
+          * ``^/app/(?!<dashboard-segment>(?:/|$))`` — sister-app
+            passthrough.
 
-def _read_app_path_prefix_from_profile() -> str:
-    """Best-effort read of ``routing.app_path_prefix`` from the
-    bootstrap profile YAML. Returns ``"/app"`` on any error so a
-    misconfigured profile doesn't break the SW config endpoint."""
-    try:
-        # Imported lazily to avoid a circular import via
-        # ``api.services.config`` during module load.
-        from media_stack.api.services.config._routing import (
-            get_routing as _get_routing,
-        )
-        cfg = _get_routing()
-        prefix = (cfg or {}).get("app_path_prefix")
-        if isinstance(prefix, str) and prefix.strip():
-            return prefix.strip()
-    except Exception as exc:  # noqa: BLE001
-        logger.debug(
-            "[sw_config] falling back to default /app prefix: %s", exc,
-        )
-    return "/app"
+        The second pattern is built from the basepath segments rather
+        than hard-coded so a renamed dashboard mount automatically
+        reshapes the regex.
+        """
+        patterns: list[str] = [r"^/api/"]
+        # The basepath is something like ``/app/media-stack-ui``; we
+        # need the segment that follows ``/app/``.
+        parts = basepath.strip("/").split("/")
+        if len(parts) >= 2 and parts[0] == "app":
+            dashboard_segment = re.escape(parts[1])
+            patterns.append(
+                rf"^/app/(?!{dashboard_segment}(?:/|$))",
+            )
+        elif len(parts) == 1:
+            # Non-prefixed deploy (everything at root). SW only needs
+            # the /api/ exclusion in this case.
+            pass
+        return patterns
 
-
-def _list_sister_app_prefixes(*, basepath: str) -> list[str]:
-    """Enumerate ``/app/<service>`` prefixes for every registered
-    service that ISN'T the dashboard. Used by the SW to recognize
-    paths it should pass through to the network (Envoy)."""
-    try:
-        from media_stack.core.service_registry.registry import SERVICES
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("[sw_config] registry unavailable: %s", exc)
-        return []
-    app_prefix = _read_app_path_prefix_from_profile()
-    out: list[str] = []
-    for s in SERVICES:
-        sid = getattr(s, "id", "")
-        if not sid or sid == DASHBOARD_SERVICE_ID:
-            continue
-        prefix = _normalize_path(f"{app_prefix}/{sid}")
-        if prefix != basepath:
-            out.append(prefix)
-    out.sort()
-    return out
-
-
-def _build_denylist_patterns(
-    *,
-    basepath: str,
-    sister_prefixes: list[str],
-) -> list[str]:
-    """Assemble the regex strings the SW navigates against. Two
-    patterns by default:
-
-      * ``^/api/`` — controller REST surface; SW should never
-        substitute the SPA shell for a JSON 401/404.
-      * ``^/app/(?!<dashboard-segment>(?:/|$))`` — sister-app
-        passthrough.
-
-    The second pattern is built from the basepath segments rather
-    than hard-coded so a renamed dashboard mount automatically
-    reshapes the regex.
-    """
-    patterns: list[str] = [r"^/api/"]
-    # The basepath is something like ``/app/media-stack-ui``; we
-    # need the segment that follows ``/app/``.
-    parts = basepath.strip("/").split("/")
-    if len(parts) >= 2 and parts[0] == "app":
-        dashboard_segment = re.escape(parts[1])
-        patterns.append(
-            rf"^/app/(?!{dashboard_segment}(?:/|$))",
-        )
-    elif len(parts) == 1:
-        # Non-prefixed deploy (everything at root). SW only needs
-        # the /api/ exclusion in this case.
-        pass
-    return patterns
+    def _normalize_path(self, p: str) -> str:
+        """Trim trailing slashes; collapse repeated slashes; ensure
+        leading slash."""
+        if not p:
+            return ""
+        cleaned = "/" + "/".join(seg for seg in p.split("/") if seg)
+        return cleaned
 
 
-def _normalize_path(p: str) -> str:
-    """Trim trailing slashes; collapse repeated slashes; ensure
-    leading slash."""
-    if not p:
-        return ""
-    cleaned = "/" + "/".join(seg for seg in p.split("/") if seg)
-    return cleaned
+_INSTANCE = SwConfigService()
 
-
-# Lazily imported here so the regex helpers above can use it without
-# pulling re into the module-load cost.
-import re  # noqa: E402
+get_sw_config = _INSTANCE.get_sw_config
+_resolve_dashboard_basepath = _INSTANCE._resolve_dashboard_basepath
+_read_app_path_prefix_from_profile = _INSTANCE._read_app_path_prefix_from_profile
+_list_sister_app_prefixes = _INSTANCE._list_sister_app_prefixes
+_build_denylist_patterns = _INSTANCE._build_denylist_patterns
+_normalize_path = _INSTANCE._normalize_path

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib as _importlib
 import os
 import sys
 from dataclasses import dataclass
@@ -18,46 +19,6 @@ from media_stack.services.apps.integrations.config_models import AppAuthConfig
 from media_stack.services.apps.integrations.config_resolver import (
     resolve_integration_configs,
 )
-import importlib as _importlib
-
-
-def _load_media_server_config_resolver():
-    """Dynamically load the media server config resolver from the active technology binding."""
-    from media_stack.core.service_registry.registry import SERVICES
-    for svc in SERVICES:
-        if svc.category != "media":
-            continue
-        try:
-            return _importlib.import_module(f"media_stack.services.apps.{svc.id}.config_resolver")
-        except (ImportError, ModuleNotFoundError):
-            continue
-    return None
-
-
-def _load_indexer_manager_key_reader():
-    """Dynamically load the indexer manager API key reader from the active technology binding."""
-    from media_stack.core.service_registry.registry import SERVICES
-    for svc in SERVICES:
-        if not svc.indexer_path:
-            continue
-        try:
-            return _importlib.import_module(f"media_stack.services.apps.{svc.id}.api_key_reader")
-        except (ImportError, ModuleNotFoundError):
-            continue
-    return None
-
-
-def resolve_jellyfin_configs(*args, **kwargs):
-    return _load_media_server_config_resolver().resolve_jellyfin_configs(*args, **kwargs)
-
-def populate_prowlarr_service_dicts(*args, **kwargs):
-    return _load_indexer_manager_key_reader().populate_prowlarr_service_dicts(*args, **kwargs)
-
-def read_prowlarr_api_key(*args, **kwargs):
-    return _load_indexer_manager_key_reader().read_prowlarr_api_key(*args, **kwargs)
-
-def resolve_prowlarr_wiring(*args, **kwargs):
-    return _load_indexer_manager_key_reader().resolve_prowlarr_wiring(*args, **kwargs)
 from media_stack.services.apps.servarr.config_models import (
     ArrDiscoveryListsConfig,
     ArrDownloadHandlingPolicy,
@@ -83,12 +44,68 @@ from media_stack.domain.runtime_factory.plan_builder import build_plan_summary
 from .binding_resolver import RuntimeBindingResolver
 
 
+class RuntimeBuilder:
+    """Module-level helpers folded into a class per ADR-0012.
+
+    Holds the dynamic-import lookups for the active media-server and
+    indexer-manager technology bindings, plus the public proxy helpers
+    (``resolve_jellyfin_configs`` etc.) that dispatch into the resolved
+    modules. Tests `mock.patch` the public names at the module level,
+    and ``ControllerRuntimeBuilder.build`` re-fetches them through
+    ``sys.modules[__name__]`` so the patches take effect.
+    """
+
+    def _load_media_server_config_resolver(self):
+        """Dynamically load the media server config resolver from the active technology binding."""
+        from media_stack.core.service_registry.registry import SERVICES
+        for svc in SERVICES:
+            if svc.category != "media":
+                continue
+            try:
+                return _importlib.import_module(f"media_stack.services.apps.{svc.id}.config_resolver")
+            except (ImportError, ModuleNotFoundError):
+                continue
+        return None
+
+    def _load_indexer_manager_key_reader(self):
+        """Dynamically load the indexer manager API key reader from the active technology binding."""
+        from media_stack.core.service_registry.registry import SERVICES
+        for svc in SERVICES:
+            if not svc.indexer_path:
+                continue
+            try:
+                return _importlib.import_module(f"media_stack.services.apps.{svc.id}.api_key_reader")
+            except (ImportError, ModuleNotFoundError):
+                continue
+        return None
+
+    def resolve_jellyfin_configs(self, *args, **kwargs):
+        return self._load_media_server_config_resolver().resolve_jellyfin_configs(*args, **kwargs)
+
+    def populate_prowlarr_service_dicts(self, *args, **kwargs):
+        return self._load_indexer_manager_key_reader().populate_prowlarr_service_dicts(*args, **kwargs)
+
+    def read_prowlarr_api_key(self, *args, **kwargs):
+        return self._load_indexer_manager_key_reader().read_prowlarr_api_key(*args, **kwargs)
+
+    def resolve_prowlarr_wiring(self, *args, **kwargs):
+        return self._load_indexer_manager_key_reader().resolve_prowlarr_wiring(*args, **kwargs)
+
+
+_INSTANCE = RuntimeBuilder()
+_load_media_server_config_resolver = _INSTANCE._load_media_server_config_resolver
+_load_indexer_manager_key_reader = _INSTANCE._load_indexer_manager_key_reader
+resolve_jellyfin_configs = _INSTANCE.resolve_jellyfin_configs
+populate_prowlarr_service_dicts = _INSTANCE.populate_prowlarr_service_dicts
+read_prowlarr_api_key = _INSTANCE.read_prowlarr_api_key
+resolve_prowlarr_wiring = _INSTANCE.resolve_prowlarr_wiring
+
+
 @dataclass
 class ControllerRuntimeBuilder:
     deps: ControllerRuntimeFactoryDependencies
 
-    @staticmethod
-    def _validate_adapter_registration_overrides(adapter_hooks_cfg: dict[str, Any]) -> None:
+    def _validate_adapter_registration_overrides(self, adapter_hooks_cfg: dict[str, Any]) -> None:
         disallowed_override_keys = (
             "technology_aliases",
             "adapter_classes",
@@ -109,15 +126,14 @@ class ControllerRuntimeBuilder:
             if value not in (None, {}):
                 raise ValueError(f"adapter_hooks.{key} must be an object if provided.")
 
-    @staticmethod
-    def _resolve_optional_env_value(client_cfg: dict[str, Any], env_key_name: str) -> str:
+    def _resolve_optional_env_value(self, client_cfg: dict[str, Any], env_key_name: str) -> str:
         env_name = str(client_cfg.get(env_key_name) or "").strip()
         if not env_name:
             return ""
         return str(os.environ.get(env_name) or "").strip()
 
-    @staticmethod
     def _resolve_required_env_value(
+        self,
         client_cfg: dict[str, Any],
         *,
         env_key_name: str,
@@ -213,8 +229,12 @@ class ControllerRuntimeBuilder:
         return adapter_hooks_cfg
 
     def build(self, args: ControllerCliArgs, cfg: dict[str, Any]) -> ControllerRuntimeBuildResult:
+        # Dispatch public proxy helpers through ``sys.modules[__name__]``
+        # so tests that ``mock.patch`` the module-level names take effect.
+        _self_mod = sys.modules[__name__]
+
         cfg = TopLevelBootstrapConfig.from_dict(cfg).to_dict()
-        prowlarr_wiring = resolve_prowlarr_wiring(cfg=cfg)
+        prowlarr_wiring = _self_mod.resolve_prowlarr_wiring(cfg=cfg)
         arr_apps_raw = cfg.get("arr_apps", [])
 
         manifests = load_plugin_manifests()
@@ -280,7 +300,7 @@ class ControllerRuntimeBuilder:
         # Each app package provides a config resolver that reads its
         # config sections and returns models + feature flags.
         integration_result = resolve_integration_configs(cfg)
-        jellyfin_result = resolve_jellyfin_configs(cfg)
+        jellyfin_result = _self_mod.resolve_jellyfin_configs(cfg)
         download_client_result = resolve_download_client_configs(cfg)
 
         # Merge all feature flags from data-driven resolvers
@@ -370,24 +390,11 @@ class ControllerRuntimeBuilder:
             # service to start, so sequential reads are 180s * N.
             from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            def _read_key(app):
-                app_dir = app.implementation.lower()
-                try:
-                    key = self.deps.read_api_key(args.config_root, app_dir)
-                    return app_dir, app.implementation, key, None
-                except RuntimeError as exc:
-                    return app_dir, app.implementation, None, exc
-
             with ThreadPoolExecutor(max_workers=len(arr_apps) + 1) as pool:
-                futures = [pool.submit(_read_key, app) for app in arr_apps]
+                futures = [pool.submit(self._read_api_key_for_app, args.config_root, app) for app in arr_apps]
                 # Also read prowlarr key in parallel
                 if args.mode == BootstrapMode.FULL and prowlarr_wiring.url:
-                    def _read_prowlarr():
-                        return read_prowlarr_api_key(
-                            config_root=args.config_root,
-                            read_api_key=self.deps.read_api_key,
-                        )
-                    prowlarr_future = pool.submit(_read_prowlarr)
+                    prowlarr_future = pool.submit(self._read_prowlarr_key, args.config_root)
                 else:
                     prowlarr_future = None
 
@@ -457,7 +464,7 @@ class ControllerRuntimeBuilder:
         }
 
         # Prowlarr wiring is handled by the app layer
-        populate_prowlarr_service_dicts(
+        _self_mod.populate_prowlarr_service_dicts(
             prowlarr_wiring,
             service_urls=service_urls,
             service_keys=service_keys,
@@ -520,3 +527,19 @@ class ControllerRuntimeBuilder:
 
         plan = build_plan_summary(runtime)
         return ControllerRuntimeBuildResult(cfg=cfg, runtime=runtime, plan=plan)
+
+    def _read_api_key_for_app(self, config_root, app):
+        """Worker for parallel arr-app API-key reads (was nested ``_read_key``)."""
+        app_dir = app.implementation.lower()
+        try:
+            key = self.deps.read_api_key(config_root, app_dir)
+            return app_dir, app.implementation, key, None
+        except RuntimeError as exc:
+            return app_dir, app.implementation, None, exc
+
+    def _read_prowlarr_key(self, config_root):
+        """Worker for parallel prowlarr API-key read (was nested ``_read_prowlarr``)."""
+        return sys.modules[__name__].read_prowlarr_api_key(
+            config_root=config_root,
+            read_api_key=self.deps.read_api_key,
+        )
