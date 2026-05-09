@@ -1,9 +1,82 @@
 # ADR-0012 — Drive LOOSE_FUNCTIONS / MODULES_WITHOUT_CLASS / STATIC_METHOD ratchets to zero, finish cyclic-import floor
 
-**Status:** Proposed (2026-05-08). Co-author with ADR-0011 (import-direction
-discipline) — Phase F of this ADR consumes the remaining ADR-0011 work.
+**Status:** Phases A–D effectively closed (2026-05-09). Phase E (STATIC_METHOD
+burndown) and Phase F (ADR-0011 sub-phases) remain. Phase G (hard-gate flips
++ split the 3 trade-off ratchets) deferred until E and F land.
 
 Authors: matthew
+
+## Status snapshot — 2026-05-09 (waves 4–14 closed)
+
+A continuation of the 2026-05-08 burndown. Parallel-agent waves 4 through 14
+landed across roughly twelve hours of session time (with one ~12-hour
+working-tree revert mid-session that was redone), ultimately driving the
+LOOSE / NO-CLASS ratchets to their effective floor.
+
+**Final pin values** (committed in `914392f9`):
+
+| Ratchet                         | Original | Final | Delta |
+|---------------------------------|---------:|------:|------:|
+| LOOSE_FUNCTIONS                 |      510 |     1 |  −509 |
+| MODULES_WITHOUT_CLASS           |       51 |     0 |   −51 |
+| STATIC_METHOD                   |      513 |   428 |   −85 |
+| SINGLETON_INSTANCE              |      142 |   136 |    −6 |
+| OS_ENVIRON_IN_METHODS           |      507 |   487 |   −20 |
+| CIRCULAR_IMPORT_RISK            |      391 |   376 |   −15 |
+| NO_TYPE_HINTS_PUBLIC_METHODS    |      183 |   162 |   −21 |
+| METHODS_OVER_50_LINES           |      345 |   344 |    −1 |
+| DEEPLY_NESTED_4PLUS             |      192 |   191 |    −1 |
+| PRINT_STATEMENTS                |      268 |   261 |    −7 |
+
+**Trade-offs absorbed** (Phase G will split these back down):
+
+| Ratchet                        | Pre  | Post | Delta |
+|--------------------------------|-----:|-----:|------:|
+| GOD_CLASSES_OVER_500_LINES     |   14 |   16 |    +2 |
+| CLASSES_OVER_15_METHODS        |   44 |   48 |    +4 |
+| FILES_OVER_400_LINES           |   91 |   97 |    +6 |
+
+These three regressions are the cost of folding loose helpers onto
+existing classes — the OO-consolidation direction this ADR codifies.
+Phase G will split the resulting oversize classes by cohesion (sibling
+helpers, extracted services); the trade-off was accepted because the
+LOOSE → 1 win is the headline.
+
+**The remaining `LOOSE_FUNCTIONS = 1`**: `services/runtime_platform.py`'s
+`current_action_tag` is a `@contextlib.contextmanager`-decorated function.
+The contextvar pattern is the canonical Python shape for "set value in
+calling thread, read elsewhere"; wrapping it in a class would obscure the
+convention. This intentional exemption is documented in the
+`LOOSE_FUNCTIONS_RATCHET` pin comment.
+
+**Discipline rules enforced from wave 10 onward** (added after a
+NO_TYPE_HINTS_PUBLIC +2 / CIRCULAR_IMPORT_RISK +1 regression slipped in
+through waves 4–9 from agent prompts that only enforced LOOSE_FUNCTIONS):
+
+1. AST top-level FunctionDef = 0 in every refactored file.
+2. NO `@staticmethod`; convert to plain instance methods even when
+   adjacent to the loose-helper extraction.
+3. EVERY public method MUST carry `-> ReturnType`.
+4. NO new `from X import Y` inside method bodies.
+5. NO new `os.environ.get(...)` inside instance methods.
+6. UPPERCASE `_INSTANCE = MyClass()` (lowercase `_instance =` trips
+   `SINGLETON_INSTANCE_RATCHET`'s naive regex).
+7. NO new `except Exception: pass/continue`.
+8. NO new `print()` calls.
+9. NO gratuitous `main` shims or wrapper methods if the original file
+   didn't have them — preserve the original public surface only.
+10. Module-level alias for every public + underscore-prefixed name to
+    preserve the legacy import API.
+11. If tests `mock.patch` a name, dispatch internal calls through
+    `sys.modules[__name__]` so module-level patches still intercept.
+
+**Commits in waves 4–14 (this session)**:
+`4d7150d2`, `83aca4a8`, `2c62dce1`, `7ffe8eaa`, `2f26a9a9`, `7e28e53a`,
+`84b97b02`, `5a04d77d`, `f5079da3`, `65af5ab9`, `48aaca5c`, `97e9edb4`,
+`bbf5569f`, `914392f9`. Each wave commits + pushes immediately so the
+working-tree-revert incident at the start of the session can't recur.
+
+## Original context (2026-05-08, pre-session)
 
 ## Context
 
