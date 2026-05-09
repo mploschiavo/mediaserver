@@ -450,117 +450,130 @@ class MediaIntegrityService:
                 log_swallowed(exc)
 
 
-# ---------------------------------------------------------------------------
-# JSON projections — produce stable shapes for the UI + tests
-# ---------------------------------------------------------------------------
+class _MediaIntegrityFormatters:
+    """JSON projection helpers — produce stable shapes for the UI + tests.
+
+    ADR-0012: instance methods, no @staticmethod. Module-level aliases
+    bound below preserve the historical underscore-prefixed call sites
+    inside ``MediaIntegrityService``.
+    """
+
+    def format_enforce(
+        self,
+        servarr: EnforceReport,
+        bazarr: BazarrEnforceReport | None,
+    ) -> dict[str, Any]:
+        return {
+            "servarr": {
+                "results": [self.format_enforce_result(r) for r in servarr.results],
+                "total_fields_changed": servarr.total_fields_changed,
+                "total_failures": servarr.total_failures,
+            },
+            "bazarr": self.format_bazarr_enforce(bazarr),
+        }
+
+    def format_enforce_result(self, r: EnforceResult) -> dict[str, Any]:
+        return {
+            "app": r.app,
+            "mediamanagement_changed_fields": list(r.mediamanagement_changed_fields),
+            "naming_changed_fields": list(r.naming_changed_fields),
+            "failures": list(r.failures),
+        }
+
+    def format_bazarr_enforce(
+        self, r: BazarrEnforceReport | None,
+    ) -> dict[str, Any] | None:
+        if r is None:
+            return None
+        return {
+            "changed_paths": list(r.changed_paths),
+            "failures": list(r.failures),
+        }
+
+    def format_reconcile(
+        self,
+        servarr: ReconcileReport,
+        bazarr: BazarrReconcileReport | None,
+    ) -> dict[str, Any]:
+        return {
+            "servarr": {
+                "results": [self.format_reconcile_result(r) for r in servarr.results],
+                "total_resolved": servarr.total_resolved,
+                "total_needs_review": servarr.total_needs_review,
+                "total_failures": servarr.total_failures,
+                "total_bytes_freed": servarr.total_bytes_freed,
+            },
+            "bazarr": self.format_bazarr_reconcile(bazarr),
+        }
+
+    def format_reconcile_result(self, r: AdapterReconcileResult) -> dict[str, Any]:
+        return {
+            "app": r.app,
+            "resolved": [
+                {
+                    "release_id": x.release_id,
+                    "release_title": x.release_title,
+                    "winner_file_id": x.winner_file_id,
+                    "loser_file_ids": list(x.loser_file_ids),
+                    "bytes_freed": x.bytes_freed,
+                }
+                for x in r.resolved
+            ],
+            "needs_review": [
+                {
+                    "release_id": x.release_id,
+                    "release_title": x.release_title,
+                    "candidate_file_ids": list(x.candidate_file_ids),
+                }
+                for x in r.needs_review
+            ],
+            "failures": list(r.failures),
+        }
+
+    def format_bazarr_reconcile(
+        self, r: BazarrReconcileReport | None,
+    ) -> dict[str, Any] | None:
+        if r is None:
+            return None
+        return {
+            "resolved": [
+                {
+                    "release_id": x.release_id,
+                    "release_kind": x.release_kind,
+                    "release_title": x.release_title,
+                    "language": x.language,
+                    "forced": x.forced,
+                    "hi": x.hi,
+                    "winner_path": x.winner_path,
+                    "loser_paths": list(x.loser_paths),
+                    "bytes_freed": x.bytes_freed,
+                }
+                for x in r.resolved
+            ],
+            "needs_review": [
+                {
+                    "release_id": x.release_id,
+                    "release_kind": x.release_kind,
+                    "release_title": x.release_title,
+                    "language": x.language,
+                    "forced": x.forced,
+                    "hi": x.hi,
+                    "candidate_paths": list(x.candidate_paths),
+                }
+                for x in r.needs_review
+            ],
+            "failures": list(r.failures),
+            "total_bytes_freed": r.total_bytes_freed,
+        }
 
 
-def _format_enforce(
-    servarr: EnforceReport,
-    bazarr: BazarrEnforceReport | None,
-) -> dict[str, Any]:
-    return {
-        "servarr": {
-            "results": [_format_enforce_result(r) for r in servarr.results],
-            "total_fields_changed": servarr.total_fields_changed,
-            "total_failures": servarr.total_failures,
-        },
-        "bazarr": _format_bazarr_enforce(bazarr),
-    }
-
-
-def _format_enforce_result(r: EnforceResult) -> dict[str, Any]:
-    return {
-        "app": r.app,
-        "mediamanagement_changed_fields": list(r.mediamanagement_changed_fields),
-        "naming_changed_fields": list(r.naming_changed_fields),
-        "failures": list(r.failures),
-    }
-
-
-def _format_bazarr_enforce(r: BazarrEnforceReport | None) -> dict[str, Any] | None:
-    if r is None:
-        return None
-    return {
-        "changed_paths": list(r.changed_paths),
-        "failures": list(r.failures),
-    }
-
-
-def _format_reconcile(
-    servarr: ReconcileReport,
-    bazarr: BazarrReconcileReport | None,
-) -> dict[str, Any]:
-    return {
-        "servarr": {
-            "results": [_format_reconcile_result(r) for r in servarr.results],
-            "total_resolved": servarr.total_resolved,
-            "total_needs_review": servarr.total_needs_review,
-            "total_failures": servarr.total_failures,
-            "total_bytes_freed": servarr.total_bytes_freed,
-        },
-        "bazarr": _format_bazarr_reconcile(bazarr),
-    }
-
-
-def _format_reconcile_result(r: AdapterReconcileResult) -> dict[str, Any]:
-    return {
-        "app": r.app,
-        "resolved": [
-            {
-                "release_id": x.release_id,
-                "release_title": x.release_title,
-                "winner_file_id": x.winner_file_id,
-                "loser_file_ids": list(x.loser_file_ids),
-                "bytes_freed": x.bytes_freed,
-            }
-            for x in r.resolved
-        ],
-        "needs_review": [
-            {
-                "release_id": x.release_id,
-                "release_title": x.release_title,
-                "candidate_file_ids": list(x.candidate_file_ids),
-            }
-            for x in r.needs_review
-        ],
-        "failures": list(r.failures),
-    }
-
-
-def _format_bazarr_reconcile(r: BazarrReconcileReport | None) -> dict[str, Any] | None:
-    if r is None:
-        return None
-    return {
-        "resolved": [
-            {
-                "release_id": x.release_id,
-                "release_kind": x.release_kind,
-                "release_title": x.release_title,
-                "language": x.language,
-                "forced": x.forced,
-                "hi": x.hi,
-                "winner_path": x.winner_path,
-                "loser_paths": list(x.loser_paths),
-                "bytes_freed": x.bytes_freed,
-            }
-            for x in r.resolved
-        ],
-        "needs_review": [
-            {
-                "release_id": x.release_id,
-                "release_kind": x.release_kind,
-                "release_title": x.release_title,
-                "language": x.language,
-                "forced": x.forced,
-                "hi": x.hi,
-                "candidate_paths": list(x.candidate_paths),
-            }
-            for x in r.needs_review
-        ],
-        "failures": list(r.failures),
-        "total_bytes_freed": r.total_bytes_freed,
-    }
+_FORMATTERS = _MediaIntegrityFormatters()
+_format_enforce = _FORMATTERS.format_enforce
+_format_enforce_result = _FORMATTERS.format_enforce_result
+_format_bazarr_enforce = _FORMATTERS.format_bazarr_enforce
+_format_reconcile = _FORMATTERS.format_reconcile
+_format_reconcile_result = _FORMATTERS.format_reconcile_result
+_format_bazarr_reconcile = _FORMATTERS.format_bazarr_reconcile
 
 
 __all__ = [

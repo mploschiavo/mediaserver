@@ -33,22 +33,6 @@ class SkipPhase(RuntimeError):
     """Signal that current phase should be marked as skipped."""
 
 
-def ts() -> str:
-    return time.strftime(ISO_8601_TZ_OFFSET)
-
-
-def info(message: str) -> None:
-    print(f"[{ts()}] [INFO] {message}", flush=True)
-
-
-def warn(message: str) -> None:
-    print(f"[{ts()}] [WARN] {message}", file=sys.stderr, flush=True)
-
-
-def err(message: str) -> None:
-    print(f"[{ts()}] [ERR] {message}", file=sys.stderr, flush=True)
-
-
 @dataclass
 class InstallConfig:
     root_dir: Path
@@ -64,11 +48,111 @@ class InstallConfig:
     alert_webhook_url: str = ""
 
 
+class StackInstallCommand:
+    """Class-based dispatcher for the stack install CLI (ADR-0012)."""
+
+    def ts(self) -> str:
+        return time.strftime(ISO_8601_TZ_OFFSET)
+
+    def info(self, message: str) -> None:
+        print(f"[{self.ts()}] [INFO] {message}", flush=True)
+
+    def warn(self, message: str) -> None:
+        print(f"[{self.ts()}] [WARN] {message}", file=sys.stderr, flush=True)
+
+    def err(self, message: str) -> None:
+        print(f"[{self.ts()}] [ERR] {message}", file=sys.stderr, flush=True)
+
+    def parse_args(self, argv: list[str]) -> InstallConfig:
+        root_dir = repo_root_from_script_file(__file__)
+
+        parser = argparse.ArgumentParser(
+            prog="bin/install.sh",
+            description="One-command install wizard for media-stack.",
+        )
+        parser.add_argument("--profile", default=os.environ.get("PROFILE", "full"))
+        parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
+        parser.add_argument(
+            "--storage-mode", default=os.environ.get("STORAGE_MODE", "dynamic-pvc")
+        )
+        parser.add_argument("--storage-class", default=os.environ.get("PVC_STORAGE_CLASS", ""))
+        parser.add_argument(
+            "--ingress-domain", default=os.environ.get("INGRESS_DOMAIN", "local")
+        )
+        parser.add_argument("--node-ip", default=os.environ.get("NODE_IP", ""))
+        parser.add_argument("--enable-tls", action="store_true")
+        parsed = parser.parse_args(argv)
+
+        enable_tls = os.environ.get("ENABLE_TLS", "0")
+        if parsed.enable_tls:
+            enable_tls = "1"
+
+        return InstallConfig(
+            root_dir=root_dir,
+            profile=parsed.profile,
+            node_ip=parsed.node_ip,
+            namespace=parsed.namespace,
+            prepare_host_root=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
+            storage_mode=parsed.storage_mode,
+            pvc_storage_class=parsed.storage_class,
+            ingress_domain=parsed.ingress_domain,
+            enable_tls=enable_tls,
+            enable_secrets_gen=os.environ.get("ENABLE_SECRETS_GEN", "1"),
+            alert_webhook_url=os.environ.get("ALERT_WEBHOOK_URL", ""),
+        )
+
+    def main(self, argv: list[str] | None = None) -> int:
+        args = argv if argv is not None else sys.argv[1:]
+        # Dispatch through sys.modules so that mock.patch on module-level
+        # aliases (e.g. `parse_args`) is honoured.
+        module = sys.modules[__name__]
+        cfg = module.parse_args(args)
+
+        try:
+            kubectl = resolve_kubectl_binary()
+        except Exception as exc:
+            module.err(str(exc))
+            return 2
+
+        runner = InstallRunner(cfg=cfg, kubectl=kubectl)
+        try:
+            return runner.run()
+        except Exception as exc:
+            module.warn(f"Install failed: {exc}")
+            runner.tracker.summary()
+            runner.notify(
+                "error",
+                f"media-stack install failed (profile={cfg.profile}, namespace={cfg.namespace})",
+            )
+            return 1
+
+
+_INSTANCE = StackInstallCommand()
+
+# Public module-level aliases (ADR-0012 dispatch contract).
+ts = _INSTANCE.ts
+info = _INSTANCE.info
+warn = _INSTANCE.warn
+err = _INSTANCE.err
+parse_args = _INSTANCE.parse_args
+main = _INSTANCE.main
+
+# Underscore aliases for tests that may want to reach the bound methods directly.
+_ts = _INSTANCE.ts
+_info = _INSTANCE.info
+_warn = _INSTANCE.warn
+_err = _INSTANCE.err
+_parse_args = _INSTANCE.parse_args
+_main = _INSTANCE.main
+
+
 @dataclass
 class InstallRunner:
     cfg: InstallConfig
     kubectl: list[str]
-    tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
+    tracker: PhaseTracker = field(
+        default_factory=lambda: PhaseTracker(info=info, warn=warn)
+    )
 
     def run(self) -> int:
         self._validate_inputs()
@@ -266,64 +350,6 @@ class InstallRunner:
     def collect_final_stack_status(self) -> None:
         info("Collecting final status")
         self._run_script("stack-status.sh", env={"NAMESPACE": self.cfg.namespace})
-
-
-def parse_args(argv: list[str]) -> InstallConfig:
-    root_dir = repo_root_from_script_file(__file__)
-
-    parser = argparse.ArgumentParser(
-        prog="bin/install.sh",
-        description="One-command install wizard for media-stack.",
-    )
-    parser.add_argument("--profile", default=os.environ.get("PROFILE", "full"))
-    parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
-    parser.add_argument("--storage-mode", default=os.environ.get("STORAGE_MODE", "dynamic-pvc"))
-    parser.add_argument("--storage-class", default=os.environ.get("PVC_STORAGE_CLASS", ""))
-    parser.add_argument("--ingress-domain", default=os.environ.get("INGRESS_DOMAIN", "local"))
-    parser.add_argument("--node-ip", default=os.environ.get("NODE_IP", ""))
-    parser.add_argument("--enable-tls", action="store_true")
-    parsed = parser.parse_args(argv)
-
-    enable_tls = os.environ.get("ENABLE_TLS", "0")
-    if parsed.enable_tls:
-        enable_tls = "1"
-
-    return InstallConfig(
-        root_dir=root_dir,
-        profile=parsed.profile,
-        node_ip=parsed.node_ip,
-        namespace=parsed.namespace,
-        prepare_host_root=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
-        storage_mode=parsed.storage_mode,
-        pvc_storage_class=parsed.storage_class,
-        ingress_domain=parsed.ingress_domain,
-        enable_tls=enable_tls,
-        enable_secrets_gen=os.environ.get("ENABLE_SECRETS_GEN", "1"),
-        alert_webhook_url=os.environ.get("ALERT_WEBHOOK_URL", ""),
-    )
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    cfg = parse_args(args)
-
-    try:
-        kubectl = resolve_kubectl_binary()
-    except Exception as exc:
-        err(str(exc))
-        return 2
-
-    runner = InstallRunner(cfg=cfg, kubectl=kubectl)
-    try:
-        return runner.run()
-    except Exception as exc:
-        warn(f"Install failed: {exc}")
-        runner.tracker.summary()
-        runner.notify(
-            "error",
-            f"media-stack install failed (profile={cfg.profile}, namespace={cfg.namespace})",
-        )
-        return 1
 
 
 if __name__ == "__main__":
