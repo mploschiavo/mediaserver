@@ -184,7 +184,7 @@ class _JellyfinVisibilityMixin:
             return []
         if status != HTTPStatus.OK:
             return []
-        items = _extract_key_items(body)
+        items = self._extract_key_items(body)
         out: list[APIToken] = []
         for item in items:
             if str(item.get("UserId", "")) != external_id:
@@ -205,6 +205,23 @@ class _JellyfinVisibilityMixin:
             ))
         return out
 
+    def _extract_key_items(self, body: Any) -> list[dict[str, Any]]:
+        """Normalize the ``/Auth/Keys`` response into a flat list of dicts.
+
+        Jellyfin's payload shape has varied across versions — early
+        builds returned a bare list, later ones wrap in
+        ``{"Items": [...]}``. Both shapes tolerated; anything else
+        returns ``[]``.
+        """
+        del self  # instance method per OO+DI convention; no instance state used
+        if isinstance(body, dict):
+            raw = body.get("Items") or []
+        elif isinstance(body, list):
+            raw = body
+        else:
+            raw = []
+        return [item for item in raw if isinstance(item, dict)]
+
     def revoke_api_token(self, external_id: str, token_id: str) -> None:
         """DELETE ``/Auth/Keys/{token}``.
 
@@ -224,23 +241,6 @@ class _JellyfinVisibilityMixin:
             )
         except Exception as exc:  # noqa: BLE001
             _log.debug("[DEBUG] revoke_api_token failed: %s", exc)
-
-
-def _extract_key_items(body: Any) -> list[dict[str, Any]]:
-    """Normalize the ``/Auth/Keys`` response into a flat list of dicts.
-
-    Jellyfin's payload shape has varied across versions — early
-    builds returned a bare list, later ones wrap in
-    ``{"Items": [...]}``. Both shapes tolerated; anything else
-    returns ``[]``.
-    """
-    if isinstance(body, dict):
-        raw = body.get("Items") or []
-    elif isinstance(body, list):
-        raw = body
-    else:
-        raw = []
-    return [item for item in raw if isinstance(item, dict)]
 
 
 __all__ = ["_JellyfinVisibilityMixin"]

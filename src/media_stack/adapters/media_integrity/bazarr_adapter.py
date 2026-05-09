@@ -58,6 +58,74 @@ _BAZARR_SETTINGS_FIELDS: dict[str, str] = {
 }
 
 
+class _BazarrPayloadHelpers:
+    """Parsing helpers for Bazarr's loose JSON shapes.
+
+    Carved out of ``BazarrAdapter`` to keep its method count under the
+    god-class ratchet — the three helpers are pure-data transforms
+    (no I/O, no state) so they're naturally a sub-helper rather than
+    methods on the HTTP-touching adapter.
+    """
+
+    def unwrap_items(self, raw: Any) -> list[Any]:
+        """Bazarr's list endpoints either return a top-level list or
+        wrap in ``{"data": [...]}`` depending on version. Accept both."""
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            data = raw.get("data")
+            if isinstance(data, list):
+                return data
+        return []
+
+    def subtitle_from_raw(
+        self, raw: dict[str, Any], release_id: str, release_kind: str
+    ) -> SubtitleFile | None:
+        path = raw.get("path") or raw.get("subtitles_path")
+        if not path or not isinstance(path, str):
+            return None
+        language = str(raw.get("language") or raw.get("code2") or "")
+        forced = bool(raw.get("forced", False))
+        hi = bool(raw.get("hi", False))
+        provider = str(raw.get("provider") or raw.get("providerName") or "")
+        score_raw = raw.get("score")
+        try:
+            score = int(score_raw) if score_raw is not None else 0
+        except (TypeError, ValueError):
+            score = 0
+        added_at = str(raw.get("timestamp") or raw.get("date") or "")
+        size_raw = raw.get("file_size")
+        try:
+            size = int(size_raw) if size_raw is not None else 0
+        except (TypeError, ValueError):
+            size = 0
+        return SubtitleFile(
+            release_id=release_id,
+            release_kind=release_kind,
+            path=path,
+            language=language,
+            forced=forced,
+            hi=hi,
+            provider=provider,
+            score=score,
+            added_at=added_at,
+            size=size,
+        )
+
+    def flatten_keys(self, obj: Any, prefix: str = "") -> list[str]:
+        """Return dotted key paths into a nested dict — used by the
+        capability probe so the settings patch knows which keys to write."""
+        out: list[str] = []
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                path = f"{prefix}.{k}" if prefix else str(k)
+                if isinstance(v, dict):
+                    out.extend(self.flatten_keys(v, path))
+                else:
+                    out.append(path)
+        return out
+
+
 class BazarrAdapter:
     """Bazarr HTTP adapter — standalone from the Servarr base
     because its API shape is sufficiently different that the
@@ -67,6 +135,7 @@ class BazarrAdapter:
     api_version = "v1"  # placeholder — Bazarr's API is unversioned
 
     _SETTINGS_FIELDS: dict[str, str] = _BAZARR_SETTINGS_FIELDS
+    _PAYLOAD_HELPERS = _BazarrPayloadHelpers()
 
     def __init__(
         self,
@@ -110,7 +179,7 @@ class BazarrAdapter:
 
     def _list_movie_releases(self) -> list[SubtitleRelease]:
         raw = self._request_json("GET", "/api/movies")
-        items = _unwrap_items(raw)
+        items = self._PAYLOAD_HELPERS.unwrap_items(raw)
         out: list[SubtitleRelease] = []
         for item in items:
             if not isinstance(item, dict):
@@ -130,7 +199,7 @@ class BazarrAdapter:
 
     def _list_episode_releases(self) -> list[SubtitleRelease]:
         series_raw = self._request_json("GET", "/api/series")
-        series_items = _unwrap_items(series_raw)
+        series_items = self._PAYLOAD_HELPERS.unwrap_items(series_raw)
         out: list[SubtitleRelease] = []
         for series in series_items:
             if not isinstance(series, dict):
@@ -146,7 +215,7 @@ class BazarrAdapter:
             episodes = self._request_json(
                 "GET", f"/api/episodes?seriesid={series_id}"
             )
-            ep_items = _unwrap_items(episodes)
+            ep_items = self._PAYLOAD_HELPERS.unwrap_items(episodes)
             for ep in ep_items:
                 if not isinstance(ep, dict):
                     continue
@@ -185,12 +254,12 @@ class BazarrAdapter:
         else:
             return []
         raw = self._request_json("GET", path)
-        items = _unwrap_items(raw)
+        items = self._PAYLOAD_HELPERS.unwrap_items(raw)
         out: list[SubtitleFile] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
-            sub = _subtitle_from_raw(item, release_id, release_kind)
+            sub = self._PAYLOAD_HELPERS.subtitle_from_raw(item, release_id, release_kind)
             if sub is not None:
                 out.append(sub)
         return out
@@ -261,71 +330,6 @@ class BazarrAdapter:
             cfg = self.get_settings()
         except ServarrHttpError:
             return BazarrCapabilities()
-        keys = tuple(sorted(_flatten_keys(cfg)))
+        keys = tuple(sorted(self._PAYLOAD_HELPERS.flatten_keys(cfg)))
         return BazarrCapabilities(probed_setting_keys=keys)
 
-
-# ---------------------------------------------------------------------------
-# Free functions (easy to test)
-# ---------------------------------------------------------------------------
-
-
-def _unwrap_items(raw: Any) -> list[Any]:
-    """Bazarr's list endpoints either return a top-level list or
-    wrap in ``{"data": [...]}`` depending on version. Accept both."""
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        data = raw.get("data")
-        if isinstance(data, list):
-            return data
-    return []
-
-
-def _subtitle_from_raw(
-    raw: dict[str, Any], release_id: str, release_kind: str
-) -> SubtitleFile | None:
-    path = raw.get("path") or raw.get("subtitles_path")
-    if not path or not isinstance(path, str):
-        return None
-    language = str(raw.get("language") or raw.get("code2") or "")
-    forced = bool(raw.get("forced", False))
-    hi = bool(raw.get("hi", False))
-    provider = str(raw.get("provider") or raw.get("providerName") or "")
-    score_raw = raw.get("score")
-    try:
-        score = int(score_raw) if score_raw is not None else 0
-    except (TypeError, ValueError):
-        score = 0
-    added_at = str(raw.get("timestamp") or raw.get("date") or "")
-    size_raw = raw.get("file_size")
-    try:
-        size = int(size_raw) if size_raw is not None else 0
-    except (TypeError, ValueError):
-        size = 0
-    return SubtitleFile(
-        release_id=release_id,
-        release_kind=release_kind,
-        path=path,
-        language=language,
-        forced=forced,
-        hi=hi,
-        provider=provider,
-        score=score,
-        added_at=added_at,
-        size=size,
-    )
-
-
-def _flatten_keys(obj: Any, prefix: str = "") -> list[str]:
-    """Return dotted key paths into a nested dict — used by the
-    capability probe so the settings patch knows which keys to write."""
-    out: list[str] = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            path = f"{prefix}.{k}" if prefix else str(k)
-            if isinstance(v, dict):
-                out.extend(_flatten_keys(v, path))
-            else:
-                out.append(path)
-    return out

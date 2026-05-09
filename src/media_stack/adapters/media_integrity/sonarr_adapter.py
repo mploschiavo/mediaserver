@@ -124,7 +124,7 @@ class SonarrAdapter(_ServarrBaseAdapter):
             # Filter to files actually attached to this episode.
             # An episodefile can span multiple episodes (double-episode
             # file); Sonarr reports this via the linked episodes list.
-            linked_episodes = _collect_linked_episode_ids(item)
+            linked_episodes = self._collect_linked_episode_ids(item)
             if release_id not in linked_episodes:
                 continue
             mf = self._file_from_raw(item, release_id)
@@ -169,26 +169,27 @@ class SonarrAdapter(_ServarrBaseAdapter):
             return []
         if not isinstance(raw, dict):
             return []
-        ids = _collect_linked_episode_ids(raw)
+        ids = self._collect_linked_episode_ids(raw)
         return sorted(ids)
 
-
-def _collect_linked_episode_ids(episodefile_raw: dict[str, Any]) -> set[str]:
-    """Sonarr ``episodefile`` rows carry their linked episode ids
-    inconsistently across versions. Check both the newer ``episodes``
-    list and the older ``episodeIds`` / ``episodeId`` shapes."""
-    ids: set[str] = set()
-    episodes = episodefile_raw.get("episodes")
-    if isinstance(episodes, list):
-        for ep in episodes:
-            if isinstance(ep, dict) and ep.get("id") is not None:
-                ids.add(str(ep["id"]))
-    older = episodefile_raw.get("episodeIds")
-    if isinstance(older, list):
-        for eid in older:
-            if eid is not None:
-                ids.add(str(eid))
-    single = episodefile_raw.get("episodeId")
-    if single is not None:
-        ids.add(str(single))
-    return ids
+    def _collect_linked_episode_ids(
+        self, episodefile_raw: dict[str, Any]
+    ) -> set[str]:
+        """Sonarr ``episodefile`` rows carry their linked episode ids
+        inconsistently across versions. Check both the newer ``episodes``
+        list and the older ``episodeIds`` / ``episodeId`` shapes."""
+        ids: set[str] = set()
+        episodes = episodefile_raw.get("episodes")
+        if isinstance(episodes, list):
+            for ep in episodes:
+                if isinstance(ep, dict) and ep.get("id") is not None:
+                    ids.add(str(ep["id"]))
+        older = episodefile_raw.get("episodeIds")
+        if isinstance(older, list):
+            for eid in older:
+                if eid is not None:
+                    ids.add(str(eid))
+        single = episodefile_raw.get("episodeId")
+        if single is not None:
+            ids.add(str(single))
+        return ids

@@ -16,51 +16,58 @@ _ENV_PATTERN = re.compile(
 )
 
 
-def parse_wait_seconds(value: str, *, default_seconds: int = 300) -> int:
-    token = str(value or "").strip().lower()
-    if not token:
-        return default_seconds
-    if token.endswith("ms"):
-        token = token[:-2]
+class ComposeDurationParser:
+    """Compose-style duration token parser (e.g. ``30s``, ``5m``, ``100ms``)."""
+
+    def parse_wait_seconds(self, value: str, *, default_seconds: int = 300) -> int:
+        token = str(value or "").strip().lower()
+        if not token:
+            return default_seconds
+        if token.endswith("ms"):
+            token = token[:-2]
+            try:
+                return max(1, int(float(token) / 1000.0))
+            except Exception:
+                return default_seconds
+        unit = token[-1:] if token else ""
+        raw = token[:-1] if unit in {"s", "m", "h"} else token
         try:
-            return max(1, int(float(token) / 1000.0))
+            magnitude = float(raw)
         except Exception:
             return default_seconds
-    unit = token[-1:] if token else ""
-    raw = token[:-1] if unit in {"s", "m", "h"} else token
-    try:
-        magnitude = float(raw)
-    except Exception:
-        return default_seconds
-    multiplier = 1.0
-    if unit == "m":
-        multiplier = 60.0
-    elif unit == "h":
-        multiplier = 3600.0
-    return max(1, int(magnitude * multiplier))
+        multiplier = 1.0
+        if unit == "m":
+            multiplier = 60.0
+        elif unit == "h":
+            multiplier = 3600.0
+        return max(1, int(magnitude * multiplier))
 
-
-def parse_duration_nanoseconds(value: str, *, default_ns: int) -> int:
-    token = str(value or "").strip().lower()
-    if not token:
-        return default_ns
-    if token.endswith("ms"):
+    def parse_duration_nanoseconds(self, value: str, *, default_ns: int) -> int:
+        token = str(value or "").strip().lower()
+        if not token:
+            return default_ns
+        if token.endswith("ms"):
+            try:
+                return int(float(token[:-2]) * 1_000_000)
+            except Exception:
+                return default_ns
+        unit = token[-1:] if token else ""
+        raw = token[:-1] if unit in {"s", "m", "h"} else token
         try:
-            return int(float(token[:-2]) * 1_000_000)
+            magnitude = float(raw)
         except Exception:
             return default_ns
-    unit = token[-1:] if token else ""
-    raw = token[:-1] if unit in {"s", "m", "h"} else token
-    try:
-        magnitude = float(raw)
-    except Exception:
-        return default_ns
-    multiplier = 1.0
-    if unit == "m":
-        multiplier = 60.0
-    elif unit == "h":
-        multiplier = 3600.0
-    return int(magnitude * multiplier * 1_000_000_000)
+        multiplier = 1.0
+        if unit == "m":
+            multiplier = 60.0
+        elif unit == "h":
+            multiplier = 3600.0
+        return int(magnitude * multiplier * 1_000_000_000)
+
+
+_DURATION_PARSER = ComposeDurationParser()
+parse_wait_seconds = _DURATION_PARSER.parse_wait_seconds
+parse_duration_nanoseconds = _DURATION_PARSER.parse_duration_nanoseconds
 
 
 @dataclass(frozen=True)
