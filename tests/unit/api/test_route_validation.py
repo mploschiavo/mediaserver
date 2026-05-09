@@ -80,7 +80,7 @@ def _build_test_services(
     Simulates what generate_envoy_config_main does for K8s mode.
     """
     try:
-        from media_stack.api.services.registry import SERVICES as reg_services
+        from media_stack.core.service_registry.registry import SERVICES as reg_services
         ports = {s.id: s.port for s in reg_services if s.port > 0}
     except Exception:
         ports = {}
@@ -126,13 +126,13 @@ def _render_envoy_routes(
     }
 
     try:
-        from media_stack.api.services.registry import get_preserve_path_prefix_services
+        from media_stack.core.service_registry.registry import get_preserve_path_prefix_services
         preserve_names = tuple(s.id for s in get_preserve_path_prefix_services())
     except Exception:
         preserve_names = ()
 
     try:
-        from media_stack.api.services.registry import get_web_ui_services
+        from media_stack.core.service_registry.registry import get_web_ui_services
         redirect_names = tuple(s.id for s in get_web_ui_services())
     except Exception:
         redirect_names = ()
@@ -180,7 +180,7 @@ def _render_envoy_routes(
         from media_stack.core.auth.gateway_policy import AuthContractService
         auth_contract = AuthContractService(CONTRACT_PATH)
         try:
-            from media_stack.api.services.registry import SERVICES as reg_svcs
+            from media_stack.core.service_registry.registry import SERVICES as reg_svcs
             svc_list = [(s.id, s.category) for s in reg_svcs]
         except Exception:
             svc_list = []

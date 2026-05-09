@@ -407,7 +407,7 @@ class _ServiceKeyRegenerator:
         self._config_root_default = config_root_default
 
     def lookup(self, service_id: str) -> Any:
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         return SERVICE_MAP.get(service_id)
 
     def set_manual(self, env_name: str, key: str) -> None:
@@ -417,7 +417,7 @@ class _ServiceKeyRegenerator:
     def discover(self, service_id: str) -> tuple[str, str]:
         """Return ``(key, source)`` — empty key when discovery
         failed entirely."""
-        from media_stack.api.services.registry import (
+        from media_stack.core.service_registry.registry import (
             read_api_key_from_file,
             read_api_key_via_http,
         )

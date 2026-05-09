@@ -165,7 +165,7 @@ class LogsGetRoutes(RouteModule):
         """
         from media_stack.core.logging_utils import log_swallowed
         try:
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
             svcs = sorted({s.id for s in SERVICES})
         except ImportError as exc:
             log_swallowed(exc)

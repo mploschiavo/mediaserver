@@ -338,8 +338,9 @@ _CONFIG_ALLOWED_PATH_FRAGMENTS = (
     # Adapters are the layer that bridges env config into runtime
     # decisions; they're allowed to read env directly.
     "/adapters/",
-    # Service registry reads env for port overrides at import time.
-    "/api/services/registry.py",
+    # Service registry reads env for port overrides at import time
+    # (relocated to core/ in ADR-0011 Phase 2.1).
+    "/core/service_registry/registry.py",
     # Bootstrap CLI entrypoints orchestrate env into CLI flags.
     "/cli/commands/",
 )

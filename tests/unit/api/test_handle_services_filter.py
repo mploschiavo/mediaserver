@@ -27,7 +27,7 @@ from typing import Any
 
 import pytest
 
-from media_stack.api.services.registry import (
+from media_stack.core.service_registry.registry import (
     ServiceDef,
     build_apps_listing,
 )

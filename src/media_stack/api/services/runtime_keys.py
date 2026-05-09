@@ -78,7 +78,7 @@ def _read_env_key(service_id: str) -> str:
     """
     env_var: str = ""
     try:
-        from .registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
 
         svc = SERVICE_MAP.get(service_id)
         if svc and svc.api_key_env:
@@ -103,7 +103,7 @@ def _read_file_key(service_id: str) -> str:
     """
     config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
     try:
-        from .registry import read_api_key_from_file
+        from media_stack.core.service_registry.registry import read_api_key_from_file
 
         key = read_api_key_from_file(service_id, str(config_root))
         if key:
@@ -201,7 +201,7 @@ def services_missing_keys() -> list[str]:
     """
     missing: list[str] = []
     try:
-        from .registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
     except Exception as exc:
         log_swallowed(exc)
         return missing
@@ -212,7 +212,7 @@ def services_missing_keys() -> list[str]:
         # legitimately have no key on a deploy that doesn't include
         # them, and surfacing them would be noise.
         try:
-            from .registry import is_service_enabled
+            from media_stack.core.service_registry.registry import is_service_enabled
 
             if not is_service_enabled(svc):
                 continue

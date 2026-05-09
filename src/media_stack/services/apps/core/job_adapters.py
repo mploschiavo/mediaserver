@@ -30,7 +30,7 @@ from media_stack.services.jobs.framework import JobContext
 from media_stack.core.logging_utils import log_swallowed
 # hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
 # (api.services.registry is a leaf data module — no back-edge into this file)
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.api.services.health import discover_api_keys as _discover_api_keys
 
 # hoisted from per-call os.environ to reduce OS_ENVIRON_IN_METHODS_RATCHET drift
@@ -1988,7 +1988,7 @@ def _harvest_keys_from_disk(config_root: str) -> tuple[dict[str, str], list[str]
     file is unreadable in *this* run — we never overwrite a known-good
     key with empty just because the PVC was momentarily unmounted.
     """
-    from media_stack.api.services.registry import (
+    from media_stack.core.service_registry.registry import (
         SERVICES,
         read_api_key_from_file,
     )

@@ -12,7 +12,7 @@ import time
 from typing import Any
 from urllib import error, request
 
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 
 class JellyfinHttpPreflight:

@@ -186,7 +186,7 @@ class TestListSisterAppPrefixes:
             patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.api.services.registry": type(
+                    "media_stack.core.service_registry.registry": type(
                         "M", (), {"SERVICES": services},
                     )(),
                 },
@@ -211,7 +211,7 @@ class TestListSisterAppPrefixes:
             patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.api.services.registry": type(
+                    "media_stack.core.service_registry.registry": type(
                         "M", (), {"SERVICES": services},
                     )(),
                 },
@@ -226,7 +226,7 @@ class TestListSisterAppPrefixes:
         # Simulate import error — module exists but lacks SERVICES.
         with patch.dict(
             "sys.modules",
-            {"media_stack.api.services.registry": bad},
+            {"media_stack.core.service_registry.registry": bad},
         ):
             out = mod._list_sister_app_prefixes(
                 basepath="/app/media-stack-ui",
@@ -249,7 +249,7 @@ class TestListSisterAppPrefixes:
             patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.api.services.registry": type(
+                    "media_stack.core.service_registry.registry": type(
                         "M", (), {"SERVICES": services},
                     )(),
                 },
@@ -330,7 +330,7 @@ class TestGetSwConfig:
             patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.api.services.registry": type(
+                    "media_stack.core.service_registry.registry": type(
                         "M", (), {"SERVICES": services},
                     )(),
                 },
@@ -361,7 +361,7 @@ class TestGetSwConfig:
         with patch.dict(
             "sys.modules",
             {
-                "media_stack.api.services.registry": type(
+                "media_stack.core.service_registry.registry": type(
                     "M", (), {"SERVICES": []},
                 )(),
             },
@@ -385,7 +385,7 @@ class TestGetSwConfig:
             patch.dict(
                 "sys.modules",
                 {
-                    "media_stack.api.services.registry": type(
+                    "media_stack.core.service_registry.registry": type(
                         "M", (), {},
                     )(),
                 },

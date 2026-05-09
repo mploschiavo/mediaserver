@@ -63,7 +63,7 @@ def _load_app_adapter(app_id: str, attr: str) -> Any:
 
 def _find_svc_id(category: str = "", **match: Any) -> str:
     """Find a service ID by category or attribute match."""
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     for s in SERVICES:
         if category and s.category == category:
             return s.id
@@ -75,12 +75,12 @@ def _find_svc_id(category: str = "", **match: Any) -> str:
 def apply_bazarr_scalar_updates(*args: Any, **kwargs: Any) -> Any:
     svc_id = _find_svc_id(category="automation") or ""
     # Find the subtitles service
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     svc_id = next((s.id for s in SERVICES if s.desc and "subtitle" in s.desc.lower()), svc_id)
     return _load_app_adapter(svc_id, "apply_scalar_updates")(*args, **kwargs)
 
 def render_services_yaml(*args: Any, **kwargs: Any) -> Any:
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     svc_id = next((s.id for s in SERVICES if s.category == "management" and s.health_path == "/"), "")
     return _load_app_adapter(svc_id, "render_services_yaml")(*args, **kwargs)
 
@@ -97,7 +97,7 @@ def apply_artwork_profile(*args: Any, **kwargs: Any) -> Any:
     return _load_app_adapter(svc_id, "apply_artwork_profile")(*args, **kwargs)
 
 def _get_default_homepage_hosts() -> Any:
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     svc_id = next((s.id for s in SERVICES if s.category == "management" and s.health_path == "/"), "")
     if not svc_id:
         return {}

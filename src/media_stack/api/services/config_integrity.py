@@ -54,7 +54,7 @@ from xml.etree import ElementTree as ET
 import yaml
 
 from .config_validators import get_validator
-from .registry import SERVICES, ServiceDef
+from media_stack.core.service_registry.registry import SERVICES, ServiceDef
 
 _log = logging.getLogger("controller_api")
 

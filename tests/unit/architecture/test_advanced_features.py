@@ -176,7 +176,7 @@ class TestOnboardingStatus(unittest.TestCase):
         # that disabled services don't tip the bucket into "warn".
         # Assert the detail lists fewer expected keys than the raw
         # registry would (the disabled exclusion happened).
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         raw_expected = sum(1 for s in SERVICES if s.api_key_env)
         # Detail format: "{discovered}/{expected} keys"
         emitted_expected = int(api_step["detail"].split("/")[1].split()[0])
@@ -241,7 +241,7 @@ class TestAddCustomService(unittest.TestCase):
         self.assertIn("error", result)
 
     def test_creates_yaml_file(self):
-        from media_stack.api.services import registry
+        from media_stack.core.service_registry import registry
         orig_services = list(registry.SERVICES)
         orig_map = dict(registry.SERVICE_MAP)
         orig_cats = list(registry.CATEGORIES)

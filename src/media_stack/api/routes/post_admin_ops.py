@@ -350,7 +350,7 @@ class RestartService:
     def _resolve_service_map(self) -> dict[str, Any]:
         if self._service_map_provider is not None:
             return self._service_map_provider()
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         return SERVICE_MAP
 
 

@@ -17,7 +17,7 @@ from media_stack.cli.commands.controller_serve import (  # noqa: E402
 class TestValidateKeyAgainstService(unittest.TestCase):
     """Test the config mount mismatch detector."""
 
-    @patch("media_stack.api.services.registry.SERVICES", [])
+    @patch("media_stack.core.service_registry.registry.SERVICES", [])
     def test_no_canary_service_returns_early(self):
         log = MagicMock()
         _validate_key_against_service({}, "/srv-config", log)
@@ -31,7 +31,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
 
     @patch("urllib.request.urlopen")
     def test_valid_key_no_warning(self, mock_urlopen):
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         # Find a canary service
         canary = next((s for s in SERVICES if s.api_key_env and s.auth_path and s.api_key_format == "xml"), None)
         if not canary:
@@ -50,7 +50,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
     @patch("urllib.request.urlopen")
     def test_invalid_key_warns(self, mock_urlopen):
         import urllib.error
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         canary = next((s for s in SERVICES if s.api_key_env and s.auth_path and s.api_key_format == "xml"), None)
         if not canary:
             self.skipTest("No canary service in registry")
@@ -63,7 +63,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
 
     @patch("urllib.request.urlopen", side_effect=Exception("not ready"))
     def test_service_not_ready_no_warning(self, _):
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         canary = next((s for s in SERVICES if s.api_key_env and s.auth_path and s.api_key_format == "xml"), None)
         if not canary:
             self.skipTest("No canary service in registry")

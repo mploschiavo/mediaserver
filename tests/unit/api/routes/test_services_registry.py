@@ -77,7 +77,7 @@ class TestServiceApiKey:
 
     def test_unknown_service_returns_404(self) -> None:
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {},
         ):
             harness = RouteDispatchHarness.with_default_router()
@@ -91,7 +91,7 @@ class TestServiceApiKey:
     def test_service_without_api_key_env_returns_404(self) -> None:
         svc = SimpleNamespace(api_key_env="")
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"qbittorrent": svc},
         ):
             harness = RouteDispatchHarness.with_default_router()
@@ -103,7 +103,7 @@ class TestServiceApiKey:
     def test_service_with_unset_env_returns_no_key(self) -> None:
         svc = SimpleNamespace(api_key_env="SONARR_API_KEY")
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": svc},
         ), patch.dict("os.environ", {"SONARR_API_KEY": ""}, clear=False):
             harness = RouteDispatchHarness.with_default_router()
@@ -122,7 +122,7 @@ class TestServiceApiKey:
     def test_service_with_long_key_returns_masked_preview(self) -> None:
         svc = SimpleNamespace(api_key_env="SONARR_API_KEY")
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": svc},
         ), patch.dict(
             "os.environ",
@@ -143,7 +143,7 @@ class TestServiceApiKey:
     def test_service_with_short_key_returns_set_marker(self) -> None:
         svc = SimpleNamespace(api_key_env="SONARR_API_KEY")
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": svc},
         ), patch.dict(
             "os.environ", {"SONARR_API_KEY": "short"}, clear=False,
@@ -186,7 +186,7 @@ class TestRoutingIntegration:
         ``service_id``. The handler returns 404 for an unknown id,
         which proves the kwarg flowed through."""
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {},
         ):
             harness = RouteDispatchHarness.with_default_router()

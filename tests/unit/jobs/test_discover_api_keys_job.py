@@ -55,16 +55,16 @@ class _FakeCtx:
 
 class HarvestKeysFromDiskTests(unittest.TestCase):
     def test_success_path_collects_every_key(self) -> None:
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         services = [
             ServiceDef(id="sonarr", name="Sonarr", api_key_env="SONARR_API_KEY"),
             ServiceDef(id="radarr", name="Radarr", api_key_env="RADARR_API_KEY"),
         ]
         with mock.patch(
-            "media_stack.api.services.registry.SERVICES", services,
+            "media_stack.core.service_registry.registry.SERVICES", services,
         ), mock.patch(
-            "media_stack.api.services.registry.read_api_key_from_file",
+            "media_stack.core.service_registry.registry.read_api_key_from_file",
             side_effect=lambda sid, _root: f"{sid}-key",
         ):
             discovered, skipped = ja._harvest_keys_from_disk("/srv-config")
@@ -78,16 +78,16 @@ class HarvestKeysFromDiskTests(unittest.TestCase):
         """Sonarr has a key on disk; Radarr doesn't — the job should
         return Sonarr's key and record Radarr as skipped instead of
         erroring the whole sweep."""
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         services = [
             ServiceDef(id="sonarr", name="Sonarr", api_key_env="SONARR_API_KEY"),
             ServiceDef(id="radarr", name="Radarr", api_key_env="RADARR_API_KEY"),
         ]
         with mock.patch(
-            "media_stack.api.services.registry.SERVICES", services,
+            "media_stack.core.service_registry.registry.SERVICES", services,
         ), mock.patch(
-            "media_stack.api.services.registry.read_api_key_from_file",
+            "media_stack.core.service_registry.registry.read_api_key_from_file",
             side_effect=lambda sid, _root: "sonarr-key" if sid == "sonarr" else "",
         ), mock.patch.dict(os.environ, {"RADARR_API_KEY": ""}, clear=False):
             os.environ.pop("RADARR_API_KEY", None)
@@ -99,15 +99,15 @@ class HarvestKeysFromDiskTests(unittest.TestCase):
         """If the PVC is momentarily unreadable but the runtime env
         already has a known-good key, we MUST NOT overwrite it with
         empty — would cause a flap on every reconcile."""
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         services = [
             ServiceDef(id="sonarr", name="Sonarr", api_key_env="SONARR_API_KEY"),
         ]
         with mock.patch(
-            "media_stack.api.services.registry.SERVICES", services,
+            "media_stack.core.service_registry.registry.SERVICES", services,
         ), mock.patch(
-            "media_stack.api.services.registry.read_api_key_from_file",
+            "media_stack.core.service_registry.registry.read_api_key_from_file",
             return_value="",
         ), mock.patch.dict(
             os.environ, {"SONARR_API_KEY": "previously-known-good"}, clear=False,
@@ -119,15 +119,15 @@ class HarvestKeysFromDiskTests(unittest.TestCase):
     def test_jellyfin_not_bootstrapped_is_skip_not_error(self) -> None:
         """Jellyfin's key lives in SQLite and the DB doesn't exist on
         a fresh stack — that's a per-service skip, not a hard error."""
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         services = [
             ServiceDef(id="jellyfin", name="Jellyfin", api_key_env="JELLYFIN_API_KEY"),
         ]
         with mock.patch(
-            "media_stack.api.services.registry.SERVICES", services,
+            "media_stack.core.service_registry.registry.SERVICES", services,
         ), mock.patch(
-            "media_stack.api.services.registry.read_api_key_from_file",
+            "media_stack.core.service_registry.registry.read_api_key_from_file",
             return_value="",
         ), mock.patch(
             "media_stack.services.apps.jellyfin.api_key_db.read_jellyfin_api_key_from_db",
@@ -140,15 +140,15 @@ class HarvestKeysFromDiskTests(unittest.TestCase):
 
     def test_parse_failure_is_skip_not_error(self) -> None:
         """A corrupt config file should not abort the whole sweep."""
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         services = [
             ServiceDef(id="sonarr", name="Sonarr", api_key_env="SONARR_API_KEY"),
         ]
         with mock.patch(
-            "media_stack.api.services.registry.SERVICES", services,
+            "media_stack.core.service_registry.registry.SERVICES", services,
         ), mock.patch(
-            "media_stack.api.services.registry.read_api_key_from_file",
+            "media_stack.core.service_registry.registry.read_api_key_from_file",
             side_effect=ValueError("malformed XML"),
         ), mock.patch.dict(os.environ, {"SONARR_API_KEY": ""}, clear=False):
             os.environ.pop("SONARR_API_KEY", None)

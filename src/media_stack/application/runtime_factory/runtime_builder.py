@@ -23,7 +23,7 @@ import importlib as _importlib
 
 def _load_media_server_config_resolver():
     """Dynamically load the media server config resolver from the active technology binding."""
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     for svc in SERVICES:
         if svc.category != "media":
             continue
@@ -36,7 +36,7 @@ def _load_media_server_config_resolver():
 
 def _load_indexer_manager_key_reader():
     """Dynamically load the indexer manager API key reader from the active technology binding."""
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     for svc in SERVICES:
         if not svc.indexer_path:
             continue

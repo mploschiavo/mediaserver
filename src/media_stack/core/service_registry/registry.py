@@ -408,7 +408,7 @@ def reload_registry() -> None:
 import re as _re
 from pathlib import Path as _Path
 
-from .key_formats import READERS as KEY_READERS
+from media_stack.api.services.key_formats import READERS as KEY_READERS
 
 
 def read_api_key_from_file(service_id: str, config_root: str) -> str:

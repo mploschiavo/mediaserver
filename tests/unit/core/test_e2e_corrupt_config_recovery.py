@@ -44,7 +44,7 @@ from media_stack.api.services.crashloop import (  # noqa: E402
     CrashloopClassifier,
 )
 from media_stack.api.services.health_stories import compose  # noqa: E402
-from media_stack.api.services.registry import ServiceDef  # noqa: E402
+from media_stack.core.service_registry.registry import ServiceDef  # noqa: E402
 from media_stack.api.services.workload_inspector import (  # noqa: E402
     WorkloadState,
 )

@@ -10,7 +10,7 @@ from threading import Lock
 from typing import Any, Deque
 
 from .health import probe_services
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 
 # Rolling buffer of recent envoy admin-summary samples. Populated as a

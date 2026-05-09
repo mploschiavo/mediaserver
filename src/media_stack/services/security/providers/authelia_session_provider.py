@@ -215,7 +215,7 @@ def from_env(
     URL is configured — construction otherwise always returns an
     instance, with ``available`` flipped by the live probe.
     """
-    from media_stack.api.services.registry import service_internal_url
+    from media_stack.core.service_registry.registry import service_internal_url
     e = env if env is not None else os.environ
     url = (e.get("AUTHELIA_URL") or service_internal_url("authelia")).strip()
     if not url:

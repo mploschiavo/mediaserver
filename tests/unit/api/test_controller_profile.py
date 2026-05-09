@@ -953,7 +953,7 @@ class TestMaybeLoadBootstrapProfile(unittest.TestCase):
         from media_stack.core.controller_profile import _load_bootstrap_profile_catalog_cached
         _load_bootstrap_profile_catalog_cached.cache_clear()
         # Reload registry to restore canonical services (other tests may have mutated it)
-        from media_stack.api.services import registry as reg_mod
+        from media_stack.core.service_registry import registry as reg_mod
         reg_mod.reload_registry()
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "profile.yaml"

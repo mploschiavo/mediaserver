@@ -43,9 +43,9 @@ class TestConfigDrift(unittest.TestCase):
     @patch.dict(os.environ, {"K8S_NAMESPACE": "", "CONFIG_ROOT": "/nonexistent",
                               "SONARR_API_KEY": "envkey123"})
     @patch("media_stack.api.services._resolve.resolve_profile_path", return_value=None)
-    @patch("media_stack.api.services.registry.read_api_key_from_file", return_value="filekey456")
+    @patch("media_stack.core.service_registry.registry.read_api_key_from_file", return_value="filekey456")
     def test_api_key_drift_detected(self, mock_read, _):
-        from media_stack.api.services.registry import SERVICES, ServiceDef
+        from media_stack.core.service_registry.registry import SERVICES, ServiceDef
         # Only test if sonarr is in the registry
         sonarr = next((s for s in SERVICES if s.id == "sonarr"), None)
         if not sonarr:
@@ -90,7 +90,7 @@ class TestDashboardKeyFormatsRefactor(unittest.TestCase):
         self.assertTrue(hasattr(key_formats, "WRITERS"))
 
     def test_registry_uses_shared_readers(self):
-        from media_stack.api.services.registry import KEY_READERS
+        from media_stack.core.service_registry.registry import KEY_READERS
         from media_stack.api.services.key_formats import READERS
         self.assertIs(KEY_READERS, READERS)
 

@@ -1764,12 +1764,18 @@ class FreshInstallOtbHygiene(unittest.TestCase):
 
     def test_services_api_exposes_preserve_path_prefix(self) -> None:
         # The /api/services payload assembly moved out of
-        # handlers_get.py into api/services/registry.py with the
+        # handlers_get.py into the service-registry module with the
         # rest of the service-registry concerns (Phase 16-* api
-        # split). Pin the new home.
+        # split). ADR-0011 Phase 2.1 then relocated the module to
+        # ``core/service_registry/registry.py`` (chosen over
+        # ``application/`` because the registry is pure data + a YAML
+        # loader at import time, with no application-layer deps — so
+        # core/ avoids cascading adapters→application layer-rule
+        # violations). Pin the new home.
         src = (
             __import__("pathlib").Path(__file__).resolve().parents[3]
-            / "src" / "media_stack" / "api" / "services" / "registry.py"
+            / "src" / "media_stack" / "core"
+            / "service_registry" / "registry.py"
         ).read_text(encoding="utf-8")
         self.assertIn(
             '"preserve_path_prefix":',

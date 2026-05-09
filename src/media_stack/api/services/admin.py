@@ -19,7 +19,7 @@ import http.cookiejar
 from pathlib import Path
 from typing import Any
 
-from .registry import (
+from media_stack.core.service_registry.registry import (
     SERVICES, SERVICE_MAP,
     get_services_with_api_keys, get_services_with_password_api, get_services_with_password_config,
     read_api_key_from_file, read_api_key_via_http,

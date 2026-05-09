@@ -93,7 +93,7 @@ class ImportTrashCustomFormatsTests(unittest.TestCase):
 
     def test_missing_service(self):
         with patch.object(qp_mod, "_instance", qp_mod._instance), patch(
-            "media_stack.api.services.registry.SERVICE_MAP", {}
+            "media_stack.core.service_registry.registry.SERVICE_MAP", {}
         ):
             result = qp_mod.import_trash_custom_formats("nope", "http://x")
         self.assertIn("error", result)
@@ -101,7 +101,7 @@ class ImportTrashCustomFormatsTests(unittest.TestCase):
 
     def test_missing_api_key(self):
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": SimpleNamespace(host="sonarr", port=8989)},
         ), patch(
             "media_stack.api.services.health.discover_api_keys",
@@ -118,7 +118,7 @@ class ImportTrashCustomFormatsTests(unittest.TestCase):
             {"name": "EXISTING", "specifications": []},
         ]
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": SimpleNamespace(host="sonarr", port=8989)},
         ), patch(
             "media_stack.api.services.health.discover_api_keys",
@@ -138,7 +138,7 @@ class ImportTrashCustomFormatsTests(unittest.TestCase):
 
     def test_fetch_error_returned(self):
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": SimpleNamespace(host="sonarr", port=8989)},
         ), patch(
             "media_stack.api.services.health.discover_api_keys",
@@ -154,7 +154,7 @@ class ImportTrashCustomFormatsTests(unittest.TestCase):
     def test_post_errors_collected(self):
         payloads = [{"name": "broken", "specifications": []}]
         with patch(
-            "media_stack.api.services.registry.SERVICE_MAP",
+            "media_stack.core.service_registry.registry.SERVICE_MAP",
             {"sonarr": SimpleNamespace(host="sonarr", port=8989)},
         ), patch(
             "media_stack.api.services.health.discover_api_keys",

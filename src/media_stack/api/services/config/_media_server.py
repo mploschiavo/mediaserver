@@ -14,7 +14,7 @@ from media_stack.services.app_config_service import (
     load_app_config,
     update_app_config_section,
 )
-from ..registry import _find_services_dir
+from media_stack.core.service_registry.registry import _find_services_dir
 import logging
 
 

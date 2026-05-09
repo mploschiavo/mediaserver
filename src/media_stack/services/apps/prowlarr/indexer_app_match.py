@@ -60,7 +60,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 _log = logging.getLogger("media_stack.indexer_app_match")
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 
 @dataclass(frozen=True)

@@ -126,15 +126,15 @@ class ServicesMissingKeysTests(unittest.TestCase):
         rk.invalidate_cache()
 
     def test_returns_only_services_with_no_key(self) -> None:
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         fake_services = [
             ServiceDef(id="sonarr", name="Sonarr", api_key_env="SONARR_API_KEY"),
             ServiceDef(id="radarr", name="Radarr", api_key_env="RADARR_API_KEY"),
             ServiceDef(id="bazarr", name="Bazarr", api_key_env=""),  # not in scope
         ]
-        with patch("media_stack.api.services.registry.SERVICES", fake_services), \
-             patch("media_stack.api.services.registry.is_service_enabled", return_value=True), \
+        with patch("media_stack.core.service_registry.registry.SERVICES", fake_services), \
+             patch("media_stack.core.service_registry.registry.is_service_enabled", return_value=True), \
              patch.object(rk, "read_service_api_key", side_effect=lambda s: "k" if s == "sonarr" else None):
             missing = rk.services_missing_keys()
         self.assertEqual(missing, ["radarr"])
@@ -143,12 +143,12 @@ class ServicesMissingKeysTests(unittest.TestCase):
         """Services that don't declare ``api_key_env`` (e.g. webless
         helpers) shouldn't show up as missing — they legitimately have
         no credential to discover."""
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
 
         fake_services = [
             ServiceDef(id="bazarr", name="Bazarr", api_key_env=""),
         ]
-        with patch("media_stack.api.services.registry.SERVICES", fake_services):
+        with patch("media_stack.core.service_registry.registry.SERVICES", fake_services):
             self.assertEqual(rk.services_missing_keys(), [])
 
 

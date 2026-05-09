@@ -108,7 +108,7 @@ class RuntimeDataFlowsContract(unittest.TestCase):
         self.addCleanup(self.upstream.server_close)
 
     def _fake_services(self, port: int) -> list:
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
         return [
             ServiceDef(
                 id="jellyfin", name="jellyfin",
@@ -155,7 +155,7 @@ class RuntimeDataFlowsContract(unittest.TestCase):
                 _mock.patch.object(health_mod, "SERVICES",
                                    fake_services), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICES",
+                    "media_stack.core.service_registry.registry.SERVICES",
                     fake_services), \
                 _mock.patch.object(
                     content_mod, "read_service_api_key",

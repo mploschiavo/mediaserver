@@ -12,7 +12,7 @@ from media_stack.infrastructure.jellyseerr.api_ops import (
 )
 from media_stack.infrastructure.jellyseerr.file_ops import configure_via_settings_file
 from media_stack.infrastructure.jellyseerr.local_admin_ops import ensure_local_admin_user
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 
 class JellyseerrOrchestratorOps:

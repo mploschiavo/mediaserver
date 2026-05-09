@@ -49,7 +49,7 @@ def _lazy_adapter(module_path: str, class_name: str):
 
 def _load_adapter_for_service(category: str, adapter_key: str):
     """Load an adapter class from the service registry by category."""
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     for svc in SERVICES:
         if svc.category == category:
             mod = importlib.import_module(f"media_stack.services.apps.{svc.id}.media_server_adapter")

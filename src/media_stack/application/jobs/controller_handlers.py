@@ -45,7 +45,7 @@ def _load_handler_specs(key: str) -> list[dict]:
     }.get(key)
     if handler_field:
         try:
-            from media_stack.api.services.registry import SERVICES, _find_services_dir
+            from media_stack.core.service_registry.registry import SERVICES, _find_services_dir
             import yaml
             svc_dir = _find_services_dir()
             if svc_dir:

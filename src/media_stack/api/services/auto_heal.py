@@ -37,7 +37,7 @@ from typing import Callable
 
 from .config_integrity import ConfigIntegrityService
 from .crashloop import CrashloopClassifier
-from .registry import SERVICES, ServiceDef
+from media_stack.core.service_registry.registry import SERVICES, ServiceDef
 from .workload_inspector import WorkloadInspector, build_default_inspector
 
 _log = logging.getLogger("controller_api")

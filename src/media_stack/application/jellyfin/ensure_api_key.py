@@ -49,7 +49,7 @@ def ensure_jellyfin_api_key(_ctx: JobContext) -> dict[str, Any]:
     admin password drift, etc.).
     """
     from media_stack.api.services.health import discover_api_keys
-    from media_stack.api.services.registry import service_internal_url
+    from media_stack.core.service_registry.registry import service_internal_url
 
     keys = discover_api_keys()
     if "jellyfin" in keys and keys["jellyfin"]:

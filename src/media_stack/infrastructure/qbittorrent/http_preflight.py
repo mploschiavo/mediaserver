@@ -19,7 +19,7 @@ from typing import Any
 import requests
 import logging
 
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.infrastructure.qbittorrent import (
     QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
     QBITTORRENT_FACTORY_DEFAULT_USERNAME,

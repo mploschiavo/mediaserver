@@ -222,7 +222,7 @@ class RunBootstrapJobRunner(_RunBootstrapJobPrimingMixin):
 
         # 1. Load from per-service YAML plugin.call_handlers
         try:
-            from media_stack.api.services.registry import _find_services_dir
+            from media_stack.core.service_registry.registry import _find_services_dir
             import yaml
             svc_dir = _find_services_dir()
             if svc_dir:

@@ -75,7 +75,7 @@ class CrossResolverConsistencyTests(unittest.TestCase):
         self.config_root = Path(self._tmp.name)
         # Set up a minimal SERVICES list with a real-looking sonarr
         # entry so ``read_api_key_from_file`` can find it.
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
         self.svc = ServiceDef(
             id="sonarr",
             name="sonarr",
@@ -120,10 +120,10 @@ class CrossResolverConsistencyTests(unittest.TestCase):
         runtime_keys.invalidate_cache()
         with _mock.patch.dict(os.environ, env_patch, clear=False), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICE_MAP",
+                    "media_stack.core.service_registry.registry.SERVICE_MAP",
                     {"sonarr": self.svc}), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICES",
+                    "media_stack.core.service_registry.registry.SERVICES",
                     [self.svc]):
             return runtime_keys.read_service_api_key(self.SERVICE)
 
@@ -198,7 +198,7 @@ class CrossResolverConsistencyTests(unittest.TestCase):
         """When the env path is taken out of the picture, the
         runtime-side resolver and the registry's file-side reader
         must return identical values for the same fixture."""
-        from media_stack.api.services.registry import read_api_key_from_file
+        from media_stack.core.service_registry.registry import read_api_key_from_file
         from media_stack.api.services import runtime_keys
 
         target = self.config_root / "sonarr" / "config.xml"
@@ -211,10 +211,10 @@ class CrossResolverConsistencyTests(unittest.TestCase):
         runtime_keys.invalidate_cache()
         with _mock.patch.dict(os.environ, env_patch, clear=False), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICE_MAP",
+                    "media_stack.core.service_registry.registry.SERVICE_MAP",
                     {"sonarr": self.svc}), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICES",
+                    "media_stack.core.service_registry.registry.SERVICES",
                     [self.svc]):
             via_runtime = runtime_keys.read_service_api_key("sonarr")
             via_file = read_api_key_from_file("sonarr", str(self.config_root))

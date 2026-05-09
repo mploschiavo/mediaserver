@@ -151,7 +151,7 @@ class TestPreservePathPrefixServices(unittest.TestCase):
     def test_registry_matches_contracts(self):
         """Registry preserve_path_prefix should match contract."""
         try:
-            from media_stack.api.services.registry import SERVICE_MAP
+            from media_stack.core.service_registry.registry import SERVICE_MAP
         except ImportError:
             self.skipTest("registry not importable")
 

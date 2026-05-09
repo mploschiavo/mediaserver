@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.admin as admin_mod  # noqa: E402
 import media_stack.services.apps.jellyfin.admin_ops as jellyfin_admin_ops  # noqa: E402
-from media_stack.api.services.registry import ServiceDef  # noqa: E402
+from media_stack.core.service_registry.registry import ServiceDef  # noqa: E402
 
 
 def _svc(id, **kw):
@@ -83,11 +83,11 @@ class TestBatchRestart(unittest.TestCase):
 
 class TestHardResetService(unittest.TestCase):
     @patch.object(admin_mod, "restart_service", return_value={"status": "restarted"})
-    @patch("media_stack.api.services.registry.read_api_key_from_file", return_value="newkey")
-    @patch("media_stack.api.services.registry.read_api_key_via_http", return_value="")
+    @patch("media_stack.core.service_registry.registry.read_api_key_from_file", return_value="newkey")
+    @patch("media_stack.core.service_registry.registry.read_api_key_via_http", return_value="")
     @patch.object(admin_mod, "persist_keys_to_secret")
     def test_hard_reset_discovers_key(self, mock_persist, _, mock_read, mock_restart):
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         svc = next((s for s in SERVICES if s.api_key_env), None)
         if not svc:
             self.skipTest("No service with api_key_env")

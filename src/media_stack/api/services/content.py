@@ -17,7 +17,7 @@ from media_stack.services.apps.download_clients.registry_helpers import DOWNLOAD
 from .content_analytics_mixin import _ContentAnalyticsMixin
 from .content_download_settings_mixin import _ContentDownloadSettingsMixin
 from .health import discover_api_keys
-from .registry import SERVICE_MAP, SERVICES
+from media_stack.core.service_registry.registry import SERVICE_MAP, SERVICES
 from .runtime_keys import read_service_api_key
 import logging
 
@@ -764,7 +764,7 @@ def _fetch_sab_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
     Extracted from ``ContentService`` for the same reason as
     ``_fetch_qbit_downloads`` — pure function, no ``self``, keeps the
     host class short enough to clear the 500-line ratchet."""
-    from .registry import read_api_key_from_file
+    from media_stack.core.service_registry.registry import read_api_key_from_file
     _usenet_ids = [sid for sid, cat in DOWNLOAD_CLIENT_CATEGORIES.items() if cat == "usenet"]
     _usenet_svc_id = _usenet_ids[0] if _usenet_ids else "usenet"
     _usenet_svc = SERVICE_MAP.get(_usenet_svc_id)

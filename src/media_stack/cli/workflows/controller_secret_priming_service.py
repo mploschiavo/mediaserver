@@ -134,7 +134,7 @@ class ControllerSecretPrimingService:
 
         # 2. Derive from per-service YAML registry (category=automation)
         try:
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
             apps = [s.id for s in SERVICES if s.category == "automation"]
             if apps:
                 return apps

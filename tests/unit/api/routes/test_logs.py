@@ -248,7 +248,7 @@ class TestLogsSourcesRoute:
     """``GET /api/logs/sources`` — Logs UI dropdown source list."""
 
     @patch("media_stack.api.routes.logs.ops_svc")
-    @patch("media_stack.api.services.registry.SERVICES")
+    @patch("media_stack.core.service_registry.registry.SERVICES")
     def test_returns_platform_service_and_cronjob_buckets(
         self, mock_services, mock_ops,
     ) -> None:

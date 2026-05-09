@@ -108,7 +108,7 @@ class DiscoverApiKeysSecretWritebackTests(unittest.TestCase):
         ]
         with _mock.patch.dict(os.environ, env, clear=False), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICES",
+                    "media_stack.core.service_registry.registry.SERVICES",
                     fake_services), \
                 k8s_patch:
             state = _StubState(preflight_results={
@@ -155,7 +155,7 @@ class DiscoverApiKeysSecretWritebackTests(unittest.TestCase):
         ]
         with _mock.patch.dict(os.environ, env, clear=False), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICES",
+                    "media_stack.core.service_registry.registry.SERVICES",
                     fake_services), \
                 k8s_patch:
             controller_k8s._persist_preflight_keys_to_secret(_StubState())
@@ -180,7 +180,7 @@ class DiscoverApiKeysSecretWritebackTests(unittest.TestCase):
         }
         with _mock.patch.dict(os.environ, env, clear=True), \
                 _mock.patch(
-                    "media_stack.api.services.registry.SERVICES",
+                    "media_stack.core.service_registry.registry.SERVICES",
                     []), \
                 k8s_patch:
             controller_k8s._persist_preflight_keys_to_secret(_StubState())

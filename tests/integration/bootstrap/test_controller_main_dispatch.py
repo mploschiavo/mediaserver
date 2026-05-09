@@ -479,7 +479,7 @@ class TestLoadHandlerSpecs(unittest.TestCase):
 
     @patch("media_stack.cli.commands.controller_main._resolve_config_path", return_value=None)
     def test_returns_empty_when_no_sources(self, mock_path):
-        with patch.dict("sys.modules", {"media_stack.api.services.registry": MagicMock()}):
+        with patch.dict("sys.modules", {"media_stack.core.service_registry.registry": MagicMock()}):
             self.assertEqual(_load_handler_specs("container_preflight_handlers"), [])
 
 

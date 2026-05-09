@@ -18,7 +18,7 @@ logger = logging.getLogger("controller_api")
 from ._resolve import resolve_config_path
 # hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
 # (registry is a leaf config module — no cycle with ops)
-from .registry import SERVICES as _SERVICES
+from media_stack.core.service_registry.registry import SERVICES as _SERVICES
 
 
 # Hard cap on a single ``GET /api/logs/<svc>`` response. Bumped from

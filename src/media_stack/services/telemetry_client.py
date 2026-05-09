@@ -165,7 +165,7 @@ class TelemetryClient:
     @staticmethod
     def _collect_service_health() -> dict[str, Any]:
         try:
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
             from media_stack.api.services.health import probe_services
             from media_stack.api.cache import api_cache
             result = probe_services(api_cache)
@@ -274,7 +274,7 @@ class TelemetryClient:
             media["storage_gb"] = 0
         try:
             import docker
-            from media_stack.api.services.registry import SERVICE_MAP
+            from media_stack.core.service_registry.registry import SERVICE_MAP
             tc_id = ""
             try:
                 from media_stack.api.services.config import _load_profile_yaml

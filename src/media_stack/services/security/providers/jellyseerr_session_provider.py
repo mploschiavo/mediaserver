@@ -127,7 +127,7 @@ def from_env(
     Returns ``None`` when the API key is unset — there's nothing to
     probe and the provider would just register a permanent no-op.
     """
-    from media_stack.api.services.registry import service_internal_url
+    from media_stack.core.service_registry.registry import service_internal_url
     e = env if env is not None else os.environ
     url = (e.get("JELLYSEERR_URL") or service_internal_url("jellyseerr")).strip()
     api_key = (e.get("JELLYSEERR_API_KEY") or "").strip()

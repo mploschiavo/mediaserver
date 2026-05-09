@@ -514,7 +514,7 @@ class TestServerPostRouting(unittest.TestCase):
 class TestServerServicesEndpoint(unittest.TestCase):
     """Controller appears in /api/services."""
 
-    @patch("media_stack.api.services.registry.SERVICES", [])
+    @patch("media_stack.core.service_registry.registry.SERVICES", [])
     @patch.dict(os.environ, {"CONTROLLER_PORT": "9876"}, clear=False)
     def test_controller_in_services_list(self):
         from media_stack.api.server import ControllerAPIHandler
@@ -536,7 +536,7 @@ class TestServerServicesEndpoint(unittest.TestCase):
 class TestServerServicesCategoriesEndpoint(unittest.TestCase):
     """Controller appears in /api/services/categories infrastructure category."""
 
-    @patch("media_stack.api.services.registry.CATEGORIES", [
+    @patch("media_stack.core.service_registry.registry.CATEGORIES", [
         {"label": "Infrastructure", "ids": ["envoy"]},
         {"label": "Media", "ids": ["jellyfin"]},
     ])
@@ -555,7 +555,7 @@ class TestServerServicesCategoriesEndpoint(unittest.TestCase):
         self.assertIsNotNone(infra)
         self.assertIn("controller", infra["ids"])
 
-    @patch("media_stack.api.services.registry.CATEGORIES", [
+    @patch("media_stack.core.service_registry.registry.CATEGORIES", [
         {"label": "Media", "ids": ["jellyfin"]},
     ])
     def test_infrastructure_category_created_if_missing(self):
@@ -572,7 +572,7 @@ class TestServerServicesCategoriesEndpoint(unittest.TestCase):
         self.assertIsNotNone(infra)
         self.assertIn("controller", infra["ids"])
 
-    @patch("media_stack.api.services.registry.CATEGORIES", [
+    @patch("media_stack.core.service_registry.registry.CATEGORIES", [
         {"label": "Infrastructure", "ids": ["envoy", "controller"]},
     ])
     def test_controller_not_duplicated_if_already_present(self):

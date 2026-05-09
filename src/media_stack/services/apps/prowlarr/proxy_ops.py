@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.core.logging_utils import log_swallowed
 
 

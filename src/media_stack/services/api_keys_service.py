@@ -117,7 +117,7 @@ class ApiKeysService:
         """
         rel_path = f"{app_name}/config.xml"
         try:
-            from media_stack.api.services.registry import SERVICE_MAP
+            from media_stack.core.service_registry.registry import SERVICE_MAP
             svc = SERVICE_MAP.get(app_name)
             if svc and svc.api_key_config:
                 rel_path = svc.api_key_config
@@ -199,7 +199,7 @@ class ApiKeysService:
         """
         # Try the registry's format-aware reader first
         try:
-            from media_stack.api.services.registry import read_api_key_from_file
+            from media_stack.core.service_registry.registry import read_api_key_from_file
             key = read_api_key_from_file(app_name, config_root)
             if key:
                 return key, last_error
@@ -228,7 +228,7 @@ class ApiKeysService:
                 last_error = f"Missing config file(s): {', '.join(str(p) for p in candidate_paths if not p.exists())}"
                 continue
             try:
-                from media_stack.api.services.registry import KEY_READERS, SERVICE_MAP as _sm
+                from media_stack.core.service_registry.registry import KEY_READERS, SERVICE_MAP as _sm
                 _svc = _sm.get(app_name)
                 _fmt = _svc.api_key_format if _svc and _svc.api_key_format else "xml"
                 _reader = KEY_READERS.get(_fmt)
@@ -248,7 +248,7 @@ class ApiKeysService:
         at priority 1.
         """
         try:
-            from media_stack.api.services.registry import read_api_key_via_http
+            from media_stack.core.service_registry.registry import read_api_key_via_http
             http_key = read_api_key_via_http(app_name)
             if http_key:
                 env_name = f"{app_name.upper()}_API_KEY"

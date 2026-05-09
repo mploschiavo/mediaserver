@@ -61,7 +61,7 @@ class HomepageService:
         # DEFAULT_HOSTS aligned with the registry so an addition
         # there doesn't silently disappear from the tile list.
         try:
-            from media_stack.api.services.registry import (
+            from media_stack.core.service_registry.registry import (
                 SERVICE_MAP, is_service_enabled,
             )
             filtered: list[str] = []

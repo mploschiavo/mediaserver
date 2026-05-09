@@ -36,7 +36,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.services.registry import (  # noqa: E402
+from media_stack.core.service_registry.registry import (  # noqa: E402
     ServiceDef, is_service_enabled,
 )
 
@@ -240,7 +240,7 @@ class DefaultHostsRegistryAlignmentRatchet(unittest.TestCase):
         from media_stack.services.apps.homepage.adapters import (
             DEFAULT_HOSTS,
         )
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         # The host ``<svc-id>.local`` maps to service id ``svc-id``.
         unknown: list[str] = []
         for host in DEFAULT_HOSTS:

@@ -17,11 +17,10 @@ This module pins the count of those inversions in ``domain/`` and
   two: ``Job.run`` reading ``services.runtime_platform.log`` and
   ``secret_scrub`` reaching into ``services.media_integrity.adapters``
   for the ``ServarrHttpError`` shape).
-* ``core/`` is held at **one** — the lone surviving offender is
-  ``catalog_loader._enrich_apps_from_registry`` reaching into
-  ``api.services.registry``. Phase 2 of ADR-0011 relocates
-  ``api.services.registry`` into ``application/service_registry/``,
-  at which point this ratchet tightens to zero.
+* ``core/`` is held at **zero** — Phase 2.1 of ADR-0011 relocated
+  ``api.services.registry`` into ``core/service_registry/registry.py``,
+  which converted the lone ``catalog_loader._enrich_apps_from_registry``
+  inversion into a sibling import within ``core/``.
 
 Why a separate test instead of folding into
 ``CIRCULAR_IMPORT_RISK_RATCHET``? That ratchet counts *all* deferred
@@ -53,7 +52,7 @@ _NON_LEAF_LAYERS = frozenset({
 })
 
 _DOMAIN_LEAF_VIOLATIONS_RATCHET = 0
-_CORE_LEAF_VIOLATIONS_RATCHET = 1
+_CORE_LEAF_VIOLATIONS_RATCHET = 0
 
 
 class TestDomainCoreLeafInvariant(unittest.TestCase):
@@ -100,31 +99,42 @@ class TestDomainCoreLeafInvariant(unittest.TestCase):
             return False
         return parts[1] in _NON_LEAF_LAYERS
 
-    def _ratchet(self, layer: str, limit: int) -> None:
-        violations = self._scan_layer(layer)
-        count = len(violations)
-        if count > limit:
-            details = "\n  ".join(
-                f"{rel}::{fn}() L{line} -> {mod}"
-                for rel, fn, mod, line in violations
-            )
-            self.fail(
-                f"{layer}/ leaf invariant regressed: {count} deferred "
-                f"outward import(s) found (ratchet: {limit}).\n  {details}\n"
-                "Fix the inversion (move the imported symbol into a leaf "
-                "layer, or move the importing module out of the leaf)."
-            )
-        if count < limit:
-            self.fail(
-                f"Tighten {layer}/ leaf ratchet: count is {count} "
-                f"(was pinned at {limit})."
-            )
+    def _violation_count(self, layer: str) -> int:
+        return len(self._scan_layer(layer))
 
     def test_domain_has_zero_inverted_imports(self) -> None:
-        self._ratchet("domain", _DOMAIN_LEAF_VIOLATIONS_RATCHET)
+        violations = self._scan_layer("domain")
+        details = "\n  ".join(
+            f"{rel}::{fn}() L{line} -> {mod}"
+            for rel, fn, mod, line in violations
+        )
+        self.assertEqual(
+            len(violations),
+            _DOMAIN_LEAF_VIOLATIONS_RATCHET,
+            f"domain/ leaf invariant: expected "
+            f"{_DOMAIN_LEAF_VIOLATIONS_RATCHET} deferred outward "
+            f"import(s), found {len(violations)}.\n  {details}\n"
+            "Fix the inversion (move the imported symbol into a leaf "
+            "layer, or move the importing module out of the leaf), "
+            "or — if you genuinely closed a violation — tighten the "
+            "ratchet pin.",
+        )
 
     def test_core_has_only_known_inverted_imports(self) -> None:
-        self._ratchet("core", _CORE_LEAF_VIOLATIONS_RATCHET)
+        violations = self._scan_layer("core")
+        details = "\n  ".join(
+            f"{rel}::{fn}() L{line} -> {mod}"
+            for rel, fn, mod, line in violations
+        )
+        self.assertEqual(
+            len(violations),
+            _CORE_LEAF_VIOLATIONS_RATCHET,
+            f"core/ leaf invariant: expected "
+            f"{_CORE_LEAF_VIOLATIONS_RATCHET} deferred outward "
+            f"import(s), found {len(violations)}.\n  {details}\n"
+            "Fix the inversion or — if you genuinely closed a "
+            "violation — tighten the ratchet pin.",
+        )
 
 
 if __name__ == "__main__":

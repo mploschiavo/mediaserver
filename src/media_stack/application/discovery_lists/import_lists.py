@@ -26,7 +26,7 @@ import logging
 class DiscoveryImportListService:
     @staticmethod
     def _find_tv_arr_id():
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         return next((s.id for s in SERVICES if s.stats_label and "series" in s.stats_label.lower()), "")
 
     def ensure_sonarr_seed_series(self, *args, **kwargs):

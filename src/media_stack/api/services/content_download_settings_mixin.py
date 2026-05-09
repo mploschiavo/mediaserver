@@ -20,7 +20,7 @@ import urllib.request
 from typing import Any
 
 from .health import discover_api_keys
-from .registry import SERVICE_MAP
+from media_stack.core.service_registry.registry import SERVICE_MAP
 
 from media_stack.infrastructure.media import load_media_types
 

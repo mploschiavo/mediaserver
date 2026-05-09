@@ -22,7 +22,7 @@ class QbittorrentConfigureCategoriesJob:
     @staticmethod
     def _build_arr_apps(ctx: Any) -> list[dict[str, Any]]:
         """Build arr_apps list from registry — same structure the runner uses."""
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         apps = []
         for svc in SERVICES:
             if svc.category != "arr":

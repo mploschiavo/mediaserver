@@ -258,7 +258,7 @@ class GenerateEnvoyConfigCommand:
             _direct_raw = ""
         media_server_direct_host = str(_direct_raw) or os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")
         if not media_server_direct_host and stack_subdomain and base_domain:
-            from media_stack.api.services.registry import SERVICES as _reg_services
+            from media_stack.core.service_registry.registry import SERVICES as _reg_services
             _ms_ids = [s.id for s in _reg_services if s.category == "media" and s.host]
             _ms_slug = _ms_ids[0] if _ms_ids else "media"
             parts = [p for p in [_ms_slug, stack_subdomain, base_domain] if p]
@@ -299,7 +299,7 @@ class GenerateEnvoyConfigCommand:
             )
         if not preserve_names:
             try:
-                from media_stack.api.services.registry import get_preserve_path_prefix_services
+                from media_stack.core.service_registry.registry import get_preserve_path_prefix_services
                 preserve_names = tuple(s.id for s in get_preserve_path_prefix_services())
             except Exception as exc:
                 log_swallowed(exc)
@@ -326,7 +326,7 @@ class GenerateEnvoyConfigCommand:
             )
         if not redirect_names:
             try:
-                from media_stack.api.services.registry import get_web_ui_services
+                from media_stack.core.service_registry.registry import get_web_ui_services
                 redirect_names = tuple(s.id for s in get_web_ui_services())
             except Exception as exc:
                 log_swallowed(exc)
@@ -346,7 +346,7 @@ class GenerateEnvoyConfigCommand:
         auth_contract = AuthContractService()
         svc_list: list[tuple[str, str]] = []
         try:
-            from media_stack.api.services.registry import SERVICES as _reg_svcs
+            from media_stack.core.service_registry.registry import SERVICES as _reg_svcs
             svc_list = [(s.id, s.category) for s in _reg_svcs]
         except Exception:
             logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
@@ -625,7 +625,7 @@ class GenerateEnvoyConfigCommand:
 
     @staticmethod
     def _build_default_service_ports() -> dict[str, int]:
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         ports = {s.id: s.port for s in SERVICES if s.port > 0}
         # Non-registry services that still need Envoy routing entries.
         ports.setdefault("media-stack-controller", 9100)
@@ -713,7 +713,7 @@ class GenerateEnvoyConfigCommand:
         deployments.
         """
         try:
-            from media_stack.api.services.registry import SERVICES as _reg_services
+            from media_stack.core.service_registry.registry import SERVICES as _reg_services
             return {s.id for s in _reg_services if s.category == "media"}
         except Exception:
             return {"jellyfin", "plex", "emby"}

@@ -186,7 +186,7 @@ class ConfigResolutionMixin:
             return tuple(out)
         # 2. Derive from per-service YAML registry (web_ui=true)
         try:
-            from media_stack.api.services.registry import get_web_ui_services
+            from media_stack.core.service_registry.registry import get_web_ui_services
             svcs = get_web_ui_services()
             if svcs:
                 return tuple(s.id for s in svcs)
@@ -211,7 +211,7 @@ class ConfigResolutionMixin:
             return tuple(out)
         # 2. Derive from per-service YAML registry (preserve_path_prefix=true)
         try:
-            from media_stack.api.services.registry import get_preserve_path_prefix_services
+            from media_stack.core.service_registry.registry import get_preserve_path_prefix_services
             svcs = get_preserve_path_prefix_services()
             if svcs:
                 return tuple(s.id for s in svcs)

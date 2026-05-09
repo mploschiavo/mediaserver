@@ -19,7 +19,7 @@ from media_stack.core.logging_utils import log_swallowed
 from media_stack.core.auth.gateway_policy import AuthContractService
 # hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
 # (registry and _resolve are leaf utility modules — no cycle with auth_config)
-from media_stack.api.services.registry import SERVICES as _SERVICES
+from media_stack.core.service_registry.registry import SERVICES as _SERVICES
 from media_stack.api.services import _resolve as _resolve_mod
 
 

@@ -11,7 +11,7 @@ from .api_ops import (
     ensure_sonarr,
 )
 from .file_ops import configure_via_settings_file
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 
 class OpenSeerrOrchestratorOps:

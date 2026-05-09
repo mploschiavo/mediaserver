@@ -41,7 +41,7 @@ class GatewayHostnameProbeTest(unittest.TestCase):
             return_value=routing,
         ))
         stack.enter_context(mock.patch(
-            "media_stack.api.services.registry.SERVICES",
+            "media_stack.core.service_registry.registry.SERVICES",
             services,
         ))
         return stack

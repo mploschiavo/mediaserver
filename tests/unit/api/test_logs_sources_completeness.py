@@ -27,7 +27,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.services.registry import SERVICES  # noqa: E402
+from media_stack.core.service_registry.registry import SERVICES  # noqa: E402
 
 
 class LogsSourcesCompletenessRatchet(unittest.TestCase):

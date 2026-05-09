@@ -13,7 +13,7 @@ from .enums import RunnerEvent
 class RunnerPhasePlanService:
     @staticmethod
     def _load_indexer_token_aliases():
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         for svc in SERVICES:
             if not svc.indexer_path:
                 continue

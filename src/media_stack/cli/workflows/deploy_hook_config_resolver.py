@@ -197,7 +197,7 @@ class DeployHookConfigResolverService:
         handlers: list[str] = []
         seen: set[str] = set()
         try:
-            from media_stack.api.services.registry import _find_services_dir
+            from media_stack.core.service_registry.registry import _find_services_dir
             import yaml
             svc_dir = _find_services_dir()
             if svc_dir:

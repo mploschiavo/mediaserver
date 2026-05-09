@@ -9,7 +9,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.services.registry import (  # noqa: E402
+from media_stack.core.service_registry.registry import (  # noqa: E402
     ServiceDef,
     _load_registry,
     _parse_service_entry,
@@ -17,7 +17,7 @@ from media_stack.api.services.registry import (  # noqa: E402
 )
 
 # Re-import module reference so we can patch its globals
-import media_stack.api.services.registry as registry_mod  # noqa: E402
+import media_stack.core.service_registry.registry as registry_mod  # noqa: E402
 
 
 class TestServiceDefDataclass(unittest.TestCase):

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from media_stack.api.services.admin import _KEY_READERS
-from media_stack.api.services.registry import SERVICES
+from media_stack.core.service_registry.registry import SERVICES
 import logging
 
 

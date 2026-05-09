@@ -141,7 +141,7 @@ class ServiceCategoryValid(unittest.TestCase):
     }
 
     def test_every_service_category_is_known(self) -> None:
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         bad = [
             f"{s.id}: category={s.category!r}"
             for s in SERVICES

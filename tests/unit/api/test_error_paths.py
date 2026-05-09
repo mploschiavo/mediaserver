@@ -179,7 +179,7 @@ class RegistryCollisionTests(unittest.TestCase):
 
     def test_service_registry_has_no_duplicate_ids(self):
         """Snapshot the live registry; no two services share an id."""
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         ids = [s.id for s in SERVICES]
         dupes = {x for x in ids if ids.count(x) > 1}
         self.assertEqual(

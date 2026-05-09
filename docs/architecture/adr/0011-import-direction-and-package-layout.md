@@ -173,17 +173,21 @@ core/                     cross-cutting primitives (no media_stack
                           deps); already mostly leaf today
   ├── logging_utils.py
   ├── runtime_platform.py     ← MOVED here from services/
+  ├── service_registry/       ← MOVED here from api/services/
+  │                           registry.py (the 56-magnet module —
+  │                           pure data, no application-layer deps,
+  │                           so core/ avoids cascading layer-rule
+  │                           breaks; see Phase 2 note)
+  ├── key_formats/            ← MOVED here from api/services/
+  │                           key_formats.py (same rationale)
   └── auth/                   csrf, etc.
 
 application/              use cases (depends on domain + core)
   ├── jobs/                   framework, runner, dispatcher,
   │                           trigger engine
   ├── orchestrator/           promise orchestrator
-  ├── service_registry/       ← MOVED here from api/services/
-  │                           registry.py (the 56-magnet module)
   ├── service_health/         ← MOVED here from api/services/health
-  ├── service_config/         ← MOVED here from api/services/config
-  └── key_formats/            ← MOVED here from api/services/key_formats
+  └── service_config/         ← MOVED here from api/services/config
 
 infrastructure/           technical concerns (depends on domain +
                           application)
@@ -255,29 +259,47 @@ violations**.
 
 | Current location | New location | Inverted refs removed |
 |---|---|---|
-| ``api/services/registry.py`` | ``application/service_registry/registry.py`` | 56 |
+| ``api/services/registry.py`` | ``core/service_registry/registry.py`` | 56 |
 | ``api/services/config.py`` | ``application/service_registry/config.py`` | 10 |
-| ``api/services/key_formats.py`` | ``application/key_formats/`` | 8 |
+| ``api/services/key_formats.py`` | ``core/key_formats/`` | 8 |
 | ``api/services/health.py`` | ``application/service_health/`` | 8 |
 | ``api/services/content.py`` | ``application/service_registry/content.py`` | 3 |
+
+**Note on ``registry.py`` and ``key_formats.py`` landing in ``core/``
+instead of ``application/``:** the registry is pure data (a frozen
+``ServiceDef`` list loaded from YAML at import time, plus a key-reader
+helper) with **no application-layer dependencies**. ``key_formats``
+is a registry of file-format readers — also pure-data + small pure
+functions. Putting either in ``application/`` would turn the
+~60-importer-each module into a cascade of layer-rule violations:
+``adapters/`` and ``infrastructure/`` are forbidden from importing
+``application/`` (the existing
+``test_architecture_layering_ratchet.py`` enforces this), so every
+adapter/infra importer would land in
+``KNOWN_ADAPTERS_UPWARD_VIOLATIONS`` /
+``KNOWN_INFRASTRUCTURE_UPWARD_VIOLATIONS``. ``core/`` sits below
+every other layer, so adapters/infra/application/api can all import
+from it without violating the hexagon. Same shape as
+``core/controller_profile/catalog_loader.py`` — pure data, loaded
+from YAML, depended on by everyone.
 
 **Migration steps for each module:**
 
 1. Move the file to the new location.
 2. Update all importers — every existing ``from
    media_stack.api.services.registry import …`` becomes
-   ``from media_stack.application.service_registry.registry
-   import …``.
+   ``from media_stack.core.service_registry.registry import …``
+   (or ``application.service_registry.config`` for the use-case
+   modules).
 3. Delete deferred imports — convert each to module-top.
 4. The route modules under ``api/routes/`` that previously
    reached into ``api/services/registry`` now reach into
-   ``application/service_registry/``. Direction is correct
-   (api → application).
+   ``core/service_registry/`` (api → core, direction is correct).
 
 **No re-export shims.** The old import path is gone; old
 references break loud, get fixed in the same PR. The temptation
 to leave ``api/services/registry.py`` as a one-liner ``from
-media_stack.application.service_registry.registry import *``
+media_stack.core.service_registry.registry import *``
 is forbidden — that would trip Rule 3 (no re-export shims).
 
 **Ratchet additions:**
@@ -427,7 +449,7 @@ function-body import carries an exemption marker.
   tools; it's a TODO comment that compiles.
 * **"Add a re-export shim."** Creating
   ``api/services/registry.py = from
-  application.service_registry.registry import *`` to keep old
+  core.service_registry.registry import *`` to keep old
   imports working is forbidden. Move the real module; update
   call sites loud.
 * **"Add a top-level package."** Inventing

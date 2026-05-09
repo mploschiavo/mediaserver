@@ -53,8 +53,8 @@ class TestPrereqConditions(unittest.TestCase):
         ctx._profile_cache = {"technology_bindings": {"media_server": "jellyfin"}}
         with patch.dict(os.environ, {"JELLYFIN_API_KEY": ""}, clear=False):
             # Also mock the discovery to return nothing
-            with patch("media_stack.api.services.registry.read_api_key_from_file", return_value=""):
-                with patch("media_stack.api.services.registry.read_api_key_via_http", return_value=""):
+            with patch("media_stack.core.service_registry.registry.read_api_key_from_file", return_value=""):
+                with patch("media_stack.core.service_registry.registry.read_api_key_via_http", return_value=""):
                     self.assertFalse(_prereq_media_server_api_key(ctx))
 
     def test_media_server_reachable_true(self):
@@ -135,8 +135,8 @@ class TestJobPrereqGating(unittest.TestCase):
         ctx._cfg_cache = {}
         ctx._profile_cache = {"technology_bindings": {"media_server": "jellyfin"}}
         with patch.dict(os.environ, {"JELLYFIN_API_KEY": ""}, clear=False):
-            with patch("media_stack.api.services.registry.read_api_key_from_file", return_value=""):
-                with patch("media_stack.api.services.registry.read_api_key_via_http", return_value=""):
+            with patch("media_stack.core.service_registry.registry.read_api_key_from_file", return_value=""):
+                with patch("media_stack.core.service_registry.registry.read_api_key_via_http", return_value=""):
                     result = job.run(ctx)
         self.assertEqual(result["status"], "prereq_not_met")
         self.assertEqual(called, [], "Handler should NOT have been called")
@@ -150,8 +150,8 @@ class TestJobPrereqGating(unittest.TestCase):
         ctx._cfg_cache = {}
         ctx._profile_cache = {"technology_bindings": {"media_server": "jellyfin"}}
         with patch.dict(os.environ, {"JELLYFIN_API_KEY": ""}, clear=False):
-            with patch("media_stack.api.services.registry.read_api_key_from_file", return_value=""):
-                with patch("media_stack.api.services.registry.read_api_key_via_http", return_value=""):
+            with patch("media_stack.core.service_registry.registry.read_api_key_from_file", return_value=""):
+                with patch("media_stack.core.service_registry.registry.read_api_key_via_http", return_value=""):
                     result = parent.run(ctx)
         self.assertEqual(result["status"], "prereq_not_met")
         self.assertEqual(sub_called, [], "Sub-job should NOT run when parent prereq fails")
@@ -174,8 +174,8 @@ class TestJobPrereqGating(unittest.TestCase):
             ctx._cfg_cache = {}
             ctx._profile_cache = {"technology_bindings": {"media_server": "jellyfin"}}
             with patch.dict(os.environ, {"JELLYFIN_API_KEY": ""}, clear=False):
-                with patch("media_stack.api.services.registry.read_api_key_from_file", return_value=""):
-                    with patch("media_stack.api.services.registry.read_api_key_via_http", return_value=""):
+                with patch("media_stack.core.service_registry.registry.read_api_key_from_file", return_value=""):
+                    with patch("media_stack.core.service_registry.registry.read_api_key_via_http", return_value=""):
                         job.run(ctx)
         finally:
             rp.log = original

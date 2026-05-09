@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.services.registry import (  # noqa: E402
+from media_stack.core.service_registry.registry import (  # noqa: E402
     SERVICES, SERVICE_MAP, ServiceDef, _parse_service_entry,
     get_service, get_services_with_api_keys, get_services_with_password_api,
     get_active_service_ids, get_web_ui_services, KEY_READERS,

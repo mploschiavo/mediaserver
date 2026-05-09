@@ -157,7 +157,7 @@ class TestTakeSnapshot(unittest.TestCase):
     def test_creates_snapshot_file(self):
         with tempfile.TemporaryDirectory() as td:
             with patch.dict(os.environ, {"CONFIG_ROOT": td}):
-                with patch("media_stack.api.services.registry.SERVICES", []):
+                with patch("media_stack.core.service_registry.registry.SERVICES", []):
                     result = ops_mod.take_snapshot()
         self.assertEqual(result["status"], "created")
         self.assertIn("snapshot-", result["file"])

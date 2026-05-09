@@ -150,7 +150,7 @@ class TestGetJellyfinLibraries(unittest.TestCase):
         live-registry check (rather than mocking SERVICES) means a
         future registry-rename that drops "media" without updating this
         function will trip the test."""
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         media_services = [s for s in SERVICES if s.category == "media"]
         self.assertTrue(
             any(s.id == "jellyfin" for s in media_services),

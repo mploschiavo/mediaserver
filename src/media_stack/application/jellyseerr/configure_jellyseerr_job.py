@@ -15,7 +15,7 @@ import media_stack.services.runtime_platform as runtime_platform
 from media_stack.infrastructure.jellyseerr.local_admin_ops import ensure_local_admin_user
 from media_stack.application.jellyseerr.orchestrator_ops import configure
 from media_stack.application.jellyseerr.runtime_ops import _jellyseerr_service
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.infrastructure.media import load_media_types
 
 

@@ -82,7 +82,7 @@ def _validate_key_against_service(discovered: dict, config_root: str, log: objec
     import urllib.error
 
     # Pick the first arr app with a discovered key as the canary for mount validation
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     canary = None
     canary_key = ""
     for svc in SERVICES:

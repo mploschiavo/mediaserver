@@ -390,7 +390,7 @@ class JellyfinScanTrigger:
     def _resolve_service_map(self) -> dict[str, Any]:
         if self._service_map_loader_override is not None:
             return self._service_map_loader_override()
-        import media_stack.api.services.registry as _registry
+        import media_stack.core.service_registry.registry as _registry
         return _registry.SERVICE_MAP
 
     def _log(self, message: str) -> None:

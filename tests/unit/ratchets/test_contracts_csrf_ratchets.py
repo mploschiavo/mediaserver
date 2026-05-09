@@ -193,7 +193,7 @@ class RegistryHealthPathMeaningful(unittest.TestCase):
     }
 
     def test_health_paths_are_specific(self) -> None:
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         bad: list[str] = []
         for s in SERVICES:
             # Skip services that don't expose an HTTP surface
@@ -237,7 +237,7 @@ class ServiceRegistryContractParity(unittest.TestCase):
             import yaml as _yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         contracts_dir = ROOT / "contracts" / "services"
         if not contracts_dir.is_dir():
             self.skipTest("contracts/services not present")

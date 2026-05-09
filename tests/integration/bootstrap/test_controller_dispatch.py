@@ -260,7 +260,7 @@ class TestApplyProfileEnv(unittest.TestCase):
 class TestValidateKeyAgainstService(unittest.TestCase):
     def _make_service_def(self, **kwargs):
         """Build a ServiceDef-like object with required fields."""
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
         defaults = dict(
             id="sonarr", name="Sonarr", host="localhost", port=8989,
             health_path="/ping", auth_path="/api/v3/system/status",
@@ -270,7 +270,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
         defaults.update(kwargs)
         return ServiceDef(**defaults)
 
-    @mock.patch("media_stack.api.services.registry.SERVICES", new_callable=list)
+    @mock.patch("media_stack.core.service_registry.registry.SERVICES", new_callable=list)
     def test_matching_key_returns_silently(self, mock_services):
         """A 200 response means the key is valid -- no warning logged."""
         svc = self._make_service_def()
@@ -293,7 +293,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
         # No warning should have been logged
         self.assertFalse(any("WARN" in m for m in log_messages))
 
-    @mock.patch("media_stack.api.services.registry.SERVICES", new_callable=list)
+    @mock.patch("media_stack.core.service_registry.registry.SERVICES", new_callable=list)
     def test_401_logs_mismatch_warning(self, mock_services):
         """A 401 means the key does not match the running service."""
         import urllib.error
@@ -315,7 +315,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
 
         self.assertTrue(any("mismatch" in m.lower() for m in log_messages))
 
-    @mock.patch("media_stack.api.services.registry.SERVICES", new_callable=list)
+    @mock.patch("media_stack.core.service_registry.registry.SERVICES", new_callable=list)
     def test_no_canary_returns_early(self, mock_services):
         """When no service has a discovered key, validation is skipped."""
         svc = self._make_service_def()
@@ -328,7 +328,7 @@ class TestValidateKeyAgainstService(unittest.TestCase):
         )
         self.assertEqual(log_messages, [])
 
-    @mock.patch("media_stack.api.services.registry.SERVICES", new_callable=list)
+    @mock.patch("media_stack.core.service_registry.registry.SERVICES", new_callable=list)
     def test_connection_error_is_ignored(self, mock_services):
         """Network errors (service not ready) are silently ignored."""
         svc = self._make_service_def()

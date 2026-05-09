@@ -31,7 +31,7 @@ import time
 from dataclasses import dataclass, asdict
 from typing import Iterable
 
-from .registry import SERVICES, ServiceDef
+from media_stack.core.service_registry.registry import SERVICES, ServiceDef
 from .workload_inspector import (
     WorkloadInspector,
     WorkloadState,

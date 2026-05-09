@@ -98,7 +98,7 @@ from typing import Any, Callable, Iterable
 
 from media_stack.api.routing import RouteModule, post
 from media_stack.api.services import config as _config_svc_module
-from media_stack.api.services import registry as _registry_module
+from media_stack.core.service_registry import registry as _registry_module
 from media_stack.core.auth.users import (
     user_service_factory as _user_service_factory_module,
 )

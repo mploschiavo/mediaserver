@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.core.http import HTTP_OK
 
 HttpRequestFn = Callable[..., tuple[int, Any, str]]

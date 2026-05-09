@@ -93,7 +93,7 @@ EnvLookupFn = Callable[[str], str]
 
 def _default_servarr_lookup() -> list[_ServiceLookup]:
     """Pull Servarr-family services from the live registry."""
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
 
     out: list[_ServiceLookup] = []
     for svc in SERVICES:
@@ -115,7 +115,7 @@ def _default_servarr_lookup() -> list[_ServiceLookup]:
 def _default_bazarr_lookup() -> _ServiceLookup | None:
     """Pull Bazarr from the live registry. Optional — many
     deployments run without Bazarr."""
-    from media_stack.api.services.registry import SERVICE_MAP
+    from media_stack.core.service_registry.registry import SERVICE_MAP
 
     svc = SERVICE_MAP.get("bazarr")
     if not svc or not svc.host or not svc.port or not svc.api_key_env:

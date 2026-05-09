@@ -11,7 +11,7 @@ from typing import Any, Callable
 from urllib import error, request
 
 from media_stack.services.apps.download_clients.config_models import DownloadClientConfig
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 import logging
 
 LogFn = Callable[[str], None]

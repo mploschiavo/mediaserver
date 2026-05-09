@@ -12,8 +12,8 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 import media_stack.api.services.config as config_mod  # noqa: E402
-from media_stack.api.services.registry import ServiceDef  # noqa: E402
-import media_stack.api.services.registry as registry_mod  # noqa: E402
+from media_stack.core.service_registry.registry import ServiceDef  # noqa: E402
+import media_stack.core.service_registry.registry as registry_mod  # noqa: E402
 
 
 def _svc(id: str, **kw) -> ServiceDef:

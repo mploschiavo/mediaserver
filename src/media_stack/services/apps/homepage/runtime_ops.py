@@ -17,7 +17,7 @@ from media_stack.services.runtime_platform import (
 )
 
 from .service import HomepageService
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 
 class HomepageRuntimeOps:

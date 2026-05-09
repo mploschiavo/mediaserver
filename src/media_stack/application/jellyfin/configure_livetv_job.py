@@ -107,7 +107,7 @@ class JellyfinConfigureLiveTvJob:
 
         # Step 2: Run the livetv handler
         # Ensure API key is set
-        from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
+        from media_stack.core.service_registry.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
         import os
         svc = SERVICE_MAP.get(ms_id)
         if svc and svc.api_key_env and not os.environ.get(svc.api_key_env):

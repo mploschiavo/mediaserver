@@ -11,7 +11,7 @@ from __future__ import annotations
 from media_stack.core.logging_utils import log_swallowed
 from pathlib import Path
 from typing import Any
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.infrastructure.media import load_media_types
 import logging
 

@@ -91,7 +91,7 @@ class ConfigArtifactsService:
 
     def ensure_homepage_services_config(self, cfg: dict[str, Any], config_root: str) -> bool:
         import importlib
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         # Find management services and try to load the one with a HomepageService
         HomepageService = None
         for svc in SERVICES:
@@ -122,7 +122,7 @@ class ConfigArtifactsService:
 
     def _jellyfin_auto_collections_service(self):
         import importlib
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         ms_id = next((s.id for s in SERVICES if s.category == "media"), "")
         if not ms_id:
             return None
@@ -153,7 +153,7 @@ class ConfigArtifactsService:
     @staticmethod
     def default_auto_collections_plugins() -> dict[str, Any]:
         import importlib
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         ms_id = next((s.id for s in SERVICES if s.category == "media"), "")
         if not ms_id:
             return {}
@@ -201,7 +201,7 @@ class ConfigArtifactsService:
 
     def ensure_maintainerr_policy(self, cfg: dict[str, Any], config_root: str) -> None:
         import importlib
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         # Find the media management/policy service by checking for maintainerr-like capabilities
         policy_svc_id = next((s.id for s in SERVICES if s.category == "management" and s.port == 6246), "")
         if not policy_svc_id:

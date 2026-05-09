@@ -121,7 +121,7 @@ def _list_sister_app_prefixes(*, basepath: str) -> list[str]:
     service that ISN'T the dashboard. Used by the SW to recognize
     paths it should pass through to the network (Envoy)."""
     try:
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
     except Exception as exc:  # noqa: BLE001
         logger.debug("[sw_config] registry unavailable: %s", exc)
         return []

@@ -214,7 +214,7 @@ class RoutingConfigWriter:
         from media_stack.api.services.config.routing import (
             RoutingConfigV2, migrate_v1_to_v2, validate_routing_config,
         )
-        from media_stack.api.services.registry import (
+        from media_stack.core.service_registry.registry import (
             get_active_service_ids,
         )
 

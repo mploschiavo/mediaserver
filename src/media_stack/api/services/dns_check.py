@@ -164,7 +164,7 @@ def _routing_hostnames() -> list[str]:
     """
     try:
         from media_stack.api.services import config as config_svc
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
     except Exception:
         return []
     try:

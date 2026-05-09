@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from media_stack.api.services.config_integrity import (  # noqa: E402
     ConfigIntegrityService,
 )
-from media_stack.api.services.registry import ServiceDef  # noqa: E402
+from media_stack.core.service_registry.registry import ServiceDef  # noqa: E402
 
 
 # Fixtures live at tests/unit/fixtures/configs/ — sibling of the

@@ -61,7 +61,7 @@ def _build_config_policy() -> object | None:
     media_server_direct_host = str((routing.get("direct_hosts") or {}).get("media_server", ""))
     if not media_server_direct_host and stack_subdomain and base_domain:
         # Use the primary media server from the profile; derive default from registry.
-        from media_stack.api.services.registry import SERVICES as _reg_services
+        from media_stack.core.service_registry.registry import SERVICES as _reg_services
         _default_ms_id = next((s.id for s in _reg_services if s.category == "media" and s.host), "media")
         media_server_id = str((routing.get("direct_hosts") or {}).get("media_server_id", _default_ms_id))
         parts = [p for p in [media_server_id, stack_subdomain, base_domain] if p]

@@ -20,7 +20,7 @@ import importlib as _importlib
 class DiscoveryListOpsService:
     @staticmethod
     def _load_tv_seed_module():
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         svc_id = next((s.id for s in SERVICES if s.stats_label and "series" in s.stats_label.lower()), "")
         if not svc_id:
             return None

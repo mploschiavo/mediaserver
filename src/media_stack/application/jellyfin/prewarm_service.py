@@ -22,7 +22,7 @@ from media_stack.domain.jellyfin.prewarm.sidecar_ops import (
     resolve_books_root_path,
     resolve_music_root_path,
 )
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.infrastructure.media import media_type as _catalog_media_type
 
 LogFn = Callable[[str], None]

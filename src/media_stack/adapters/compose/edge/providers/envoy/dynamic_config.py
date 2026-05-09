@@ -516,7 +516,7 @@ class EnvoyDynamicConfigService:
         needs_strip = bool(strip_prefix and strip_prefix == path_prefix)
         if not needs_strip and path_prefix != "/":
             try:
-                from media_stack.api.services.registry import get_service
+                from media_stack.core.service_registry.registry import get_service
                 svc = get_service(service_name)
                 if svc and not svc.preserve_path_prefix:
                     needs_strip = True

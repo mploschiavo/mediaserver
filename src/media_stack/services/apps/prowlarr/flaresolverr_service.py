@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 BoolCfgFn = Callable[[dict[str, Any], str, bool], bool]
 NormalizeUrlFn = Callable[[str], str]

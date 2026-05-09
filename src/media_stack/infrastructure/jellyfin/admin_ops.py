@@ -113,7 +113,7 @@ class JellyfinAdminOps:
         if not db_path.is_file():
             return {"status": "error", "error": "Media server database not found. Start the service first."}
 
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         svc = next((s for s in SERVICE_MAP.values() if s.category == "media"), None)
         if not svc:
             return {"status": "error", "error": "Media server not in service registry"}

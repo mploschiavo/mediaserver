@@ -126,7 +126,7 @@ class KubernetesRegistryPortParity(unittest.TestCase):
             import yaml as _yaml
         except ImportError:
             self.skipTest("PyYAML not installed")
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         drift: list[str] = []
         for f in (ROOT / "k8s").rglob("*.yaml"):
             if "kustomization" in f.name:

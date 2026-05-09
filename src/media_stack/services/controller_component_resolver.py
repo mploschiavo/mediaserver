@@ -358,7 +358,7 @@ def resolve_runner_phase_script(
 
     # 1. Load from per-service YAML plugin.phase_scripts
     try:
-        from media_stack.api.services.registry import _find_services_dir
+        from media_stack.core.service_registry.registry import _find_services_dir
         import yaml as _yaml
         svc_dir = _find_services_dir()
         if svc_dir:
@@ -644,7 +644,7 @@ def _resolve_scale_policy_lists(
 
     # 2. Derive from per-service YAML registry flags
     try:
-        from media_stack.api.services.registry import (
+        from media_stack.core.service_registry.registry import (
             get_scalable_services,
             get_scale_to_zero_services,
         )

@@ -16,7 +16,7 @@ class ServarrConfigureArrClientsJob:
 
     @staticmethod
     def _arr_services(ctx: Any) -> list[Any]:
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         return [svc for svc in SERVICES if svc.category == "arr"]
 
     def configure_arr_clients(self, ctx: Any) -> dict[str, Any]:

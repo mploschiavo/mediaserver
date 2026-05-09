@@ -126,7 +126,7 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
     or the link 404s."""
 
     def test_servicedef_has_published_port_field(self) -> None:
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
         sd = ServiceDef(id="x", name="x", port=8080, published_port=8085)
         self.assertEqual(sd.published_port, 8085)
         # Defaults to 0 when unset — callers use ``port`` as fallback.
@@ -140,7 +140,7 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
         ``_parse_service_entry`` didn't read the field. Result:
         live ``/api/services`` returned ``published_port == port``
         for every service. SAB direct link still went to :8080."""
-        from media_stack.api.services.registry import _parse_service_entry
+        from media_stack.core.service_registry.registry import _parse_service_entry
         sd = _parse_service_entry({
             "id": "sabnzbd", "name": "SABnzbd",
             "host": "sabnzbd", "port": 8080,
@@ -172,10 +172,16 @@ class PublishedPortForAsymmetricServices(unittest.TestCase):
 
     def test_services_api_surfaces_published_port(self) -> None:
         # The /api/services payload was assembled in handlers_get.py
-        # before; the projection moved into
-        # ``api/services/registry.py`` along with the other service-
-        # registry concerns (Phase 16-* api split).
-        text = (ROOT / "src/media_stack/api/services/registry.py").read_text(encoding="utf-8")
+        # before; the projection moved into the service-registry
+        # module along with the other registry concerns (Phase 16-* api
+        # split). ADR-0011 Phase 2.1 then relocated the registry from
+        # ``api/services/registry.py`` to
+        # ``core/service_registry/registry.py`` (in ``core/`` rather
+        # than ``application/`` because the registry is pure data + a
+        # YAML loader at import time, with no application-layer
+        # dependencies — putting it in core/ avoids cascading
+        # adapters→application layer-rule violations).
+        text = (ROOT / "src/media_stack/core/service_registry/registry.py").read_text(encoding="utf-8")
         self.assertIn(
             '"published_port":', text,
             "/api/services no longer surfaces published_port — "
@@ -205,7 +211,7 @@ class ServiceDefFieldsAreAllParsed(unittest.TestCase):
 
     def test_every_servicedef_field_is_read_by_parser(self) -> None:
         import dataclasses, re
-        from media_stack.api.services import registry
+        from media_stack.core.service_registry import registry
         src = Path(registry.__file__).read_text(encoding="utf-8")
         m = re.search(
             r"def _parse_service_entry\(.*?return ServiceDef\(.*?\)\s*\n",

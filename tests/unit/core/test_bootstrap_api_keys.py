@@ -10,7 +10,7 @@ from media_stack.api.preflight.api_keys import (
     _read_bazarr_api_key,
     run_preflight,
 )
-from media_stack.api.services.registry import KEY_READERS
+from media_stack.core.service_registry.registry import KEY_READERS
 
 
 def _read_xml_api_key(path: Path) -> str:

@@ -17,7 +17,7 @@ class ProwlarrConfigureIndexersJob:
 
     @staticmethod
     def _build_arr_apps(ctx: Any) -> list[dict[str, Any]]:
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         apps: list[dict[str, Any]] = []
         for svc in SERVICES:
             if svc.category != "arr":

@@ -21,7 +21,7 @@ from typing import Any
 
 logger = logging.getLogger("controller_api")
 
-from .registry import SERVICES, read_api_key_from_file
+from media_stack.core.service_registry.registry import SERVICES, read_api_key_from_file
 
 
 def _running_k8s_pod_names(namespace: str) -> set[str]:

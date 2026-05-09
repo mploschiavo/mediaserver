@@ -71,7 +71,7 @@ class QualityPresetService:
     def get_current_profiles(self, service_id: str) -> dict[str, Any]:
         """Get quality profiles from an arr service."""
         from media_stack.api.services.health import discover_api_keys
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         from media_stack.core.http import HttpClient
 
         svc = SERVICE_MAP.get(service_id)
@@ -113,7 +113,7 @@ class QualityPresetService:
     def get_custom_formats(self, service_id: str) -> dict[str, Any]:
         """Get existing custom formats from an arr service."""
         from media_stack.api.services.health import discover_api_keys
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         from media_stack.core.http import HttpClient
 
         svc = SERVICE_MAP.get(service_id)
@@ -139,7 +139,7 @@ class QualityPresetService:
     def toggle_quality(self, service_id: str, profile_id: int, quality_name: str, enabled: bool) -> dict[str, Any]:
         """Enable or disable a quality level in a profile."""
         from media_stack.api.services.health import discover_api_keys
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         from media_stack.core.http import HttpClient
 
         svc = SERVICE_MAP.get(service_id)
@@ -181,7 +181,7 @@ class QualityPresetService:
     def toggle_upgrade(self, service_id: str, profile_id: int, enabled: bool) -> dict[str, Any]:
         """Toggle upgradeAllowed on a quality profile."""
         from media_stack.api.services.health import discover_api_keys
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         from media_stack.core.http import HttpClient
 
         svc = SERVICE_MAP.get(service_id)
@@ -243,7 +243,7 @@ class QualityPresetService:
         that already exist by name.
         """
         from media_stack.api.services.health import discover_api_keys
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         from media_stack.core.http import HttpClient
 
         svc = SERVICE_MAP.get(service_id)

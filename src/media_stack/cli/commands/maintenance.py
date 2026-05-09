@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from media_stack.api.services.registry import SERVICES
+from media_stack.core.service_registry.registry import SERVICES
 import logging
 
 

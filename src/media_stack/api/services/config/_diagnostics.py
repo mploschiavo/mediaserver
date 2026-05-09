@@ -14,7 +14,7 @@ from .. import _resolve as _resolve_mod
 from ._profile import ProfileService
 # hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
 # (registry is a leaf data module — no cycle with _diagnostics)
-from ..registry import SERVICES as _REGISTRY_SERVICES
+from media_stack.core.service_registry.registry import SERVICES as _REGISTRY_SERVICES
 import logging
 
 
@@ -192,7 +192,7 @@ class DiagnosticsService:
         unconditionally — UIs that want to know "is a seed set?"
         can check ``password_set`` on ``/api/keys``.
         """
-        from ..registry import SERVICES as _env_svcs
+        from media_stack.core.service_registry.registry import SERVICES as _env_svcs
         _platform = ("BOOTSTRAP_", "STACK_", "K8S_", "CONTROLLER_", "PUID", "PGID", "TZ")
         _svc = {e.api_key_env.split("_")[0] + "_" for e in _env_svcs if e.api_key_env}
         relevant_prefixes = set(_platform) | _svc
@@ -283,7 +283,7 @@ class DiagnosticsService:
         return {"type": "unknown", "content": None, "error": "No manifest found. Mount compose file or use K8s."}
 
     def get_onboarding_status(self) -> dict[str, Any]:
-        from ..registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         from ..health import discover_api_keys, probe_services
         from ...cache import api_cache
         # Lazy imports to avoid circular deps
@@ -385,7 +385,7 @@ class DiagnosticsService:
         try:
             with open(target, "w") as f:
                 yaml.dump(svc_yaml, f, default_flow_style=False, sort_keys=False)
-            from ..registry import reload_registry
+            from media_stack.core.service_registry.registry import reload_registry
             reload_registry()
             return {"status": "created", "file": str(target), "service_id": svc_id}
         except Exception as exc:
@@ -421,7 +421,7 @@ class DiagnosticsService:
             actual = str(live_routing.get(key, ""))
             if expected and actual and expected != actual:
                 drifts.append({"area": "routing", "key": key, "expected": expected, "actual": actual})
-        from ..registry import SERVICES, read_api_key_from_file
+        from media_stack.core.service_registry.registry import SERVICES, read_api_key_from_file
         config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
         for svc in SERVICES:
             if not svc.api_key_env or not svc.api_key_config:

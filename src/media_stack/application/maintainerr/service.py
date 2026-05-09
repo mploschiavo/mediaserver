@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 from media_stack.core.logging_utils import log_swallowed
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 import os
 import re
 from dataclasses import dataclass
@@ -103,7 +103,7 @@ class MaintainerrService:
         # routes (even pod-to-pod) require this prefix.
         if not configured:
             try:
-                from media_stack.api.services.registry import service_internal_url, SERVICE_MAP
+                from media_stack.core.service_registry.registry import service_internal_url, SERVICE_MAP
                 svc_id = str(app_name or "").strip().lower()
                 svc = SERVICE_MAP.get(svc_id)
                 if svc and svc.preserve_path_prefix and svc.health_path:

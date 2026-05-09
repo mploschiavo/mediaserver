@@ -138,7 +138,7 @@ class CatalogLoaderService:
         the bootstrap YAML manually.
         """
         try:
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
             registry_app_keys = [s.id for s in SERVICES]
             apps_section = payload.setdefault("apps", {})
             existing_keys = set(apps_section.get("keys", []))

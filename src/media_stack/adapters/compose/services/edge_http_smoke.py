@@ -11,7 +11,7 @@ from typing import Any, Callable
 from urllib import parse
 
 import importlib as _importlib
-from media_stack.api.services.registry import SERVICE_MAP, SERVICES
+from media_stack.core.service_registry.registry import SERVICE_MAP, SERVICES
 
 # Load dashboard constants from the management service's app layer — registry-driven.
 DASHBOARD_SLUG = ""

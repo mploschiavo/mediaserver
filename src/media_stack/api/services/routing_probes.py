@@ -48,7 +48,7 @@ class GatewayHostnameProbe:
         hostnames: set[str] = set()
         try:
             from media_stack.api.services import config as config_svc
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
         except Exception as exc:  # noqa: BLE001
             log_swallowed(exc)
             return []
@@ -98,7 +98,7 @@ class RoutingMatrixProbe:
 
     def probe_all(self) -> dict:
         from media_stack.api.services import config as config_svc
-        from media_stack.api.services.registry import SERVICES as _SERVICES
+        from media_stack.core.service_registry.registry import SERVICES as _SERVICES
 
         routing = config_svc.get_routing()
         scheme, gw_port = self._gateway_endpoint(routing)

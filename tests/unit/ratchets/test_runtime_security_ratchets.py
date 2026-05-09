@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "src"))
 class HardcodedInternalHostnames(unittest.TestCase):
     """Source must not contain literal ``http://<service>:<port>``
     URLs for managed services. The registry
-    (``media_stack.api.services.registry``) is the single source of
+    (``media_stack.core.service_registry.registry``) is the single source of
     truth for ports — call ``service_internal_url(<service_id>)``
     instead.
 
@@ -74,7 +74,7 @@ class HardcodedInternalHostnames(unittest.TestCase):
             bad,
             f"Hardcoded service URL literals ({len(bad)} sites) — "
             f"use service_internal_url('<service_id>') from "
-            f"media_stack.api.services.registry instead.\n  - "
+            f"media_stack.core.service_registry.registry instead.\n  - "
             + "\n  - ".join(bad[:15]),
         )
 
@@ -149,7 +149,7 @@ class ImportTimeSideEffects(unittest.TestCase):
             "media_stack.services.jobs.framework",
             "media_stack.cli.commands.controller_serve",
             "media_stack.api.server",
-            "media_stack.api.services.registry",
+            "media_stack.core.service_registry.registry",
             "media_stack.services.profile_config",
             "media_stack.services.apps.prowlarr.indexer_app_match",
             "media_stack.services.apps.servarr.arr_runtime_defaults",

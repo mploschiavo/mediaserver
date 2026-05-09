@@ -20,10 +20,10 @@ from unittest.mock import patch, MagicMock
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
-from media_stack.api.services.registry import (  # noqa: E402
+from media_stack.core.service_registry.registry import (  # noqa: E402
     SERVICES, SERVICE_MAP, ServiceDef, reload_registry,
 )
-import media_stack.api.services.registry as registry_mod  # noqa: E402
+import media_stack.core.service_registry.registry as registry_mod  # noqa: E402
 
 
 class _RegistryTestBase(unittest.TestCase):

@@ -70,7 +70,7 @@ def test_skips_when_jellyfin_not_reachable() -> None:
         "media_stack.api.services.health.discover_api_keys",
         return_value={},
     ), patch(
-        "media_stack.api.services.registry.service_internal_url",
+        "media_stack.core.service_registry.registry.service_internal_url",
         return_value="http://jellyfin:8096",
     ), patch(
         "media_stack.application.jellyfin.ensure_api_key._jellyfin_reachable",
@@ -92,7 +92,7 @@ def test_mints_persists_and_returns_status_when_jellyfin_ready() -> None:
         "media_stack.api.services.health.discover_api_keys",
         return_value={},
     ), patch(
-        "media_stack.api.services.registry.service_internal_url",
+        "media_stack.core.service_registry.registry.service_internal_url",
         return_value="http://jellyfin:8096",
     ), patch(
         "media_stack.application.jellyfin.ensure_api_key._jellyfin_reachable",
@@ -124,7 +124,7 @@ def test_raises_when_preflight_returns_no_key() -> None:
         "media_stack.api.services.health.discover_api_keys",
         return_value={},
     ), patch(
-        "media_stack.api.services.registry.service_internal_url",
+        "media_stack.core.service_registry.registry.service_internal_url",
         return_value="http://jellyfin:8096",
     ), patch(
         "media_stack.application.jellyfin.ensure_api_key._jellyfin_reachable",
@@ -145,7 +145,7 @@ def test_persist_failure_does_not_raise() -> None:
         "media_stack.api.services.health.discover_api_keys",
         return_value={},
     ), patch(
-        "media_stack.api.services.registry.service_internal_url",
+        "media_stack.core.service_registry.registry.service_internal_url",
         return_value="http://jellyfin:8096",
     ), patch(
         "media_stack.application.jellyfin.ensure_api_key._jellyfin_reachable",

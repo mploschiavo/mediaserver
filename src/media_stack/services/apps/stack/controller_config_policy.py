@@ -73,7 +73,7 @@ class StackControllerConfigPolicy:
                     return payload
         # Generate a minimal policy from the service registry
         try:
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
             arr_keys = [s.id for s in SERVICES if s.category == "automation" and s.api_key_format == "xml"]
             toggle_sections = {s.id: s.id for s in SERVICES if s.category in ("management", "media") and s.id not in ("envoy", "homepage")}
             return {

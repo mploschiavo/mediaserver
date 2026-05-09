@@ -20,7 +20,7 @@ from typing import Any
 
 from media_stack.core.logging_utils import log_swallowed
 from .health import discover_api_keys
-from .registry import SERVICE_MAP, SERVICES
+from media_stack.core.service_registry.registry import SERVICE_MAP, SERVICES
 
 
 class _ContentAnalyticsMixin:

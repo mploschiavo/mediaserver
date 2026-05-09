@@ -32,7 +32,7 @@ class BackupRestoreRoundTripTests(unittest.TestCase):
         so get_backup can find them and restore_backup can put them
         back. Paths must match the registry."""
         # Pick two real paths from the service registry.
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
         for svc in SERVICES:
             if svc.api_key_config and svc.api_key_format in ("xml", "json"):
                 rel = svc.api_key_config

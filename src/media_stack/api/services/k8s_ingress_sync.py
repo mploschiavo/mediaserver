@@ -85,7 +85,7 @@ def _enabled_web_ui_services() -> list[tuple[str, int]]:
     """List of (service_id, internal_port) for every service with a
     web UI. We only emit ingress rules for these — backend-only
     services (e.g. flaresolverr) don't need an external hostname."""
-    from media_stack.api.services.registry import get_web_ui_services
+    from media_stack.core.service_registry.registry import get_web_ui_services
     out: list[tuple[str, int]] = []
     for svc in get_web_ui_services():
         port = int(svc.published_port or svc.port or 0)

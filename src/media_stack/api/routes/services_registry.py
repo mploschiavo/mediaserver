@@ -39,7 +39,7 @@ class ServicesListingService:
     """
 
     def build(self, *, include_all: bool) -> dict[str, Any]:
-        from media_stack.api.services.registry import (
+        from media_stack.core.service_registry.registry import (
             SERVICES,
             build_apps_listing,
         )
@@ -62,7 +62,7 @@ class ServicesCategoriesService:
     ``Infrastructure`` bucket for the controller."""
 
     def build(self) -> list[dict[str, Any]]:
-        from media_stack.api.services.registry import CATEGORIES
+        from media_stack.core.service_registry.registry import CATEGORIES
 
         cats = copy.deepcopy(CATEGORIES)
         infra = next(
@@ -163,7 +163,7 @@ class ServicesRegistryGetRoutes(RouteModule):
         kwarg, so re-parsing would just create an opportunity for
         drift between the Router's URL view and the handler's.
         """
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         svc = SERVICE_MAP.get(service_id)
         if not svc or not svc.api_key_env:
             handler._json_response(

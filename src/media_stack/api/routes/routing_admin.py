@@ -164,7 +164,7 @@ class RoutingAdminGetRoutes(RouteModule):
         from media_stack.api.services.config.routing import (
             migrate_v1_to_v2,
         )
-        from media_stack.api.services.registry import (
+        from media_stack.core.service_registry.registry import (
             SERVICES, get_active_service_ids,
         )
         try:

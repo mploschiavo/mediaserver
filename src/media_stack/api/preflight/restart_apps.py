@@ -72,7 +72,7 @@ class RestartAppsService:
     def _apps_to_restart() -> list[tuple[str, int]]:
         """Build restart list from the service registry — no hardcoded service names."""
         try:
-            from media_stack.api.services.registry import SERVICES
+            from media_stack.core.service_registry.registry import SERVICES
             return [(s.id, s.port) for s in SERVICES if s.port > 0 and s.health_path]
         except Exception:
             return []

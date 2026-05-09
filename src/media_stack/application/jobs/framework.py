@@ -798,7 +798,7 @@ class JobContext:
         return str(bindings.get("media_server", "")).strip()
 
     def media_server_api_key(self) -> str:
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         ms_id = self.media_server_id()
         svc = SERVICE_MAP.get(ms_id)
         if svc and svc.api_key_env:
@@ -806,7 +806,7 @@ class JobContext:
         return ""
 
     def media_server_url(self) -> str:
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         ms_id = self.media_server_id()
         svc = SERVICE_MAP.get(ms_id)
         if svc:
@@ -815,7 +815,7 @@ class JobContext:
 
     def api_key(self, service_id: str) -> str:
         """Resolve an API key for a service. Tries env var, then config file."""
-        from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file
+        from media_stack.core.service_registry.registry import SERVICE_MAP, read_api_key_from_file
         svc = SERVICE_MAP.get(service_id)
         if not svc:
             return ""
@@ -826,7 +826,7 @@ class JobContext:
 
     def service_url(self, service_id: str) -> str:
         """Return the internal URL for a service from the registry."""
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
         svc = SERVICE_MAP.get(service_id)
         if svc and svc.port > 0:
             return f"http://{svc.host}:{svc.port}"
@@ -851,7 +851,7 @@ def _ensure_media_server_api_key(ctx: JobContext) -> None:
     key = ctx.media_server_api_key()
     if key:
         return
-    from media_stack.api.services.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
+    from media_stack.core.service_registry.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
     svc = SERVICE_MAP.get(ms_id)
     if not svc or not svc.api_key_env:
         return
@@ -935,7 +935,7 @@ def _prereq_arr_apps_reachable(ctx: "JobContext") -> bool:
     preconditions to satisfy) so single-service profiles aren't
     blocked."""
     import urllib.request
-    from media_stack.api.services.registry import SERVICE_MAP
+    from media_stack.core.service_registry.registry import SERVICE_MAP
     arr_specs = (
         ("sonarr", "v3"), ("radarr", "v3"), ("lidarr", "v1"),
         ("readarr", "v1"), ("prowlarr", "v1"),

@@ -8,7 +8,7 @@ from typing import Any
 from ._profile import ProfileService
 # hoisted from per-method import to reduce CIRCULAR_IMPORT_RISK_RATCHET drift
 # (registry and app_config_service are leaf modules — no cycle)
-from ..registry import SERVICES as _SERVICES
+from media_stack.core.service_registry.registry import SERVICES as _SERVICES
 from media_stack.services.app_config_service import (
     load_app_config,
     update_app_config_section,

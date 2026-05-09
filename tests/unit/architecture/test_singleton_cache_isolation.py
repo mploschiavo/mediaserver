@@ -30,7 +30,7 @@ class CatalogCacheIsolationTests(unittest.TestCase):
             clear_catalog_cache,
             load_bootstrap_profile_catalog,
         )
-        from media_stack.api.services.registry import SERVICES
+        from media_stack.core.service_registry.registry import SERVICES
 
         # 1. Load the catalog once — this populates the cache
         catalog = load_bootstrap_profile_catalog()
@@ -43,7 +43,7 @@ class CatalogCacheIsolationTests(unittest.TestCase):
         # 3. Mock SERVICES to be empty — simulates test pollution.
         # SERVICES is imported inside the cached function, so we mock it
         # at its source module.
-        with patch("media_stack.api.services.registry.SERVICES", []):
+        with patch("media_stack.core.service_registry.registry.SERVICES", []):
             # This should raise because the catalog YAML references apps
             # (e.g. traefik in minimal profile) that are unknown when
             # SERVICES is empty and apps.keys is also empty.
@@ -129,8 +129,8 @@ class RuntimeCacheConsistencyTests(unittest.TestCase):
         from pathlib import Path
         from unittest.mock import patch
 
-        from media_stack.api.services import registry as registry_mod
-        from media_stack.api.services.registry import reload_registry
+        from media_stack.core.service_registry import registry as registry_mod
+        from media_stack.core.service_registry.registry import reload_registry
         from media_stack.core.controller_profile.catalog_loader import (
             clear_catalog_cache,
             load_bootstrap_profile_catalog,

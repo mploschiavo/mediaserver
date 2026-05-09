@@ -32,7 +32,7 @@ def _persist_preflight_keys_to_secret(state: object) -> None:
 
     # Also collect from env vars — keys discovered at startup are in os.environ
     # even if preflight_results is empty (e.g., subprocess stub).
-    from media_stack.api.services.registry import SERVICES
+    from media_stack.core.service_registry.registry import SERVICES
     for svc in SERVICES:
         if svc.api_key_env:
             val = os.environ.get(svc.api_key_env, "").strip()

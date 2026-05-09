@@ -408,7 +408,7 @@ class TestGetJellyfinLibraries(unittest.TestCase):
         # ``svc.category != "media"``; if this fixture lags behind the
         # rename, the patched SERVICES list never matches and the
         # function silently returns ``{libraries: []}``.
-        from media_stack.api.services.registry import ServiceDef
+        from media_stack.core.service_registry.registry import ServiceDef
         return ServiceDef(
             id="jellyfin", name="Jellyfin", category="media",
             host="jellyfin", port=8096, auth_mode="X-Emby-Token",

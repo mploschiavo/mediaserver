@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from .registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from .api_keys import discover_api_keys
 
 

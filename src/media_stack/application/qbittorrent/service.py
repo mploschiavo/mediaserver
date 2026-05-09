@@ -9,7 +9,7 @@ from typing import Any, Callable
 from urllib import error, parse, request
 
 from media_stack.services.apps.download_clients.config_models import DownloadClientConfig
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 
 LogFn = Callable[[str], None]
 NormalizeUrlFn = Callable[[str], str]

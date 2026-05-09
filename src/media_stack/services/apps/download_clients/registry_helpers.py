@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from media_stack.api.services.registry import ServiceDef
+    from media_stack.core.service_registry.registry import ServiceDef
 
 # Service ID -> download category.  Extend for new client types.
 DOWNLOAD_CLIENT_CATEGORIES: dict[str, str] = {
@@ -29,7 +29,7 @@ class DownloadClientRegistryHelpers:
         appears in DOWNLOAD_CLIENT_CATEGORIES with the given category and that
         has a host/port in the registry, or None.
         """
-        from media_stack.api.services.registry import SERVICE_MAP
+        from media_stack.core.service_registry.registry import SERVICE_MAP
 
         for svc_id, cat in DOWNLOAD_CLIENT_CATEGORIES.items():
             if cat == category:

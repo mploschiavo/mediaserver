@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import parse
-from media_stack.api.services.registry import service_internal_url
+from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.core.http import HTTP_2XX_JELLYFIN_STATUSES, HTTP_OK
 
 LogFn = Callable[[str], None]
