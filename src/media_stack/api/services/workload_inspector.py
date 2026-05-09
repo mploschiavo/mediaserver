@@ -317,33 +317,50 @@ class DockerWorkloadInspector:
 # ----------------------------------------------------------------------
 
 
-def build_default_inspector() -> WorkloadInspector:
-    """Probe the environment in this order:
+class WorkloadInspectorFactory:
+    """Probes the environment to construct a platform-appropriate
+    ``WorkloadInspector``.
 
-    1. ``K8S_NAMESPACE`` set + ``kubernetes`` SDK importable +
-       in-cluster config loadable → K8s backend.
-    2. ``docker`` SDK importable + Docker socket accessible →
-       Docker backend.
-    3. Otherwise → ``NullWorkloadInspector``.
+    Stateless; instantiated once at module import as ``_INSTANCE`` and
+    exposed through the ``build_default_inspector`` module-level alias
+    so callers (``api.services.crashloop``, ``api.services.auto_heal``)
+    keep their function-style import surface. The kubernetes/docker
+    SDK imports stay deferred to preserve the lazy-load behaviour
+    (kubernetes pulls a wide HTTP/cert dep set we don't want at
+    module-load time on compose-only deployments).
+    """
 
-    The detection is one-shot at construction; rebuild the
-    instance if the platform changes underneath."""
-    if os.environ.get("K8S_NAMESPACE"):
-        try:
-            from kubernetes import client, config  # type: ignore
+    def build(self) -> WorkloadInspector:
+        """Probe the environment in this order:
+
+        1. ``K8S_NAMESPACE`` set + ``kubernetes`` SDK importable +
+           in-cluster config loadable → K8s backend.
+        2. ``docker`` SDK importable + Docker socket accessible →
+           Docker backend.
+        3. Otherwise → ``NullWorkloadInspector``.
+
+        The detection is one-shot at construction; rebuild the
+        instance if the platform changes underneath."""
+        if os.environ.get("K8S_NAMESPACE"):
             try:
-                config.load_incluster_config()
-            except Exception:
-                config.load_kube_config()
-            return KubernetesWorkloadInspector(
-                namespace=os.environ["K8S_NAMESPACE"],
-                core_v1=client.CoreV1Api(),
-            )
+                from kubernetes import client, config  # type: ignore
+                try:
+                    config.load_incluster_config()
+                except Exception:
+                    config.load_kube_config()
+                return KubernetesWorkloadInspector(
+                    namespace=os.environ["K8S_NAMESPACE"],
+                    core_v1=client.CoreV1Api(),
+                )
+            except Exception as exc:
+                _log.debug("[DEBUG] K8s inspector init failed: %s", exc)
+        try:
+            import docker  # type: ignore
+            return DockerWorkloadInspector(docker.from_env())
         except Exception as exc:
-            _log.debug("[DEBUG] K8s inspector init failed: %s", exc)
-    try:
-        import docker  # type: ignore
-        return DockerWorkloadInspector(docker.from_env())
-    except Exception as exc:
-        _log.debug("[DEBUG] Docker inspector init failed: %s", exc)
-    return NullWorkloadInspector()
+            _log.debug("[DEBUG] Docker inspector init failed: %s", exc)
+        return NullWorkloadInspector()
+
+
+_INSTANCE = WorkloadInspectorFactory()
+build_default_inspector = _INSTANCE.build

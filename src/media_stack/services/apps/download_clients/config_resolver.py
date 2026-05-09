@@ -20,13 +20,37 @@ class DownloadClientConfigResolutionResult:
     feature_flags: dict[str, bool] = field(default_factory=dict)
 
 
-def resolve_download_client_configs(cfg: dict[str, Any]) -> DownloadClientConfigResolutionResult:
-    """Read download-client-adjacent config sections generically."""
-    result = DownloadClientConfigResolutionResult()
+class DownloadClientConfigResolver:
+    """Read download-client-adjacent config sections generically.
 
-    disk_guardrails_model = DiskGuardrailsConfig.from_dict(cfg.get("disk_guardrails") or {})
-    result.models["disk_guardrails"] = disk_guardrails_model
-    result.feature_flags["configure_disk_guardrails"] = disk_guardrails_model.enabled
-    result.feature_flags["disk_guardrails_required"] = disk_guardrails_model.required
+    Currently handles the ``disk_guardrails`` section, which lives
+    alongside download-client configs but isn't itself a download
+    client. New sections are added here by extending
+    ``resolve_download_client_configs``.
+    """
 
-    return result
+    def resolve_download_client_configs(
+        self, cfg: dict[str, Any],
+    ) -> DownloadClientConfigResolutionResult:
+        """Read download-client-adjacent config sections generically."""
+        result = DownloadClientConfigResolutionResult()
+
+        disk_guardrails_model = DiskGuardrailsConfig.from_dict(
+            cfg.get("disk_guardrails") or {},
+        )
+        result.models["disk_guardrails"] = disk_guardrails_model
+        result.feature_flags["configure_disk_guardrails"] = disk_guardrails_model.enabled
+        result.feature_flags["disk_guardrails_required"] = disk_guardrails_model.required
+
+        return result
+
+
+_DOWNLOAD_CLIENT_CONFIG_RESOLVER = DownloadClientConfigResolver()
+resolve_download_client_configs = _DOWNLOAD_CLIENT_CONFIG_RESOLVER.resolve_download_client_configs
+
+
+__all__ = [
+    "DownloadClientConfigResolutionResult",
+    "DownloadClientConfigResolver",
+    "resolve_download_client_configs",
+]

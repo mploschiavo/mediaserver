@@ -37,8 +37,14 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import Any, Callable
 
+from media_stack.api import session_singletons as _session_singletons_module
+from media_stack.api.actor_resolver import ActorResolver
 from media_stack.api.routes.post_admin_ops import PostMutationGate
 from media_stack.api.routing import RouteModule, post
+from media_stack.application.auth.users import bulk_ops as _bulk_ops_module
+from media_stack.core.auth.users import (
+    password_ticket_store as _password_ticket_store_module,
+)
 from media_stack.core.auth.users import (
     user_service_factory as _user_service_factory_module,
 )
@@ -91,22 +97,26 @@ class ActorResolution:
     def resolve(self, handler: Any, body: dict[str, Any]) -> Any:
         if self._explicit is not None:
             return self._explicit(handler, body)
-        # Fresh import per call so test patches against the
-        # singletons / factory module win.
-        from media_stack.api.actor_resolver import ActorResolver
-        from media_stack.api.session_singletons import (
-            session_cookie_reader,
-            trusted_proxy_auth,
+        # Re-read singletons / factory off their owning modules per
+        # call so test patches against
+        # ``session_singletons.session_cookie_reader`` and
+        # ``user_service_factory.build_default_service`` win.
+        session_cookie_reader = (
+            _session_singletons_module.session_cookie_reader
         )
-        from media_stack.core.auth.users.user_service_factory import (
-            build_default_service,
+        trusted_proxy_auth = (
+            _session_singletons_module.trusted_proxy_auth
+        )
+        build_default_service = (
+            _user_service_factory_module.build_default_service
         )
         merged = dict(body or {})
         if not str(merged.get("_actor", "") or "").strip():
             cookie_user = ""
             try:
                 cookie_user = (
-                    session_cookie_reader.username_for_handler(handler) or ""
+                    session_cookie_reader.username_for_handler(handler)
+                    or ""
                 )
             except (AttributeError, KeyError, ValueError):
                 cookie_user = ""
@@ -146,18 +156,12 @@ class LegacyHelperAdapter:
     def _resolve_importer(self) -> Any:
         if self._importer is not None:
             return self._importer
-        from media_stack.application.auth.users.bulk_ops import (
-            UserBulkImporter,
-        )
-        return UserBulkImporter()
+        return _bulk_ops_module.UserBulkImporter()
 
     def _resolve_revoker(self) -> Any:
         if self._revoker is not None:
             return self._revoker
-        from media_stack.application.auth.users.bulk_ops import (
-            UserSessionRevoker,
-        )
-        return UserSessionRevoker()
+        return _bulk_ops_module.UserSessionRevoker()
 
     def bulk_import(
         self, svc: Any, body: dict[str, Any], actor: Any,
@@ -170,9 +174,7 @@ class LegacyHelperAdapter:
         return self._resolve_revoker().revoke_for_user(svc, user_id, actor)
 
 
-def _strip_legacy_plaintext(
-    result: dict[str, Any] | None,
-) -> dict[str, Any] | None:
+class LegacyPlaintextStripper:
     """Belt-and-braces: swap legacy ``generated_password`` for a
     one-shot retrieval ticket.
 
@@ -180,17 +182,47 @@ def _strip_legacy_plaintext(
     Lifted here so the route module has zero coupling to the
     legacy module's free-function surface.
     """
-    if not isinstance(result, dict):
-        return result
-    plaintext = result.pop("generated_password", None)
-    if plaintext:
-        user_id = str(result.get("user_id") or result.get("id") or "")
-        if user_id:
-            from media_stack.core.auth.users.password_ticket_store import (
-                mint_ticket_fields as _mint_ticket_fields,
+
+    def __init__(
+        self,
+        *,
+        ticket_minter: Callable[[str, str], dict[str, Any]] | None = None,
+    ) -> None:
+        # Default ``None`` means "look up
+        # ``password_ticket_store.mint_ticket_fields`` at call time"
+        # so ``mock.patch`` against that module's attribute takes
+        # effect from the test caller. An explicit override (test
+        # injection) wins.
+        self._mint_override = ticket_minter
+
+    def strip(
+        self, result: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Mutate-and-return: pop the plaintext, mint a ticket, and
+        merge the ticket fields back onto ``result``. Pass-through
+        for non-dict / no-plaintext inputs."""
+        if not isinstance(result, dict):
+            return result
+        plaintext = result.pop("generated_password", None)
+        if plaintext:
+            user_id = str(
+                result.get("user_id") or result.get("id") or "",
             )
-            result.update(_mint_ticket_fields(user_id, str(plaintext)))
-    return result
+            if user_id:
+                minter = (
+                    self._mint_override
+                    if self._mint_override is not None
+                    else _password_ticket_store_module.mint_ticket_fields
+                )
+                result.update(minter(user_id, str(plaintext)))
+        return result
+
+
+_INSTANCE = LegacyPlaintextStripper()
+
+# Module-level alias preserving the legacy underscore-name surface
+# (`from ... import _strip_legacy_plaintext`) used by tests.
+_strip_legacy_plaintext = _INSTANCE.strip
 
 
 class UsersPostRoutes(RouteModule):
@@ -409,6 +441,7 @@ class UsersPostRoutes(RouteModule):
 __all__ = [
     "ActorResolution",
     "LegacyHelperAdapter",
+    "LegacyPlaintextStripper",
     "UserMgmtRepository",
     "UsersPostRoutes",
 ]

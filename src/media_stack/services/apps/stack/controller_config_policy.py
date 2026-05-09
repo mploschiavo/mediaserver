@@ -42,14 +42,28 @@ _POLICY_CATALOG_PATH_CANDIDATES = (
 )
 
 
-def _resolve_policy_catalog() -> Path:
-    for p in _POLICY_CATALOG_PATH_CANDIDATES:
-        if p.is_file():
-            return p
-    return _POLICY_CATALOG_PATH_CANDIDATES[0]
+class _PolicyCatalogPathResolver:
+    """Pick the first existing policy-catalog candidate.
+
+    The candidate list mirrors the v1.0.231 / v1.0.235 install-path
+    bug class — keep them ordered so the dev tree wins over the
+    image-baked path. Falls back to the first candidate when nothing
+    exists on disk so callers always get a deterministic Path
+    (``read_text`` will then raise the usual ``FileNotFoundError``).
+    """
+
+    def __init__(self, candidates: tuple[Path, ...]) -> None:
+        self._candidates = candidates
+
+    def resolve(self) -> Path:
+        for candidate in self._candidates:
+            if candidate.is_file():
+                return candidate
+        return self._candidates[0]
 
 
-_POLICY_CATALOG_PATH = _resolve_policy_catalog()
+_POLICY_CATALOG_PATH_RESOLVER = _PolicyCatalogPathResolver(_POLICY_CATALOG_PATH_CANDIDATES)
+_POLICY_CATALOG_PATH = _POLICY_CATALOG_PATH_RESOLVER.resolve()
 _IMAGE_POLICY_PATH = Path("/opt/media-stack/contracts/media-stack.bootstrap.policy.yaml")
 
 

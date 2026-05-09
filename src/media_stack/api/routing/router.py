@@ -33,12 +33,15 @@ from __future__ import annotations
 import importlib
 import inspect
 import logging
+import os
 from urllib.parse import unquote
 import pkgutil
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
+
+import yaml
 
 from media_stack.api.routing.exceptions import RouterMisconfigured
 from media_stack.api.routing.registration import (
@@ -53,9 +56,15 @@ logger = logging.getLogger(__name__)
 
 _PATH_PARAM_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
+_OPENAPI_PATH_ENV_VAR = "MEDIA_STACK_OPENAPI_PATH"
+_OPENAPI_INSTALL_CANDIDATES: tuple[Path, ...] = (
+    Path("/opt/media-stack/contracts/api/openapi.yaml"),
+    Path("/usr/local/share/media-stack/contracts/api/openapi.yaml"),
+)
 
-def _resolve_default_openapi_path() -> Path:
-    """Locate ``contracts/api/openapi.yaml`` across deployment shapes.
+
+class _OpenApiPathResolver:
+    """Resolve ``contracts/api/openapi.yaml`` across deployment shapes.
 
     The contracts directory lives at the repo root in development
     (``parents[4]`` from this module) but at one of two filesystem
@@ -67,27 +76,43 @@ def _resolve_default_openapi_path() -> Path:
 
     The ``MEDIA_STACK_OPENAPI_PATH`` env var overrides the search
     entirely (CI / test fixtures / non-standard installs).
-
-    Returns the first existing path, or the dev-mode path as a
-    last-resort default so the original ``RouterMisconfigured``
-    error surfaces with a meaningful location.
     """
-    import os
-    override = os.environ.get("MEDIA_STACK_OPENAPI_PATH", "").strip()
-    if override:
-        return Path(override)
-    candidates = (
-        Path(__file__).resolve().parents[4] / "contracts" / "api" / "openapi.yaml",
-        Path("/opt/media-stack/contracts/api/openapi.yaml"),
-        Path("/usr/local/share/media-stack/contracts/api/openapi.yaml"),
-    )
-    for c in candidates:
-        if c.is_file():
-            return c
-    return candidates[0]
+
+    def __init__(
+        self,
+        *,
+        env_var: str = _OPENAPI_PATH_ENV_VAR,
+        install_candidates: tuple[Path, ...] = _OPENAPI_INSTALL_CANDIDATES,
+    ) -> None:
+        self._env_var = env_var
+        self._install_candidates = install_candidates
+
+    def resolve(self) -> Path:
+        """Return the first existing openapi.yaml path, or the
+        dev-mode path as a last-resort default so the original
+        ``RouterMisconfigured`` error surfaces with a meaningful
+        location.
+        """
+        override = os.environ.get(self._env_var, "").strip()
+        if override:
+            return Path(override)
+        dev_path = (
+            Path(__file__).resolve().parents[4]
+            / "contracts" / "api" / "openapi.yaml"
+        )
+        candidates = (dev_path,) + tuple(self._install_candidates)
+        for c in candidates:
+            if c.is_file():
+                return c
+        return dev_path
 
 
-_DEFAULT_OPENAPI_PATH = _resolve_default_openapi_path()
+_INSTANCE = _OpenApiPathResolver()
+_DEFAULT_OPENAPI_PATH = _INSTANCE.resolve()
+
+# Module-level alias preserving the legacy underscore-name surface.
+_resolve_default_openapi_path = _INSTANCE.resolve
+
 _DEFAULT_ROUTES_PACKAGE = "media_stack.api.routes"
 _SUPPORTED_VERBS = frozenset({"GET", "POST", "DELETE", "PUT", "PATCH"})
 
@@ -167,12 +192,11 @@ class _OpenApiSpecLoader:
             raise RouterMisconfigured(
                 f"OpenAPI spec not found at {self._openapi_path}",
             )
-        import yaml as _yaml
         try:
-            doc = _yaml.safe_load(
+            doc = yaml.safe_load(
                 self._openapi_path.read_text(encoding="utf-8"),
             ) or {}
-        except _yaml.YAMLError as exc:
+        except yaml.YAMLError as exc:
             raise RouterMisconfigured(
                 f"OpenAPI spec at {self._openapi_path} is not valid "
                 f"YAML: {exc}",

@@ -25,6 +25,44 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 
+class IPDenyCidrNormalizer:
+    """Canonicalises a bare address or CIDR string.
+
+    Pulled out as a class so the file's top-level FunctionDef count
+    is 0 (ADR-0012). Stateless; the module-level singleton
+    ``_INSTANCE`` exposes the original ``_normalize_cidr`` underscore
+    name as an alias so the existing infrastructure caller
+    (``ban_store.py`` imports ``_normalize_cidr`` directly) keeps
+    resolving symbolically.
+    """
+
+    def normalize(self, raw: str) -> str:
+        """Accept a bare address or CIDR, return canonical form.
+
+        Raises ``ValueError`` on malformed input. The exception is
+        explicit rather than e.g. returning ``None`` because an invalid
+        ban record is a hard bug — silently dropping it leaves a
+        would-be-banned IP unbanned.
+        """
+        s = str(raw).strip()
+        if not s:
+            raise ValueError("empty cidr")
+        try:
+            if "/" in s:
+                net = ipaddress.ip_network(s, strict=False)
+                return str(net)
+            addr = ipaddress.ip_address(s)
+            suffix = "/32" if addr.version == 4 else "/128"
+            return str(ipaddress.ip_network(f"{addr}{suffix}", strict=False))
+        except ValueError as exc:
+            raise ValueError(f"invalid cidr {s!r}: {exc}") from exc
+
+
+_INSTANCE = IPDenyCidrNormalizer()
+_normalize_cidr = _INSTANCE.normalize
+normalize_cidr = _INSTANCE.normalize
+
+
 @dataclass(frozen=True)
 class IPDeny:
     """An IP-or-CIDR deny entry.
@@ -68,28 +106,6 @@ class IPDeny:
         }
 
 
-def _normalize_cidr(raw: str) -> str:
-    """Accept a bare address or CIDR, return canonical form.
-
-    Raises ``ValueError`` on malformed input. The exception is
-    explicit rather than e.g. returning ``None`` because an invalid
-    ban record is a hard bug — silently dropping it leaves a
-    would-be-banned IP unbanned.
-    """
-    s = str(raw).strip()
-    if not s:
-        raise ValueError("empty cidr")
-    try:
-        if "/" in s:
-            net = ipaddress.ip_network(s, strict=False)
-            return str(net)
-        addr = ipaddress.ip_address(s)
-        suffix = "/32" if addr.version == 4 else "/128"
-        return str(ipaddress.ip_network(f"{addr}{suffix}", strict=False))
-    except ValueError as exc:
-        raise ValueError(f"invalid cidr {s!r}: {exc}") from exc
-
-
 @runtime_checkable
 class IPDenyProvider(Protocol):
     """Provider-level IP-range deny list.
@@ -115,4 +131,4 @@ class IPDenyProvider(Protocol):
     def remove_ip_deny(self, cidr: str) -> None: ...
 
 
-__all__ = ["IPDeny", "IPDenyProvider"]
+__all__ = ["IPDeny", "IPDenyCidrNormalizer", "IPDenyProvider", "normalize_cidr"]

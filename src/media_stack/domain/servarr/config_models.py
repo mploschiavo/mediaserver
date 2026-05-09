@@ -27,27 +27,45 @@ from media_stack.domain.servarr.config_models_discovery import (
 AppLike = "ServarrAppConfig | dict[str, Any] | str"
 
 
-def app_lookup_keys(
-    app: AppLike,
-    canonicalize: Callable[[str], str] | None = None,
-) -> tuple[str, ...]:
-    if isinstance(app, ServarrAppConfig):
-        name = app.name
-        impl = app.implementation
-    elif isinstance(app, dict):
-        name = str(app.get("name") or "").strip()
-        impl = str(app.get("implementation") or "").strip()
-    else:
-        name = str(app or "").strip()
-        impl = ""
+class ServarrAppLookupKeys:
+    """Resolves a ``ServarrAppConfig`` / dict / name into the ordered
+    tuple of normalised lookup keys the ``by_app`` override maps are
+    indexed under.
 
-    candidates: list[str] = []
-    for token in (name, impl):
-        for variant in (token, token.lower()):
-            normalized = normalize_by_app_key(variant, canonicalize=canonicalize)
-            if normalized and normalized not in candidates:
-                candidates.append(normalized)
-    return tuple(candidates)
+    ADR-0012: previously a loose ``app_lookup_keys`` module-level
+    helper; folded onto this class so the file's top-level
+    FunctionDef count is 0. The module-level alias
+    ``app_lookup_keys`` below preserves the public name (3 in-file
+    callers + the bool-returning ``override_for`` accessors all hit
+    it through the alias).
+    """
+
+    def for_app(
+        self,
+        app: AppLike,
+        canonicalize: Callable[[str], str] | None = None,
+    ) -> tuple[str, ...]:
+        if isinstance(app, ServarrAppConfig):
+            name = app.name
+            impl = app.implementation
+        elif isinstance(app, dict):
+            name = str(app.get("name") or "").strip()
+            impl = str(app.get("implementation") or "").strip()
+        else:
+            name = str(app or "").strip()
+            impl = ""
+
+        candidates: list[str] = []
+        for token in (name, impl):
+            for variant in (token, token.lower()):
+                normalized = normalize_by_app_key(variant, canonicalize=canonicalize)
+                if normalized and normalized not in candidates:
+                    candidates.append(normalized)
+        return tuple(candidates)
+
+
+_INSTANCE = ServarrAppLookupKeys()
+app_lookup_keys = _INSTANCE.for_app
 
 
 @dataclass(frozen=True)
@@ -140,8 +158,7 @@ class ArrDiscoveryListEntry:
     def to_dict(self) -> dict[str, Any]:
         return dict(self.raw)
 
-    @staticmethod
-    def _is_present(value: Any) -> bool:
+    def _is_present(self, value: Any) -> bool:
         if value is None:
             return False
         if isinstance(value, str):

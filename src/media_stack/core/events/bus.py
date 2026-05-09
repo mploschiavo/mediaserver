@@ -26,6 +26,13 @@ Design notes:
     noisy test failures out of production logs while preserving the
     signal for anyone who opts in. Callers that need stricter semantics
     should wrap their handler.
+
+ADR-0012: top-level FunctionDef count must stay at zero. The lone
+``_default_ts`` helper is bundled on ``EventTimestampProvider`` and
+re-exported as a module-level alias so the dataclass
+``default_factory=_default_ts`` field on ``Event`` keeps working
+without churn. ``EventBus._safe_invoke`` is a plain instance method
+(no ``@staticmethod``) per the same rule.
 """
 
 from __future__ import annotations
@@ -37,26 +44,56 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, ClassVar
 
+from media_stack.core.logging_utils import log_swallowed
+
 logger = logging.getLogger(__name__)
 
 
-def _default_ts() -> str:
-    """Return an ISO-8601 UTC timestamp (Zulu form) for event stamping.
+__all__ = [
+    "Event",
+    "EventBus",
+    "EventTimestampProvider",
+    "SubscriberHandle",
+]
 
-    Prefers the project's ``core.time_utils.utcnow_iso`` if that module
-    exists so event timestamps match the rest of the stack (tests may
-    stub it for deterministic clocks). Falls back to stdlib so this
-    module has no hard dependency on an optional helper.
+
+class EventTimestampProvider:
+    """Default-timestamp provider for ``Event.ts`` bundled per ADR-0012.
+
+    Plain instance methods — no ``@staticmethod`` — so the class is a
+    legitimate dispatch surface. The module-level ``_default_ts`` alias
+    below preserves the original free-function name so the dataclass
+    ``default_factory=_default_ts`` field on ``Event`` continues to
+    resolve to a zero-arg callable.
     """
-    try:  # pragma: no cover - optional integration point
-        from media_stack.core import time_utils  # type: ignore[attr-defined]
 
-        fn = getattr(time_utils, "utcnow_iso", None)
-        if callable(fn):
-            return str(fn())
-    except Exception as exc:
-        log_swallowed(exc)
-    return datetime.now(timezone.utc).isoformat()
+    def default_ts(self) -> str:
+        """Return an ISO-8601 UTC timestamp (Zulu form) for event stamping.
+
+        Prefers the project's ``core.time_utils.utcnow_iso`` if that module
+        exists so event timestamps match the rest of the stack (tests may
+        stub it for deterministic clocks). Falls back to stdlib so this
+        module has no hard dependency on an optional helper.
+        """
+        try:  # pragma: no cover - optional integration point
+            from media_stack.core import time_utils  # type: ignore[attr-defined]
+
+            fn = getattr(time_utils, "utcnow_iso", None)
+            if callable(fn):
+                return str(fn())
+        except Exception as exc:
+            log_swallowed(exc)
+        return datetime.now(timezone.utc).isoformat()
+
+
+_TS_INSTANCE = EventTimestampProvider()
+
+
+# Module-level alias. The dataclass ``default_factory=_default_ts`` on
+# ``Event.ts`` calls this with zero args; a bound method satisfies that
+# signature. Tests that stub ``core.time_utils.utcnow_iso`` continue to
+# win because the bound method re-imports the module on each call.
+_default_ts = _TS_INSTANCE.default_ts
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -221,8 +258,9 @@ class EventBus:
         for _sid, handler in all_subs:
             self._safe_invoke(handler, event)
 
-    @staticmethod
-    def _safe_invoke(handler: Callable[[Event], None], event: Event) -> None:
+    def _safe_invoke(
+        self, handler: Callable[[Event], None], event: Event
+    ) -> None:
         """Invoke a handler, swallowing + logging any exception.
 
         A raising handler must never abort dispatch to its siblings:

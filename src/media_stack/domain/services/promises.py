@@ -56,11 +56,7 @@ from typing import (
 # ============================================================================
 
 
-def _spec_to_dict(
-    spec: Any,
-    *,
-    type_field_value_attr: str = "kind",
-) -> dict[str, Any]:
+class PromiseSpecSerialiser:
     """Shared serialiser: turn a frozen-dataclass spec into the
     YAML-shaped dict that produced it.
 
@@ -71,13 +67,30 @@ def _spec_to_dict(
     rename logic lives in one place. Pure transformation —
     callers can override ``type_field_value_attr`` if a future
     variant uses a different discriminator name.
+
+    ADR-0012: previously a loose ``_spec_to_dict`` module-level
+    helper; folded onto this class so the file's top-level
+    FunctionDef count is 0. The module-level alias
+    ``_spec_to_dict`` below preserves the historical name for any
+    diagnostic / inspection caller that referenced it.
     """
-    out = dataclasses.asdict(spec)
-    if type_field_value_attr in out:
-        out["type"] = out.pop(type_field_value_attr)
-    if "assert_expr" in out:
-        out["assert"] = out.pop("assert_expr")
-    return out
+
+    def spec_to_dict(
+        self,
+        spec: Any,
+        *,
+        type_field_value_attr: str = "kind",
+    ) -> dict[str, Any]:
+        out = dataclasses.asdict(spec)
+        if type_field_value_attr in out:
+            out["type"] = out.pop(type_field_value_attr)
+        if "assert_expr" in out:
+            out["assert"] = out.pop("assert_expr")
+        return out
+
+
+_INSTANCE = PromiseSpecSerialiser()
+_spec_to_dict = _INSTANCE.spec_to_dict
 
 
 @runtime_checkable
@@ -735,6 +748,7 @@ __all__ = [
     "Promise",
     "PromiseAttempt",
     "PromiseRegistryError",
+    "PromiseSpecSerialiser",
     "PromiseStatus",
     "TickSummary",
 ]

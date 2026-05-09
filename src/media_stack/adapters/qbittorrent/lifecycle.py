@@ -121,20 +121,20 @@ class QbittorrentLifecycle:
         if key:
             return ProbeResult.ok(
                 "qbit credential present in env/secrets",
-                evidence={"source": _classify_source(ctx, key)},
+                evidence={"source": self._classify_source(ctx, key)},
                 evaluated_at=ctx.now(),
             )
         return ProbeResult.failed(
             "no qbit credential in env/secrets — operator must set "
-            f"{_api_key_env(ctx)}",
-            evidence={"env_var_checked": _api_key_env(ctx)},
+            f"{self._api_key_env(ctx)}",
+            evidence={"env_var_checked": self._api_key_env(ctx)},
             evaluated_at=ctx.now(),
         )
 
     # --- discover ---------------------------------------------------
 
     def discover_api_key(self, ctx: OrchestrationContext) -> str | None:
-        env_var = _api_key_env(ctx)
+        env_var = self._api_key_env(ctx)
         value = (ctx.secrets.get(env_var) or os.environ.get(env_var) or "").strip()
         return value or None
 
@@ -154,9 +154,9 @@ class QbittorrentLifecycle:
         # and return status=ok, masking the real problem. Don't.
         return Outcome.failure(
             f"qbit credential not set in env/secrets; operator must "
-            f"provide {_api_key_env(ctx)}",
+            f"provide {self._api_key_env(ctx)}",
             transient=False,
-            evidence={"env_var": _api_key_env(ctx)},
+            evidence={"env_var": self._api_key_env(ctx)},
         )
 
     # --- persist ----------------------------------------------------
@@ -164,7 +164,7 @@ class QbittorrentLifecycle:
     def persist_api_key(
         self, key: str, ctx: OrchestrationContext,
     ) -> Outcome[None]:
-        env_var = _api_key_env(ctx)
+        env_var = self._api_key_env(ctx)
         if not key:
             return Outcome.failure(
                 "refusing to persist empty key",
@@ -220,24 +220,41 @@ class QbittorrentLifecycle:
         path = ctx.config.get("health_path") or _DEFAULT_HEALTH_PATH
         return f"{scheme}://{host}:{port}{path}"
 
+    def _api_key_env(self, ctx: OrchestrationContext) -> str:
+        """Resolve the env-var name that holds the qBit password.
 
-# --- module helpers (private) ---------------------------------------
+        Defaults to ``QBITTORRENT_PASSWORD``; overridable per-service
+        via the contract YAML's ``api_key_env`` field. Folded onto
+        the lifecycle from a loose helper per ADR-0012.
+        """
+        return (ctx.config.get("api_key_env") or _DEFAULT_API_KEY_ENV).strip()
 
-def _api_key_env(ctx: OrchestrationContext) -> str:
-    return (ctx.config.get("api_key_env") or _DEFAULT_API_KEY_ENV).strip()
+    def _classify_source(self, ctx: OrchestrationContext, key: str) -> str:
+        """Identify which credential store served the discovered key.
+
+        Returns ``"secrets"`` if the value matches the runtime secrets
+        bag, ``"env"`` if it matches ``os.environ`` directly, or
+        ``"unknown"`` otherwise. Used in ``probe_has_api_key`` evidence
+        to make the audit trail explicit.
+        """
+        env_var = self._api_key_env(ctx)
+        if (ctx.secrets.get(env_var) or "").strip() == key:
+            return "secrets"
+        if os.environ.get(env_var, "").strip() == key:
+            return "env"
+        return "unknown"
 
 
-def _classify_source(ctx: OrchestrationContext, key: str) -> str:
-    env_var = _api_key_env(ctx)
-    if (ctx.secrets.get(env_var) or "").strip() == key:
-        return "secrets"
-    if os.environ.get(env_var, "").strip() == key:
-        return "env"
-    return "unknown"
+# Module-level singleton + aliases preserve the historical
+# ``_api_key_env`` / ``_classify_source`` import surface for any caller
+# that imported them by name. ADR-0012 rule 10.
+_INSTANCE = QbittorrentLifecycle()
+_api_key_env = _INSTANCE._api_key_env
+_classify_source = _INSTANCE._classify_source
 
 
 # Type-check at import.
-_check: ServiceLifecycle = QbittorrentLifecycle()
+_check: ServiceLifecycle = _INSTANCE
 del _check
 
 

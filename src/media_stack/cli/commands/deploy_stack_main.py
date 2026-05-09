@@ -7,6 +7,14 @@ three mixin modules extracted for maintainability:
 - deploy_stack_config_resolution — config/hook resolution methods
 - deploy_stack_runner_services  — service factories, artifacts, utilities
 - deploy_stack_runner_phases    — run() orchestration, validation, phase actions
+
+Per ADR-0012, the module-level ``main`` entry point is bound to a
+singleton :class:`DeployStackMainEntryPoint`. Tests
+(``tests/unit/adapters/test_rebuild_and_bootstrap_main.py``,
+``tests/unit/adapters/test_deploy_stack_main.py``) ``mock.patch`` the
+module-level ``parse_deploy_stack_config`` / ``DeployStackRunner`` /
+``warn`` names; the entry-point method dispatches through
+``sys.modules[__name__]`` so the patches keep intercepting.
 """
 
 from __future__ import annotations
@@ -59,25 +67,58 @@ class DeployStackRunner(ConfigResolutionMixin, RunnerServicesMixin, RunnerPhases
     _delete_environment_enabled_cache: bool | None = field(default=None, init=False, repr=False)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    root_dir = Path(__file__).resolve().parents[2]
-    cfg = parse_deploy_stack_config(args, root_dir=root_dir)
-    runner = DeployStackRunner(cfg=cfg)
-    try:
-        return runner.run()
-    except Exception as exc:
-        warn(f"Deploy/bootstrap failed: {exc}")
+class DeployStackMainEntryPoint:
+    """CLI entry point for ``bin/ops/deploy-stack``.
+
+    Builds a :class:`DeployStackRunner` from parsed config and
+    delegates to ``runner.run()``. On failure, captures a status
+    snapshot, prints a tracker summary, and emits an error
+    notification.
+
+    Dispatches through ``sys.modules[__name__]`` so test patches
+    against ``parse_deploy_stack_config`` / ``DeployStackRunner`` /
+    ``warn`` keep intercepting the names this method calls.
+    """
+
+    def main(self, argv: list[str] | None = None) -> int:
+        """Run the deploy-stack CLI. Returns process exit code."""
+        module = sys.modules[__name__]
+        args = argv if argv is not None else sys.argv[1:]
+        root_dir = Path(__file__).resolve().parents[2]
+        cfg = module.parse_deploy_stack_config(args, root_dir=root_dir)
+        runner = module.DeployStackRunner(cfg=cfg)
         try:
-            runner.emit_failure_status_snapshot()
-        except Exception as snapshot_exc:
-            warn(f"Failed collecting failure status snapshot: {snapshot_exc}")
-        runner.tracker.summary()
-        runner.notify(
-            "error",
-            f"media-stack deploy/bootstrap failed (profile={cfg.profile}, namespace={cfg.namespace})",
-        )
-        return 1
+            return runner.run()
+        except Exception as exc:
+            module.warn(f"Deploy/bootstrap failed: {exc}")
+            try:
+                runner.emit_failure_status_snapshot()
+            except Exception as snapshot_exc:
+                module.warn(
+                    f"Failed collecting failure status snapshot: {snapshot_exc}"
+                )
+            runner.tracker.summary()
+            runner.notify(
+                "error",
+                f"media-stack deploy/bootstrap failed (profile={cfg.profile}, namespace={cfg.namespace})",
+            )
+            return 1
+
+
+_INSTANCE = DeployStackMainEntryPoint()
+main = _INSTANCE.main
+
+
+__all__ = [
+    "DeployError",
+    "DeployStackMainEntryPoint",
+    "DeployStackRunner",
+    "SkipPhase",
+    "_MIN_STACK_DISK_ALLOCATION_GB",
+    "main",
+    "parse_deploy_stack_config",
+    "warn",
+]
 
 
 if __name__ == "__main__":

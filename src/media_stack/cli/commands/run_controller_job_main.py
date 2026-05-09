@@ -553,13 +553,30 @@ class RunBootstrapJobRunner(_RunBootstrapJobPrimingMixin):
     # and _read_secret_key live on ``_RunBootstrapJobPrimingMixin``.
 
 
-def main(argv: list[str] | None = None) -> int:
-    root_dir = Path(__file__).resolve().parents[2]
-    cfg = parse_run_bootstrap_job_config(argv, root_dir=root_dir)
-    runner = RunBootstrapJobRunner(
-        cfg=cfg, kube=KubernetesClient.from_environment(), tracker=PhaseTracker()
-    )
-    return runner.run()
+class RunBootstrapJobEntryPoint:
+    """CLI entry-point wrapper for ``RunBootstrapJobRunner`` (ADR-0012).
+
+    The previously module-level ``main`` helper is folded onto this
+    class as the plain instance method ``main`` (no ``@staticmethod``).
+    The module-level ``_INSTANCE`` singleton aliases ``main`` so the
+    historical entry-point surface (``python -m
+    media_stack.cli.commands.run_controller_job_main`` and
+    ``from … import main``) keeps resolving unchanged.
+    """
+
+    def main(self, argv: list[str] | None = None) -> int:
+        root_dir = Path(__file__).resolve().parents[2]
+        cfg = parse_run_bootstrap_job_config(argv, root_dir=root_dir)
+        runner = RunBootstrapJobRunner(
+            cfg=cfg, kube=KubernetesClient.from_environment(), tracker=PhaseTracker()
+        )
+        return runner.run()
+
+
+# Module-level singleton + aliases (ADR-0012 pattern).
+_INSTANCE = RunBootstrapJobEntryPoint()
+
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":

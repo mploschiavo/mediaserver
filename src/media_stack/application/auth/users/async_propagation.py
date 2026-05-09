@@ -84,20 +84,35 @@ class ServiceAdminPropagator:
                 )
 
 
-def run_service_admin_propagation_async(
-    propagate: Callable[[str], dict[str, Any]],
-    audit,
-    *,
-    password: str,
-    user_id: str,
-    user_email: str,
-    actor: str,
-) -> None:
-    """Module-level shim so callers can stay importing a function.
-    The work itself lives on ``ServiceAdminPropagator`` so the
-    class-structure ratchet sees a first-class citizen.
+class ServiceAdminPropagationLauncher:
+    """Module-level launcher that constructs a ``ServiceAdminPropagator``
+    on demand and kicks off its background thread.
+
+    Carries no per-call state — instantiated once at module import as
+    ``_INSTANCE``. The ``run_service_admin_propagation_async`` alias
+    preserves the function-style import surface that
+    ``user_write_service`` uses.
     """
-    ServiceAdminPropagator(propagate, audit).start(
-        password=password, user_id=user_id,
-        user_email=user_email, actor=actor,
-    )
+
+    def launch(
+        self,
+        propagate: Callable[[str], dict[str, Any]],
+        audit,
+        *,
+        password: str,
+        user_id: str,
+        user_email: str,
+        actor: str,
+    ) -> None:
+        """Module-level shim so callers can stay importing a function.
+        The work itself lives on ``ServiceAdminPropagator`` so the
+        class-structure ratchet sees a first-class citizen.
+        """
+        ServiceAdminPropagator(propagate, audit).start(
+            password=password, user_id=user_id,
+            user_email=user_email, actor=actor,
+        )
+
+
+_INSTANCE = ServiceAdminPropagationLauncher()
+run_service_admin_propagation_async = _INSTANCE.launch

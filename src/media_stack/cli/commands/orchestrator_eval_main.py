@@ -27,9 +27,9 @@ states; 1 otherwise. Suitable for ``&& echo OK || echo FAIL``.
 Implementation note: the heavy lifting lives on
 :class:`OrchestratorEvalCommand` so the CLI's argument parsing,
 output rendering, and orchestrator wiring are all instance methods
-testable in isolation. The module-level :func:`main` is a thin entry
-point that constructs the command with the real ``sys.stdout`` /
-``sys.stderr`` and delegates.
+testable in isolation. The module-level :data:`main` is a thin entry
+point bound to the singleton's ``main`` method, which constructs a
+fresh command against the real ``sys.stdout`` / ``sys.stderr``.
 """
 
 from __future__ import annotations
@@ -100,6 +100,14 @@ class OrchestratorEvalCommand:
 
         return 0 if not summary.has_failures else 1
 
+    def main(self, argv: Sequence[str] | None = None) -> int:
+        """Module-level entry point. Constructs a fresh
+        :class:`OrchestratorEvalCommand` against the real
+        stdout/stderr and delegates so each invocation gets a clean
+        I/O surface (the singleton this method is bound to is configured
+        for argv-driven CLI use)."""
+        return OrchestratorEvalCommand().run(argv)
+
     # ------------------------------------------------------------------
     # Argparse + logging setup
     # ------------------------------------------------------------------
@@ -146,10 +154,9 @@ class OrchestratorEvalCommand:
 
     def _print_json(self, summary: TickSummary) -> None:
         for attempt in summary.attempts:
-            print(json.dumps(attempt.to_dict()), file=self._out)
-        print(
-            json.dumps({"summary": self._summary_dict(summary)}),
-            file=self._out,
+            self._out.write(json.dumps(attempt.to_dict()) + "\n")
+        self._out.write(
+            json.dumps({"summary": self._summary_dict(summary)}) + "\n",
         )
 
     def _print_table(self, summary: TickSummary) -> None:
@@ -166,10 +173,9 @@ class OrchestratorEvalCommand:
             f"{'ELAPSED':>{elapsed_width}}  "
             "DETAIL"
         )
-        print(header, file=self._out)
-        print(
-            "-" * (name_width + status_width + elapsed_width + 30),
-            file=self._out,
+        self._out.write(header + "\n")
+        self._out.write(
+            "-" * (name_width + status_width + elapsed_width + 30) + "\n",
         )
         for a in sorted(
             summary.attempts,
@@ -183,16 +189,14 @@ class OrchestratorEvalCommand:
                 f"{elapsed_str:>{elapsed_width}}  "
                 f"{detail}"
             )
-            print(row, file=self._out)
-        print(file=self._out)
-        print(
+            self._out.write(row + "\n")
+        self._out.write("\n")
+        self._out.write(
             f"summary: {summary.summary_line()} "
-            f"({summary.elapsed_seconds:.2f}s wall)",
-            file=self._out,
+            f"({summary.elapsed_seconds:.2f}s wall)\n",
         )
 
-    @staticmethod
-    def _summary_dict(summary: TickSummary) -> dict[str, Any]:
+    def _summary_dict(self, summary: TickSummary) -> dict[str, Any]:
         return {
             "total": summary.total,
             "ok": summary.ok,
@@ -206,11 +210,8 @@ class OrchestratorEvalCommand:
         }
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Module-level entry point. Constructs an
-    :class:`OrchestratorEvalCommand` against the real stdout/stderr
-    and delegates."""
-    return OrchestratorEvalCommand().run(argv)
+_INSTANCE = OrchestratorEvalCommand()
+main = _INSTANCE.main
 
 
 # Re-export for callers that want to programmatically configure a

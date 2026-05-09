@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import threading
 from pathlib import Path
@@ -39,27 +40,39 @@ _LOCK = threading.Lock()
 # server-side guard rail agree.
 MIN_INTERVAL_SECONDS = 60
 
+# Default cooldown applied when a persisted schedule doesn't carry
+# ``interval_seconds`` (defensive; the writer always emits one).
+_DEFAULT_INTERVAL_SECONDS = 3600
 
-def _normalize(schedule: dict[str, Any]) -> dict[str, Any]:
-    """Backfill missing fields on a schedule loaded from disk so
-    callers never have to defend against absent keys.
-
-    Currently only ``enabled`` (added v1.0.279) needs backfill —
-    older persisted entries default to ``True`` so an upgrade
-    doesn't pause every existing schedule.
-    """
-    if "enabled" not in schedule:
-        schedule = {**schedule, "enabled": True}
-    return schedule
+_DEFAULT_CONFIG_ROOT = "/srv-config"
 
 
 class SchedulerService:
-    """Persistent scheduled task management."""
+    """Persistent scheduled task management.
+
+    Single shared filesystem-backed catalog; concurrent reads/writes
+    serialize via the module-level ``_LOCK``.
+    """
+
+    def normalize(self, schedule: dict[str, Any]) -> dict[str, Any]:
+        """Backfill missing fields on a schedule loaded from disk so
+        callers never have to defend against absent keys.
+
+        Currently only ``enabled`` (added v1.0.279) needs backfill —
+        older persisted entries default to ``True`` so an upgrade
+        doesn't pause every existing schedule.
+        """
+        if "enabled" not in schedule:
+            return {**schedule, "enabled": True}
+        return schedule
 
     def get_schedules(self) -> dict[str, Any]:
         """Return all configured schedules."""
         with _LOCK:
-            schedules = [_normalize(s) for s in _load_schedules()]
+            schedules = [
+                self.normalize(s)
+                for s in sys.modules[__name__]._load_schedules()
+            ]
         return {"schedules": schedules, "count": len(schedules)}
 
     def add_schedule(
@@ -89,9 +102,9 @@ class SchedulerService:
             "enabled": bool(enabled),
         }
         with _LOCK:
-            schedules = _load_schedules()
+            schedules = sys.modules[__name__]._load_schedules()
             schedules.append(schedule)
-            _save_schedules(schedules)
+            sys.modules[__name__]._save_schedules(schedules)
         return {"status": "created", "schedule": schedule}
 
     def update_schedule(
@@ -121,11 +134,11 @@ class SchedulerService:
                 ),
             }
         with _LOCK:
-            schedules = _load_schedules()
+            schedules = sys.modules[__name__]._load_schedules()
             for i, s in enumerate(schedules):
                 if s.get("id") != schedule_id:
                     continue
-                updated = _normalize(dict(s))
+                updated = self.normalize(dict(s))
                 if action is not None:
                     if not action:
                         return {"error": "action cannot be empty"}
@@ -137,7 +150,7 @@ class SchedulerService:
                 if enabled is not None:
                     updated["enabled"] = bool(enabled)
                 schedules[i] = updated
-                _save_schedules(schedules)
+                sys.modules[__name__]._save_schedules(schedules)
                 return {"status": "updated", "schedule": updated}
         return {"error": f"Schedule {schedule_id} not found"}
 
@@ -151,12 +164,14 @@ class SchedulerService:
     def remove_schedule(self, schedule_id: int) -> dict[str, Any]:
         """Remove a schedule by ID."""
         with _LOCK:
-            schedules = _load_schedules()
+            schedules = sys.modules[__name__]._load_schedules()
             before = len(schedules)
-            schedules = [s for s in schedules if s.get("id") != schedule_id]
+            schedules = [
+                s for s in schedules if s.get("id") != schedule_id
+            ]
             if len(schedules) == before:
                 return {"error": f"Schedule {schedule_id} not found"}
-            _save_schedules(schedules)
+            sys.modules[__name__]._save_schedules(schedules)
         return {"status": "removed", "schedule_id": schedule_id}
 
     def get_due_actions(self) -> list[dict[str, Any]]:
@@ -169,59 +184,90 @@ class SchedulerService:
         now = time.time()
         due: list[dict[str, Any]] = []
         with _LOCK:
-            schedules = _load_schedules()
+            schedules = sys.modules[__name__]._load_schedules()
             changed = False
             for s in schedules:
-                normalized = _normalize(s)
+                normalized = self.normalize(s)
                 if not normalized.get("enabled", True):
                     continue
                 last_run = normalized.get("last_run", 0)
-                interval = normalized.get("interval_seconds", 3600)
+                interval = normalized.get(
+                    "interval_seconds", _DEFAULT_INTERVAL_SECONDS,
+                )
                 if (now - last_run) >= interval:
                     due.append(normalized)
                     s["last_run"] = now
                     changed = True
             if changed:
-                _save_schedules(schedules)
+                sys.modules[__name__]._save_schedules(schedules)
         return due
 
+    def schedules_path(self) -> Path:
+        """Return the on-disk schedules.json path.
 
-    @staticmethod
-    def _schedules_path() -> Path:
-        # Re-resolved on every call so tests that flip ``CONFIG_ROOT``
-        # via ``monkeypatch.setenv`` see the override immediately. The
-        # mkdir + path-join cost is negligible relative to the
-        # surrounding JSON read/write.
-        config_root = Path(os.environ.get("CONFIG_ROOT", "/srv-config"))
+        Re-resolved on every call so tests that flip ``CONFIG_ROOT``
+        via ``monkeypatch.setenv`` see the override immediately. The
+        mkdir + path-join cost is negligible relative to the
+        surrounding JSON read/write.
+        """
+        config_root = Path(
+            os.environ.get("CONFIG_ROOT", _DEFAULT_CONFIG_ROOT),
+        )
         ctrl_dir = config_root / ".controller"
         ctrl_dir.mkdir(parents=True, exist_ok=True)
         return ctrl_dir / "schedules.json"
 
-    @staticmethod
-    def _load_schedules() -> list[dict[str, Any]]:
-        path = _schedules_path()
+    def load_schedules(self) -> list[dict[str, Any]]:
+        """Read the persisted schedules list. Returns ``[]`` on a
+        missing file or unreadable JSON — the catalog is best-effort
+        and the dispatcher must never crash because of disk damage.
+        """
+        path = sys.modules[__name__]._schedules_path()
         if not path.is_file():
             return []
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             return []
 
-    @staticmethod
-    def _save_schedules(schedules: list[dict[str, Any]]) -> None:
-        path = _schedules_path()
-        path.write_text(json.dumps(schedules, indent=2), encoding="utf-8")
+    def save_schedules(self, schedules: list[dict[str, Any]]) -> None:
+        """Persist the schedules list to disk."""
+        path = sys.modules[__name__]._schedules_path()
+        path.write_text(
+            json.dumps(schedules, indent=2), encoding="utf-8",
+        )
 
 
-_instance = SchedulerService()
+_INSTANCE = SchedulerService()
 
-# Backward compat — callers use module-level functions
-get_schedules = _instance.get_schedules
-add_schedule = _instance.add_schedule
-update_schedule = _instance.update_schedule
-set_schedule_enabled = _instance.set_schedule_enabled
-remove_schedule = _instance.remove_schedule
-get_due_actions = _instance.get_due_actions
-_schedules_path = _instance._schedules_path
-_load_schedules = _instance._load_schedules
-_save_schedules = _instance._save_schedules
+# Backward-compat module-level aliases — every public + underscore
+# name on ``_INSTANCE`` is rebound here so callers that still do
+# ``scheduler.add_schedule(...)`` keep working, and so tests can
+# ``mock.patch("media_stack.api.services.scheduler.<name>")``. The
+# instance methods that go through ``sys.modules[__name__]._load_schedules``
+# pick up those patches because the indirection re-reads the module
+# attribute on every call.
+normalize = _INSTANCE.normalize
+get_schedules = _INSTANCE.get_schedules
+add_schedule = _INSTANCE.add_schedule
+update_schedule = _INSTANCE.update_schedule
+set_schedule_enabled = _INSTANCE.set_schedule_enabled
+remove_schedule = _INSTANCE.remove_schedule
+get_due_actions = _INSTANCE.get_due_actions
+_normalize = _INSTANCE.normalize
+_schedules_path = _INSTANCE.schedules_path
+_load_schedules = _INSTANCE.load_schedules
+_save_schedules = _INSTANCE.save_schedules
+
+
+__all__ = [
+    "MIN_INTERVAL_SECONDS",
+    "SchedulerService",
+    "add_schedule",
+    "get_due_actions",
+    "get_schedules",
+    "normalize",
+    "remove_schedule",
+    "set_schedule_enabled",
+    "update_schedule",
+]

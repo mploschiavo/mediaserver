@@ -119,26 +119,40 @@ class OrphanAdoptionFinder:
         return None
 
 
-def adopt_into_provider(provider, external_id: str, *,
-                        password: str, sso_groups: list[str]) -> dict[str, Any]:
-    """Replace credential + align groups on an existing provider user.
+class ProviderAdopter:
+    """Replaces credential + group state on an existing provider record.
 
-    Returns a per-step status map the caller can audit. Failures here
-    are non-fatal — adoption is better than a dangling ghost, so a
-    partial adoption with stale groups still wins over rejecting the
-    whole operation.
+    Carries no per-call state — instantiated once at module import as
+    ``_INSTANCE`` and exposed through the ``adopt_into_provider``
+    module-level alias so callers keep their function-style import
+    surface. Plain instance methods (no ``@staticmethod``) per the
+    ADR-0012 class-structure ratchet.
     """
-    status: dict[str, Any] = {}
-    try:
-        if getattr(provider.capabilities, "supports_password", False):
-            provider.set_password(external_id, password)
-            status["set_password"] = "ok"
-    except Exception as exc:  # noqa: BLE001
-        status["set_password"] = f"error: {str(exc)[:_ERR_LEN]}"
-    try:
-        if getattr(provider.capabilities, "supports_groups", False):
-            provider.update_user(external_id, groups=list(sso_groups or []))
-            status["update_user"] = "ok"
-    except Exception as exc:  # noqa: BLE001
-        status["update_user"] = f"error: {str(exc)[:_ERR_LEN]}"
-    return status
+
+    def adopt(self, provider, external_id: str, *,
+              password: str, sso_groups: list[str]) -> dict[str, Any]:
+        """Replace credential + align groups on an existing provider user.
+
+        Returns a per-step status map the caller can audit. Failures
+        here are non-fatal — adoption is better than a dangling ghost,
+        so a partial adoption with stale groups still wins over
+        rejecting the whole operation.
+        """
+        status: dict[str, Any] = {}
+        try:
+            if getattr(provider.capabilities, "supports_password", False):
+                provider.set_password(external_id, password)
+                status["set_password"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            status["set_password"] = f"error: {str(exc)[:_ERR_LEN]}"
+        try:
+            if getattr(provider.capabilities, "supports_groups", False):
+                provider.update_user(external_id, groups=list(sso_groups or []))
+                status["update_user"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            status["update_user"] = f"error: {str(exc)[:_ERR_LEN]}"
+        return status
+
+
+_INSTANCE = ProviderAdopter()
+adopt_into_provider = _INSTANCE.adopt

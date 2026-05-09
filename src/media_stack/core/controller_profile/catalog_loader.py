@@ -38,18 +38,23 @@ _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES = (
 )
 
 
-def _resolve_profile_catalog() -> Path:
-    for p in _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES:
-        if p.is_file():
-            return p
-    return _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES[0]
-
-
-_DEFAULT_PROFILE_CATALOG_PATH = _resolve_profile_catalog()
-
-
-
 class CatalogLoaderService:
+    """Loader + cache wrapper for the bootstrap profile catalog YAML.
+
+    Per ADR-0012, the previously module-level helper
+    ``_resolve_profile_catalog`` is folded onto this class as the
+    plain instance method ``resolve_profile_catalog`` (no
+    ``@staticmethod``). The module-level singleton ``_INSTANCE``
+    carries aliases for every public + underscore-prefixed name so
+    callers and ``mock.patch`` users keep resolving unchanged.
+    """
+
+    def resolve_profile_catalog(self) -> Path:
+        for p in _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES:
+            if p.is_file():
+                return p
+        return _DEFAULT_PROFILE_CATALOG_PATH_CANDIDATES[0]
+
     @staticmethod
     def _resolve_catalog_path(path: Path | None = None) -> Path:
         if path is not None:
@@ -58,8 +63,8 @@ class CatalogLoaderService:
         if env_path:
             return Path(env_path).expanduser()
         return _DEFAULT_PROFILE_CATALOG_PATH
-    
-    
+
+
     @staticmethod
     @lru_cache(maxsize=8)
     def _load_bootstrap_profile_catalog_cached(path_token: str) -> Any:
@@ -361,24 +366,35 @@ class CatalogLoaderService:
             "guide_urls": guide_urls,
             "default_program_icon_url": default_program_icon_url,
         }
-    
-    
+
+
     def load_bootstrap_profile_catalog(self, path: Path | None = None) -> Any:
         resolved_path = _resolve_catalog_path(path)
         return _load_bootstrap_profile_catalog_cached(str(resolved_path))
-    
-    
+
+
     def clear_catalog_cache(self) -> None:
         """Clear the LRU cache for the catalog loader.
-    
+
         Call this in tests that modify the service registry (SERVICES) to
         prevent stale catalog data from leaking across test boundaries.
         """
         _load_bootstrap_profile_catalog_cached.cache_clear()
 
 
-_instance = CatalogLoaderService()
-load_bootstrap_profile_catalog = _instance.load_bootstrap_profile_catalog
-clear_catalog_cache = _instance.clear_catalog_cache
+# Module-level singleton + aliases (ADR-0012 pattern).
+_INSTANCE = CatalogLoaderService()
+
+# Module-level alias for the folded-on ``resolve_profile_catalog``
+# helper preserves the historical underscore-prefixed import surface
+# (``_resolve_profile_catalog``).
+_resolve_profile_catalog = _INSTANCE.resolve_profile_catalog
+
+# Resolved at import time so ``_resolve_catalog_path``'s default branch
+# stays a constant lookup.
+_DEFAULT_PROFILE_CATALOG_PATH = _resolve_profile_catalog()
+
+load_bootstrap_profile_catalog = _INSTANCE.load_bootstrap_profile_catalog
+clear_catalog_cache = _INSTANCE.clear_catalog_cache
 _load_bootstrap_profile_catalog_cached = CatalogLoaderService._load_bootstrap_profile_catalog_cached
-_resolve_catalog_path = _instance._resolve_catalog_path
+_resolve_catalog_path = _INSTANCE._resolve_catalog_path

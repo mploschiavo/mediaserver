@@ -2195,12 +2195,26 @@ class ApiKeyDiscoveryJobAdapters:
 # definition time).
 
 
-def _self_module():
-    """Return this module from ``sys.modules`` so internal cross-class
+class _ModuleSelfLookup:
+    """Resolve this module from ``sys.modules`` so internal cross-class
     calls hit the module attribute — and therefore any active
     ``mock.patch`` on it — instead of the bound method captured at
-    class-definition time."""
-    return sys.modules[__name__]
+    class-definition time.
+
+    Held as a singleton + module-level alias (``_self_module``) so
+    every call site reads as ``_self_module()`` and intercepts the
+    same way regardless of which class invoked it.
+    """
+
+    def __init__(self, module_name: str) -> None:
+        self._module_name = module_name
+
+    def get(self) -> Any:
+        return sys.modules[self._module_name]
+
+
+_MODULE_SELF_LOOKUP = _ModuleSelfLookup(__name__)
+_self_module = _MODULE_SELF_LOOKUP.get
 
 
 _HTTP_REQUEST_FACTORY = _HttpRequestFactory()

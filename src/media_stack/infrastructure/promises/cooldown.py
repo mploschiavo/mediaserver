@@ -39,16 +39,35 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_TRANSIENT_COOLDOWN_SECONDS = 30.0
 _DEFAULT_PERMANENT_COOLDOWN_SECONDS = 300.0
+_DEFAULT_CONFIG_ROOT = "/srv-config"
+_CONTROLLER_STATE_DIR = ".controller"
+_PROMISE_STATE_FILENAME = "promise_state.json"
 
 
-def default_state_path() -> Path:
-    """Sibling to ``run-history.jsonl`` so existing PVC/bind mounts
+class _StatePathResolver:
+    """Resolve the on-disk path for ``promise_state.json``.
+
+    Sibling to ``run-history.jsonl`` so existing PVC/bind mounts
     cover both files automatically. Falls back to ``/srv-config``
     when ``CONFIG_ROOT`` env is unset — matches the
     ``resolve_run_history_path()`` convention so both files always
-    land in the same directory."""
-    config_root = (os.environ.get("CONFIG_ROOT") or "/srv-config").strip()
-    return Path(config_root) / ".controller" / "promise_state.json"
+    land in the same directory.
+    """
+
+    def __init__(
+        self,
+        *,
+        default_root: str = _DEFAULT_CONFIG_ROOT,
+        state_dir: str = _CONTROLLER_STATE_DIR,
+        filename: str = _PROMISE_STATE_FILENAME,
+    ) -> None:
+        self._default_root = default_root
+        self._state_dir = state_dir
+        self._filename = filename
+
+    def default_state_path(self) -> Path:
+        config_root = (os.environ.get("CONFIG_ROOT") or self._default_root).strip()
+        return Path(config_root) / self._state_dir / self._filename
 
 
 class CooldownTracker:
@@ -204,6 +223,10 @@ class CooldownTracker:
     def all_attempts(self) -> Mapping[str, PromiseAttempt]:
         with self._lock:
             return dict(self._attempts)
+
+
+_STATE_PATH_RESOLVER = _StatePathResolver()
+default_state_path = _STATE_PATH_RESOLVER.default_state_path
 
 
 __all__ = ["CooldownTracker", "default_state_path"]

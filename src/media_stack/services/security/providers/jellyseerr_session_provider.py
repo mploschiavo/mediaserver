@@ -118,29 +118,52 @@ class JellyseerrSessionProvider:
         return False
 
 
-def from_env(
-    env: dict[str, str] | None = None,
-    http_client: HttpClient | None = None,
-) -> JellyseerrSessionProvider | None:
-    """Build the Jellyseerr session provider from controller env.
+class _JellyseerrSessionProviderFactory:
+    """Construct the env-driven ``JellyseerrSessionProvider``.
 
-    Returns ``None`` when the API key is unset — there's nothing to
-    probe and the provider would just register a permanent no-op.
+    Folded onto a class per ADR-0012 so the module has zero top-level
+    function defs. The historical ``from_env`` public name is
+    preserved as a module-level alias bound to ``build()`` so existing
+    callers and ``__all__`` consumers keep resolving.
     """
-    from media_stack.core.service_registry.registry import service_internal_url
-    e = env if env is not None else os.environ
-    url = (e.get("JELLYSEERR_URL") or service_internal_url("jellyseerr")).strip()
-    api_key = (e.get("JELLYSEERR_API_KEY") or "").strip()
-    if not url or not api_key:
-        _log.info(
-            "jellyseerr session provider not configured "
-            "(url=%r, api_key=%s)",
-            url, "set" if api_key else "missing",
+
+    def build(
+        self,
+        env: dict[str, str] | None = None,
+        http_client: HttpClient | None = None,
+    ) -> JellyseerrSessionProvider | None:
+        """Build the Jellyseerr session provider from controller env.
+
+        Returns ``None`` when the API key is unset — there's nothing
+        to probe and the provider would just register a permanent
+        no-op.
+        """
+        from media_stack.core.service_registry.registry import (
+            service_internal_url,
         )
-        return None
-    return JellyseerrSessionProvider(
-        base_url=url, api_key=api_key, http_client=http_client,
-    )
+        e = env if env is not None else os.environ
+        url = (
+            e.get("JELLYSEERR_URL")
+            or service_internal_url("jellyseerr")
+        ).strip()
+        api_key = (e.get("JELLYSEERR_API_KEY") or "").strip()
+        if not url or not api_key:
+            _log.info(
+                "jellyseerr session provider not configured "
+                "(url=%r, api_key=%s)",
+                url, "set" if api_key else "missing",
+            )
+            return None
+        return JellyseerrSessionProvider(
+            base_url=url, api_key=api_key, http_client=http_client,
+        )
+
+
+# Module-level singleton + alias so the historical ``from_env`` public
+# import surface keeps resolving for any caller that imported it by
+# name. ADR-0012 rule 10.
+_INSTANCE = _JellyseerrSessionProviderFactory()
+from_env = _INSTANCE.build
 
 
 __all__ = ["JellyseerrSessionProvider", "from_env"]
