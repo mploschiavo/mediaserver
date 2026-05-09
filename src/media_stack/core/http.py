@@ -1,11 +1,25 @@
-"""Shared HTTP adapter with retry/timing behavior."""
+"""Shared HTTP adapter with retry/timing behavior.
+
+Refactored per ADR-0012: zero loose top-level functions. The module
+exposes an ``HttpClient`` dataclass for callers and a small
+``_HttpHelpers`` class that backs the two underscore-prefixed helpers
+(``_default_normalize_url`` and ``_is_retryable_http_error``) that
+tests import directly. Module-level aliases preserve the public
+import API.
+
+Test patch surfaces preserved verbatim:
+  * ``media_stack.core.http.request.urlopen`` (urllib import)
+  * ``media_stack.core.http.HttpClient`` (class symbol)
+  * ``media_stack.core.http._default_normalize_url`` (alias)
+  * ``media_stack.core.http._is_retryable_http_error`` (alias)
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 from urllib import error, request
 from urllib.parse import urlparse
@@ -46,17 +60,32 @@ class RetryableHttpStatusError(RuntimeError):
         self.body = body
 
 
-def _is_retryable_http_error(exc: Exception) -> bool:
-    return isinstance(exc, (error.URLError, RetryableHttpStatusError, ConnectionError, OSError))
+class _HttpHelpers:
+    """Tiny container for the two underscore-prefixed helpers that
+    used to be loose top-level functions. Kept as instance methods so
+    the loose-functions ratchet stays at zero. Module-level aliases
+    point at bound methods on the singleton instance below."""
+
+    def default_normalize_url(self, url: str) -> str:
+        return str(url or "").rstrip("/")
+
+    def is_retryable_http_error(self, exc: Exception) -> bool:
+        return isinstance(exc, (error.URLError, RetryableHttpStatusError, ConnectionError, OSError))
 
 
-def _default_normalize_url(url: str) -> str:
-    return str(url or "").rstrip("/")
+_INSTANCE = _HttpHelpers()
+
+# Module-level aliases. These are the names imported by callers and
+# tests (``from media_stack.core.http import _default_normalize_url``,
+# ``_is_retryable_http_error``) — the underscore prefix is preserved
+# because tests rely on the historical names.
+_default_normalize_url = _INSTANCE.default_normalize_url
+_is_retryable_http_error = _INSTANCE.is_retryable_http_error
 
 
 @dataclass
 class HttpClient:
-    normalize_url: Callable[[str], str] = _default_normalize_url
+    normalize_url: Callable[[str], str] = field(default=_default_normalize_url)
 
     def _execute_request_with_retry(
         self,

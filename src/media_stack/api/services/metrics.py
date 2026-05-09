@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 import urllib.request
 from collections import deque
@@ -25,119 +26,144 @@ from media_stack.core.service_registry.registry import service_internal_url
 #   * For durable timeseries, route Envoy /stats into Prometheus via
 #     the existing /metrics endpoint and graph in Grafana.
 _TIMESERIES_MAX = 240
+_TIMESERIES_WINDOW_FLOOR_SECONDS = 60
+_TIMESERIES_DEFAULT_WINDOW_SECONDS = 1800
 _timeseries_buf: Deque[dict[str, Any]] = deque(maxlen=_TIMESERIES_MAX)
 _timeseries_lock = Lock()
 
 
-def _record_timeseries_sample(summary: dict[str, Any]) -> None:
-    """Append a compact sample of the latest admin-summary to the
-    rolling buffer. Called at the tail of ``get_envoy_admin_summary``
-    so any consumer of the panel doubles as a sampler. Duplicate
-    same-second samples are skipped (multi-tab clients racing the
-    same poll second).
-
-    Phase E (v1.0.250): per-cluster ``request_totals`` and
-    ``active_connections`` snapshots are captured too so the UI can
-    plot "which cluster is hot right now" over time. These are
-    mappings (cluster_id → count); the buffer-size cap (240 samples)
-    keeps memory bounded even when a deploy has 50+ services.
-    """
-    breakdown = summary.get("downstream_breakdown") or {}
-    healthy = sum(int(c.get("healthy", 0)) for c in summary.get("clusters", []))
-    total_hosts = sum(int(c.get("hosts", 0)) for c in summary.get("clusters", []))
-    active_per_cluster = {
-        str(k): int(v)
-        for k, v in (summary.get("active_connections") or {}).items()
-    }
-    rq_per_cluster = {
-        str(k): int(v)
-        for k, v in (summary.get("request_totals") or {}).items()
-    }
-    active = sum(active_per_cluster.values())
-    latency = {
-        str(k): {
-            "p50": (v or {}).get("p50"),
-            "p95": (v or {}).get("p95"),
-            "p99": (v or {}).get("p99"),
-        }
-        for k, v in (summary.get("request_p_latency_ms") or {}).items()
-    }
-    sample = {
-        "ts": int(time.time()),
-        "rq_total": int(breakdown.get("total", 0)),
-        "rq_2xx": int(breakdown.get("rq_2xx", 0)),
-        "rq_4xx": int(breakdown.get("rq_4xx", 0)),
-        "rq_5xx": int(breakdown.get("rq_5xx", 0)),
-        "healthy": healthy,
-        "total_hosts": total_hosts,
-        "active_cx": active,
-        "tls_errors": int(summary.get("tls_handshake_errors", 0) or 0),
-        # Phase E additions:
-        "rq_per_cluster": rq_per_cluster,
-        "active_per_cluster": active_per_cluster,
-        "latency_per_cluster": latency,
-    }
-    with _timeseries_lock:
-        if _timeseries_buf and _timeseries_buf[-1]["ts"] == sample["ts"]:
-            return
-        _timeseries_buf.append(sample)
-
-
-def get_envoy_timeseries(window_seconds: int = 1800) -> dict[str, Any]:
-    """Return rolling buffer samples within the last ``window_seconds``,
-    plus a derived per-bucket request-rate / error-rate series.
-
-    The buffer is populated as a side-effect of
-    ``get_envoy_admin_summary()`` calls (the Routing panel polls every
-    30s), so the response only reflects history since the panel was
-    first opened. Counters are monotonically increasing — request
-    rate is computed as the delta between adjacent samples divided by
-    the time gap.
-    """
-    now = int(time.time())
-    cutoff = now - max(60, int(window_seconds))
-    with _timeseries_lock:
-        samples = [s for s in _timeseries_buf if s["ts"] >= cutoff]
-    deltas: list[dict[str, Any]] = []
-    for prev, cur in zip(samples, samples[1:]):
-        dt = max(1, cur["ts"] - prev["ts"])
-        rq_per_s = max(0.0, (cur["rq_total"] - prev["rq_total"]) / dt)
-        err_per_s = max(
-            0.0,
-            ((cur["rq_4xx"] + cur["rq_5xx"])
-             - (prev["rq_4xx"] + prev["rq_5xx"])) / dt,
-        )
-        # Per-cluster delta — same monotonic-counter trick. Skip
-        # clusters present in cur but not prev (first-seen — no
-        # baseline).
-        rq_per_cluster_per_s: dict[str, float] = {}
-        prev_clusters = prev.get("rq_per_cluster") or {}
-        for cluster, rq_now in (cur.get("rq_per_cluster") or {}).items():
-            rq_then = prev_clusters.get(cluster)
-            if rq_then is None:
-                continue
-            rq_per_cluster_per_s[cluster] = round(
-                max(0.0, (rq_now - rq_then) / dt), 3,
-            )
-        deltas.append({
-            "ts": cur["ts"],
-            "rq_per_s": round(rq_per_s, 3),
-            "err_per_s": round(err_per_s, 3),
-            "active_cx": cur["active_cx"],
-            "healthy": cur["healthy"],
-            "total_hosts": cur["total_hosts"],
-            "rq_per_cluster_per_s": rq_per_cluster_per_s,
-        })
-    return {
-        "samples": samples,
-        "deltas": deltas,
-        "window_seconds": int(window_seconds),
-        "now": now,
-    }
-
-
 class MetricsService:
-    """Observability metrics: Prometheus, Envoy, RSS, Grafana."""
+    """Observability metrics: Prometheus, Envoy, RSS, Grafana.
+
+    Hosts both the per-request handlers (``get_prometheus_metrics``,
+    ``get_envoy_stats``, …) and the rolling-buffer machinery
+    (``record_timeseries_sample``, ``get_envoy_timeseries``) so every
+    metric concern lives on one class. The buffer + lock stay
+    module-level singletons so all instances share the same history
+    window.
+    """
+
+    def __init__(
+        self,
+        timeseries_buf: Deque[dict[str, Any]] = _timeseries_buf,
+        timeseries_lock: Lock = _timeseries_lock,
+        timeseries_window_floor_seconds: int = _TIMESERIES_WINDOW_FLOOR_SECONDS,
+        timeseries_default_window_seconds: int = _TIMESERIES_DEFAULT_WINDOW_SECONDS,
+    ) -> None:
+        self._timeseries_buf = timeseries_buf
+        self._timeseries_lock = timeseries_lock
+        self._timeseries_window_floor_seconds = timeseries_window_floor_seconds
+        self._timeseries_default_window_seconds = timeseries_default_window_seconds
+
+    def record_timeseries_sample(self, summary: dict[str, Any]) -> None:
+        """Append a compact sample of the latest admin-summary to the
+        rolling buffer. Called at the tail of ``get_envoy_admin_summary``
+        so any consumer of the panel doubles as a sampler. Duplicate
+        same-second samples are skipped (multi-tab clients racing the
+        same poll second).
+
+        Phase E (v1.0.250): per-cluster ``request_totals`` and
+        ``active_connections`` snapshots are captured too so the UI can
+        plot "which cluster is hot right now" over time. These are
+        mappings (cluster_id → count); the buffer-size cap (240 samples)
+        keeps memory bounded even when a deploy has 50+ services.
+        """
+        breakdown = summary.get("downstream_breakdown") or {}
+        healthy = sum(int(c.get("healthy", 0)) for c in summary.get("clusters", []))
+        total_hosts = sum(int(c.get("hosts", 0)) for c in summary.get("clusters", []))
+        active_per_cluster = {
+            str(k): int(v)
+            for k, v in (summary.get("active_connections") or {}).items()
+        }
+        rq_per_cluster = {
+            str(k): int(v)
+            for k, v in (summary.get("request_totals") or {}).items()
+        }
+        active = sum(active_per_cluster.values())
+        latency = {
+            str(k): {
+                "p50": (v or {}).get("p50"),
+                "p95": (v or {}).get("p95"),
+                "p99": (v or {}).get("p99"),
+            }
+            for k, v in (summary.get("request_p_latency_ms") or {}).items()
+        }
+        sample = {
+            "ts": int(time.time()),
+            "rq_total": int(breakdown.get("total", 0)),
+            "rq_2xx": int(breakdown.get("rq_2xx", 0)),
+            "rq_4xx": int(breakdown.get("rq_4xx", 0)),
+            "rq_5xx": int(breakdown.get("rq_5xx", 0)),
+            "healthy": healthy,
+            "total_hosts": total_hosts,
+            "active_cx": active,
+            "tls_errors": int(summary.get("tls_handshake_errors", 0) or 0),
+            # Phase E additions:
+            "rq_per_cluster": rq_per_cluster,
+            "active_per_cluster": active_per_cluster,
+            "latency_per_cluster": latency,
+        }
+        with self._timeseries_lock:
+            if self._timeseries_buf and self._timeseries_buf[-1]["ts"] == sample["ts"]:
+                return
+            self._timeseries_buf.append(sample)
+
+    def get_envoy_timeseries(self, window_seconds: int | None = None) -> dict[str, Any]:
+        """Return rolling buffer samples within the last ``window_seconds``,
+        plus a derived per-bucket request-rate / error-rate series.
+
+        The buffer is populated as a side-effect of
+        ``get_envoy_admin_summary()`` calls (the Routing panel polls every
+        30s), so the response only reflects history since the panel was
+        first opened. Counters are monotonically increasing — request
+        rate is computed as the delta between adjacent samples divided by
+        the time gap.
+        """
+        effective_window = (
+            self._timeseries_default_window_seconds
+            if window_seconds is None
+            else int(window_seconds)
+        )
+        now = int(time.time())
+        cutoff = now - max(self._timeseries_window_floor_seconds, effective_window)
+        with self._timeseries_lock:
+            samples = [s for s in self._timeseries_buf if s["ts"] >= cutoff]
+        deltas: list[dict[str, Any]] = []
+        for prev, cur in zip(samples, samples[1:]):
+            dt = max(1, cur["ts"] - prev["ts"])
+            rq_per_s = max(0.0, (cur["rq_total"] - prev["rq_total"]) / dt)
+            err_per_s = max(
+                0.0,
+                ((cur["rq_4xx"] + cur["rq_5xx"])
+                 - (prev["rq_4xx"] + prev["rq_5xx"])) / dt,
+            )
+            # Per-cluster delta — same monotonic-counter trick. Skip
+            # clusters present in cur but not prev (first-seen — no
+            # baseline).
+            rq_per_cluster_per_s: dict[str, float] = {}
+            prev_clusters = prev.get("rq_per_cluster") or {}
+            for cluster, rq_now in (cur.get("rq_per_cluster") or {}).items():
+                rq_then = prev_clusters.get(cluster)
+                if rq_then is None:
+                    continue
+                rq_per_cluster_per_s[cluster] = round(
+                    max(0.0, (rq_now - rq_then) / dt), 3,
+                )
+            deltas.append({
+                "ts": cur["ts"],
+                "rq_per_s": round(rq_per_s, 3),
+                "err_per_s": round(err_per_s, 3),
+                "active_cx": cur["active_cx"],
+                "healthy": cur["healthy"],
+                "total_hosts": cur["total_hosts"],
+                "rq_per_cluster_per_s": rq_per_cluster_per_s,
+            })
+        return {
+            "samples": samples,
+            "deltas": deltas,
+            "window_seconds": effective_window,
+            "now": now,
+        }
 
     def get_prometheus_metrics(self, cache: Any) -> str:
         """Generate Prometheus-format metrics from service health data."""
@@ -296,14 +322,12 @@ class MetricsService:
                     }
         except Exception as exc:  # noqa: BLE001
             out["stats_error"] = str(exc)[:80]
-        _record_timeseries_sample(out)
+        # Dispatch through the module-level alias so any test that
+        # monkey-patches ``metrics_mod._record_timeseries_sample``
+        # intercepts the call site cleanly (per ADR-0012 design
+        # principle 3 — module-level alias dispatch when tests patch).
+        sys.modules[__name__]._record_timeseries_sample(out)
         return out
-
-    def get_envoy_timeseries(self, window_seconds: int = 1800) -> dict[str, Any]:
-        """Thin instance-method shim that delegates to the module-level
-        ``get_envoy_timeseries`` so the buffer stays a single shared
-        deque instead of one-per-instance."""
-        return get_envoy_timeseries(window_seconds)
 
     def get_rss_feed(self, state: Any, cache: Any) -> str:
         """Generate RSS/Atom feed of action events and health changes.
@@ -380,15 +404,31 @@ class MetricsService:
         }
 
 
-_instance = MetricsService()
+_INSTANCE = MetricsService()
 
-# Backward compat — callers use module-level functions
-get_prometheus_metrics = _instance.get_prometheus_metrics
-get_envoy_stats = _instance.get_envoy_stats
-get_envoy_admin_summary = _instance.get_envoy_admin_summary
-# get_envoy_timeseries is already module-level (defined above the class
-# so it can be called from inside the class). Don't reassign it here —
-# `_instance.get_envoy_timeseries` is a thin shim around the module
-# function and reassigning would shadow the real implementation.
-get_rss_feed = _instance.get_rss_feed
-get_grafana_dashboard = _instance.get_grafana_dashboard
+# Backward-compat module-level aliases. Tests patch
+# ``media_stack.api.services.metrics.probe_services`` /
+# ``.urllib.request.urlopen`` / ``.time`` / call
+# ``metrics_mod._record_timeseries_sample`` and
+# ``metrics_mod._timeseries_buf`` directly (see
+# tests/unit/api/test_metrics_service.py).
+get_prometheus_metrics = _INSTANCE.get_prometheus_metrics
+get_envoy_stats = _INSTANCE.get_envoy_stats
+get_envoy_admin_summary = _INSTANCE.get_envoy_admin_summary
+get_envoy_timeseries = _INSTANCE.get_envoy_timeseries
+get_rss_feed = _INSTANCE.get_rss_feed
+get_grafana_dashboard = _INSTANCE.get_grafana_dashboard
+_record_timeseries_sample = _INSTANCE.record_timeseries_sample
+
+__all__ = [
+    "MetricsService",
+    "get_prometheus_metrics",
+    "get_envoy_stats",
+    "get_envoy_admin_summary",
+    "get_envoy_timeseries",
+    "get_rss_feed",
+    "get_grafana_dashboard",
+    "_record_timeseries_sample",
+    "_timeseries_buf",
+    "_timeseries_lock",
+]

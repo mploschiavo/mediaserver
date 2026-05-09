@@ -17,11 +17,18 @@ delegates the "is this known?" decision to
 report always agree. ``concurrent_session_spikes`` works off the
 aggregated session list so a user with one cookie and three
 Jellyfin apps counts as four.
+
+ADR-0012: helpers live as instance methods on
+``_SecurityReportHelpers`` with module-level aliases preserving the
+underscore-prefixed import + ``mock.patch`` surface
+(``_cutoff_iso``, ``_neg_iso``); ``SecurityReportService`` dispatches
+through ``sys.modules[__name__]`` so patches keep intercepting.
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -108,6 +115,53 @@ class ConcurrentSessionAlert:
         }
 
 
+# ---- Helpers (ADR-0012) ---------------------------------------------------
+
+
+class _SecurityReportHelpers:
+    """Pure helpers used by ``SecurityReportService``.
+
+    Plain instance methods only (ADR-0012). Module-level ``_INSTANCE``
+    plus aliases preserve the underscore-prefixed import + ``mock.patch``
+    surface (``_cutoff_iso``, ``_neg_iso``).
+    """
+
+    def cutoff_iso(self, *, hours: int) -> str:
+        """Compute an ISO ``since`` cutoff ``hours`` ago.
+
+        ``AuditLog`` compares ``since`` lexically against the entry's
+        timestamp. Entries are written with
+        ``isoformat(timespec="seconds")`` (``"...+00:00"``); we match
+        that shape to avoid ``Z`` vs ``+00:00`` ordering drift.
+        """
+        h = max(0, int(hours))
+        now_dt = parse_iso(utcnow_iso())
+        if now_dt is None:
+            # Defensive — a truly wedged clock falls through to "since
+            # forever" so the caller sees every entry.
+            return ""
+        cutoff = now_dt - timedelta(hours=h)
+        return cutoff.replace(microsecond=0).isoformat(timespec="seconds")
+
+    def neg_iso(self, s: str) -> tuple:
+        """Sort key that orders ``s`` descending under ascending sort.
+
+        Empty strings sort last; present strings have each codepoint
+        inverted so ascending = reverse chronological.
+        """
+        if not s:
+            return (1, "")
+        inverted = "".join(chr(0x10FFFF - ord(c)) for c in s)
+        return (0, inverted)
+
+
+_INSTANCE = _SecurityReportHelpers()
+
+# Module-level aliases for every public + underscore name (ADR-0012).
+_cutoff_iso = _INSTANCE.cutoff_iso
+_neg_iso = _INSTANCE.neg_iso
+
+
 # ---- Service --------------------------------------------------------------
 
 
@@ -149,7 +203,10 @@ class SecurityReportService:
         returned. Sorted by ``attempt_count`` desc, ties broken by
         ``last_seen`` desc.
         """
-        since_iso = _cutoff_iso(hours=since_hours)
+        # Dispatch through the module so ``mock.patch`` on the alias keeps
+        # intercepting (ADR-0012 design principle 3).
+        _module = sys.modules[__name__]
+        since_iso = _module._cutoff_iso(hours=since_hours)
         entries = self._recent_entries(
             actions=(LOGIN_FAILURE,), since=since_iso,
         )
@@ -167,7 +224,7 @@ class SecurityReportService:
             if acc.attempt_count < int(min_attempts):
                 continue
             out.append(acc.freeze())
-        out.sort(key=lambda c: (-c.attempt_count, _neg_iso(c.last_seen)))
+        out.sort(key=lambda c: (-c.attempt_count, _module._neg_iso(c.last_seen)))
         return out
 
     @requires_admin
@@ -184,7 +241,10 @@ class SecurityReportService:
         recent audit tail capped by ``since_hours`` — this is the
         operator's "what changed recently?" report.
         """
-        since_iso = _cutoff_iso(hours=since_hours)
+        # Dispatch through the module so ``mock.patch`` on the alias keeps
+        # intercepting (ADR-0012 design principle 3).
+        _module = sys.modules[__name__]
+        since_iso = _module._cutoff_iso(hours=since_hours)
         entries = self._recent_entries(
             actions=(LOGIN_SUCCESS,), since=since_iso,
         )
@@ -228,7 +288,7 @@ class SecurityReportService:
                 observed_at=ts,
                 provider=provider,
             ))
-        out.sort(key=lambda a: (_neg_iso(a.observed_at), a.username))
+        out.sort(key=lambda a: (_module._neg_iso(a.observed_at), a.username))
         return out
 
     @requires_admin
@@ -349,36 +409,6 @@ class _ClusterAccum:
             first_seen=self._first_seen,
             last_seen=self._last_seen,
         )
-
-
-def _cutoff_iso(*, hours: int) -> str:
-    """Compute an ISO ``since`` cutoff ``hours`` ago.
-
-    ``AuditLog`` compares ``since`` lexically against the entry's
-    timestamp. Entries are written with
-    ``isoformat(timespec="seconds")`` (``"...+00:00"``); we match
-    that shape to avoid ``Z`` vs ``+00:00`` ordering drift.
-    """
-    h = max(0, int(hours))
-    now_dt = parse_iso(utcnow_iso())
-    if now_dt is None:
-        # Defensive — a truly wedged clock falls through to "since
-        # forever" so the caller sees every entry.
-        return ""
-    cutoff = now_dt - timedelta(hours=h)
-    return cutoff.replace(microsecond=0).isoformat(timespec="seconds")
-
-
-def _neg_iso(s: str) -> tuple:
-    """Sort key that orders ``s`` descending under ascending sort.
-
-    Empty strings sort last; present strings have each codepoint
-    inverted so ascending = reverse chronological.
-    """
-    if not s:
-        return (1, "")
-    inverted = "".join(chr(0x10FFFF - ord(c)) for c in s)
-    return (0, inverted)
 
 
 __all__ = [

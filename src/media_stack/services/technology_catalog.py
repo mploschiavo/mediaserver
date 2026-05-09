@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -71,35 +72,44 @@ class ServarrTechnologyCatalog:
         return expanded
 
 
-def default_servarr_catalog() -> ServarrTechnologyCatalog:
-    manifests = load_plugin_manifests()
-    return build_servarr_catalog_from_manifests(manifests)
+class ServarrTechnologyCatalogBuilder:
+    """Builds :class:`ServarrTechnologyCatalog` instances from plugin manifests."""
 
+    def default_servarr_catalog(self) -> ServarrTechnologyCatalog:
+        manifests = load_plugin_manifests()
+        return sys.modules[__name__].build_servarr_catalog_from_manifests(manifests)
 
-def build_servarr_catalog_from_manifests(
-    manifests: list[PluginManifest],
-) -> ServarrTechnologyCatalog:
-    definitions: list[TechnologyDefinition] = []
-    for manifest in manifests:
-        role_map = manifest.adapter_classes
-        if not isinstance(role_map, dict):
-            continue
-        if str(role_map.get("servarr") or "").strip() == "":
-            continue
-        key = str(manifest.technology or "").strip().lower()
-        if not key:
-            continue
-        definitions.append(
-            TechnologyDefinition(
-                key=key,
-                aliases=tuple(alias for alias in manifest.aliases if alias and alias != key),
+    def build_servarr_catalog_from_manifests(
+        self,
+        manifests: list[PluginManifest],
+    ) -> ServarrTechnologyCatalog:
+        definitions: list[TechnologyDefinition] = []
+        for manifest in manifests:
+            role_map = manifest.adapter_classes
+            if not isinstance(role_map, dict):
+                continue
+            if str(role_map.get("servarr") or "").strip() == "":
+                continue
+            key = str(manifest.technology or "").strip().lower()
+            if not key:
+                continue
+            definitions.append(
+                TechnologyDefinition(
+                    key=key,
+                    aliases=tuple(alias for alias in manifest.aliases if alias and alias != key),
+                )
             )
-        )
 
-    if not definitions:
-        raise ValueError(
-            "No Servarr technology manifests discovered. "
-            "Expected at least one plugin manifest with adapter_classes.servarr."
-        )
+        if not definitions:
+            raise ValueError(
+                "No Servarr technology manifests discovered. "
+                "Expected at least one plugin manifest with adapter_classes.servarr."
+            )
 
-    return ServarrTechnologyCatalog(definitions=tuple(definitions))
+        return ServarrTechnologyCatalog(definitions=tuple(definitions))
+
+
+_BUILDER_INSTANCE = ServarrTechnologyCatalogBuilder()
+
+default_servarr_catalog = _BUILDER_INSTANCE.default_servarr_catalog
+build_servarr_catalog_from_manifests = _BUILDER_INSTANCE.build_servarr_catalog_from_manifests

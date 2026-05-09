@@ -67,23 +67,6 @@ class OpenApiYamlLoader:
         return self._cached_text
 
 
-_OPENAPI_LOADER = OpenApiYamlLoader()
-OPENAPI_YAML = _OPENAPI_LOADER.load_text()
-
-
-# Backwards-compat aliases for callers that previously imported
-# the legacy free symbols from ``handlers_get``.
-_OPENAPI_YAML = OPENAPI_YAML
-
-
-def _resolve_openapi_yaml() -> Path:
-    """Return the first candidate path that exists, falling back to
-    candidate[0] when none are present. Mirrors the legacy
-    ``handlers_get._resolve_openapi_yaml`` free function for any
-    test that imports it directly."""
-    return _OPENAPI_LOADER.resolve_path()
-
-
 class ServersBuilder:
     """Builds the OpenAPI ``servers`` list from the live routing config.
 
@@ -135,14 +118,17 @@ class ServersBuilder:
         return servers
 
 
+_OPENAPI_LOADER = OpenApiYamlLoader()
 _SERVERS_BUILDER = ServersBuilder()
+OPENAPI_YAML = _OPENAPI_LOADER.load_text()
 
-
-def _build_openapi_servers() -> list[dict]:
-    """Free-function alias so callers that imported the legacy symbol
-    from ``handlers_get`` keep working."""
-    return _SERVERS_BUILDER.build()
-
+# Backwards-compat aliases for callers that previously imported the
+# legacy free symbols from ``handlers_get``. Both underscore-prefixed
+# names dispatch through bound methods so any future test can patch
+# them via ``mock.patch.object`` and intercept call sites cleanly.
+_OPENAPI_YAML = OPENAPI_YAML
+_resolve_openapi_yaml = _OPENAPI_LOADER.resolve_path
+_build_openapi_servers = _SERVERS_BUILDER.build
 
 __all__ = [
     "OPENAPI_YAML",

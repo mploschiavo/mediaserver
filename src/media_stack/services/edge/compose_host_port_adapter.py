@@ -23,7 +23,6 @@ This is the Compose half of the design §6 matrix. K8s lives in
 from __future__ import annotations
 
 import os
-from typing import Any
 
 from media_stack.api.services.config.routing.schema_v2 import (
     Binding,
@@ -34,35 +33,10 @@ from .binding_adapter import ApplyPlan, ApplyPlanStep
 
 _DEFAULT_HTTP_PORT = 80
 _DEFAULT_HTTPS_PORT = 443
-
-
-def _bind_address(cfg: RoutingConfigV2) -> str:
-    """Return ``0.0.0.0`` (publicly bound) or ``127.0.0.1`` (loopback)
-    based on the exposure config."""
-    if not cfg.exposure.enabled:
-        return "127.0.0.1"
-    if cfg.exposure.binding == Binding.COMPOSE_LOOPBACK:
-        return "127.0.0.1"
-    return "0.0.0.0"
-
-
-def _ports_block(cfg: RoutingConfigV2) -> list[str]:
-    """Build the compose ``ports:`` list. Format:
-    ``"<bind>:<host_port>:<container_port>"``.
-
-    Default ports 80/443 unless the operator pinned a different
-    ``gateway_port`` (single-port workflows like dev environments).
-    """
-    bind = _bind_address(cfg)
-    http = _DEFAULT_HTTP_PORT
-    https = _DEFAULT_HTTPS_PORT
-    # If gateway_port is non-standard (eg 8443), expose just that.
-    if cfg.gateway_port and cfg.gateway_port not in (80, 443):
-        return [f"{bind}:{cfg.gateway_port}:8443"]
-    return [
-        f"{bind}:{http}:8080",
-        f"{bind}:{https}:8443",
-    ]
+_LOOPBACK_BIND = "127.0.0.1"
+_PUBLIC_BIND = "0.0.0.0"
+_DOCKER_SOCK_PATH = "/var/run/docker.sock"
+_KUBERNETES_ENV_VAR = "KUBERNETES_SERVICE_HOST"
 
 
 class ComposeHostPortAdapter:
@@ -77,14 +51,41 @@ class ComposeHostPortAdapter:
         # signal; the second protects against running on a developer
         # laptop without docker, which would also lack
         # KUBERNETES_SERVICE_HOST.
-        if os.environ.get("KUBERNETES_SERVICE_HOST"):
+        if os.environ.get(_KUBERNETES_ENV_VAR):
             return False
-        return os.path.exists("/var/run/docker.sock")
+        return os.path.exists(_DOCKER_SOCK_PATH)
+
+    def _bind_address(self, cfg: RoutingConfigV2) -> str:
+        """Return ``0.0.0.0`` (publicly bound) or ``127.0.0.1`` (loopback)
+        based on the exposure config."""
+        if not cfg.exposure.enabled:
+            return _LOOPBACK_BIND
+        if cfg.exposure.binding == Binding.COMPOSE_LOOPBACK:
+            return _LOOPBACK_BIND
+        return _PUBLIC_BIND
+
+    def _ports_block(self, cfg: RoutingConfigV2) -> list[str]:
+        """Build the compose ``ports:`` list. Format:
+        ``"<bind>:<host_port>:<container_port>"``.
+
+        Default ports 80/443 unless the operator pinned a different
+        ``gateway_port`` (single-port workflows like dev environments).
+        """
+        bind = self._bind_address(cfg)
+        http = _DEFAULT_HTTP_PORT
+        https = _DEFAULT_HTTPS_PORT
+        # If gateway_port is non-standard (eg 8443), expose just that.
+        if cfg.gateway_port and cfg.gateway_port not in (_DEFAULT_HTTP_PORT, _DEFAULT_HTTPS_PORT):
+            return [f"{bind}:{cfg.gateway_port}:8443"]
+        return [
+            f"{bind}:{http}:8080",
+            f"{bind}:{https}:8443",
+        ]
 
     def compute_apply_plan(self, cfg: RoutingConfigV2) -> ApplyPlan:
         plan = ApplyPlan()
-        ports = _ports_block(cfg)
-        bind = _bind_address(cfg)
+        ports = self._ports_block(cfg)
+        bind = self._bind_address(cfg)
 
         plan.steps.append(ApplyPlanStep(
             kind="compose.rewrite",
@@ -105,7 +106,7 @@ class ComposeHostPortAdapter:
             payload={"service": "envoy"},
         ))
 
-        if cfg.exposure.enabled and bind == "127.0.0.1":
+        if cfg.exposure.enabled and bind == _LOOPBACK_BIND:
             plan.warnings.append(
                 "exposure.enabled=true but binding resolves to "
                 "127.0.0.1 — public hostnames won't be reachable. "
@@ -113,3 +114,11 @@ class ComposeHostPortAdapter:
             )
 
         return plan
+
+
+# Module-level aliases — bound to an adapter instance so legacy callers
+# / tests that import the loose helpers keep working without the
+# top-level `def`s. Mirrors the pattern in ``k8s_ingress_adapter.py``.
+_INSTANCE = ComposeHostPortAdapter()
+_bind_address = _INSTANCE._bind_address
+_ports_block = _INSTANCE._ports_block

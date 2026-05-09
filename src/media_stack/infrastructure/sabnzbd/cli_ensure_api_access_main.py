@@ -287,30 +287,61 @@ class SabnzbdApiAccessService:
         return markers
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="bin/ensure-sabnzbd-api-access.sh",
-        description=(
-            "Ensures SABnzbd API is reachable by Arr apps inside the cluster by "
-            "reconciling host_whitelist and local_ranges in /config/sabnzbd.ini."
-        ),
+class EnsureSabnzbdApiAccessCommand:
+    """CLI command (ADR-0012) reconciling SABnzbd host_whitelist /
+    local_ranges / download paths so Arr clients can reach the API.
+
+    Wraps :class:`SabnzbdApiAccessConfig` and :class:`SabnzbdApiAccessService`
+    behind a parser/main entrypoint suitable for ``python -m``."""
+
+    PROG = "bin/ensure-sabnzbd-api-access.sh"
+    DESCRIPTION = (
+        "Ensures SABnzbd API is reachable by Arr apps inside the cluster by "
+        "reconciling host_whitelist and local_ranges in /config/sabnzbd.ini."
     )
-    return parser
 
-
-def main(argv: list[str] | None = None) -> int:
-    build_arg_parser().parse_args(argv)
-    logger = configure_logging()
-
-    try:
-        cfg = SabnzbdApiAccessConfig.from_env()
-        service = SabnzbdApiAccessService(
-            cfg=cfg, kube=KubernetesClient.from_environment(), logger=logger
+    def build_arg_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            prog=self.PROG,
+            description=self.DESCRIPTION,
         )
-        return service.run()
-    except (ConfigError, KubernetesError, MediaStackError) as exc:
-        log_event(logger, logging.ERROR, "sab.reconcile.failed", error=str(exc))
-        return 1
+        return parser
+
+    def build_service(
+        self,
+        cfg: SabnzbdApiAccessConfig,
+        logger: logging.Logger,
+    ) -> SabnzbdApiAccessService:
+        # NOTE: ADR-0012 — dispatch through ``sys.modules[__name__]`` so any
+        # future ``mock.patch.object(mod, "SabnzbdApiAccessService", ...)``
+        # or ``mock.patch.object(mod, "KubernetesClient", ...)`` keeps
+        # intercepting.
+        module = sys.modules[__name__]
+        kube_client_cls = getattr(module, "KubernetesClient")
+        service_cls = getattr(module, "SabnzbdApiAccessService")
+        return service_cls(
+            cfg=cfg,
+            kube=kube_client_cls.from_environment(),
+            logger=logger,
+        )
+
+    def main(self, argv: list[str] | None = None) -> int:
+        self.build_arg_parser().parse_args(argv)
+        logger = configure_logging()
+
+        try:
+            cfg = SabnzbdApiAccessConfig.from_env()
+            service = self.build_service(cfg=cfg, logger=logger)
+            return service.run()
+        except (ConfigError, KubernetesError, MediaStackError) as exc:
+            log_event(logger, logging.ERROR, "sab.reconcile.failed", error=str(exc))
+            return 1
+
+
+_COMMAND_INSTANCE = EnsureSabnzbdApiAccessCommand()
+build_arg_parser = _COMMAND_INSTANCE.build_arg_parser
+build_service = _COMMAND_INSTANCE.build_service
+main = _COMMAND_INSTANCE.main
 
 
 if __name__ == "__main__":

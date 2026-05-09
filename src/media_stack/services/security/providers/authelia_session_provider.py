@@ -33,6 +33,14 @@ Username mapping
 ``username`` field directly — Authelia stores the controller's
 canonical username natively (it IS the IdP), so no external_id
 translation is needed.
+
+Module shape
+------------
+Per ADR-0012, the provider class owns every former loose helper as
+an instance method (``_row_to_external``). The ``from_env`` factory
+lives on a sibling ``AutheliaSessionProviderFactory`` class held in
+a module-level ``_FACTORY_INSTANCE`` singleton. Module-level aliases
+preserve the public + underscore import API so callers don't change.
 """
 
 from __future__ import annotations
@@ -44,6 +52,7 @@ from typing import Any
 
 from media_stack.core.auth.users.provider import ExternalSession
 from media_stack.core.http import HttpClient
+from media_stack.core.service_registry.registry import service_internal_url
 
 _log = logging.getLogger("media_stack.security.authelia_session_provider")
 
@@ -136,7 +145,7 @@ class AutheliaSessionProvider:
                 continue
             if str(r.get("username", "")) != external_id:
                 continue
-            out.append(_row_to_external(r))
+            out.append(self._row_to_external(r))
         return out
 
     def revoke_sessions(self, external_id: str) -> None:
@@ -184,47 +193,67 @@ class AutheliaSessionProvider:
         except Exception as exc:  # noqa: BLE001
             _log.debug("authelia revoke %s failed: %s", session_id, exc)
 
+    def _row_to_external(self, r: dict[str, Any]) -> ExternalSession:
+        """Map an Authelia admin-API row to an ExternalSession.
 
-def _row_to_external(r: dict[str, Any]) -> ExternalSession:
-    """Map an Authelia admin-API row to an ExternalSession.
+        Falls back to empty strings for any missing field so the
+        aggregator's renderer never trips on None.
+        """
+        sid = str(r.get("id") or r.get("session_id") or "")
+        ip = str(r.get("ip") or r.get("remote_ip") or "")
+        ua = str(r.get("user_agent") or r.get("client") or "")
+        last = str(r.get("last_activity") or r.get("last_seen_at") or "")
+        return ExternalSession(
+            session_id=sid,
+            device=ua,
+            client=ua,
+            last_activity=last,
+            ip=ip,
+        )
 
-    Falls back to empty strings for any missing field so the
-    aggregator's renderer never trips on None.
+
+class AutheliaSessionProviderFactory:
+    """Factory wrapper that builds an ``AutheliaSessionProvider`` from env.
+
+    Carved out as a class so the previous module-level ``from_env``
+    helper has an instance to live on (per ADR-0012 — zero loose
+    top-level functions). Module-level alias ``from_env`` below
+    preserves the public import API.
     """
-    sid = str(r.get("id") or r.get("session_id") or "")
-    ip = str(r.get("ip") or r.get("remote_ip") or "")
-    ua = str(r.get("user_agent") or r.get("client") or "")
-    last = str(r.get("last_activity") or r.get("last_seen_at") or "")
-    return ExternalSession(
-        session_id=sid,
-        device=ua,
-        client=ua,
-        last_activity=last,
-        ip=ip,
-    )
+
+    def from_env(
+        self,
+        env: dict[str, str] | None = None,
+        http_client: HttpClient | None = None,
+    ) -> AutheliaSessionProvider | None:
+        """Build the Authelia session provider from the controller env.
+
+        Reads ``AUTHELIA_URL`` (default ``http://authelia:9091``) and
+        ``AUTHELIA_API_KEY`` (optional). Returns ``None`` only when no
+        URL is configured — construction otherwise always returns an
+        instance, with ``available`` flipped by the live probe.
+        """
+        e = env if env is not None else os.environ
+        url = (e.get("AUTHELIA_URL") or service_internal_url("authelia")).strip()
+        if not url:
+            return None
+        return AutheliaSessionProvider(
+            base_url=url,
+            api_key=e.get("AUTHELIA_API_KEY", "").strip(),
+            http_client=http_client,
+        )
 
 
-def from_env(
-    env: dict[str, str] | None = None,
-    http_client: HttpClient | None = None,
-) -> AutheliaSessionProvider | None:
-    """Build the Authelia session provider from the controller env.
+# Process-wide factory singleton — module-level alias preserves the
+# legacy ``from_env(...)`` import surface used by
+# ``session_aggregator_singletons._build_security_session_providers``.
+_FACTORY_INSTANCE = AutheliaSessionProviderFactory()
 
-    Reads ``AUTHELIA_URL`` (default ``http://authelia:9091``) and
-    ``AUTHELIA_API_KEY`` (optional). Returns ``None`` only when no
-    URL is configured — construction otherwise always returns an
-    instance, with ``available`` flipped by the live probe.
-    """
-    from media_stack.core.service_registry.registry import service_internal_url
-    e = env if env is not None else os.environ
-    url = (e.get("AUTHELIA_URL") or service_internal_url("authelia")).strip()
-    if not url:
-        return None
-    return AutheliaSessionProvider(
-        base_url=url,
-        api_key=e.get("AUTHELIA_API_KEY", "").strip(),
-        http_client=http_client,
-    )
+from_env = _FACTORY_INSTANCE.from_env
 
 
-__all__ = ["AutheliaSessionProvider", "from_env"]
+__all__ = [
+    "AutheliaSessionProvider",
+    "AutheliaSessionProviderFactory",
+    "from_env",
+]

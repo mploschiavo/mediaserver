@@ -2,6 +2,13 @@
 
 Platform code uses these lookups instead of checking implementation names
 directly, keeping service-specific knowledge in the app layer.
+
+ADR-0012 shape
+--------------
+Lookups live as plain instance methods on :class:`ServarrTechnologyTraits`
+(no ``@staticmethod``, no module-level loose helpers). A module-level
+singleton plus aliases preserve the existing import surface
+(``from ... import get_discovery_kickoff_traits``).
 """
 
 from __future__ import annotations
@@ -46,14 +53,43 @@ _IMPORT_LIST_TRAITS: dict[str, ImportListTraits] = {
 }
 
 
-def get_discovery_kickoff_traits(implementation: str) -> DiscoveryKickoffTraits | None:
-    """Look up discovery kickoff traits for a technology, or None if not applicable."""
-    return _DISCOVERY_KICKOFF_TRAITS.get(implementation.strip().lower())
+class ServarrTechnologyTraits:
+    """Bundle of per-technology trait lookups (ADR-0012 class form).
+
+    Instances are stateless; the module-level :data:`_INSTANCE` plus
+    aliases below are the canonical entry points so existing
+    ``from ... import get_discovery_kickoff_traits`` style imports keep
+    working unchanged.
+    """
+
+    def get_discovery_kickoff_traits(
+        self,
+        implementation: str,
+    ) -> DiscoveryKickoffTraits | None:
+        """Look up discovery kickoff traits for a technology, or None if not applicable."""
+        return _DISCOVERY_KICKOFF_TRAITS.get(implementation.strip().lower())
+
+    def get_import_list_traits(self, implementation: str) -> ImportListTraits:
+        """Look up import-list traits for a technology."""
+        return _IMPORT_LIST_TRAITS.get(
+            implementation.strip().lower(),
+            ImportListTraits(),
+        )
 
 
-def get_import_list_traits(implementation: str) -> ImportListTraits:
-    """Look up import-list traits for a technology."""
-    return _IMPORT_LIST_TRAITS.get(
-        implementation.strip().lower(),
-        ImportListTraits(),
-    )
+_INSTANCE = ServarrTechnologyTraits()
+
+# Module-level aliases preserve every public name so existing
+# ``from media_stack.domain.servarr.technologies.traits import
+# get_discovery_kickoff_traits`` style imports keep working unchanged.
+get_discovery_kickoff_traits = _INSTANCE.get_discovery_kickoff_traits
+get_import_list_traits = _INSTANCE.get_import_list_traits
+
+
+__all__ = [
+    "DiscoveryKickoffTraits",
+    "ImportListTraits",
+    "ServarrTechnologyTraits",
+    "get_discovery_kickoff_traits",
+    "get_import_list_traits",
+]

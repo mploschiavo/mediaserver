@@ -105,8 +105,11 @@ class TestHandlerContract:
         from media_stack.application.jobs.orchestrator_satisfy import (
             OrchestratorJobHandler,
         )
-        # Calling the static no-op should do nothing (return None) without raising.
-        assert OrchestratorJobHandler._no_op_emit(None, None, "probe") is None
+        # ADR-0012: ``_no_op_emit`` is a plain instance method (no
+        # ``@staticmethod``); call via an instance so binding supplies
+        # ``self``.
+        handler = OrchestratorJobHandler(env_provider={})
+        assert handler._no_op_emit(None, None, "probe") is None
 
     def test_returns_summary_fields_for_run_history(self) -> None:
         # JobRunner stores the result dict's fields verbatim — they

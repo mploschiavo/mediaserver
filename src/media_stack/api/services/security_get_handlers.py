@@ -40,6 +40,9 @@ _DEFAULT_LOOKBACK_DAYS = 90
 _DEFAULT_MIN_ATTEMPTS = 5
 _DEFAULT_THRESHOLD = 5
 
+_USER_LOGIN_HISTORY_PREFIX = "/api/users/"
+_USER_LOGIN_HISTORY_SUFFIX = "/login-history"
+
 
 class _SessionVisibilityGetHelper:
     """Dispatch session-visibility GETs to bound handler methods.
@@ -84,8 +87,13 @@ class _SessionVisibilityGetHelper:
         if fn is not None:
             fn(handler)
             return
-        if path.startswith("/api/users/") and path.endswith("/login-history"):
-            middle = path[len("/api/users/"):-len("/login-history")]
+        if (
+            path.startswith(_USER_LOGIN_HISTORY_PREFIX)
+            and path.endswith(_USER_LOGIN_HISTORY_SUFFIX)
+        ):
+            middle = path[
+                len(_USER_LOGIN_HISTORY_PREFIX):-len(_USER_LOGIN_HISTORY_SUFFIX)
+            ]
             if middle and "/" not in middle:
                 self._user_login_history(handler, middle)
                 return
@@ -94,6 +102,8 @@ class _SessionVisibilityGetHelper:
         )
 
     def _route_table(self) -> dict[str, Callable[[Any], None]]:
+        """Static path → method map. Lambdas pin keyword args for the
+        bans endpoints so the dispatch table stays a single dict."""
         return {
             "/api/sessions/active": self._active_sessions,
             "/api/security/failed-logins": self._failed_logins,
@@ -109,6 +119,7 @@ class _SessionVisibilityGetHelper:
         }
 
     def _serve(self, handler: Any, runner: Callable[[Actor], dict]) -> None:
+        """Resolve actor + run; ``RequestPlumbing`` translates errors."""
         self._plumb.serve(handler, self._actor_resolver, runner)
 
     # -- Admin endpoints -------------------------------------------------
@@ -134,7 +145,7 @@ class _SessionVisibilityGetHelper:
             dtos = self._aggregator_getter().list_all(actor=actor)
             payload = [d.to_dict() for d in dtos]
             if not payload and actor.is_authenticated:
-                payload.append(_synth_caller_session(actor))
+                payload.append(self._synth_caller_session(actor))
             return {"sessions": payload}
         self._serve(handler, _run)
 
@@ -265,7 +276,7 @@ class _SessionVisibilityGetHelper:
             )
             payload = [d.to_dict() for d in dtos]
             if not payload:
-                payload.append(_synth_caller_session(actor))
+                payload.append(self._synth_caller_session(actor))
             return {
                 "sessions": payload,
                 "current_session_id": self._plumb.current_session_id(handler),
@@ -282,7 +293,7 @@ class _SessionVisibilityGetHelper:
             store = self._token_store_getter()
             rows = list(store.list_all(owner_username=actor.username))
             rows.extend(
-                _legacy_owner_repr_matches(store, actor.username),
+                self._legacy_owner_repr_matches(store, actor.username),
             )
             return {"tokens": [r.to_dict() for r in rows]}
         self._serve(handler, _run)
@@ -323,65 +334,85 @@ class _SessionVisibilityGetHelper:
             return {"entries": list(entries)}
         self._serve(handler, _run)
 
+    # -- Helpers ---------------------------------------------------------
 
-def _legacy_owner_repr_matches(store: Any, username: str) -> list:
-    """Return tokens whose ``owner_username`` is a corrupted dataclass
-    repr that *embeds* this caller's real username.
+    def _legacy_owner_repr_matches(
+        self, store: Any, username: str,
+    ) -> list:
+        """Return tokens whose ``owner_username`` is a corrupted dataclass
+        repr that *embeds* this caller's real username.
 
-    See ``_my_tokens`` docstring for the bug history. The repr looks
-    like ``Actor(username='alice', roles=frozenset({'admin'}), ...)``
-    so we match on the literal substring ``username='<caller>'``. The
-    surrounding quotes pin the match — bare username substrings could
-    yield a false positive (e.g. an ``alice`` matcher hitting an
-    unrelated ``alicent`` token), but the quoted form only appears
-    inside an ``Actor(...)`` repr written by the broken code path.
-    Returns ``[]`` when ``username`` is empty or the store doesn't
-    expose ``list_all()``.
-    """
-    if not username:
-        return []
-    needle = f"username='{username}'"
-    try:
-        all_rows = list(store.list_all())
-    except TypeError:
-        # Some test stubs require an ``owner_username`` argument.
+        See ``_my_tokens`` docstring for the bug history. The repr looks
+        like ``Actor(username='alice', roles=frozenset({'admin'}), ...)``
+        so we match on the literal substring ``username='<caller>'``. The
+        surrounding quotes pin the match — bare username substrings could
+        yield a false positive (e.g. an ``alice`` matcher hitting an
+        unrelated ``alicent`` token), but the quoted form only appears
+        inside an ``Actor(...)`` repr written by the broken code path.
+        Returns ``[]`` when ``username`` is empty or the store doesn't
+        expose ``list_all()``.
+        """
+        if not username:
+            return []
+        needle = f"username='{username}'"
         try:
-            all_rows = list(store.list_all(owner_username=""))
+            all_rows = list(store.list_all())
+        except TypeError:
+            # Some test stubs require an ``owner_username`` argument.
+            try:
+                all_rows = list(store.list_all(owner_username=""))
+            except Exception:  # noqa: BLE001
+                return []
         except Exception:  # noqa: BLE001
             return []
-    except Exception:  # noqa: BLE001
-        return []
-    return [r for r in all_rows if needle in str(getattr(r, "owner_username", ""))]
+        return [
+            r for r in all_rows
+            if needle in str(getattr(r, "owner_username", ""))
+        ]
+
+    def _synth_caller_session(self, actor: Actor) -> dict:
+        """Mint a synthetic SessionDTO-shaped row for the current caller.
+
+        Used by ``/api/sessions/active`` when the cross-provider aggregate
+        is empty but the caller is clearly authenticated (the SSO case —
+        see ``_active_sessions`` docstring). The shape mirrors
+        ``SessionDTO.to_dict`` so the SPA's ``SessionsTable`` can render
+        it without a discriminator.
+
+        The row is marked ``revokable=False`` because the controller
+        didn't mint the underlying cookie (Authelia did) — the operator
+        revokes via the Authelia portal, not via this list. It's tagged
+        ``provider=actor.source_provider`` (typically ``"controller"``)
+        so the badge colour matches the rest of the column.
+        """
+        return {
+            "provider": actor.source_provider or "controller",
+            "session_id": "",
+            "username": actor.username,
+            "device": actor.user_agent,
+            "device_class": "",
+            "client": actor.user_agent,
+            "client_ip": actor.client_ip,
+            "first_seen_ip": False,
+            "connected_since": "",
+            "last_activity": "",
+            "revokable": False,
+        }
 
 
-def _synth_caller_session(actor: Actor) -> dict:
-    """Mint a synthetic SessionDTO-shaped row for the current caller.
-
-    Used by ``/api/sessions/active`` when the cross-provider aggregate
-    is empty but the caller is clearly authenticated (the SSO case —
-    see ``_active_sessions`` docstring). The shape mirrors
-    ``SessionDTO.to_dict`` so the SPA's ``SessionsTable`` can render
-    it without a discriminator.
-
-    The row is marked ``revokable=False`` because the controller
-    didn't mint the underlying cookie (Authelia did) — the operator
-    revokes via the Authelia portal, not via this list. It's tagged
-    ``provider=actor.source_provider`` (typically ``"controller"``)
-    so the badge colour matches the rest of the column.
-    """
-    return {
-        "provider": actor.source_provider or "controller",
-        "session_id": "",
-        "username": actor.username,
-        "device": actor.user_agent,
-        "device_class": "",
-        "client": actor.user_agent,
-        "client_ip": actor.client_ip,
-        "first_seen_ip": False,
-        "connected_since": "",
-        "last_activity": "",
-        "revokable": False,
-    }
+# Module-level aliases preserve the legacy public+underscore import
+# API. Callers (``users_get.py``, ``sessions_security_get.py``, the
+# helper test suite) access these dotted names directly. The
+# ``_SessionVisibilityGetHelper`` class export is what
+# ``mock.patch("…security_get_handlers._SessionVisibilityGetHelper")``
+# replaces in tests, so no separate alias is needed for the class.
+_INSTANCE = _SessionVisibilityGetHelper()
+_legacy_owner_repr_matches = _INSTANCE._legacy_owner_repr_matches
+_synth_caller_session = _INSTANCE._synth_caller_session
 
 
-__all__ = ["_SessionVisibilityGetHelper"]
+__all__ = [
+    "_SessionVisibilityGetHelper",
+    "_legacy_owner_repr_matches",
+    "_synth_caller_session",
+]

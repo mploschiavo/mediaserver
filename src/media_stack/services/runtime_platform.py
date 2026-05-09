@@ -9,9 +9,11 @@ import contextvars
 import json
 import os
 import re
+import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from media_stack.adapters.common import bool_cfg as _lib_bool_cfg
 from media_stack.adapters.common import coerce_list as _lib_coerce_list
@@ -39,8 +41,19 @@ _PREFIX_TO_LEVEL = {
     "CRED": 1, "ACTION": 1, "JOB": 1, "HEAL": 1,
     "WARN": 2, "ERR": 3, "ERROR": 3, "TRACE": 0,
 }
+_DEFAULT_LOG_LEVEL_NAME = "INFO"
+_INFO_LEVEL_VALUE = _LOG_LEVEL_ORDER[_DEFAULT_LOG_LEVEL_NAME]
+_BOOTSTRAP_WAIT_INTERVAL_ENV = "BOOTSTRAP_WAIT_INTERVAL_SECONDS"
+_BOOTSTRAP_WAIT_HEARTBEAT_ENV = "BOOTSTRAP_WAIT_HEARTBEAT_SECONDS"
+_BOOTSTRAP_WAIT_INTERVAL_DEFAULT = "3"
+_BOOTSTRAP_WAIT_HEARTBEAT_DEFAULT = "15"
+_LOG_LEVEL_ENV = "MEDIA_STACK_LOG_LEVEL"
+_HTTP_PROBE_TIMEOUT_SECONDS = 10
+_ENV_PLACEHOLDER_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+_NORMALIZE_TOKEN_RE = re.compile(r"[^a-z0-9]+")
+
 _current_log_level = _LOG_LEVEL_ORDER.get(
-    os.environ.get("MEDIA_STACK_LOG_LEVEL", "INFO").upper(), 1
+    os.environ.get(_LOG_LEVEL_ENV, _DEFAULT_LOG_LEVEL_NAME).upper(), _INFO_LEVEL_VALUE
 )
 
 
@@ -67,22 +80,16 @@ _current_action_tag: contextvars.ContextVar[str] = contextvars.ContextVar(
 )
 
 
-def get_current_action_tag() -> str:
-    """Return the active action name for the current execution context.
-
-    Empty string means no action is bound (SSE consumers treat the
-    empty tag as "untagged" the same way they did when
-    ``state.current_action`` was None).
-    """
-    return _current_action_tag.get()
-
-
 @contextlib.contextmanager
 def current_action_tag(name: str) -> Iterator[None]:
     """Bind ``name`` as the active action tag for the duration of the
     ``with`` block. Restores the previous tag on exit (so nested
     bindings — e.g. an action that spawns a sub-dispatch — unwind
     cleanly).
+
+    Stays as a module-level function: ``contextlib.contextmanager`` is
+    the canonical Python shape for this contextvar pattern (per the
+    pinned ratchet exemption in ADR-0005 Phase 5c.4c).
     """
     token = _current_action_tag.set(str(name or ""))
     try:
@@ -94,36 +101,69 @@ def current_action_tag(name: str) -> Iterator[None]:
 class RuntimePlatformService:
     """Wraps all runtime platform adapter functions."""
 
+    def get_current_action_tag(self) -> str:
+        """Return the active action name for the current execution context.
+
+        Empty string means no action is bound (SSE consumers treat the
+        empty tag as "untagged" the same way they did when
+        ``state.current_action`` was None).
+        """
+        return _current_action_tag.get()
+
     def set_log_level(self, level: str) -> str:
         global _current_log_level
         level = level.upper()
         if level not in _LOG_LEVEL_ORDER:
             return self.get_log_level()
         _current_log_level = _LOG_LEVEL_ORDER[level]
-        os.environ["MEDIA_STACK_LOG_LEVEL"] = level
+        os.environ[_LOG_LEVEL_ENV] = level
         return level
 
     def get_log_level(self) -> str:
         for name, val in _LOG_LEVEL_ORDER.items():
             if val == _current_log_level:
                 return name
-        return "INFO"
+        return _DEFAULT_LOG_LEVEL_NAME
 
-    def log(self, msg):
-        if _extract_level(str(msg)) < _current_log_level:
+    def log(self, msg: Any) -> None:
+        # Dispatch through the module alias so ``mock.patch`` of
+        # ``runtime_platform._extract_level`` keeps intercepting (the
+        # subprocess-log filter pattern + tests rely on this).
+        if sys.modules[__name__]._extract_level(str(msg)) < _current_log_level:
             return
         ts = time.strftime(ISO_8601_TZ_OFFSET)
         print(f"[{ts}] {msg}", flush=True)
 
-    def normalize_url(self, url):
+    def normalize_url(self, url: Any) -> str:
         return _lib_normalize_url(url)
 
-    def http_request(self, base_url, path, api_key=None, method="GET", payload=None, timeout=20):
-        return _lib_http_request(base_url, path, api_key=api_key, method=method, payload=payload, timeout=timeout)
+    def http_request(
+        self,
+        base_url: str,
+        path: str,
+        api_key: str | None = None,
+        method: str = "GET",
+        payload: Any = None,
+        timeout: int = 20,
+    ) -> tuple[int, dict, bytes]:
+        return _lib_http_request(
+            base_url, path,
+            api_key=api_key, method=method, payload=payload, timeout=timeout,
+        )
 
-    def wait_for_service(self, name, base_url, path, timeout_seconds):
-        interval = int(os.environ.get("BOOTSTRAP_WAIT_INTERVAL_SECONDS", "3"))
-        heartbeat = int(os.environ.get("BOOTSTRAP_WAIT_HEARTBEAT_SECONDS", "15"))
+    def wait_for_service(
+        self,
+        name: str,
+        base_url: str,
+        path: str,
+        timeout_seconds: int,
+    ) -> None:
+        interval = int(os.environ.get(
+            _BOOTSTRAP_WAIT_INTERVAL_ENV, _BOOTSTRAP_WAIT_INTERVAL_DEFAULT,
+        ))
+        heartbeat = int(os.environ.get(
+            _BOOTSTRAP_WAIT_HEARTBEAT_ENV, _BOOTSTRAP_WAIT_HEARTBEAT_DEFAULT,
+        ))
         interval = max(1, interval)
         heartbeat = max(interval, heartbeat)
         self.log(f"[DEBUG] wait_for_service: name={name}, url={base_url}{path}, "
@@ -137,7 +177,9 @@ class RuntimePlatformService:
         while time.time() < deadline:
             attempt += 1
             try:
-                status, _, _ = self.http_request(base_url, path, timeout=10)
+                status, _, _ = self.http_request(
+                    base_url, path, timeout=_HTTP_PROBE_TIMEOUT_SECONDS,
+                )
                 last_status = status
                 last_error = None
                 if 200 <= status < 500:
@@ -161,34 +203,34 @@ class RuntimePlatformService:
             f"Timed out waiting for {name} at {base_url}{path} after {elapsed}s "
             f"(attempts={attempt}, last_status={last_status}, last_error={last_error})")
 
-    def resolve_path(self, base_root, maybe_relative):
+    def resolve_path(self, base_root: str, maybe_relative: Any) -> Path:
         p = Path(str(maybe_relative))
         if p.is_absolute():
             return p
         return Path(base_root) / p
 
-    def normalize_base_path(self, path_value):
+    def normalize_base_path(self, path_value: Any) -> str:
         return _lib_normalize_base_path(path_value)
 
-    def parse_service_url(self, url, default_port):
+    def parse_service_url(self, url: Any, default_port: int) -> Any:
         return _lib_parse_service_url(url, default_port)
 
-    def to_int(self, value, fallback=None):
+    def to_int(self, value: Any, fallback: Any = None) -> Any:
         return _lib_to_int(value, fallback=fallback)
 
-    def coerce_list(self, value):
+    def coerce_list(self, value: Any) -> list:
         return _lib_coerce_list(value)
 
-    def bool_cfg(self, cfg, key, default):
+    def bool_cfg(self, cfg: Any, key: str, default: bool) -> bool:
         return _lib_bool_cfg(cfg, key, default)
 
-    def env_truthy(self, name, default=False):
+    def env_truthy(self, name: str, default: bool = False) -> bool:
         return _lib_env_truthy(name, default=default)
 
-    def load_bootstrap_default_json(self, filename, fallback):
+    def load_bootstrap_default_json(self, filename: str, fallback: Any) -> Any:
         return _lib_load_json_default(BOOTSTRAP_DEFAULTS_DIR, filename, fallback, log=self.log)
 
-    def deep_merge_objects(self, base_obj, override_obj):
+    def deep_merge_objects(self, base_obj: Any, override_obj: Any) -> Any:
         if not isinstance(base_obj, dict):
             base_obj = {}
         if not isinstance(override_obj, dict):
@@ -201,7 +243,7 @@ class RuntimePlatformService:
             out[key] = json.loads(json.dumps(value))
         return out
 
-    def field_map(self, field_list):
+    def field_map(self, field_list: Any) -> dict:
         out = {}
         for item in field_list or []:
             name = item.get("name")
@@ -210,60 +252,62 @@ class RuntimePlatformService:
             out[name] = item.get("value", "")
         return out
 
-    def field_list(self, mapping):
+    def field_list(self, mapping: dict) -> list:
         return [{"name": key, "value": value} for key, value in mapping.items()]
 
-    def normalize_token(self, value):
-        return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+    def normalize_token(self, value: Any) -> str:
+        return _NORMALIZE_TOKEN_RE.sub("", str(value or "").strip().lower())
 
-    def resolve_env_placeholder(self, value):
+    def resolve_env_placeholder(self, value: Any) -> Any:
         if isinstance(value, str):
             raw = value.strip()
-            match = re.fullmatch(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", raw)
+            match = _ENV_PLACEHOLDER_RE.fullmatch(raw)
             if match:
                 return os.environ.get(match.group(1), "")
         return value
 
-    def find_component_by_implementation(self, components, implementation):
+    def find_component_by_implementation(
+        self, components: Any, implementation: Any,
+    ) -> Any:
         target = str(implementation or "").strip()
         for component in components or []:
             if str((component or {}).get("implementation") or "").strip() == target:
                 return component
         return None
 
-
-    @staticmethod
-    def _extract_level(msg: str) -> int:
+    def _extract_level(self, msg: str) -> int:
         stripped = msg.lstrip()
         if stripped.startswith("["):
             bracket_end = stripped.find("]", 1)
             if bracket_end != -1:
                 prefix = stripped[1:bracket_end].upper()
-                return _PREFIX_TO_LEVEL.get(prefix, 1)
-        return 1
+                return _PREFIX_TO_LEVEL.get(prefix, _INFO_LEVEL_VALUE)
+        return _INFO_LEVEL_VALUE
 
 
-_instance = RuntimePlatformService()
-set_log_level = _instance.set_log_level
-get_log_level = _instance.get_log_level
-log = _instance.log
-normalize_url = _instance.normalize_url
-http_request = _instance.http_request
-wait_for_service = _instance.wait_for_service
-resolve_path = _instance.resolve_path
-normalize_base_path = _instance.normalize_base_path
-parse_service_url = _instance.parse_service_url
-to_int = _instance.to_int
-coerce_list = _instance.coerce_list
-bool_cfg = _instance.bool_cfg
-env_truthy = _instance.env_truthy
-load_bootstrap_default_json = _instance.load_bootstrap_default_json
-deep_merge_objects = _instance.deep_merge_objects
-field_map = _instance.field_map
-field_list = _instance.field_list
-normalize_token = _instance.normalize_token
-resolve_env_placeholder = _instance.resolve_env_placeholder
-find_component_by_implementation = _instance.find_component_by_implementation
+_INSTANCE = RuntimePlatformService()
+get_current_action_tag = _INSTANCE.get_current_action_tag
+set_log_level = _INSTANCE.set_log_level
+get_log_level = _INSTANCE.get_log_level
+log = _INSTANCE.log
+normalize_url = _INSTANCE.normalize_url
+http_request = _INSTANCE.http_request
+wait_for_service = _INSTANCE.wait_for_service
+resolve_path = _INSTANCE.resolve_path
+normalize_base_path = _INSTANCE.normalize_base_path
+parse_service_url = _INSTANCE.parse_service_url
+to_int = _INSTANCE.to_int
+coerce_list = _INSTANCE.coerce_list
+bool_cfg = _INSTANCE.bool_cfg
+env_truthy = _INSTANCE.env_truthy
+load_bootstrap_default_json = _INSTANCE.load_bootstrap_default_json
+deep_merge_objects = _INSTANCE.deep_merge_objects
+field_map = _INSTANCE.field_map
+field_list = _INSTANCE.field_list
+normalize_token = _INSTANCE.normalize_token
+resolve_env_placeholder = _INSTANCE.resolve_env_placeholder
+find_component_by_implementation = _INSTANCE.find_component_by_implementation
+_extract_level = _INSTANCE._extract_level
 
 __all__ = [
     "BOOTSTRAP_DEFAULTS_DIR",
@@ -293,4 +337,3 @@ __all__ = [
     "to_int",
     "wait_for_service",
 ]
-_extract_level = _instance._extract_level

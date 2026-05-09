@@ -44,6 +44,7 @@ working unchanged.
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeoutError
@@ -902,84 +903,125 @@ class _DefaultHistoryEmit:
 
 
 # ============================================================================
-# Module-level shims — preserve the existing function-call surface so
-# contract-resolved handlers (orchestrator_satisfy.py, the auto-heal
+# Module-level shim facade — preserve the existing function-call surface
+# so contract-resolved handlers (orchestrator_satisfy.py, the auto-heal
 # loop, the operator CLI) keep working without churn.
+#
+# ADR-0012: zero top-level FunctionDef. The historical
+# ``satisfy_promises`` / ``satisfy_promises_blocking`` callables are
+# bound module-level aliases off ``_INSTANCE`` of ``OrchestratorShims``.
+# Internal calls dispatch through ``sys.modules[__name__]`` so test
+# patches against either alias keep intercepting (ADR-0012 design
+# principle 3).
 # ============================================================================
 
 
-def satisfy_promises(
-    registry: list[Promise] | None = None,
-    *,
-    platform: str = "compose",
-    resolver: LifecycleResolver | None = None,
-    cooldown: CooldownTracker | None = None,
-    secrets: Mapping[str, str] | None = None,
-    dry_run: bool = False,
-    live_services: frozenset[str] | None = None,
-    history_emit: Any = None,
-    workers: int = _DEFAULT_PROBE_WORKERS,
-) -> TickSummary:
-    """Backwards-compat shim: delegates to a fresh
-    :class:`PromiseOrchestrator` per call. Equivalent to
-    ``PromiseOrchestrator(...).tick(...)`` and exists so existing
-    callers (orchestrator_satisfy handler, CLI, tests) keep working
-    unchanged.
+class OrchestratorShims:
+    """Class-based home for the legacy ``satisfy_promises`` /
+    ``satisfy_promises_blocking`` callables.
 
-    Construct a :class:`PromiseOrchestrator` directly when you need
-    to share state across multiple ticks (the blocking loop in
-    :meth:`PromiseOrchestrator.tick_until_done` already does)."""
-    return PromiseOrchestrator(
-        registry=registry,
-        resolver=resolver,
-        cooldown=cooldown,
-        history_emit=history_emit,
-        workers=workers,
-    ).tick(
-        platform=platform,
-        secrets=secrets,
-        dry_run=dry_run,
-        live_services=live_services,
-    )
+    Each method constructs a fresh :class:`PromiseOrchestrator` and
+    delegates. Tests + callers that imported the underscore-free
+    names continue to work because the module-level aliases below
+    bind to these instance methods.
+    """
+
+    def satisfy_promises(
+        self,
+        registry: list[Promise] | None = None,
+        *,
+        platform: str = "compose",
+        resolver: LifecycleResolver | None = None,
+        cooldown: CooldownTracker | None = None,
+        secrets: Mapping[str, str] | None = None,
+        dry_run: bool = False,
+        live_services: frozenset[str] | None = None,
+        history_emit: Any = None,
+        workers: int = _DEFAULT_PROBE_WORKERS,
+    ) -> TickSummary:
+        """Backwards-compat shim: delegates to a fresh
+        :class:`PromiseOrchestrator` per call. Equivalent to
+        ``PromiseOrchestrator(...).tick(...)`` and exists so existing
+        callers (orchestrator_satisfy handler, CLI, tests) keep
+        working unchanged.
+
+        Construct a :class:`PromiseOrchestrator` directly when you
+        need to share state across multiple ticks (the blocking loop
+        in :meth:`PromiseOrchestrator.tick_until_done` already does).
+        """
+        # Dispatch through the module so ``mock.patch`` of
+        # ``PromiseOrchestrator`` keeps intercepting (ADR-0012 design
+        # principle 3 — see test_orchestrator_blocking.py).
+        _module = sys.modules[__name__]
+        return _module.PromiseOrchestrator(
+            registry=registry,
+            resolver=resolver,
+            cooldown=cooldown,
+            history_emit=history_emit,
+            workers=workers,
+        ).tick(
+            platform=platform,
+            secrets=secrets,
+            dry_run=dry_run,
+            live_services=live_services,
+        )
+
+    def satisfy_promises_blocking(
+        self,
+        *,
+        timeout_seconds: float = _DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+        tick_interval_seconds: float = _DEFAULT_BLOCKING_TICK_INTERVAL_SECONDS,
+        sleep: Callable[[float], Any] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
+        registry: list[Promise] | None = None,
+        platform: str = "compose",
+        resolver: LifecycleResolver | None = None,
+        cooldown: CooldownTracker | None = None,
+        secrets: Mapping[str, str] | None = None,
+        dry_run: bool = False,
+        live_services: frozenset[str] | None = None,
+        history_emit: Any = None,
+        workers: int = _DEFAULT_PROBE_WORKERS,
+    ) -> BlockingSummary:
+        """Backwards-compat shim: delegates to
+        :meth:`PromiseOrchestrator.tick_until_done`. ADR-0005 Phase 1.
+        """
+        # Dispatch through the module so ``mock.patch`` of
+        # ``PromiseOrchestrator`` keeps intercepting (ADR-0012 design
+        # principle 3 — see test_orchestrator_blocking.py
+        # ``TestSatisfyPromisesBlockingShim``).
+        _module = sys.modules[__name__]
+        return _module.PromiseOrchestrator(
+            registry=registry,
+            resolver=resolver,
+            cooldown=cooldown,
+            history_emit=history_emit,
+            workers=workers,
+        ).tick_until_done(
+            timeout_seconds=timeout_seconds,
+            tick_interval_seconds=tick_interval_seconds,
+            platform=platform,
+            secrets=secrets,
+            dry_run=dry_run,
+            live_services=live_services,
+            sleep=sleep,
+            monotonic=monotonic,
+        )
 
 
-def satisfy_promises_blocking(
-    *,
-    timeout_seconds: float = _DEFAULT_BLOCKING_TIMEOUT_SECONDS,
-    tick_interval_seconds: float = _DEFAULT_BLOCKING_TICK_INTERVAL_SECONDS,
-    sleep: Callable[[float], Any] = time.sleep,
-    monotonic: Callable[[], float] = time.monotonic,
-    registry: list[Promise] | None = None,
-    platform: str = "compose",
-    resolver: LifecycleResolver | None = None,
-    cooldown: CooldownTracker | None = None,
-    secrets: Mapping[str, str] | None = None,
-    dry_run: bool = False,
-    live_services: frozenset[str] | None = None,
-    history_emit: Any = None,
-    workers: int = _DEFAULT_PROBE_WORKERS,
-) -> BlockingSummary:
-    """Backwards-compat shim: delegates to
-    :meth:`PromiseOrchestrator.tick_until_done`. ADR-0005 Phase 1."""
-    return PromiseOrchestrator(
-        registry=registry,
-        resolver=resolver,
-        cooldown=cooldown,
-        history_emit=history_emit,
-        workers=workers,
-    ).tick_until_done(
-        timeout_seconds=timeout_seconds,
-        tick_interval_seconds=tick_interval_seconds,
-        platform=platform,
-        secrets=secrets,
-        dry_run=dry_run,
-        live_services=live_services,
-        sleep=sleep,
-        monotonic=monotonic,
-    )
+# Module-level singleton + aliases (ADR-0012 pattern). The aliases
+# preserve the historical public callable names so contract YAMLs,
+# CLI imports (``cli.commands.orchestrator_eval_main``), and tests
+# that ``mock.patch("…orchestrator.satisfy_promises", …)`` keep
+# intercepting unchanged.
+_INSTANCE = OrchestratorShims()
+
+satisfy_promises = _INSTANCE.satisfy_promises
+satisfy_promises_blocking = _INSTANCE.satisfy_promises_blocking
 
 
 __all__ = [
+    "OrchestratorShims",
     "PromiseOrchestrator",
     "satisfy_promises",
     "satisfy_promises_blocking",

@@ -18,9 +18,10 @@ and in the orchestrator's INFO logs (grep-able for "tick history").
 No 50+ records-per-minute spam.
 
 The module-level ``satisfy_shadow`` and ``satisfy_blocking``
-functions are thin shims so contract YAMLs (``handler:
+callables are class-bound aliases (ADR-0012) so contract YAMLs
+(``handler:
 media_stack.application.jobs.orchestrator_satisfy:satisfy_shadow``)
-keep resolving against a stable callable; they delegate to
+keep resolving against a stable callable; they delegate to the
 singletons defined at the foot of this module.
 """
 
@@ -28,9 +29,11 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from typing import Any, Mapping
 
 from media_stack.application.jobs.framework import JobContext
+from media_stack.domain.services.promises import Promise, PromiseAttempt
 
 
 logger = logging.getLogger(__name__)
@@ -102,15 +105,24 @@ class OrchestratorJobHandler:
             return "k8s"
         return "compose"
 
-    @staticmethod
-    def _no_op_emit(promise, attempt, phase):  # noqa: ANN001
+    # ADR-0012: plain instance method (no ``@staticmethod``). The
+    # signature matches the ``history_emit`` callable contract — the
+    # orchestrator passes ``self._no_op_emit`` as the callback, so
+    # binding takes care of ``self`` and the orchestrator's
+    # ``(promise, attempt, phase)`` invocation lines up.
+    def _no_op_emit(
+        self,
+        promise: Promise | None,
+        attempt: PromiseAttempt | None,
+        phase: str,
+    ) -> None:
         """Discard per-promise records — the JobRunner-level
         RunRecord plus the cooldown state file already carry
         everything operators need."""
         return None
 
-    @staticmethod
     def _format_live_services(
+        self,
         live_services: "frozenset[str] | None",
     ) -> str:
         return (
@@ -308,33 +320,59 @@ class OrchestratorBootstrapJobHandler(OrchestratorJobHandler):
             return default
 
 
+class OrchestratorSatisfyShims:
+    """Class-based home for the contract-resolved entrypoints
+    ``satisfy_shadow`` / ``satisfy_blocking`` (ADR-0012).
+
+    Each method delegates to the matching module-level singleton
+    handler. The module-level aliases below bind to these instance
+    methods so contract YAMLs that name a function path keep
+    resolving to a stable callable.
+    """
+
+    def satisfy_shadow(self, ctx: JobContext) -> dict[str, Any]:
+        """Module-level entrypoint for the
+        ``orchestrator:satisfy-shadow`` contract job. Delegates to
+        the singleton :class:`OrchestratorShadowJobHandler`."""
+        # Dispatch through the module so tests that
+        # ``mock.patch`` ``_shadow_handler`` keep intercepting
+        # (ADR-0012 design principle 3).
+        _module = sys.modules[__name__]
+        return _module._shadow_handler.run(ctx)
+
+    def satisfy_blocking(self, ctx: JobContext) -> dict[str, Any]:
+        """Module-level entrypoint for the future
+        ``bootstrap:satisfy-promises`` contract job (ADR-0005 Phase 1
+        scaffolding). Delegates to the singleton
+        :class:`OrchestratorBootstrapJobHandler`."""
+        _module = sys.modules[__name__]
+        return _module._bootstrap_handler.run(ctx)
+
+
 # Module-level singletons — contract YAMLs reference the function
 # names below as ``handler: ...orchestrator_satisfy:satisfy_shadow``.
-# Keep the function form so the dispatcher can resolve a stable
+# Keep the function-call form so the dispatcher can resolve a stable
 # callable; instantiate the handler once at import time.
 
 _shadow_handler = OrchestratorShadowJobHandler()
 _bootstrap_handler = OrchestratorBootstrapJobHandler()
 
 
-def satisfy_shadow(ctx: JobContext) -> dict[str, Any]:
-    """Module-level entrypoint for the ``orchestrator:satisfy-shadow``
-    contract job. Delegates to the singleton
-    :class:`OrchestratorShadowJobHandler`."""
-    return _shadow_handler.run(ctx)
+# ADR-0012: zero top-level FunctionDef. The historical
+# ``satisfy_shadow`` / ``satisfy_blocking`` callables are now bound
+# instance methods of ``OrchestratorSatisfyShims``, exposed at module
+# scope through ``_INSTANCE`` so contract YAMLs (``handler:
+# …orchestrator_satisfy:satisfy_shadow``) keep resolving unchanged.
+_INSTANCE = OrchestratorSatisfyShims()
 
-
-def satisfy_blocking(ctx: JobContext) -> dict[str, Any]:
-    """Module-level entrypoint for the future
-    ``bootstrap:satisfy-promises`` contract job (ADR-0005 Phase 1
-    scaffolding; not yet wired into the bootstrap DAG). Delegates to
-    the singleton :class:`OrchestratorBootstrapJobHandler`."""
-    return _bootstrap_handler.run(ctx)
+satisfy_shadow = _INSTANCE.satisfy_shadow
+satisfy_blocking = _INSTANCE.satisfy_blocking
 
 
 __all__ = [
     "OrchestratorBootstrapJobHandler",
     "OrchestratorJobHandler",
+    "OrchestratorSatisfyShims",
     "OrchestratorShadowJobHandler",
     "satisfy_blocking",
     "satisfy_shadow",

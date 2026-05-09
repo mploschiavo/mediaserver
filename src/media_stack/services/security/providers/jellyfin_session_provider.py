@@ -19,6 +19,14 @@ sends ``X-Api-Key`` which Jellyfin treats as an alias. We match the
 existing ``JellyfinApiProvider`` pattern and use the ``api_key=``
 query parameter for revoke (where Jellyfin 10.11+ rejects header
 auth on DELETE endpoints).
+
+Module shape
+------------
+Per ADR-0012, the provider class owns every former loose helper as
+an instance method (``_row_to_external``). The ``from_env`` factory
+lives on a sibling ``JellyfinSessionProviderFactory`` class held in
+a module-level ``_FACTORY_INSTANCE`` singleton. Module-level aliases
+preserve the public + underscore import API so callers don't change.
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ from typing import Any
 
 from media_stack.core.auth.users.provider import ExternalSession
 from media_stack.core.http import HttpClient
+from media_stack.core.service_registry.registry import service_internal_url
 
 _log = logging.getLogger("media_stack.security.jellyfin_session_provider")
 
@@ -107,7 +116,7 @@ class JellyfinSessionProvider:
                 continue
             if str(r.get("UserName", "")) != external_id:
                 continue
-            out.append(_row_to_external(r))
+            out.append(self._row_to_external(r))
         return out
 
     def revoke_sessions(self, external_id: str) -> int:
@@ -172,46 +181,66 @@ class JellyfinSessionProvider:
             return False
         return status in _OK_DELETE_STATUSES
 
-
-def _row_to_external(r: dict[str, Any]) -> ExternalSession:
-    """Map a Jellyfin /Sessions row to an ExternalSession."""
-    client_name = str(r.get("Client", "") or "")
-    client_ver = str(r.get("ApplicationVersion", "") or "")
-    client = client_name + (f" {client_ver}" if client_ver else "")
-    device = str(r.get("DeviceName", "") or r.get("Device", "") or "")
-    return ExternalSession(
-        session_id=str(r.get("Id", "")),
-        device=device,
-        client=client.strip(),
-        last_activity=str(r.get("LastActivityDate", "") or ""),
-        ip=str(r.get("RemoteEndPoint", "") or ""),
-    )
-
-
-def from_env(
-    env: dict[str, str] | None = None,
-    http_client: HttpClient | None = None,
-) -> JellyfinSessionProvider | None:
-    """Build the Jellyfin session provider from controller env.
-
-    ``JELLYFIN_URL`` (default ``http://jellyfin:8096``) +
-    ``JELLYFIN_API_KEY`` (required — without it Jellyfin returns
-    401 and we'd register a permanently-unavailable provider).
-    """
-    from media_stack.core.service_registry.registry import service_internal_url
-    e = env if env is not None else os.environ
-    url = (e.get("JELLYFIN_URL") or service_internal_url("jellyfin")).strip()
-    api_key = (e.get("JELLYFIN_API_KEY") or "").strip()
-    if not url or not api_key:
-        _log.info(
-            "jellyfin session provider not configured "
-            "(url=%r, api_key=%s)",
-            url, "set" if api_key else "missing",
+    def _row_to_external(self, r: dict[str, Any]) -> ExternalSession:
+        """Map a Jellyfin /Sessions row to an ExternalSession."""
+        client_name = str(r.get("Client", "") or "")
+        client_ver = str(r.get("ApplicationVersion", "") or "")
+        client = client_name + (f" {client_ver}" if client_ver else "")
+        device = str(r.get("DeviceName", "") or r.get("Device", "") or "")
+        return ExternalSession(
+            session_id=str(r.get("Id", "")),
+            device=device,
+            client=client.strip(),
+            last_activity=str(r.get("LastActivityDate", "") or ""),
+            ip=str(r.get("RemoteEndPoint", "") or ""),
         )
-        return None
-    return JellyfinSessionProvider(
-        base_url=url, api_key=api_key, http_client=http_client,
-    )
 
 
-__all__ = ["JellyfinSessionProvider", "from_env"]
+class JellyfinSessionProviderFactory:
+    """Factory wrapper that builds a ``JellyfinSessionProvider`` from env.
+
+    Carved out as a class so the previous module-level ``from_env``
+    helper has an instance to live on (per ADR-0012 — zero loose
+    top-level functions). Module-level alias ``from_env`` below
+    preserves the public import API.
+    """
+
+    def from_env(
+        self,
+        env: dict[str, str] | None = None,
+        http_client: HttpClient | None = None,
+    ) -> JellyfinSessionProvider | None:
+        """Build the Jellyfin session provider from controller env.
+
+        ``JELLYFIN_URL`` (default ``http://jellyfin:8096``) +
+        ``JELLYFIN_API_KEY`` (required — without it Jellyfin returns
+        401 and we'd register a permanently-unavailable provider).
+        """
+        e = env if env is not None else os.environ
+        url = (e.get("JELLYFIN_URL") or service_internal_url("jellyfin")).strip()
+        api_key = (e.get("JELLYFIN_API_KEY") or "").strip()
+        if not url or not api_key:
+            _log.info(
+                "jellyfin session provider not configured "
+                "(url=%r, api_key=%s)",
+                url, "set" if api_key else "missing",
+            )
+            return None
+        return JellyfinSessionProvider(
+            base_url=url, api_key=api_key, http_client=http_client,
+        )
+
+
+# Process-wide factory singleton — module-level alias preserves the
+# legacy ``from_env(...)`` import surface used by
+# ``session_aggregator_singletons._build_security_session_providers``.
+_FACTORY_INSTANCE = JellyfinSessionProviderFactory()
+
+from_env = _FACTORY_INSTANCE.from_env
+
+
+__all__ = [
+    "JellyfinSessionProvider",
+    "JellyfinSessionProviderFactory",
+    "from_env",
+]
