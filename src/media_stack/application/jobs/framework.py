@@ -751,6 +751,11 @@ class JobContext:
         self._cfg_cache: dict[str, Any] | None = None
         self._profile_cache: dict[str, Any] | None = None
         self._cancelled = False
+        # ADR-0011 Phase 1 — domain is a leaf, ``Job.run`` reads
+        # the logger from ``ctx.logger`` instead of importing
+        # ``services.runtime_platform`` itself. Application layer
+        # binds the real callable here at construction time.
+        self.logger: Callable[[str], None] = runtime_platform.log
 
     @property
     def cancelled(self) -> bool:

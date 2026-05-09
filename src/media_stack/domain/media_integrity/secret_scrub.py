@@ -29,6 +29,10 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from media_stack.domain.media_integrity.servarr_http_error import (
+    ServarrHttpError,
+)
+
 
 _SECRET_QUERY_KEYS = {
     "apikey", "api_key", "token", "access_token", "auth",
@@ -88,28 +92,14 @@ def safe_exception_message(exc: BaseException, *, max_len: int = 500) -> str:
 
 
 def _structural_message(exc: BaseException) -> str | None:
-    """If we recognize the exception shape, format a clean message."""
-    # this domain module needs to recognise the
-    # ``ServarrHttpError`` shape (which currently lives in the adapters
-    # layer at ``adapters.media_integrity._servarr_base``). A direct
-    # ``from media_stack.adapters.media_integrity._servarr_base``
-    # import would trip the hexagonal domain→adapters layering ratchet,
-    # so we resolve through the legacy ``services.media_integrity``
-    # shim path — Python's ``sys.modules`` aliasing makes this the
-    # same class object either way. The cleanest fix is to lift
-    # ``ServarrHttpError`` (a pure exception type, no I/O) into the
-    # domain layer alongside this module and have the adapter base
-    # import it from here; deferred to Phase 16-F.
-    # Import lazily to avoid a cycle with the adapters module that
-    # raises ``ServarrHttpError`` and might import this module.
-    try:
-        from media_stack.services.media_integrity.adapters._servarr_base import (
-            ServarrHttpError,
-        )
-    except Exception:  # pragma: no cover — optional import guard
-        ServarrHttpError = None  # type: ignore[assignment]
+    """If we recognize the exception shape, format a clean message.
 
-    if ServarrHttpError is not None and isinstance(exc, ServarrHttpError):
+    ADR-0011 Phase 1: ``ServarrHttpError`` lives in the domain
+    layer alongside this scrubber, so the import is module-top
+    above and the lookup here is a straight ``isinstance``. The
+    legacy deferred-import-via-services-shim hack is gone.
+    """
+    if isinstance(exc, ServarrHttpError):
         status = getattr(exc, "status", 0)
         raw_url = getattr(exc, "url", "")
         safe_url = scrub_url(str(raw_url))

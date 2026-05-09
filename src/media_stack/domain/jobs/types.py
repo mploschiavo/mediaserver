@@ -139,6 +139,17 @@ class Job:
         exists only to satisfy the ``Job`` handler contract."""
         return {}
 
+    def _noop_logger(self, _msg: str) -> None:
+        """Default logger when ``ctx.logger`` is missing — tests that
+        build a stub JobContext without a logger drop messages instead
+        of crashing. The application layer's real ``JobContext.__init__``
+        binds ``runtime_platform.log`` so production never hits this.
+        Instance method (not staticmethod) per the ratchet discipline:
+        loose top-level functions are banned, and the static-method
+        count ratchets down — so the fallback hangs off the instance.
+        """
+        return None
+
     @staticmethod
     def normalize_source(source: str | None) -> str:
         """Coerce a caller-supplied source token into the persisted form.
@@ -172,19 +183,21 @@ class Job:
     def run(self, ctx: "JobContext") -> dict[str, Any]:
         """Run this job's handler, then sub-jobs. Checks prereqs first.
 
-        ``runtime_platform.log`` and ``CancelledError`` are imported
-        inside the function body to keep the domain module's top-level
-        import surface free of ``services.runtime_platform`` (which is
-        a platform / I/O layer).
+        ADR-0011 Phase 1: domain is a leaf in the hexagon — no
+        outbound media_stack imports. The logger is read from
+        ``ctx.logger`` (the application layer constructs JobContext
+        with the real ``runtime_platform.log`` callable bound).
+        Tests that build a stub JobContext without a logger get a
+        no-op, which keeps the call shape simple for callers.
         """
-        from media_stack.services import runtime_platform
+        log = getattr(ctx, "logger", None) or self._noop_logger
 
         # Check cancel before starting
         if ctx.cancelled:
             return {"status": "cancelled", "elapsed": 0}
 
-        runtime_platform.log(f"[JOB] {self.name}: starting")
-        runtime_platform.log(
+        log(f"[JOB] {self.name}: starting")
+        log(
             f"[DEBUG] Job {self.name}: requires={self.requires}, "
             f"sub_jobs=[{', '.join(s.name for s in self.sub_jobs)}], "
             f"handler={self.handler.__module__}.{self.handler.__name__}",
@@ -195,9 +208,7 @@ class Job:
         prereq_fail = self.check_prereqs(ctx)
         if prereq_fail:
             elapsed = round(time.time() - t0, 1)
-            runtime_platform.log(
-                f"[WAIT] {self.name}: {prereq_fail} ({elapsed}s)"
-            )
+            log(f"[WAIT] {self.name}: {prereq_fail} ({elapsed}s)")
             return {"status": "prereq_not_met", "reason": prereq_fail, "elapsed": elapsed}
 
         try:
@@ -205,14 +216,12 @@ class Job:
             if "skipped" in result:
                 reason = result["skipped"]
                 elapsed = round(time.time() - t0, 1)
-                runtime_platform.log(
-                    f"[WARN] {self.name}: SKIPPED — {reason} ({elapsed}s)"
-                )
+                log(f"[WARN] {self.name}: SKIPPED — {reason} ({elapsed}s)")
                 return {"status": "skipped", "elapsed": elapsed, **result}
             # Run sub-jobs (each checks its own prereqs)
             for sub in self.sub_jobs:
                 if ctx.cancelled:
-                    runtime_platform.log(
+                    log(
                         f"[ACTION] {self.name}: cancelled before sub-job {sub.name}"
                     )
                     break
@@ -221,24 +230,22 @@ class Job:
                 except CancelledError:
                     break
                 except Exception as exc:
-                    runtime_platform.log(f"[WARN] {self.name}/{sub.name}: {exc}")
+                    log(f"[WARN] {self.name}/{sub.name}: {exc}")
             if ctx.cancelled:
                 elapsed = round(time.time() - t0, 1)
                 return {"status": "cancelled", "elapsed": elapsed}
             elapsed = round(time.time() - t0, 1)
-            runtime_platform.log(f"[OK] {self.name}: complete ({elapsed}s)")
+            log(f"[OK] {self.name}: complete ({elapsed}s)")
             return {"status": "ok", "elapsed": elapsed, **result}
         except CancelledError:
             elapsed = round(time.time() - t0, 1)
-            runtime_platform.log(f"[ACTION] {self.name}: cancelled ({elapsed}s)")
+            log(f"[ACTION] {self.name}: cancelled ({elapsed}s)")
             return {"status": "cancelled", "elapsed": elapsed}
         except Exception as exc:
             elapsed = round(time.time() - t0, 1)
-            runtime_platform.log(f"[ERR] {self.name}: {exc} ({elapsed}s)")
+            log(f"[ERR] {self.name}: {exc} ({elapsed}s)")
             import traceback as _tb
-            runtime_platform.log(
-                f"[DEBUG] Job {self.name} traceback:\n{_tb.format_exc()}"
-            )
+            log(f"[DEBUG] Job {self.name} traceback:\n{_tb.format_exc()}")
             return {"status": "error", "error": str(exc)[:1000], "elapsed": elapsed}
 
 

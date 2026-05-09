@@ -70,17 +70,14 @@ class HttpClient(Protocol):
         ...
 
 
-class ServarrHttpError(RuntimeError):
-    """Non-2xx response from a Servarr API. Adapter surfaces rather
-    than swallowing; the enforcer/reconciler attaches it to a
-    ``failures`` entry so the UI can show "couldn't reach X"."""
-
-    def __init__(self, status: int, url: str, body: bytes) -> None:
-        self.status = status
-        self.url = url
-        self.body = body
-        snippet = body[:200].decode("utf-8", errors="replace")
-        super().__init__(f"{url} -> {status}: {snippet}")
+# ADR-0011 Phase 1 — ``ServarrHttpError`` lifted into the domain
+# layer (``domain/media_integrity/servarr_http_error.py``) so the
+# structural scrubber can recognise its shape without a domain →
+# adapters deferred import. Re-exported here for back-compat with
+# adapter code that imports from this module.
+from media_stack.domain.media_integrity.servarr_http_error import (
+    ServarrHttpError,
+)
 
 
 class UrllibHttpClient:
