@@ -42,14 +42,12 @@ What it does NOT catch
 from __future__ import annotations
 
 import functools
+import sys as _sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 from jsonschema import Draft202012Validator, RefResolver
-from jsonschema.exceptions import ValidationError
-
-import sys as _sys
 
 # Resolve openapi.yaml across deploy modes — same install-path bug
 # class as v1.0.231 / v1.0.235; see test_install_path_resolvers_ratchet.
@@ -61,180 +59,203 @@ _SPEC_PATH_CANDIDATES = (
 )
 
 
-def _resolve_spec_path() -> Path:
-    for p in _SPEC_PATH_CANDIDATES:
-        if p.is_file():
-            return p
-    return _SPEC_PATH_CANDIDATES[0]
+class ContractValidator:
+    """OpenAPI-driven response contract validator.
 
-
-_SPEC_PATH = _resolve_spec_path()
-
-
-@functools.lru_cache(maxsize=1)
-def _load_spec() -> dict[str, Any]:
-    """Load and cache the OpenAPI spec. The lru_cache means tests
-    that hit the validator hundreds of times only pay the YAML
-    parse once."""
-    with _SPEC_PATH.open("r", encoding="utf-8") as fh:
-        spec = yaml.safe_load(fh)
-    if not isinstance(spec, dict):
-        raise RuntimeError(f"openapi.yaml did not parse to a dict: {_SPEC_PATH}")
-    return spec
-
-
-def is_planned(spec: dict[str, Any], path: str) -> bool:
-    """True when the endpoint is marked ``x-status: planned`` — i.e.
-    documented in the spec ahead of the implementation. The contract
-    test skips planned endpoints because their live response is a
-    stub by design, not a contract violation."""
-    paths = spec.get("paths") or {}
-    entry = paths.get(path)
-    if not isinstance(entry, dict):
-        return False
-    get_op = entry.get("get")
-    if not isinstance(get_op, dict):
-        return False
-    return str(get_op.get("x-status") or "").lower() == "planned"
-
-
-def _resolve_get_200_schema(
-    spec: dict[str, Any], path: str,
-) -> dict[str, Any] | None:
-    """Walk the spec to ``paths.<path>.get.responses.'200'.content.
-    application/json.schema``. Returns the schema dict or ``None`` if
-    any leg is missing — the caller should treat ``None`` as "no
-    contract declared" and skip rather than fail."""
-    paths = spec.get("paths") or {}
-    entry = paths.get(path)
-    if not isinstance(entry, dict):
-        return None
-    get_op = entry.get("get")
-    if not isinstance(get_op, dict):
-        return None
-    responses = get_op.get("responses") or {}
-    # OpenAPI allows the 200 key as either int or str depending on
-    # how the YAML was authored. Try both forms.
-    r200 = responses.get("200") or responses.get(200)
-    if not isinstance(r200, dict):
-        return None
-    content = r200.get("content") or {}
-    media = content.get("application/json")
-    if not isinstance(media, dict):
-        return None
-    schema = media.get("schema")
-    if not isinstance(schema, dict):
-        return None
-    return schema
-
-
-def _normalize_openapi_3_0(node: Any) -> Any:
-    """Translate OpenAPI 3.0 idioms into JSON Schema 2020-12 so the
-    jsonschema validator honors them.
-
-    Specifically:
-    * ``nullable: true`` + ``type: X``  →  ``type: [X, "null"]`` and
-      drop the ``nullable`` key. OpenAPI 3.0 uses ``nullable`` to
-      mean "may also be null"; OpenAPI 3.1 / JSON Schema 2020-12
-      use the array form. Without this rewrite, every nullable
-      field in the spec produces a false "None is not of type X"
-      validation error.
-    * No-op for any other shape.
-
-    Recurses into nested ``properties``, ``items``, ``oneOf``,
-    ``anyOf``, ``allOf``, and ``additionalProperties`` so it covers
-    nested schemas as well."""
-    if isinstance(node, list):
-        return [_normalize_openapi_3_0(x) for x in node]
-    if not isinstance(node, dict):
-        return node
-    out = {k: _normalize_openapi_3_0(v) for k, v in node.items()}
-    if out.pop("nullable", False) is True:
-        existing_type = out.get("type")
-        if isinstance(existing_type, str) and existing_type != "null":
-            out["type"] = [existing_type, "null"]
-        elif isinstance(existing_type, list) and "null" not in existing_type:
-            out["type"] = list(existing_type) + ["null"]
-    return out
-
-
-def _build_validator(
-    spec: dict[str, Any], schema: dict[str, Any],
-) -> Draft202012Validator:
-    """Build a jsonschema validator with ``#/components/schemas/...``
-    references resolved against the same spec. Without the resolver,
-    every ``$ref`` would error out as "not resolvable" — handlers that
-    return a top-level ``$ref`` (the canonical OpenAPI pattern) would
-    be impossible to validate.
-
-    The schema and spec are run through ``_normalize_openapi_3_0``
-    so OpenAPI-3.0-style ``nullable: true`` declarations carry the
-    intended "may be null" semantic into the 2020-12 validator."""
-    normalized_schema = _normalize_openapi_3_0(schema)
-    normalized_spec = _normalize_openapi_3_0(spec)
-    resolver = RefResolver.from_schema(normalized_spec)
-    return Draft202012Validator(normalized_schema, resolver=resolver)
-
-
-def validate_response(path: str, body: Any) -> list[str]:
-    """Validate ``body`` against the GET 200-response schema for
-    ``path``. Returns a list of human-readable error strings (empty
-    when the body fully complies). When the path has no schema in
-    the spec, returns ``["no schema declared for {path}"]`` —
-    treating "spec doesn't know about this endpoint" as an error
-    keeps the ratchet honest. Callers with an intentional reason
-    to skip can compare-then-ignore.
-
-    ``x-status: planned`` endpoints are skipped — their live response
-    is a stub by spec design, not a contract violation. Once the
-    implementation lands, the spec author drops the marker and the
-    full validator kicks in.
-
-    Errors are formatted with the JSON pointer to the offending
-    field so test failures are immediately actionable, e.g.:
-        ``$.live[0].item_count: 'foo' is not of type 'integer'``
+    Holds the spec-resolution + schema-walk + jsonschema-build pipeline
+    as instance methods; module-level callables (``validate_response``,
+    ``validate_response_strict``) are aliases bound to a single shared
+    instance so existing imports keep working.
     """
-    spec = _load_spec()
-    if is_planned(spec, path):
-        return []
-    schema = _resolve_get_200_schema(spec, path)
-    if schema is None:
-        return [f"no schema declared for GET {path} 200 response"]
-    validator = _build_validator(spec, schema)
-    errors: list[str] = []
-    for err in validator.iter_errors(body):
-        ptr = "$" + "".join(f"[{p!r}]" for p in err.absolute_path)
-        errors.append(f"{ptr}: {err.message}")
-    return errors
 
+    def __init__(
+        self, spec_path_candidates: tuple[Path, ...] = _SPEC_PATH_CANDIDATES,
+    ) -> None:
+        self._spec_path_candidates = spec_path_candidates
+        self._spec_path = self._resolve_spec_path()
+        # The cached spec loader is wrapped in lru_cache so tests that
+        # hit the validator hundreds of times only pay the YAML parse
+        # once. The cache lives on the bound method, scoped per-instance
+        # via the lambda capturing ``self``.
+        self._load_spec_cached = functools.lru_cache(maxsize=1)(
+            self._load_spec_uncached,
+        )
 
-def validate_response_strict(path: str, body: Any) -> list[str]:
-    """Like ``validate_response`` but ALSO flags any top-level key
-    in ``body`` that isn't declared in the schema's ``properties``,
-    even when ``additionalProperties: true`` would normally permit
-    it. This is the ratchet mode: extra keys mean either (a) the
-    spec is stale and a real field was added without doc, or (b) a
-    handler accidentally leaked an internal field. Both want
-    operator attention.
+    def _resolve_spec_path(self) -> Path:
+        for p in self._spec_path_candidates:
+            if p.is_file():
+                return p
+        return self._spec_path_candidates[0]
 
-    Skips ``x-status: planned`` endpoints (same rationale as
-    ``validate_response``). The vanilla ``validate_response`` is
-    more permissive — use it when the freeform shape is intentional
-    (e.g. ``/api/env``)."""
-    errors = validate_response(path, body)
-    spec = _load_spec()
-    if is_planned(spec, path):
-        return []
-    schema = _resolve_get_200_schema(spec, path)
-    if schema is None or not isinstance(body, dict):
-        return errors
-    declared = set((schema.get("properties") or {}).keys())
-    if declared:
-        extra = sorted(set(body.keys()) - declared)
-        if extra:
-            errors.append(
-                f"undeclared top-level keys in response: {extra}. "
-                f"Either tighten the schema or document why these are "
-                f"intentionally freeform."
+    def _load_spec_uncached(self) -> dict[str, Any]:
+        """Load the OpenAPI spec from disk."""
+        with self._spec_path.open("r", encoding="utf-8") as fh:
+            spec = yaml.safe_load(fh)
+        if not isinstance(spec, dict):
+            raise RuntimeError(
+                f"openapi.yaml did not parse to a dict: {self._spec_path}",
             )
-    return errors
+        return spec
+
+    def load_spec(self) -> dict[str, Any]:
+        """Return the cached OpenAPI spec dict."""
+        return self._load_spec_cached()
+
+    def is_planned(self, spec: dict[str, Any], path: str) -> bool:
+        """True when the endpoint is marked ``x-status: planned`` — i.e.
+        documented in the spec ahead of the implementation. The contract
+        test skips planned endpoints because their live response is a
+        stub by design, not a contract violation."""
+        paths = spec.get("paths") or {}
+        entry = paths.get(path)
+        if not isinstance(entry, dict):
+            return False
+        get_op = entry.get("get")
+        if not isinstance(get_op, dict):
+            return False
+        return str(get_op.get("x-status") or "").lower() == "planned"
+
+    def resolve_get_200_schema(
+        self, spec: dict[str, Any], path: str,
+    ) -> dict[str, Any] | None:
+        """Walk the spec to ``paths.<path>.get.responses.'200'.content.
+        application/json.schema``. Returns the schema dict or ``None`` if
+        any leg is missing — the caller should treat ``None`` as "no
+        contract declared" and skip rather than fail."""
+        paths = spec.get("paths") or {}
+        entry = paths.get(path)
+        if not isinstance(entry, dict):
+            return None
+        get_op = entry.get("get")
+        if not isinstance(get_op, dict):
+            return None
+        responses = get_op.get("responses") or {}
+        # OpenAPI allows the 200 key as either int or str depending on
+        # how the YAML was authored. Try both forms.
+        r200 = responses.get("200") or responses.get(200)
+        if not isinstance(r200, dict):
+            return None
+        content = r200.get("content") or {}
+        media = content.get("application/json")
+        if not isinstance(media, dict):
+            return None
+        schema = media.get("schema")
+        if not isinstance(schema, dict):
+            return None
+        return schema
+
+    def normalize_openapi_3_0(self, node: Any) -> Any:
+        """Translate OpenAPI 3.0 idioms into JSON Schema 2020-12 so the
+        jsonschema validator honors them.
+
+        Specifically:
+        * ``nullable: true`` + ``type: X``  →  ``type: [X, "null"]`` and
+          drop the ``nullable`` key. OpenAPI 3.0 uses ``nullable`` to
+          mean "may also be null"; OpenAPI 3.1 / JSON Schema 2020-12
+          use the array form. Without this rewrite, every nullable
+          field in the spec produces a false "None is not of type X"
+          validation error.
+        * No-op for any other shape.
+
+        Recurses into nested ``properties``, ``items``, ``oneOf``,
+        ``anyOf``, ``allOf``, and ``additionalProperties`` so it covers
+        nested schemas as well."""
+        if isinstance(node, list):
+            return [self.normalize_openapi_3_0(x) for x in node]
+        if not isinstance(node, dict):
+            return node
+        out = {k: self.normalize_openapi_3_0(v) for k, v in node.items()}
+        if out.pop("nullable", False) is True:
+            existing_type = out.get("type")
+            if isinstance(existing_type, str) and existing_type != "null":
+                out["type"] = [existing_type, "null"]
+            elif isinstance(existing_type, list) and "null" not in existing_type:
+                out["type"] = list(existing_type) + ["null"]
+        return out
+
+    def build_validator(
+        self, spec: dict[str, Any], schema: dict[str, Any],
+    ) -> Draft202012Validator:
+        """Build a jsonschema validator with ``#/components/schemas/...``
+        references resolved against the same spec. Without the resolver,
+        every ``$ref`` would error out as "not resolvable" — handlers that
+        return a top-level ``$ref`` (the canonical OpenAPI pattern) would
+        be impossible to validate.
+
+        The schema and spec are run through ``normalize_openapi_3_0``
+        so OpenAPI-3.0-style ``nullable: true`` declarations carry the
+        intended "may be null" semantic into the 2020-12 validator."""
+        normalized_schema = self.normalize_openapi_3_0(schema)
+        normalized_spec = self.normalize_openapi_3_0(spec)
+        resolver = RefResolver.from_schema(normalized_spec)
+        return Draft202012Validator(normalized_schema, resolver=resolver)
+
+    def validate_response(self, path: str, body: Any) -> list[str]:
+        """Validate ``body`` against the GET 200-response schema for
+        ``path``. Returns a list of human-readable error strings (empty
+        when the body fully complies). When the path has no schema in
+        the spec, returns ``["no schema declared for {path}"]`` —
+        treating "spec doesn't know about this endpoint" as an error
+        keeps the ratchet honest. Callers with an intentional reason
+        to skip can compare-then-ignore.
+
+        ``x-status: planned`` endpoints are skipped — their live response
+        is a stub by spec design, not a contract violation. Once the
+        implementation lands, the spec author drops the marker and the
+        full validator kicks in.
+
+        Errors are formatted with the JSON pointer to the offending
+        field so test failures are immediately actionable, e.g.:
+            ``$.live[0].item_count: 'foo' is not of type 'integer'``
+        """
+        spec = self.load_spec()
+        if self.is_planned(spec, path):
+            return []
+        schema = self.resolve_get_200_schema(spec, path)
+        if schema is None:
+            return [f"no schema declared for GET {path} 200 response"]
+        validator = self.build_validator(spec, schema)
+        errors: list[str] = []
+        for err in validator.iter_errors(body):
+            ptr = "$" + "".join(f"[{p!r}]" for p in err.absolute_path)
+            errors.append(f"{ptr}: {err.message}")
+        return errors
+
+    def validate_response_strict(self, path: str, body: Any) -> list[str]:
+        """Like ``validate_response`` but ALSO flags any top-level key
+        in ``body`` that isn't declared in the schema's ``properties``,
+        even when ``additionalProperties: true`` would normally permit
+        it. This is the ratchet mode: extra keys mean either (a) the
+        spec is stale and a real field was added without doc, or (b) a
+        handler accidentally leaked an internal field. Both want
+        operator attention.
+
+        Skips ``x-status: planned`` endpoints (same rationale as
+        ``validate_response``). The vanilla ``validate_response`` is
+        more permissive — use it when the freeform shape is intentional
+        (e.g. ``/api/env``)."""
+        errors = self.validate_response(path, body)
+        spec = self.load_spec()
+        if self.is_planned(spec, path):
+            return []
+        schema = self.resolve_get_200_schema(spec, path)
+        if schema is None or not isinstance(body, dict):
+            return errors
+        declared = set((schema.get("properties") or {}).keys())
+        if declared:
+            extra = sorted(set(body.keys()) - declared)
+            if extra:
+                errors.append(
+                    f"undeclared top-level keys in response: {extra}. "
+                    f"Either tighten the schema or document why these are "
+                    f"intentionally freeform."
+                )
+        return errors
+
+
+# Module-level shared instance + public API aliases. Keeps existing
+# ``from media_stack.api.contract_validator import validate_response``
+# imports working while the implementation lives on the class.
+_VALIDATOR = ContractValidator()
+validate_response = _VALIDATOR.validate_response
+validate_response_strict = _VALIDATOR.validate_response_strict

@@ -39,36 +39,113 @@ class UnitTestTimeoutError(TimeoutError):
     """Raised when a unit test exceeds the configured timeout budget."""
 
 
-def _read_proc_rss_kib() -> int | None:
-    try:
-        with open("/proc/self/status", encoding="utf-8") as handle:
-            for line in handle:
-                if not line.startswith("VmRSS:"):
-                    continue
-                parts = line.split()
-                if len(parts) < 2:
-                    return None
-                return int(parts[1])
-    except (FileNotFoundError, OSError, ValueError):
+class UnitTestRunnerService:
+    """Resource-aware unittest discovery, execution, and telemetry summary."""
+
+    def read_proc_rss_kib(self) -> int | None:
+        try:
+            with open("/proc/self/status", encoding="utf-8") as handle:
+                for line in handle:
+                    if not line.startswith("VmRSS:"):
+                        continue
+                    parts = line.split()
+                    if len(parts) < 2:
+                        return None
+                    return int(parts[1])
+        except (FileNotFoundError, OSError, ValueError):
+            return None
         return None
-    return None
+
+    def read_peak_rss_kib(self) -> int | None:
+        try:
+            value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        except (AttributeError, ValueError):
+            return None
+        # macOS reports bytes, Linux reports kibibytes.
+        if value > 0 and value > 1024 * 1024 * 8:
+            return value // 1024
+        return value
+
+    def format_mib(self, value_kib: int | None) -> str:
+        if value_kib is None:
+            return "n/a"
+        return f"{value_kib / 1024:.1f}"
+
+    def memory_key(self, record: UnitTestTelemetryRecord) -> tuple[int, int]:
+        peak_delta = record.peak_rss_delta_kib if record.peak_rss_delta_kib is not None else -1
+        rss_delta = record.rss_delta_kib if record.rss_delta_kib is not None else -1
+        return peak_delta, rss_delta
+
+    def write_offenders_summary(
+        self,
+        stream: TextIO,
+        records: list[UnitTestTelemetryRecord],
+        top_n: int,
+    ) -> None:
+        if not records:
+            return
+        limit = max(1, top_n)
+        stream.write("\n")
+        stream.write(
+            "[TEST-RESOURCE] summary "
+            f"total_tests={len(records)} "
+            f"top_n={min(limit, len(records))}\n"
+        )
+
+        slowest = sorted(records, key=lambda item: item.elapsed_seconds, reverse=True)[:limit]
+        stream.write("[TEST-RESOURCE] slowest_tests\n")
+        for item in slowest:
+            stream.write(
+                "[TEST-RESOURCE][slow] "
+                f"elapsed_s={item.elapsed_seconds:.3f} "
+                f"status={item.status} "
+                f"test={item.test_id}\n"
+            )
+
+        memory_heaviest = sorted(records, key=self.memory_key, reverse=True)[:limit]
+        stream.write("[TEST-RESOURCE] highest_memory_tests\n")
+        for item in memory_heaviest:
+            stream.write(
+                "[TEST-RESOURCE][memory] "
+                f"peak_delta_mib={self.format_mib(item.peak_rss_delta_kib)} "
+                f"rss_delta_mib={self.format_mib(item.rss_delta_kib)} "
+                f"status={item.status} "
+                f"test={item.test_id}\n"
+            )
+
+    def discover_unit_test_suite(self, cfg: UnitTestRunnerConfig) -> unittest.TestSuite:
+        discover_root = cfg.root_dir / cfg.start_dir
+        return unittest.defaultTestLoader.discover(
+            start_dir=str(discover_root), pattern=cfg.pattern
+        )
+
+    def run_unit_test_suite(
+        self,
+        suite: unittest.TestSuite,
+        cfg: UnitTestRunnerConfig,
+        stream: TextIO,
+    ) -> tuple[int, list[UnitTestTelemetryRecord]]:
+        runner = ResourceTelemetryTextTestRunner(
+            stream=stream,
+            verbosity=cfg.verbosity,
+            failfast=cfg.failfast,
+            timeout_seconds=cfg.timeout_seconds,
+        )
+        result = runner.run(suite)
+        telemetry_records: list[UnitTestTelemetryRecord] = list(result.telemetry_records)
+        self.write_offenders_summary(stream=stream, records=telemetry_records, top_n=cfg.top_n)
+        return (0 if result.wasSuccessful() else 1, telemetry_records)
+
+    def run_discovered_unit_tests(
+        self,
+        cfg: UnitTestRunnerConfig,
+        stream: TextIO,
+    ) -> tuple[int, list[UnitTestTelemetryRecord]]:
+        suite = self.discover_unit_test_suite(cfg)
+        return self.run_unit_test_suite(suite=suite, cfg=cfg, stream=stream)
 
 
-def _read_peak_rss_kib() -> int | None:
-    try:
-        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-    except (AttributeError, ValueError):
-        return None
-    # macOS reports bytes, Linux reports kibibytes.
-    if value > 0 and value > 1024 * 1024 * 8:
-        return value // 1024
-    return value
-
-
-def _format_mib(value_kib: int | None) -> str:
-    if value_kib is None:
-        return "n/a"
-    return f"{value_kib / 1024:.1f}"
+_SERVICE = UnitTestRunnerService()
 
 
 class ResourceTelemetryTestResult(unittest.TextTestResult):
@@ -143,8 +220,8 @@ class ResourceTelemetryTestResult(unittest.TextTestResult):
         test_id = test.id()
         self._status_by_test_id[test_id] = "ok"
         self._start_time_by_test_id[test_id] = time.perf_counter()
-        self._rss_start_by_test_id[test_id] = _read_proc_rss_kib()
-        self._peak_start_by_test_id[test_id] = _read_peak_rss_kib()
+        self._rss_start_by_test_id[test_id] = _SERVICE.read_proc_rss_kib()
+        self._peak_start_by_test_id[test_id] = _SERVICE.read_peak_rss_kib()
         self._active_test_id = test_id
         self._arm_timeout(test_id)
 
@@ -157,14 +234,14 @@ class ResourceTelemetryTestResult(unittest.TextTestResult):
             test_id, time.perf_counter()
         )
         rss_start_kib = self._rss_start_by_test_id.pop(test_id, None)
-        rss_end_kib = _read_proc_rss_kib()
+        rss_end_kib = _SERVICE.read_proc_rss_kib()
         rss_delta_kib = (
             None
             if rss_start_kib is None or rss_end_kib is None
             else int(rss_end_kib - rss_start_kib)
         )
         peak_start_kib = self._peak_start_by_test_id.pop(test_id, None)
-        peak_end_kib = _read_peak_rss_kib()
+        peak_end_kib = _SERVICE.read_peak_rss_kib()
         peak_rss_delta_kib = (
             None
             if peak_start_kib is None or peak_end_kib is None
@@ -187,9 +264,9 @@ class ResourceTelemetryTestResult(unittest.TextTestResult):
             f"status={record.status} "
             f"test={record.test_id} "
             f"elapsed_s={record.elapsed_seconds:.3f} "
-            f"rss_delta_mib={_format_mib(record.rss_delta_kib)} "
-            f"peak_delta_mib={_format_mib(record.peak_rss_delta_kib)} "
-            f"peak_mib={_format_mib(record.peak_rss_kib)}"
+            f"rss_delta_mib={_SERVICE.format_mib(record.rss_delta_kib)} "
+            f"peak_delta_mib={_SERVICE.format_mib(record.peak_rss_delta_kib)} "
+            f"peak_mib={_SERVICE.format_mib(record.peak_rss_kib)}"
         )
         super().stopTest(test)
 
@@ -238,74 +315,12 @@ class ResourceTelemetryTextTestRunner(unittest.TextTestRunner):
         )
 
 
-def _memory_key(record: UnitTestTelemetryRecord) -> tuple[int, int]:
-    peak_delta = record.peak_rss_delta_kib if record.peak_rss_delta_kib is not None else -1
-    rss_delta = record.rss_delta_kib if record.rss_delta_kib is not None else -1
-    return peak_delta, rss_delta
-
-
-def _write_offenders_summary(
-    stream: TextIO,
-    records: list[UnitTestTelemetryRecord],
-    top_n: int,
-) -> None:
-    if not records:
-        return
-    limit = max(1, top_n)
-    stream.write("\n")
-    stream.write(
-        "[TEST-RESOURCE] summary "
-        f"total_tests={len(records)} "
-        f"top_n={min(limit, len(records))}\n"
-    )
-
-    slowest = sorted(records, key=lambda item: item.elapsed_seconds, reverse=True)[:limit]
-    stream.write("[TEST-RESOURCE] slowest_tests\n")
-    for item in slowest:
-        stream.write(
-            "[TEST-RESOURCE][slow] "
-            f"elapsed_s={item.elapsed_seconds:.3f} "
-            f"status={item.status} "
-            f"test={item.test_id}\n"
-        )
-
-    memory_heaviest = sorted(records, key=_memory_key, reverse=True)[:limit]
-    stream.write("[TEST-RESOURCE] highest_memory_tests\n")
-    for item in memory_heaviest:
-        stream.write(
-            "[TEST-RESOURCE][memory] "
-            f"peak_delta_mib={_format_mib(item.peak_rss_delta_kib)} "
-            f"rss_delta_mib={_format_mib(item.rss_delta_kib)} "
-            f"status={item.status} "
-            f"test={item.test_id}\n"
-        )
-
-
-def discover_unit_test_suite(cfg: UnitTestRunnerConfig) -> unittest.TestSuite:
-    discover_root = cfg.root_dir / cfg.start_dir
-    return unittest.defaultTestLoader.discover(start_dir=str(discover_root), pattern=cfg.pattern)
-
-
-def run_unit_test_suite(
-    suite: unittest.TestSuite,
-    cfg: UnitTestRunnerConfig,
-    stream: TextIO,
-) -> tuple[int, list[UnitTestTelemetryRecord]]:
-    runner = ResourceTelemetryTextTestRunner(
-        stream=stream,
-        verbosity=cfg.verbosity,
-        failfast=cfg.failfast,
-        timeout_seconds=cfg.timeout_seconds,
-    )
-    result = runner.run(suite)
-    telemetry_records: list[UnitTestTelemetryRecord] = list(result.telemetry_records)
-    _write_offenders_summary(stream=stream, records=telemetry_records, top_n=cfg.top_n)
-    return (0 if result.wasSuccessful() else 1, telemetry_records)
-
-
-def run_discovered_unit_tests(
-    cfg: UnitTestRunnerConfig,
-    stream: TextIO,
-) -> tuple[int, list[UnitTestTelemetryRecord]]:
-    suite = discover_unit_test_suite(cfg)
-    return run_unit_test_suite(suite=suite, cfg=cfg, stream=stream)
+# Module-level aliases preserving the public import API for callers + tests.
+_read_proc_rss_kib = _SERVICE.read_proc_rss_kib
+_read_peak_rss_kib = _SERVICE.read_peak_rss_kib
+_format_mib = _SERVICE.format_mib
+_memory_key = _SERVICE.memory_key
+_write_offenders_summary = _SERVICE.write_offenders_summary
+discover_unit_test_suite = _SERVICE.discover_unit_test_suite
+run_unit_test_suite = _SERVICE.run_unit_test_suite
+run_discovered_unit_tests = _SERVICE.run_discovered_unit_tests

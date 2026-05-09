@@ -87,6 +87,121 @@ class IntegrityResult:
         return asdict(self)
 
 
+class _ProbeError(Exception):
+    """Internal: format-specific parsers raise this with a
+    one-line human-readable message. Never propagated."""
+
+
+class ConfigIntegrityProber:
+    """Format-specific parse probes. One instance is reused for
+    every file inspected. The probes are intentionally narrow —
+    they only assert "the parser accepts this byte stream"; any
+    semantic validation lives in :mod:`.config_validators`."""
+
+    def probe(self, fmt: str, path: Path) -> Any:
+        """Dispatch on ``fmt`` to the matching probe method.
+        Raises :class:`_ProbeError` on any parse / IO failure."""
+        if fmt == "xml":
+            return self._probe_xml(path)
+        if fmt == "yaml":
+            return self._probe_yaml(path)
+        if fmt == "json":
+            return self._probe_json(path)
+        if fmt == "ini":
+            return self._probe_ini(path)
+        if fmt == "sqlite":
+            return self._probe_sqlite(path)
+        raise _ProbeError(f"unsupported format '{fmt}'")
+
+    def _probe_xml(self, path: Path) -> ET.Element:
+        try:
+            return ET.fromstring(path.read_bytes())
+        except ET.ParseError as exc:
+            raise _ProbeError(f"XML parse error: {exc}") from exc
+        except OSError as exc:
+            raise _ProbeError(f"unreadable: {exc}") from exc
+
+    def _probe_yaml(self, path: Path) -> Any:
+        try:
+            with path.open("rb") as fh:
+                return yaml.safe_load(fh)
+        except yaml.YAMLError as exc:
+            # PyYAML messages span multiple lines; flatten to one.
+            raise _ProbeError(
+                "YAML parse error: " + " ".join(str(exc).split())
+            ) from exc
+        except OSError as exc:
+            raise _ProbeError(f"unreadable: {exc}") from exc
+
+    def _probe_json(self, path: Path) -> Any:
+        try:
+            with path.open("rb") as fh:
+                return json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise _ProbeError(f"JSON parse error: {exc}") from exc
+        except OSError as exc:
+            raise _ProbeError(f"unreadable: {exc}") from exc
+
+    def _probe_ini(self, path: Path) -> configparser.ConfigParser:
+        cp = configparser.ConfigParser(strict=False, interpolation=None)
+        try:
+            # SABnzbd's sabnzbd.ini contains values with bare ``%`` —
+            # turning interpolation off avoids InterpolationSyntaxError
+            # for what is otherwise a perfectly valid file. SABnzbd
+            # also writes a preamble line (``__version__ = 19``) BEFORE
+            # any ``[section]`` header, which stdlib configparser
+            # rejects with "File contains no section headers". Inject a
+            # synthetic ``[__top__]`` section so the preamble parses;
+            # the real ``[misc]``/``[servers]``/etc sections that follow
+            # parse normally.
+            raw = path.read_text(encoding="utf-8")
+            if not self._has_section_header(raw):
+                text = "[__top__]\n" + raw
+            else:
+                text = raw
+            cp.read_string(text)
+        except configparser.Error as exc:
+            raise _ProbeError(f"INI parse error: {exc}") from exc
+        except OSError as exc:
+            raise _ProbeError(f"unreadable: {exc}") from exc
+        return cp
+
+    def _has_section_header(self, text: str) -> bool:
+        """Returns True iff the file contains at least one
+        ``[section]`` header before its first key=value line. SABnzbd
+        writes a few bare top-level keys before the first section; if
+        we wrap the whole file in a synthetic section we'd hide a
+        really truncated/corrupt file. So: only synthesize when the
+        very first non-blank, non-comment line is a key=value, never
+        when a section header is genuinely missing from a structured
+        file."""
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith(("#", ";")):
+                continue
+            # First content line: section header means the file is
+            # well-formed already; key=value means we're in
+            # SABnzbd-style preamble territory.
+            return s.startswith("[") and "]" in s
+        return True  # empty file — no synthesis needed
+
+    def _probe_sqlite(self, path: Path) -> None:
+        """Open in read-only mode and run a schema query. We only care
+        that the DB header is well-formed and the file isn't truncated;
+        we deliberately don't validate any specific schema."""
+        try:
+            uri = f"file:{path}?mode=ro"
+            con = sqlite3.connect(uri, uri=True, timeout=2.0)
+            try:
+                con.execute("SELECT 1 FROM sqlite_master LIMIT 1")
+            finally:
+                con.close()
+        except sqlite3.DatabaseError as exc:
+            raise _ProbeError(f"SQLite error: {exc}") from exc
+        except OSError as exc:
+            raise _ProbeError(f"unreadable: {exc}") from exc
+
+
 class ConfigIntegrityService:
     """Reads per-service config files from disk and reports
     parseability. Stateless — a singleton instance is fine, but
@@ -97,6 +212,7 @@ class ConfigIntegrityService:
         self,
         config_root: str | os.PathLike | None = None,
         services: Iterable[ServiceDef] | None = None,
+        prober: ConfigIntegrityProber | None = None,
     ) -> None:
         self._config_root = Path(
             config_root
@@ -104,6 +220,7 @@ class ConfigIntegrityService:
             else os.environ.get("CONFIG_ROOT", "/srv-config")
         )
         self._services = list(services) if services is not None else list(SERVICES)
+        self._prober = prober if prober is not None else ConfigIntegrityProber()
 
     # ------------------------------------------------------------------
     # Public API
@@ -153,6 +270,12 @@ class ConfigIntegrityService:
             )
         return self._probe(svc)
 
+    def check_service_dict(self, service_id: str) -> dict:
+        """Dict-returning shape for callers that serialise the
+        result directly (the GET handler import path expects this
+        shape)."""
+        return self.check_service(service_id).to_dict()
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -191,9 +314,8 @@ class ConfigIntegrityService:
                 checked_at=now,
             )
 
-        parser = _PARSERS[fmt]
         try:
-            parsed = parser(path)
+            parsed = self._prober.probe(fmt, path)
         except _ProbeError as exc:
             return IntegrityResult(
                 service_id=probe_id,
@@ -243,119 +365,6 @@ class ConfigIntegrityService:
 
 
 # ----------------------------------------------------------------------
-# Format probes
-# ----------------------------------------------------------------------
-
-
-class _ProbeError(Exception):
-    """Internal: format-specific parsers raise this with a
-    one-line human-readable message. Never propagated."""
-
-
-def _probe_xml(path: Path) -> ET.Element:
-    try:
-        return ET.fromstring(path.read_bytes())
-    except ET.ParseError as exc:
-        raise _ProbeError(f"XML parse error: {exc}") from exc
-    except OSError as exc:
-        raise _ProbeError(f"unreadable: {exc}") from exc
-
-
-def _probe_yaml(path: Path) -> Any:
-    try:
-        with path.open("rb") as fh:
-            return yaml.safe_load(fh)
-    except yaml.YAMLError as exc:
-        # PyYAML messages span multiple lines; flatten to one.
-        raise _ProbeError(
-            "YAML parse error: " + " ".join(str(exc).split())
-        ) from exc
-    except OSError as exc:
-        raise _ProbeError(f"unreadable: {exc}") from exc
-
-
-def _probe_json(path: Path) -> Any:
-    try:
-        with path.open("rb") as fh:
-            return json.load(fh)
-    except json.JSONDecodeError as exc:
-        raise _ProbeError(f"JSON parse error: {exc}") from exc
-    except OSError as exc:
-        raise _ProbeError(f"unreadable: {exc}") from exc
-
-
-def _probe_ini(path: Path) -> configparser.ConfigParser:
-    cp = configparser.ConfigParser(strict=False, interpolation=None)
-    try:
-        # SABnzbd's sabnzbd.ini contains values with bare ``%`` —
-        # turning interpolation off avoids InterpolationSyntaxError
-        # for what is otherwise a perfectly valid file. SABnzbd
-        # also writes a preamble line (``__version__ = 19``) BEFORE
-        # any ``[section]`` header, which stdlib configparser
-        # rejects with "File contains no section headers". Inject a
-        # synthetic ``[__top__]`` section so the preamble parses;
-        # the real ``[misc]``/``[servers]``/etc sections that follow
-        # parse normally.
-        raw = path.read_text(encoding="utf-8")
-        if not _has_section_header(raw):
-            text = "[__top__]\n" + raw
-        else:
-            text = raw
-        cp.read_string(text)
-    except configparser.Error as exc:
-        raise _ProbeError(f"INI parse error: {exc}") from exc
-    except OSError as exc:
-        raise _ProbeError(f"unreadable: {exc}") from exc
-    return cp
-
-
-def _has_section_header(text: str) -> bool:
-    """Returns True iff the file contains at least one
-    ``[section]`` header before its first key=value line. SABnzbd
-    writes a few bare top-level keys before the first section; if
-    we wrap the whole file in a synthetic section we'd hide a
-    really truncated/corrupt file. So: only synthesize when the
-    very first non-blank, non-comment line is a key=value, never
-    when a section header is genuinely missing from a structured
-    file."""
-    for line in text.splitlines():
-        s = line.strip()
-        if not s or s.startswith(("#", ";")):
-            continue
-        # First content line: section header means the file is
-        # well-formed already; key=value means we're in
-        # SABnzbd-style preamble territory.
-        return s.startswith("[") and "]" in s
-    return True  # empty file — no synthesis needed
-
-
-def _probe_sqlite(path: Path) -> None:
-    """Open in read-only mode and run a schema query. We only care
-    that the DB header is well-formed and the file isn't truncated;
-    we deliberately don't validate any specific schema."""
-    try:
-        uri = f"file:{path}?mode=ro"
-        con = sqlite3.connect(uri, uri=True, timeout=2.0)
-        try:
-            con.execute("SELECT 1 FROM sqlite_master LIMIT 1")
-        finally:
-            con.close()
-    except sqlite3.DatabaseError as exc:
-        raise _ProbeError(f"SQLite error: {exc}") from exc
-    except OSError as exc:
-        raise _ProbeError(f"unreadable: {exc}") from exc
-
-
-_PARSERS = {
-    "xml": _probe_xml,
-    "yaml": _probe_yaml,
-    "json": _probe_json,
-    "ini": _probe_ini,
-    "sqlite": _probe_sqlite,
-}
-
-
-# ----------------------------------------------------------------------
 # Module-level singleton for the GET handler import path.
 # ----------------------------------------------------------------------
 
@@ -363,9 +372,8 @@ _PARSERS = {
 _DEFAULT = ConfigIntegrityService()
 
 
-def check_all() -> dict[str, dict]:
-    return _DEFAULT.check_all()
-
-
-def check_service(service_id: str) -> dict:
-    return _DEFAULT.check_service(service_id).to_dict()
+# Thin aliases preserved for backwards compatibility. New code
+# should construct a :class:`ConfigIntegrityService` instance and
+# call its methods directly.
+check_all = _DEFAULT.check_all
+check_service = _DEFAULT.check_service_dict

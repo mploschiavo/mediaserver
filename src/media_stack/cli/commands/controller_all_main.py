@@ -529,238 +529,272 @@ class ControllerAllRunner:
 
 
 # ---------------------------------------------------------------------------
-# Step executors — extracted from ControllerAllRunner.run() closures
+# ControllerAllCommand — sibling to ControllerAllConfig + ControllerAllRunner.
+# Owns the step executors (extracted from ControllerAllRunner.run() closures)
+# and the CLI bootstrap helpers (env-bool parsing, argv parsing, main entry).
 # ---------------------------------------------------------------------------
 
-def _execute_component_script(
-    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
-    plan: ControllerComponentPlan, components: dict,
-    phase_enabled: Callable, resolve_tech: Callable,
-    resolve_args: Callable, resolve_env: Callable, phase_name_fn: Callable,
-) -> None:
-    params = dict(step.params or {})
-    component_key, component_technology = resolve_tech(step)
-    enabled = phase_enabled(step)
-    if enabled and not component_key:
-        raise ConfigError("bootstrap_all run action 'component_script' requires params.component, params.binding, or params.technology.")
-    if enabled and not component_technology:
-        raise ConfigError(f"bootstrap_all run action 'component_script' could not resolve technology for component '{component_key}'.")
-    script_phase = str(params.get("script_phase") or "").strip()
-    if not script_phase:
-        raise ConfigError("bootstrap_all run action 'component_script' requires params.script_phase.")
-    script_name = runner._phase_script(script_phase, component_technology)
-    if enabled and not script_name:
-        raise ConfigError(f"bootstrap_all run action 'component_script' could not resolve script for component '{component_key or component_technology}'.")
-    args = resolve_args(raw_args=params.get("args"), component_key=component_key, component_technology=component_technology)
-    env = resolve_env(raw_env=params.get("env"), component_key=component_key, component_technology=component_technology)
-    name = runner._format_phase_name(phase_name_fn("", step), component_key=component_key, component_technology=component_technology)
-    if not name:
-        raise ConfigError("bootstrap_all run action 'component_script' requires non-empty phase_name.")
-    runner._run_phase(name, lambda s=script_name, a=tuple(args), e=dict(env): runner._run_script(s, *a, env=e), enabled=enabled)
 
+class ControllerAllCommand:
+    """Step-executor + CLI-entrypoint host for the bootstrap-all command.
 
-def _execute_script(
-    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
-    phase_enabled: Callable, resolve_args: Callable,
-    resolve_env: Callable, phase_name_fn: Callable,
-) -> None:
-    params = dict(step.params or {})
-    script_name = runner._render_template_value(params.get("script", ""))
-    if not script_name:
-        raise ConfigError("bootstrap_all run action 'script' requires params.script.")
-    enabled = phase_enabled(step)
-    args = resolve_args(raw_args=params.get("args"))
-    env = resolve_env(raw_env=params.get("env"))
-    name = runner._format_phase_name(phase_name_fn("", step))
-    if not name:
-        raise ConfigError("bootstrap_all run action 'script' requires non-empty phase_name.")
-    runner._run_phase(name, lambda s=script_name, a=tuple(args), e=dict(env): runner._run_script(s, *a, env=e), enabled=enabled)
+    Sibling to :class:`ControllerAllConfig` and :class:`ControllerAllRunner`.
+    All methods are plain instance methods (no ``@staticmethod``) so the
+    object can be subclassed/mocked in tests with no decorator gymnastics.
+    """
 
+    def execute_component_script(
+        self,
+        runner: "ControllerAllRunner",
+        step: ControllerPhasePlanStep,
+        plan: ControllerComponentPlan,
+        components: dict,
+        phase_enabled: Callable,
+        resolve_tech: Callable,
+        resolve_args: Callable,
+        resolve_env: Callable,
+        phase_name_fn: Callable,
+    ) -> None:
+        params = dict(step.params or {})
+        component_key, component_technology = resolve_tech(step)
+        enabled = phase_enabled(step)
+        if enabled and not component_key:
+            raise ConfigError("bootstrap_all run action 'component_script' requires params.component, params.binding, or params.technology.")
+        if enabled and not component_technology:
+            raise ConfigError(f"bootstrap_all run action 'component_script' could not resolve technology for component '{component_key}'.")
+        script_phase = str(params.get("script_phase") or "").strip()
+        if not script_phase:
+            raise ConfigError("bootstrap_all run action 'component_script' requires params.script_phase.")
+        script_name = runner._phase_script(script_phase, component_technology)
+        if enabled and not script_name:
+            raise ConfigError(f"bootstrap_all run action 'component_script' could not resolve script for component '{component_key or component_technology}'.")
+        args = resolve_args(raw_args=params.get("args"), component_key=component_key, component_technology=component_technology)
+        env = resolve_env(raw_env=params.get("env"), component_key=component_key, component_technology=component_technology)
+        name = runner._format_phase_name(phase_name_fn("", step), component_key=component_key, component_technology=component_technology)
+        if not name:
+            raise ConfigError("bootstrap_all run action 'component_script' requires non-empty phase_name.")
+        runner._run_phase(name, lambda s=script_name, a=tuple(args), e=dict(env): runner._run_script(s, *a, env=e), enabled=enabled)
 
-def _execute_enable_components(
-    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
-    plan: ControllerComponentPlan, phase_enabled: Callable,
-) -> None:
-    if not phase_enabled(step):
-        return
-    components_to_enable = resolve_bootstrap_enable_components(plan.config, aliases=plan.aliases)
-    if not components_to_enable:
-        raise ConfigError("bootstrap_all run action 'enable_components' requires a non-empty enable_components list.")
-    for component in components_to_enable:
-        sync_script = runner._phase_script("component_key_sync", component)
-        if not sync_script:
-            raise ConfigError(f"Could not resolve runner_phase_scripts.component_key_sync for component '{component}'.")
-        runner._run_phase(
-            f"Sync component integration keys ({component})",
-            lambda s=sync_script: runner._run_script(s, env={"NAMESPACE": runner.cfg.namespace}),
-            enabled=True,
+    def execute_script(
+        self,
+        runner: "ControllerAllRunner",
+        step: ControllerPhasePlanStep,
+        phase_enabled: Callable,
+        resolve_args: Callable,
+        resolve_env: Callable,
+        phase_name_fn: Callable,
+    ) -> None:
+        params = dict(step.params or {})
+        script_name = runner._render_template_value(params.get("script", ""))
+        if not script_name:
+            raise ConfigError("bootstrap_all run action 'script' requires params.script.")
+        enabled = phase_enabled(step)
+        args = resolve_args(raw_args=params.get("args"))
+        env = resolve_env(raw_env=params.get("env"))
+        name = runner._format_phase_name(phase_name_fn("", step))
+        if not name:
+            raise ConfigError("bootstrap_all run action 'script' requires non-empty phase_name.")
+        runner._run_phase(name, lambda s=script_name, a=tuple(args), e=dict(env): runner._run_script(s, *a, env=e), enabled=enabled)
+
+    def execute_enable_components(
+        self,
+        runner: "ControllerAllRunner",
+        step: ControllerPhasePlanStep,
+        plan: ControllerComponentPlan,
+        phase_enabled: Callable,
+    ) -> None:
+        if not phase_enabled(step):
+            return
+        components_to_enable = resolve_bootstrap_enable_components(plan.config, aliases=plan.aliases)
+        if not components_to_enable:
+            raise ConfigError("bootstrap_all run action 'enable_components' requires a non-empty enable_components list.")
+        for component in components_to_enable:
+            sync_script = runner._phase_script("component_key_sync", component)
+            if not sync_script:
+                raise ConfigError(f"Could not resolve runner_phase_scripts.component_key_sync for component '{component}'.")
+            runner._run_phase(
+                f"Sync component integration keys ({component})",
+                lambda s=sync_script: runner._run_script(s, env={"NAMESPACE": runner.cfg.namespace}),
+                enabled=True,
+            )
+            runner._run_phase(
+                f"Enable component deployment ({component})",
+                lambda app=component: runner._enable_component_deployment(app),
+                enabled=True,
+            )
+
+    def execute_http_action(
+        self,
+        runner: "ControllerAllRunner",
+        step: ControllerPhasePlanStep,
+        phase_enabled: Callable,
+    ) -> None:
+        """Trigger an action on the bootstrap service via HTTP and poll for completion."""
+        if not phase_enabled(step):
+            return
+        params = step.params or {}
+        action_name = str(params.get("action_name", "")).strip()
+        svc_port = int(params.get("service_port", 9100))
+        namespace = runner._render_template_value(str(params.get("namespace_var", "$namespace")), component_key="")
+        if not action_name:
+            raise ConfigError("http_action requires params.action_name")
+
+        from media_stack.cli.workflows.controller_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
+        wait_svc = ControllerJobWaitService(
+            cfg=ControllerJobWaitConfig(namespace=namespace, timeout_seconds=600, timeout_raw="10m", heartbeat_interval=15, service_port=svc_port),
+            kube=runner.kube, info=info, warn=warn,
         )
-        runner._run_phase(
-            f"Enable component deployment ({component})",
-            lambda app=component: runner._enable_component_deployment(app),
-            enabled=True,
+        pod_name = wait_svc._find_bootstrap_pod()
+        if not pod_name:
+            raise ConfigError("Bootstrap service pod not found for http_action")
+        info(f"Triggering action '{action_name}' on bootstrap service")
+        trigger_result = runner.kube.run(
+            ["-n", namespace, "exec", pod_name, "--", "python3", "-c",
+             "import urllib.request,json; "
+             f"req=urllib.request.Request('http://127.0.0.1:{svc_port}/actions/{action_name}',"
+             "data=b'{}',headers={'Content-Type':'application/json'}); "
+             "r=urllib.request.urlopen(req); print(r.read().decode())"],
+            check=False,
         )
+        if trigger_result.returncode != 0:
+            raise ConfigError(f"Failed to trigger action '{action_name}': {trigger_result.stderr or trigger_result.stdout}")
+        info(f"Action '{action_name}' accepted, waiting for completion...")
+        wait_svc.wait_for_bootstrap_service(wait_for_action=action_name)
 
+    def env_bool(self, name: str, default: bool) -> bool:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
-def _execute_http_action(
-    runner: ControllerAllRunner, step: ControllerPhasePlanStep,
-    phase_enabled: Callable,
-) -> None:
-    """Trigger an action on the bootstrap service via HTTP and poll for completion."""
-    if not phase_enabled(step):
-        return
-    params = step.params or {}
-    action_name = str(params.get("action_name", "")).strip()
-    svc_port = int(params.get("service_port", 9100))
-    namespace = runner._render_template_value(str(params.get("namespace_var", "$namespace")), component_key="")
-    if not action_name:
-        raise ConfigError("http_action requires params.action_name")
-
-    from media_stack.cli.workflows.controller_job_wait_service import ControllerJobWaitConfig, ControllerJobWaitService
-    wait_svc = ControllerJobWaitService(
-        cfg=ControllerJobWaitConfig(namespace=namespace, timeout_seconds=600, timeout_raw="10m", heartbeat_interval=15, service_port=svc_port),
-        kube=runner.kube, info=info, warn=warn,
-    )
-    pod_name = wait_svc._find_bootstrap_pod()
-    if not pod_name:
-        raise ConfigError("Bootstrap service pod not found for http_action")
-    info(f"Triggering action '{action_name}' on bootstrap service")
-    trigger_result = runner.kube.run(
-        ["-n", namespace, "exec", pod_name, "--", "python3", "-c",
-         "import urllib.request,json; "
-         f"req=urllib.request.Request('http://127.0.0.1:{svc_port}/actions/{action_name}',"
-         "data=b'{}',headers={'Content-Type':'application/json'}); "
-         "r=urllib.request.urlopen(req); print(r.read().decode())"],
-        check=False,
-    )
-    if trigger_result.returncode != 0:
-        raise ConfigError(f"Failed to trigger action '{action_name}': {trigger_result.stderr or trigger_result.stdout}")
-    info(f"Action '{action_name}' accepted, waiting for completion...")
-    wait_svc.wait_for_bootstrap_service(wait_for_action=action_name)
-
-
-# ---------------------------------------------------------------------------
-# CLI helpers
-# ---------------------------------------------------------------------------
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
+    def env_bool_candidates(self, candidates: tuple[str, ...], default: bool = False) -> bool:
+        for name in candidates:
+            if not str(name).strip():
+                continue
+            if name in os.environ:
+                return self.env_bool(name, default)
         return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
+    def parse_args(
+        self,
+        argv: list[str] | None = None,
+    ) -> tuple[argparse.Namespace, tuple[PhaseSkipFlagSpec, ...]]:
+        root_dir = Path(__file__).resolve().parents[2]
+        default_config = str(root_dir / "contracts" / "media-stack.config.json")
 
-def _env_bool_candidates(candidates: tuple[str, ...], default: bool = False) -> bool:
-    for name in candidates:
-        if not str(name).strip():
-            continue
-        if name in os.environ:
-            return _env_bool(name, default)
-    return default
+        pre_parser = argparse.ArgumentParser(add_help=False)
+        pre_parser.add_argument("config_file", nargs="?", default=default_config)
+        pre_args, _ = pre_parser.parse_known_args(argv)
 
+        config_file = Path(str(pre_args.config_file)).resolve()
+        loaded_cfg: dict[str, object] = {}
+        if config_file.exists():
+            loaded_cfg = resolve_bootstrap_component_plan(config_file).config
 
-def _parse_args(
-    argv: list[str] | None = None,
-) -> tuple[argparse.Namespace, tuple[PhaseSkipFlagSpec, ...]]:
-    root_dir = Path(__file__).resolve().parents[2]
-    default_config = str(root_dir / "contracts" / "media-stack.config.json")
+        skip_specs = resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_all")
 
-    pre_parser = argparse.ArgumentParser(add_help=False)
-    pre_parser.add_argument("config_file", nargs="?", default=default_config)
-    pre_args, _ = pre_parser.parse_known_args(argv)
-
-    config_file = Path(str(pre_args.config_file)).resolve()
-    loaded_cfg: dict[str, object] = {}
-    if config_file.exists():
-        loaded_cfg = resolve_bootstrap_component_plan(config_file).config
-
-    skip_specs = resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_all")
-
-    parser = argparse.ArgumentParser(
-        prog="bin/bootstrap-all.sh",
-        description="Python bootstrap-all orchestration runner",
-    )
-    parser.add_argument(
-        "config_file",
-        nargs="?",
-        default=default_config,
-        help="Bootstrap config JSON path",
-    )
-    parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
-    parser.add_argument(
-        "--secret-name",
-        default=os.environ.get("SECRET_NAME", "media-stack-secrets"),
-    )
-    parser.add_argument(
-        "--prepare-host-root",
-        default=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
-    )
-    parser.add_argument(
-        "--enable-components",
-        dest="enable_components",
-        action="store_true",
-        default=_env_bool_candidates(("ENABLE_COMPONENTS",), True),
-        help="Enable configured bootstrap component deployments.",
-    )
-    for spec in skip_specs:
-        parser.add_argument(
-            *spec.option_strings,
-            dest=f"phase_skip_{spec.key}",
-            action="store_true",
-            default=_env_bool_candidates(spec.env_vars, False),
-            help=spec.help,
+        parser = argparse.ArgumentParser(
+            prog="bin/bootstrap-all.sh",
+            description="Python bootstrap-all orchestration runner",
         )
-    parser.add_argument(
-        "--resume",
-        dest="resume",
-        action="store_true",
-        default=str(os.environ.get("BOOTSTRAP_RESUME", "1")).strip().lower()
-        in {"1", "true", "yes", "on"},
-        help="Resume from completed phase checkpoints (default: enabled).",
-    )
-    parser.add_argument(
-        "--no-resume",
-        dest="resume",
-        action="store_false",
-        help="Ignore previous phase checkpoints and run all phases.",
-    )
-    parser.add_argument(
-        "--state-file",
-        default=os.environ.get("BOOTSTRAP_STATE_FILE", ""),
-        help="Checkpoint state file path (default: .state/bootstrap-all-<namespace>.json).",
-    )
-    return parser.parse_args(argv), skip_specs
+        parser.add_argument(
+            "config_file",
+            nargs="?",
+            default=default_config,
+            help="Bootstrap config JSON path",
+        )
+        parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
+        parser.add_argument(
+            "--secret-name",
+            default=os.environ.get("SECRET_NAME", "media-stack-secrets"),
+        )
+        parser.add_argument(
+            "--prepare-host-root",
+            default=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
+        )
+        parser.add_argument(
+            "--enable-components",
+            dest="enable_components",
+            action="store_true",
+            default=self.env_bool_candidates(("ENABLE_COMPONENTS",), True),
+            help="Enable configured bootstrap component deployments.",
+        )
+        for spec in skip_specs:
+            parser.add_argument(
+                *spec.option_strings,
+                dest=f"phase_skip_{spec.key}",
+                action="store_true",
+                default=self.env_bool_candidates(spec.env_vars, False),
+                help=spec.help,
+            )
+        parser.add_argument(
+            "--resume",
+            dest="resume",
+            action="store_true",
+            default=str(os.environ.get("BOOTSTRAP_RESUME", "1")).strip().lower()
+            in {"1", "true", "yes", "on"},
+            help="Resume from completed phase checkpoints (default: enabled).",
+        )
+        parser.add_argument(
+            "--no-resume",
+            dest="resume",
+            action="store_false",
+            help="Ignore previous phase checkpoints and run all phases.",
+        )
+        parser.add_argument(
+            "--state-file",
+            default=os.environ.get("BOOTSTRAP_STATE_FILE", ""),
+            help="Checkpoint state file path (default: .state/bootstrap-all-<namespace>.json).",
+        )
+        return parser.parse_args(argv), skip_specs
+
+    def main(self, argv: list[str] | None = None) -> int:
+        args, skip_specs = self.parse_args(argv)
+        root_dir = Path(__file__).resolve().parents[2]
+        config_file = Path(str(args.config_file)).resolve()
+        state_file = (
+            Path(args.state_file).resolve()
+            if str(args.state_file).strip()
+            else root_dir / ".state" / f"bootstrap-all-{args.namespace}.json"
+        )
+        cfg = ControllerAllConfig(
+            root_dir=root_dir,
+            config_file=config_file,
+            namespace=str(args.namespace).strip(),
+            enable_components=bool(args.enable_components),
+            secret_name=str(args.secret_name).strip(),
+            prepare_host_root=str(args.prepare_host_root).strip(),
+            phase_skip_flags={
+                spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
+            },
+            resume=bool(args.resume),
+            state_file=state_file,
+        )
+        runner = ControllerAllRunner(cfg)
+        try:
+            return runner.run()
+        except (ConfigError, KubernetesError, RuntimeError) as exc:
+            err(str(exc))
+            runner.tracker.summary()
+            return 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    args, skip_specs = _parse_args(argv)
-    root_dir = Path(__file__).resolve().parents[2]
-    config_file = Path(str(args.config_file)).resolve()
-    state_file = (
-        Path(args.state_file).resolve()
-        if str(args.state_file).strip()
-        else root_dir / ".state" / f"bootstrap-all-{args.namespace}.json"
-    )
-    cfg = ControllerAllConfig(
-        root_dir=root_dir,
-        config_file=config_file,
-        namespace=str(args.namespace).strip(),
-        enable_components=bool(args.enable_components),
-        secret_name=str(args.secret_name).strip(),
-        prepare_host_root=str(args.prepare_host_root).strip(),
-        phase_skip_flags={
-            spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
-        },
-        resume=bool(args.resume),
-        state_file=state_file,
-    )
-    runner = ControllerAllRunner(cfg)
-    try:
-        return runner.run()
-    except (ConfigError, KubernetesError, RuntimeError) as exc:
-        err(str(exc))
-        runner.tracker.summary()
-        return 1
+# ---------------------------------------------------------------------------
+# Module-level aliases — preserve the public callable surface that tests +
+# external callers import (e.g. ``test_config_drift`` imports the four
+# ``_execute_*`` symbols by name; the bash wrapper imports ``main``).
+# ---------------------------------------------------------------------------
+
+_COMMAND = ControllerAllCommand()
+
+_execute_component_script = _COMMAND.execute_component_script
+_execute_script = _COMMAND.execute_script
+_execute_enable_components = _COMMAND.execute_enable_components
+_execute_http_action = _COMMAND.execute_http_action
+_env_bool = _COMMAND.env_bool
+_env_bool_candidates = _COMMAND.env_bool_candidates
+_parse_args = _COMMAND.parse_args
+main = _COMMAND.main
 
 
 if __name__ == "__main__":

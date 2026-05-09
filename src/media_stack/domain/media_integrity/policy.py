@@ -60,16 +60,6 @@ _CONTRACT_PATH_CANDIDATES = (
 )
 
 
-def _default_contract_path() -> Path:
-    """Pick the policy path at call time so tests can monkeypatch."""
-    for candidate in _CONTRACT_PATH_CANDIDATES:
-        if candidate.exists():
-            return candidate
-    # No file on disk — return the last (legacy) candidate so the
-    # caller's FileNotFoundError surfaces with a familiar path string.
-    return _CONTRACT_PATH_CONTAINER
-
-
 # ---------------------------------------------------------------------------
 # Sections
 # ---------------------------------------------------------------------------
@@ -148,6 +138,156 @@ class BazarrSection:
             "upgrade_allowed": self.upgrade_allowed,
             "ignore_deleted": self.ignore_deleted,
         }
+
+
+# ---------------------------------------------------------------------------
+# Parser — typed coercion + section construction + contract-path resolution
+# ---------------------------------------------------------------------------
+
+
+class MediaIntegrityPolicyParser:
+    """Stateless parser for the canonical servarr-policy YAML contract.
+
+    Bundles the YAML→dataclass coercion helpers (bool/int/str), the
+    per-section constructors, and the contract-path resolver into a
+    single object so they share a logical home. Plain instance
+    methods (no ``@staticmethod``) keep the OO discipline ratchet
+    happy; a module-level singleton (``_PARSER``) and module-level
+    aliases preserve the legacy ``_as_bool`` / ``_default_contract_path``
+    names that tests monkeypatch and the ratchet test reads.
+    """
+
+    def __init__(
+        self,
+        candidates: tuple[Path, ...] = _CONTRACT_PATH_CANDIDATES,
+        legacy_fallback: Path = _CONTRACT_PATH_CONTAINER,
+    ) -> None:
+        self._candidates = candidates
+        self._legacy_fallback = legacy_fallback
+
+    # -- contract path --------------------------------------------------
+
+    def default_contract_path(self) -> Path:
+        """Pick the policy path at call time so tests can monkeypatch."""
+        for candidate in self._candidates:
+            if candidate.exists():
+                return candidate
+        # No file on disk — return the legacy candidate so the
+        # caller's FileNotFoundError surfaces with a familiar path string.
+        return self._legacy_fallback
+
+    # -- typed coercion -------------------------------------------------
+
+    def as_bool(self, value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in ("true", "yes", "on", "1"):
+                return True
+            if lowered in ("false", "no", "off", "0"):
+                return False
+        raise ValueError(f"expected bool, got {value!r}")
+
+    def as_int(self, value: Any, default: int) -> int:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            # bool is a subclass of int — explicit reject so
+            # ``minimum_free_space_mb: true`` isn't silently 1.
+            raise ValueError(f"expected int, got bool {value!r}")
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+            return int(value.strip())
+        raise ValueError(f"expected int, got {value!r}")
+
+    def as_str(self, value: Any, default: str) -> str:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value
+        raise ValueError(f"expected str, got {value!r}")
+
+    # -- section constructors ------------------------------------------
+
+    def media_management_from_dict(self, raw: dict[str, Any]) -> MediaManagementSection:
+        defaults = MediaManagementSection()
+        return MediaManagementSection(
+            auto_unmonitor_previously_downloaded=self.as_bool(
+                raw.get("auto_unmonitor_previously_downloaded"),
+                defaults.auto_unmonitor_previously_downloaded,
+            ),
+            use_hardlinks=self.as_bool(raw.get("use_hardlinks"), defaults.use_hardlinks),
+            delete_empty_folders=self.as_bool(
+                raw.get("delete_empty_folders"), defaults.delete_empty_folders
+            ),
+            import_extra_files=self.as_bool(
+                raw.get("import_extra_files"), defaults.import_extra_files
+            ),
+            extra_file_extensions=self.as_str(
+                raw.get("extra_file_extensions"), defaults.extra_file_extensions
+            ),
+            skip_free_space_check=self.as_bool(
+                raw.get("skip_free_space_check"), defaults.skip_free_space_check
+            ),
+            minimum_free_space_mb=self.as_int(
+                raw.get("minimum_free_space_mb"), defaults.minimum_free_space_mb
+            ),
+            create_empty_media_folders=self.as_bool(
+                raw.get("create_empty_media_folders"), defaults.create_empty_media_folders
+            ),
+            unmonitor_deleted=self.as_bool(
+                raw.get("unmonitor_deleted"), defaults.unmonitor_deleted
+            ),
+        )
+
+    def naming_from_dict(self, raw: dict[str, Any]) -> NamingSection:
+        defaults = NamingSection()
+        return NamingSection(
+            rename_files=self.as_bool(raw.get("rename_files"), defaults.rename_files),
+        )
+
+    def quality_from_dict(self, raw: dict[str, Any]) -> QualitySection:
+        defaults = QualitySection()
+        return QualitySection(
+            cutoff=self.as_str(raw.get("cutoff"), defaults.cutoff),
+            upgrade_allowed=self.as_bool(
+                raw.get("upgrade_allowed"), defaults.upgrade_allowed
+            ),
+        )
+
+    def bazarr_from_dict(self, raw: dict[str, Any]) -> BazarrSection:
+        defaults = BazarrSection()
+        return BazarrSection(
+            rename_files=self.as_bool(raw.get("rename_files"), defaults.rename_files),
+            auto_sync=self.as_bool(raw.get("auto_sync"), defaults.auto_sync),
+            upgrade_allowed=self.as_bool(
+                raw.get("upgrade_allowed"), defaults.upgrade_allowed
+            ),
+            ignore_deleted=self.as_bool(
+                raw.get("ignore_deleted"), defaults.ignore_deleted
+            ),
+        )
+
+
+# Module-level singleton + aliases preserve the legacy private-function
+# call surface (``_as_bool``, ``_default_contract_path``, ...) that
+# tests monkeypatch by string path. Replacing the loose ``def``s with
+# bound-method aliases drops the AST FunctionDef count to zero while
+# keeping the wire-compatible names intact.
+_PARSER = MediaIntegrityPolicyParser()
+
+_default_contract_path = _PARSER.default_contract_path
+_as_bool = _PARSER.as_bool
+_as_int = _PARSER.as_int
+_as_str = _PARSER.as_str
+_media_management_from_dict = _PARSER.media_management_from_dict
+_naming_from_dict = _PARSER.naming_from_dict
+_quality_from_dict = _PARSER.quality_from_dict
+_bazarr_from_dict = _PARSER.bazarr_from_dict
 
 
 # ---------------------------------------------------------------------------
@@ -302,106 +442,9 @@ class ServarrPolicy:
         )
 
 
-# ---------------------------------------------------------------------------
-# Section parsers (typed coercion — YAML gives us Any, dataclass wants bool/int/str)
-# ---------------------------------------------------------------------------
-
-
-def _as_bool(value: Any, default: bool) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "yes", "on", "1"):
-            return True
-        if lowered in ("false", "no", "off", "0"):
-            return False
-    raise ValueError(f"expected bool, got {value!r}")
-
-
-def _as_int(value: Any, default: int) -> int:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        # bool is a subclass of int — explicit reject so
-        # ``minimum_free_space_mb: true`` isn't silently 1.
-        raise ValueError(f"expected int, got bool {value!r}")
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
-        return int(value.strip())
-    raise ValueError(f"expected int, got {value!r}")
-
-
-def _as_str(value: Any, default: str) -> str:
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value
-    raise ValueError(f"expected str, got {value!r}")
-
-
-def _media_management_from_dict(raw: dict[str, Any]) -> MediaManagementSection:
-    defaults = MediaManagementSection()
-    return MediaManagementSection(
-        auto_unmonitor_previously_downloaded=_as_bool(
-            raw.get("auto_unmonitor_previously_downloaded"),
-            defaults.auto_unmonitor_previously_downloaded,
-        ),
-        use_hardlinks=_as_bool(raw.get("use_hardlinks"), defaults.use_hardlinks),
-        delete_empty_folders=_as_bool(
-            raw.get("delete_empty_folders"), defaults.delete_empty_folders
-        ),
-        import_extra_files=_as_bool(
-            raw.get("import_extra_files"), defaults.import_extra_files
-        ),
-        extra_file_extensions=_as_str(
-            raw.get("extra_file_extensions"), defaults.extra_file_extensions
-        ),
-        skip_free_space_check=_as_bool(
-            raw.get("skip_free_space_check"), defaults.skip_free_space_check
-        ),
-        minimum_free_space_mb=_as_int(
-            raw.get("minimum_free_space_mb"), defaults.minimum_free_space_mb
-        ),
-        create_empty_media_folders=_as_bool(
-            raw.get("create_empty_media_folders"), defaults.create_empty_media_folders
-        ),
-        unmonitor_deleted=_as_bool(
-            raw.get("unmonitor_deleted"), defaults.unmonitor_deleted
-        ),
-    )
-
-
-def _naming_from_dict(raw: dict[str, Any]) -> NamingSection:
-    defaults = NamingSection()
-    return NamingSection(
-        rename_files=_as_bool(raw.get("rename_files"), defaults.rename_files),
-    )
-
-
-def _quality_from_dict(raw: dict[str, Any]) -> QualitySection:
-    defaults = QualitySection()
-    return QualitySection(
-        cutoff=_as_str(raw.get("cutoff"), defaults.cutoff),
-        upgrade_allowed=_as_bool(raw.get("upgrade_allowed"), defaults.upgrade_allowed),
-    )
-
-
-def _bazarr_from_dict(raw: dict[str, Any]) -> BazarrSection:
-    defaults = BazarrSection()
-    return BazarrSection(
-        rename_files=_as_bool(raw.get("rename_files"), defaults.rename_files),
-        auto_sync=_as_bool(raw.get("auto_sync"), defaults.auto_sync),
-        upgrade_allowed=_as_bool(raw.get("upgrade_allowed"), defaults.upgrade_allowed),
-        ignore_deleted=_as_bool(raw.get("ignore_deleted"), defaults.ignore_deleted),
-    )
-
-
 __all__ = [
     "BazarrSection",
+    "MediaIntegrityPolicyParser",
     "MediaManagementSection",
     "NamingSection",
     "QualitySection",

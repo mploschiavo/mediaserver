@@ -38,134 +38,213 @@ _HTTP_QUICK_TIMEOUT_S = 4
 _JSON_MIME = "application/json"
 
 
-def _cutoff_name_from_items(items: list[Any], cutoff_id: Any) -> str:
-    """Resolve a quality-profile cutoff id to its display name.
+class ContentHelpers:
+    """Sibling helpers for :class:`ContentService`.
 
-    Pulled out of ``get_quality_profiles`` to flatten a deeply nested
-    search (for/if/for/if) into a single pass; behaviour is identical:
-    the first match — whether on an outer group or a nested quality —
-    wins. Falls back to ``str(cutoff_id)`` when no entry matches.
+    Lives separately so ``ContentService`` itself stays under the
+    pinned 15-method ceiling. Eight pure-helper instance methods
+    (``@staticmethod`` deliberately avoided per OO-discipline rule),
+    formerly module-level ``def``s. The module exposes a singleton
+    + aliases so ``content_mod._pick_poster_url(...)`` and
+    ``from .content import _find_scan_task`` callsites keep working.
     """
-    default = str(cutoff_id)
-    for item in items:
-        if item.get("id") == cutoff_id:
-            return item.get("name", default)
-        for q in item.get("items", []):
-            if q.get("id") == cutoff_id:
-                return q.get("name", default)
-    return default
 
+    def cutoff_name_from_items(self, items: list[Any], cutoff_id: Any) -> str:
+        """Resolve a quality-profile cutoff id to its display name.
 
-def _find_scan_task(tasks: list[Any]) -> dict[str, Any] | None:
-    """Locate the Jellyfin scheduled task named ``Scan Media``.
+        Pulled out of ``get_quality_profiles`` to flatten a deeply nested
+        search (for/if/for/if) into a single pass; behaviour is identical:
+        the first match — whether on an outer group or a nested quality —
+        wins. Falls back to ``str(cutoff_id)`` when no entry matches.
+        """
+        default = str(cutoff_id)
+        for item in items:
+            if item.get("id") == cutoff_id:
+                return item.get("name", default)
+            for q in item.get("items", []):
+                if q.get("id") == cutoff_id:
+                    return q.get("name", default)
+        return default
 
-    Hoisted out of ``get_download_client_settings`` to flatten the
-    for/if/if/if ladder; returns ``None`` if no matching task exists
-    rather than letting the caller nest another level of ``if``.
-    """
-    for t in tasks:
-        if isinstance(t, dict) and "Scan Media" in t.get("Name", ""):
-            return t
-    return None
+    def find_scan_task(self, tasks: list[Any]) -> dict[str, Any] | None:
+        """Locate the Jellyfin scheduled task named ``Scan Media``.
 
+        Hoisted out of ``get_download_client_settings`` to flatten the
+        for/if/if/if ladder; returns ``None`` if no matching task exists
+        rather than letting the caller nest another level of ``if``.
+        """
+        for t in tasks:
+            if isinstance(t, dict) and "Scan Media" in t.get("Name", ""):
+                return t
+        return None
 
-def _summarize_scan_task(task: dict[str, Any]) -> dict[str, Any]:
-    """Shape a Jellyfin scheduled-task payload for the dashboard.
+    def summarize_scan_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Shape a Jellyfin scheduled-task payload for the dashboard.
 
-    Decodes the 100-ns ``IntervalTicks`` into hours. Extracted so the
-    outer handler reads as a single ``if task: result = summarize(...)``
-    instead of a 4+-deep ladder.
-    """
-    triggers = task.get("Triggers", [])
-    interval_h = 12
-    if triggers:
-        ticks = triggers[0].get("IntervalTicks", 0)
-        if ticks:
-            interval_h = int(ticks / 36000000000)
-    return {
-        "task_id": task.get("Id", ""),
-        "state": task.get("State", "?"),
-        "interval_hours": interval_h,
-        "last_status": task.get("LastExecutionResult", {}).get("Status", "never"),
-    }
+        Decodes the 100-ns ``IntervalTicks`` into hours. Extracted so the
+        outer handler reads as a single ``if task: result = summarize(...)``
+        instead of a 4+-deep ladder.
+        """
+        triggers = task.get("Triggers", [])
+        interval_h = 12
+        if triggers:
+            ticks = triggers[0].get("IntervalTicks", 0)
+            if ticks:
+                interval_h = int(ticks / 36000000000)
+        return {
+            "task_id": task.get("Id", ""),
+            "state": task.get("State", "?"),
+            "interval_hours": interval_h,
+            "last_status": task.get("LastExecutionResult", {}).get("Status", "never"),
+        }
 
+    def update_jellyfin_scan_interval(self, scan_interval: Any) -> dict[str, Any]:
+        """Write a new ``IntervalTicks`` trigger onto Jellyfin's Scan Media task.
 
-def _update_jellyfin_scan_interval(scan_interval: Any) -> dict[str, Any]:
-    """Write a new ``IntervalTicks`` trigger onto Jellyfin's Scan Media task.
+        Extracted so ``update_download_client_settings`` doesn't need 4
+        levels of if/try/for/if nesting. Returns a status dict suitable
+        for merging into the caller's response.
+        """
+        try:
+            api_key = discover_api_keys().get("jellyfin", "")
+            ms = SERVICE_MAP.get("jellyfin")
+            if not (ms and api_key):
+                return {"status": "skipped", "reason": "jellyfin not reachable"}
+            tasks = json.loads(urllib.request.urlopen(
+                f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=_HTTP_PROBE_TIMEOUT_S,
+            ).read())
+            task = self.find_scan_task(tasks)
+            if task is None:
+                return {"status": "skipped", "reason": "Scan Media task missing"}
+            ticks = int(scan_interval) * 36000000000
+            triggers = [{"Type": "IntervalTrigger", "IntervalTicks": ticks}]
+            req = urllib.request.Request(
+                f"http://{ms.host}:{ms.port}/ScheduledTasks/{task['Id']}/Triggers?api_key={api_key}",
+                data=json.dumps(triggers).encode(),
+                method="POST",
+                headers={"Content-Type": _JSON_MIME},
+            )
+            urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S)
+            return {"status": "updated", "hours": int(scan_interval)}
+        except Exception as exc:
+            return {"error": str(exc)[:80]}
 
-    Extracted so ``update_download_client_settings`` doesn't need 4
-    levels of if/try/for/if nesting. Returns a status dict suitable
-    for merging into the caller's response.
-    """
-    try:
-        api_key = discover_api_keys().get("jellyfin", "")
-        ms = SERVICE_MAP.get("jellyfin")
-        if not (ms and api_key):
-            return {"status": "skipped", "reason": "jellyfin not reachable"}
-        tasks = json.loads(urllib.request.urlopen(
-            f"http://{ms.host}:{ms.port}/ScheduledTasks?api_key={api_key}", timeout=_HTTP_PROBE_TIMEOUT_S,
-        ).read())
-        task = _find_scan_task(tasks)
-        if task is None:
-            return {"status": "skipped", "reason": "Scan Media task missing"}
-        ticks = int(scan_interval) * 36000000000
-        triggers = [{"Type": "IntervalTrigger", "IntervalTicks": ticks}]
-        req = urllib.request.Request(
-            f"http://{ms.host}:{ms.port}/ScheduledTasks/{task['Id']}/Triggers?api_key={api_key}",
-            data=json.dumps(triggers).encode(),
-            method="POST",
-            headers={"Content-Type": _JSON_MIME},
+    def pick_poster_url(self, images: Any) -> str:
+        """Extract a poster URL from an arr `images` array.
+
+        radarr/sonarr/lidarr/readarr return per-item images as
+        ``[{coverType: "poster"|"fanart"|"banner"|..., url, remoteUrl}, ...]``.
+        Prefer ``coverType=="poster"``, then ``"cover"``, then the first
+        entry. ``url`` is the local arr-served path; ``remoteUrl`` points
+        at TMDB/TVDB. We return ``url`` first because it stays valid even
+        when the upstream metadata source is throttled or the item has
+        been deleted from TMDB. Empty string when no images are present
+        so the UI's ``item.poster ? <img/> : <placeholder/>`` branch
+        works cleanly.
+        """
+        if not isinstance(images, list):
+            return ""
+        by_type: dict[str, str] = {}
+        first_url = ""
+        for entry in images:
+            if not isinstance(entry, dict):
+                continue
+            url = str(entry.get("url") or entry.get("remoteUrl") or "")
+            if not url:
+                continue
+            if not first_url:
+                first_url = url
+            cover = str(entry.get("coverType") or "").lower()
+            if cover and cover not in by_type:
+                by_type[cover] = url
+        return by_type.get("poster") or by_type.get("cover") or first_url
+
+    def profile_summary(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Flatten a single arr quality-profile payload into a dashboard shape.
+
+        Exists to pull a 5-deep loop out of ``get_quality_profiles`` — see
+        ``cutoff_name_from_items`` for the cutoff-resolution specifics.
+        """
+        entry: dict[str, Any] = {"id": profile.get("id"), "name": profile.get("name", "")}
+        if "upgradeAllowed" in profile:
+            entry["upgradeAllowed"] = profile["upgradeAllowed"]
+        cutoff_id = profile.get("cutoff")
+        if cutoff_id is not None:
+            entry["cutoff"] = self.cutoff_name_from_items(profile.get("items", []), cutoff_id)
+        return entry
+
+    def fetch_qbit_downloads(self, svc_host: str, svc_port: int) -> dict[str, Any]:
+        """Fetch active torrents from the torrent client API.
+
+        Lives on :class:`ContentHelpers` (rather than ``ContentService``)
+        to keep that class under its pinned 15-method ceiling. Behaviour
+        identical to the prior module-level ``_fetch_qbit_downloads``.
+        """
+        import http.cookiejar
+        cj = http.cookiejar.CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+        user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
+        pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
+        login = urllib.request.Request(
+            f"http://{svc_host}:{svc_port}/api/v2/auth/login",
+            data=f"username={user}&password={pw}".encode(),
         )
-        urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S)
-        return {"status": "updated", "hours": int(scan_interval)}
-    except Exception as exc:
-        return {"error": str(exc)[:80]}
+        opener.open(login, timeout=_HTTP_PROBE_TIMEOUT_S)
+        req = urllib.request.Request(f"http://{svc_host}:{svc_port}/api/v2/torrents/info?filter=active")
+        with opener.open(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
+            torrents = json.loads(resp.read())
+        items = [
+            {"name": t.get("name", "")[:80],
+             "progress": round((t.get("progress", 0) or 0) * 100, 1),
+             "state": t.get("state", ""), "size": t.get("size", 0),
+             "dlspeed": t.get("dlspeed", 0)}
+            for t in torrents[:10]
+        ]
+        return {"active": len(torrents), "items": items}
+
+    def fetch_sab_downloads(self, svc_host: str, svc_port: int) -> dict[str, Any]:
+        """Fetch active NZB downloads from a usenet-client-compatible API.
+
+        Lives on :class:`ContentHelpers` for the same reason as
+        ``fetch_qbit_downloads`` — keeps ``ContentService`` short of
+        the 15-method ceiling.
+        """
+        from media_stack.core.service_registry.registry import read_api_key_from_file
+        _usenet_ids = [sid for sid, cat in DOWNLOAD_CLIENT_CATEGORIES.items() if cat == "usenet"]
+        _usenet_svc_id = _usenet_ids[0] if _usenet_ids else "usenet"
+        _usenet_svc = SERVICE_MAP.get(_usenet_svc_id)
+        _key_env = _usenet_svc.api_key_env if _usenet_svc else ""
+        sab_key = os.environ.get(_key_env, "") if _key_env else ""
+        if not sab_key:
+            sab_key = read_api_key_from_file(_usenet_svc_id, os.environ.get("CONFIG_ROOT", "/srv-config"))
+        if not sab_key:
+            return {"active": 0, "speed": "0", "items": []}
+        req = urllib.request.Request(
+            f"http://{svc_host}:{svc_port}/api?mode=queue&output=json&apikey={sab_key}"
+        )
+        with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
+            data = json.loads(resp.read())
+        queue = data.get("queue", {})
+        slots = queue.get("slots", [])
+        items = [
+            {"name": s.get("filename", "")[:80],
+             "progress": round(float(s.get("percentage", 0)), 1)}
+            for s in slots[:10]
+        ]
+        return {"active": len(slots), "speed": f"{queue.get('speed', '0')} KB/s", "items": items}
 
 
-def _pick_poster_url(images: Any) -> str:
-    """Extract a poster URL from an arr `images` array.
+_helpers = ContentHelpers()
 
-    radarr/sonarr/lidarr/readarr return per-item images as
-    ``[{coverType: "poster"|"fanart"|"banner"|..., url, remoteUrl}, ...]``.
-    Prefer ``coverType=="poster"``, then ``"cover"``, then the first
-    entry. ``url`` is the local arr-served path; ``remoteUrl`` points
-    at TMDB/TVDB. We return ``url`` first because it stays valid even
-    when the upstream metadata source is throttled or the item has
-    been deleted from TMDB. Empty string when no images are present
-    so the UI's ``item.poster ? <img/> : <placeholder/>`` branch
-    works cleanly.
-    """
-    if not isinstance(images, list):
-        return ""
-    by_type: dict[str, str] = {}
-    first_url = ""
-    for entry in images:
-        if not isinstance(entry, dict):
-            continue
-        url = str(entry.get("url") or entry.get("remoteUrl") or "")
-        if not url:
-            continue
-        if not first_url:
-            first_url = url
-        cover = str(entry.get("coverType") or "").lower()
-        if cover and cover not in by_type:
-            by_type[cover] = url
-    return by_type.get("poster") or by_type.get("cover") or first_url
-
-
-def _profile_summary(profile: dict[str, Any]) -> dict[str, Any]:
-    """Flatten a single arr quality-profile payload into a dashboard shape.
-
-    Exists to pull a 5-deep loop out of ``get_quality_profiles`` — see
-    ``_cutoff_name_from_items`` for the cutoff-resolution specifics.
-    """
-    entry: dict[str, Any] = {"id": profile.get("id"), "name": profile.get("name", "")}
-    if "upgradeAllowed" in profile:
-        entry["upgradeAllowed"] = profile["upgradeAllowed"]
-    cutoff_id = profile.get("cutoff")
-    if cutoff_id is not None:
-        entry["cutoff"] = _cutoff_name_from_items(profile.get("items", []), cutoff_id)
-    return entry
+# Module-level aliases preserve the historical ``_*`` callable shape for
+# callers (``content_mod._pick_poster_url(...)`` in unit tests, ``from
+# .content import _find_scan_task`` in ``content_download_settings_mixin``).
+_cutoff_name_from_items = _helpers.cutoff_name_from_items
+_find_scan_task = _helpers.find_scan_task
+_summarize_scan_task = _helpers.summarize_scan_task
+_update_jellyfin_scan_interval = _helpers.update_jellyfin_scan_interval
+_pick_poster_url = _helpers.pick_poster_url
+_profile_summary = _helpers.profile_summary
 
 
 class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
@@ -728,65 +807,8 @@ class ContentService(_ContentAnalyticsMixin, _ContentDownloadSettingsMixin):
     # on ``_ContentDownloadSettingsMixin`` — see the mixin for their bodies.
 
 
-def _fetch_qbit_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
-    """Fetch active torrents from the torrent client API.
-
-    Module-level — the prior ``@staticmethod`` lived on ``ContentService``
-    but never touched ``self``, and keeping it here trims the class line
-    count below the god-class threshold.
-    """
-    import http.cookiejar
-    cj = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-    user = os.environ.get("STACK_ADMIN_USERNAME", "admin")
-    pw = os.environ.get("STACK_ADMIN_PASSWORD", "media-stack")
-    login = urllib.request.Request(
-        f"http://{svc_host}:{svc_port}/api/v2/auth/login",
-        data=f"username={user}&password={pw}".encode(),
-    )
-    opener.open(login, timeout=_HTTP_PROBE_TIMEOUT_S)
-    req = urllib.request.Request(f"http://{svc_host}:{svc_port}/api/v2/torrents/info?filter=active")
-    with opener.open(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
-        torrents = json.loads(resp.read())
-    items = [
-        {"name": t.get("name", "")[:80],
-         "progress": round((t.get("progress", 0) or 0) * 100, 1),
-         "state": t.get("state", ""), "size": t.get("size", 0),
-         "dlspeed": t.get("dlspeed", 0)}
-        for t in torrents[:10]
-    ]
-    return {"active": len(torrents), "items": items}
-
-
-def _fetch_sab_downloads(svc_host: str, svc_port: int) -> dict[str, Any]:
-    """Fetch active NZB downloads from a usenet-client-compatible API.
-
-    Extracted from ``ContentService`` for the same reason as
-    ``_fetch_qbit_downloads`` — pure function, no ``self``, keeps the
-    host class short enough to clear the 500-line ratchet."""
-    from media_stack.core.service_registry.registry import read_api_key_from_file
-    _usenet_ids = [sid for sid, cat in DOWNLOAD_CLIENT_CATEGORIES.items() if cat == "usenet"]
-    _usenet_svc_id = _usenet_ids[0] if _usenet_ids else "usenet"
-    _usenet_svc = SERVICE_MAP.get(_usenet_svc_id)
-    _key_env = _usenet_svc.api_key_env if _usenet_svc else ""
-    sab_key = os.environ.get(_key_env, "") if _key_env else ""
-    if not sab_key:
-        sab_key = read_api_key_from_file(_usenet_svc_id, os.environ.get("CONFIG_ROOT", "/srv-config"))
-    if not sab_key:
-        return {"active": 0, "speed": "0", "items": []}
-    req = urllib.request.Request(
-        f"http://{svc_host}:{svc_port}/api?mode=queue&output=json&apikey={sab_key}"
-    )
-    with urllib.request.urlopen(req, timeout=_HTTP_PROBE_TIMEOUT_S) as resp:
-        data = json.loads(resp.read())
-    queue = data.get("queue", {})
-    slots = queue.get("slots", [])
-    items = [
-        {"name": s.get("filename", "")[:80],
-         "progress": round(float(s.get("percentage", 0)), 1)}
-        for s in slots[:10]
-    ]
-    return {"active": len(slots), "speed": f"{queue.get('speed', '0')} KB/s", "items": items}
+_fetch_qbit_downloads = _helpers.fetch_qbit_downloads
+_fetch_sab_downloads = _helpers.fetch_sab_downloads
 
 
 _instance = ContentService()
@@ -811,9 +833,10 @@ delete_import_list = _instance.delete_import_list
 
 # Backward compat alias
 get_jellyfin_libraries = get_media_server_libraries
-# ``_fetch_qbit_downloads`` / ``_fetch_sab_downloads`` were promoted from
-# staticmethods on ``ContentService`` to module-level helpers (see their
-# definitions above); they are already in the module namespace.
+# ``_fetch_qbit_downloads`` / ``_fetch_sab_downloads`` are aliases onto
+# :class:`ContentHelpers` instance methods (see ADR-0012 redo). They
+# stay reachable as module-level names for the ``_DOWNLOAD_FETCHERS``
+# registry below.
 
 # Download client category → fetch function.  Extend for new client types.
 _DOWNLOAD_FETCHERS: dict[str, Any] = {

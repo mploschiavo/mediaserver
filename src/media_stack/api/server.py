@@ -68,61 +68,6 @@ _csrf_issuer = _CsrfProtector()
 
 _LOOPBACK_IPS = frozenset({"127.0.0.1", "::1", "localhost"})
 
-
-def _is_private_or_loopback(client_ip: str) -> bool:
-    """True when the IP is loopback OR an RFC 1918 private range.
-
-    The IP lockout exists to slow internet-origin brute-force. Every
-    'private' origin — the dev's loopback, the docker bridge gateway
-    (browser→localhost:9100 shows up as 172.21.0.1 inside the
-    container), same-LAN clients — is categorically NOT a brute-force
-    threat model. Locking them out turns routine dev/LAN use into a
-    'dashboard is 429' paper cut. Internet-facing deployments sit
-    behind a reverse proxy that rewrites X-Forwarded-For; the lockout
-    is still effective against real attackers there."""
-    if not client_ip or client_ip in _LOOPBACK_IPS:
-        return True
-    try:
-        import ipaddress
-        ip = ipaddress.ip_address(client_ip)
-        return ip.is_loopback or ip.is_private or ip.is_link_local
-    except ValueError:
-        return False
-
-
-def _should_reject_for_ip_lockout(client_ip: str) -> bool:
-    """True when the tracker says this IP is locked AND the IP isn't
-    a loopback/private address."""
-    if _is_private_or_loopback(client_ip):
-        return False
-    return _ip_failure_tracker.is_locked(client_ip)
-
-
-def _issue_csrf_if_missing(handler) -> None:
-    """Free-standing Set-Cookie emitter for the double-submit CSRF
-    token. Called from _json_response / _html_response on GETs. Not a
-    method on ControllerAPIHandler to keep its method count under the
-    class-size ratchet. See CsrfProtector for cookie name / format."""
-    if getattr(handler, "command", "") != "GET":
-        return
-    try:
-        cookie_header = handler.headers.get("Cookie", "") if getattr(
-            handler, "headers", None) else ""
-    except AttributeError:
-        cookie_header = ""
-    if _csrf_issuer.extract_cookie(cookie_header):
-        return
-    xfp = ""
-    try:
-        xfp = (handler.headers.get("X-Forwarded-Proto", "") or "").strip().lower()
-    except AttributeError:
-        logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
-    token = _csrf_issuer.issue_token()
-    handler.send_header(
-        "Set-Cookie",
-        _csrf_issuer.build_set_cookie(token, secure=xfp == "https"),
-    )
-
 # Per-IP lockout: after _IP_LOCKOUT_THRESHOLD failures within
 # _IP_LOCKOUT_WINDOW seconds, the IP is rejected outright for
 # _IP_LOCKOUT_COOLDOWN. Keyed by source IP, so credential-stuffing
@@ -150,6 +95,154 @@ _MAX_BODY_BYTES = 1 * (2 ** 20)
 # in CONTROLLER_TRUSTED_PROXY_CIDRS. Without a trusted-proxy config,
 # these headers are ignored so an attacker can't spoof identity by
 # setting the header themselves.
+
+
+# Paths whose POST traffic we audit. GET is not audited (reads don't
+# change state); the user-mgmt service has its own finer-grained audit
+# that runs in addition to this so detail-rich entries still happen.
+_AUDIT_SKIP_POST_PATHS = frozenset({
+    "/healthz", "/readyz", "/webhooks/arr",
+})
+
+
+class _RequestSecurityGate:
+    """Per-request security checks: IP lockout, CSRF issuance/check,
+    basic-auth verification.
+
+    Extracted from the module's loose helpers so all related logic
+    sits in one constructor-injected dependency. The
+    ``ControllerAPIHandler`` holds an instance and calls into it; the
+    module-level alias names (``_check_csrf``, ``_issue_csrf_if_missing``
+    etc.) are bound to the methods so external test imports + the
+    AST-walk ratchets continue to see the expected names.
+    """
+
+    def __init__(
+        self,
+        *,
+        loopback_ips: frozenset[str] = _LOOPBACK_IPS,
+        ip_failure_tracker: FailedLoginTracker = _ip_failure_tracker,
+        csrf_issuer: _CsrfProtector = _csrf_issuer,
+        max_body_bytes: int = _MAX_BODY_BYTES,
+    ) -> None:
+        self._loopback_ips = loopback_ips
+        self._ip_failure_tracker = ip_failure_tracker
+        self._csrf_issuer = csrf_issuer
+        self._max_body_bytes = max_body_bytes
+
+    def is_private_or_loopback(self, client_ip: str) -> bool:
+        """True when the IP is loopback OR an RFC 1918 private range.
+
+        The IP lockout exists to slow internet-origin brute-force. Every
+        'private' origin — the dev's loopback, the docker bridge gateway
+        (browser→localhost:9100 shows up as 172.21.0.1 inside the
+        container), same-LAN clients — is categorically NOT a brute-force
+        threat model. Locking them out turns routine dev/LAN use into a
+        'dashboard is 429' paper cut. Internet-facing deployments sit
+        behind a reverse proxy that rewrites X-Forwarded-For; the lockout
+        is still effective against real attackers there."""
+        if not client_ip or client_ip in self._loopback_ips:
+            return True
+        try:
+            import ipaddress
+            ip = ipaddress.ip_address(client_ip)
+            return ip.is_loopback or ip.is_private or ip.is_link_local
+        except ValueError:
+            return False
+
+    def should_reject_for_ip_lockout(self, client_ip: str) -> bool:
+        """True when the tracker says this IP is locked AND the IP isn't
+        a loopback/private address."""
+        if self.is_private_or_loopback(client_ip):
+            return False
+        return self._ip_failure_tracker.is_locked(client_ip)
+
+    def issue_csrf_if_missing(self, handler) -> None:
+        """Free-standing Set-Cookie emitter for the double-submit CSRF
+        token. Called from _json_response / _html_response on GETs. Not a
+        method on ControllerAPIHandler to keep its method count under the
+        class-size ratchet. See CsrfProtector for cookie name / format."""
+        if getattr(handler, "command", "") != "GET":
+            return
+        try:
+            cookie_header = handler.headers.get("Cookie", "") if getattr(
+                handler, "headers", None) else ""
+        except AttributeError:
+            cookie_header = ""
+        if self._csrf_issuer.extract_cookie(cookie_header):
+            return
+        xfp = ""
+        try:
+            xfp = (handler.headers.get("X-Forwarded-Proto", "") or "").strip().lower()
+        except AttributeError:
+            logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
+        token = self._csrf_issuer.issue_token()
+        handler.send_header(
+            "Set-Cookie",
+            self._csrf_issuer.build_set_cookie(token, secure=xfp == "https"),
+        )
+
+    def verify_basic_auth(self, auth_header: str, fb_user: str, fb_pass: str) -> bool:
+        """Verify basic-auth. Prefer the store-backed verifier so password
+        resets in the UI take effect immediately; fall back to env creds.
+        """
+        if not auth_header.startswith("Basic "):
+            return False
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug("[DEBUG] bad auth header: %s", exc)
+            return False
+        provided_user, _, provided_pass = decoded.partition(":")
+        if _build_auth_verifier is not None:
+            try:
+                if _build_auth_verifier().verify(provided_user, provided_pass):
+                    return True
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("media_stack").debug(
+                    "[DEBUG] store-backed verifier failed: %s", exc,
+                )
+        return provided_user == fb_user and provided_pass == fb_pass
+
+    def check_csrf(self, handler: Any) -> bool:
+        """CSRF enforcement -- smart default + Origin/Referer cross-check.
+
+        Requests that include a session cookie are assumed to come from a
+        browser and must present a matching X-CSRF-Token header. Requests
+        without a cookie are API clients using basic-auth from a script;
+        they're not CSRF-vulnerable and are allowed through unless
+        CSRF_ENFORCE=1 forces strict mode.
+        """
+        mode = (os.getenv("CSRF_ENFORCE", "") or "").strip()
+        if mode == "0":
+            return True
+        headers = getattr(handler, "headers", None)
+        if headers is None:
+            return True
+        try:
+            cookie_header = headers.get("Cookie", "") or ""
+            csrf_header = headers.get(self._csrf_issuer.header_name, "") or ""
+        except AttributeError:
+            return True
+        has_cookie = bool(cookie_header.strip())
+        if not (mode == "1" or has_cookie):
+            return True
+        return self._csrf_issuer.verify(
+            cookie_header=cookie_header, header_value=csrf_header,
+        )
+
+
+_security_gate = _RequestSecurityGate()
+
+# Module-level aliases — preserved so test code (`from server import
+# _check_csrf`, `mock.patch("server._issue_csrf_if_missing", ...)`)
+# and other modules that historically imported these names continue to
+# resolve. Each alias is a bound method on the singleton above.
+_is_private_or_loopback = _security_gate.is_private_or_loopback
+_should_reject_for_ip_lockout = _security_gate.should_reject_for_ip_lockout
+_issue_csrf_if_missing = _security_gate.issue_csrf_if_missing
+_verify_basic_auth = _security_gate.verify_basic_auth
+_check_csrf = _security_gate.check_csrf
 
 
 class _AuthPolicy:
@@ -431,12 +524,12 @@ class _SudoGate:
     """Re-authentication gate for high-risk endpoints.
 
     Certain POSTs are dangerous enough that a session cookie or bearer
-    token alone isn't acceptable \u2014 we want proof the human at the
+    token alone isn't acceptable — we want proof the human at the
     keyboard still holds the password. On a matching path, we require
     an ``X-Sudo-Password`` header whose value verifies against the
     authenticated user's password (via BasicAuthVerifier). If the
     request already uses Basic auth, the password is on every request
-    anyway \u2014 we skip the re-check to avoid double-prompting.
+    anyway — we skip the re-check to avoid double-prompting.
 
     Default sensitive paths:
       /api/rotate-keys                 rotate admin API keys
@@ -508,7 +601,7 @@ class _SudoGate:
             logging.getLogger("media_stack").debug("[DEBUG] Swallowed exception", exc_info=True)
         if auth_hdr.startswith("Basic "):
             return True
-        # Bearer / cookie / trusted-proxy \u2014 require the extra header.
+        # Bearer / cookie / trusted-proxy — require the extra header.
         sudo_pw = ""
         try:
             sudo_pw = (handler.headers.get("X-Sudo-Password", "") or "").strip()
@@ -552,143 +645,152 @@ class _SudoGate:
 _sudo_gate = _SudoGate()
 
 
-def _start_auto_heal_loop() -> None:
-    """Spawn a daemon thread that runs the auto-heal cycle on an
-    interval. The default is 60s — fast enough to catch crashloops
-    before the user notices, infrequent enough that the disk reads
-    don't show up in iostat. Override with
-    ``CONTROLLER_AUTO_HEAL_INTERVAL_SECONDS``."""
-    try:
-        interval = max(15, int(os.environ.get(
-            "CONTROLLER_AUTO_HEAL_INTERVAL_SECONDS", "60",
-        )))
-    except ValueError:
-        interval = 60
+class _AutoHealLoopStarter:
+    """Spawns the daemon thread that runs the auto-heal cycle on an
+    interval. Class-wraps what was previously a loose
+    ``_start_auto_heal_loop`` def so the controller's lifecycle code
+    constructor-injects an instance and calls ``.start()``."""
 
-    def _loop() -> None:
-        # Lazy import so a broken auto-heal module doesn't take the
-        # whole server down on boot.
-        from .services import auto_heal as autoheal_svc
-        while True:
+    def __init__(
+        self,
+        *,
+        env: Any = os.environ,
+        default_interval_seconds: int = 60,
+        min_interval_seconds: int = 15,
+        thread_name: str = "auto-heal-loop",
+    ) -> None:
+        self._env = env
+        self._default_interval = default_interval_seconds
+        self._min_interval = min_interval_seconds
+        self._thread_name = thread_name
+
+    def start(self) -> None:
+        """Spawn a daemon thread that runs the auto-heal cycle on an
+        interval. The default is 60s — fast enough to catch crashloops
+        before the user notices, infrequent enough that the disk reads
+        don't show up in iostat. Override with
+        ``CONTROLLER_AUTO_HEAL_INTERVAL_SECONDS``."""
+        try:
+            interval = max(self._min_interval, int(self._env.get(
+                "CONTROLLER_AUTO_HEAL_INTERVAL_SECONDS",
+                str(self._default_interval),
+            )))
+        except ValueError:
+            interval = self._default_interval
+
+        def _loop() -> None:
+            # Lazy import so a broken auto-heal module doesn't take the
+            # whole server down on boot.
+            from .services import auto_heal as autoheal_svc
+            while True:
+                try:
+                    autoheal_svc.run_cycle()
+                except Exception as exc:  # noqa: BLE001
+                    logging.getLogger("media_stack").debug(
+                        "[DEBUG] auto-heal cycle raised: %s", exc,
+                    )
+                time.sleep(interval)
+
+        threading.Thread(
+            target=_loop, daemon=True, name=self._thread_name,
+        ).start()
+
+
+_auto_heal_loop_starter = _AutoHealLoopStarter()
+_start_auto_heal_loop = _auto_heal_loop_starter.start
+
+
+class _AuditEmitter:
+    """Mutation-audit emitter. Owns the actor-derivation logic and the
+    skip-list filtering for the post-dispatch audit hook."""
+
+    def __init__(
+        self,
+        *,
+        skip_post_paths: frozenset[str] = _AUDIT_SKIP_POST_PATHS,
+    ) -> None:
+        self._skip_post_paths = skip_post_paths
+
+    def actor_from(self, handler) -> str:
+        """Best-effort actor identity for audit entries.
+
+        Tries (in order):
+          - Authelia Remote-User forwarded by a trusted proxy
+          - The username half of a Basic auth header
+          - 'bearer-token' when a Bearer header was presented
+          - 'anonymous' as the final fallback
+        """
+        try:
+            remote = _trusted_proxy_auth.identity(handler)
+            if remote:
+                return remote
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("media_stack").debug(
+                "[DEBUG] _audit_actor_from trusted_proxy_auth raised: %s", exc,
+            )
+        auth = (handler.headers.get(_H_AUTHORIZATION, "") if
+                getattr(handler, "headers", None) else "") or ""
+        if auth.startswith("Basic "):
             try:
-                autoheal_svc.run_cycle()
+                decoded = base64.b64decode(auth[6:]).decode("utf-8", "replace")
+                return decoded.partition(":")[0] or "anonymous"
             except Exception as exc:  # noqa: BLE001
                 logging.getLogger("media_stack").debug(
-                    "[DEBUG] auto-heal cycle raised: %s", exc,
+                    "[DEBUG] _audit_actor_from Basic decode failed: %s", exc,
                 )
-            time.sleep(interval)
+                return "anonymous"
+        if auth.startswith("Bearer "):
+            return "bearer-token"
+        return "anonymous"
 
-    threading.Thread(
-        target=_loop, daemon=True, name="auto-heal-loop",
-    ).start()
+    def emit_mutation(self, handler) -> None:
+        """Emit an audit-log entry for a 2xx mutating POST.
 
-
-def _audit_actor_from(handler) -> str:
-    """Best-effort actor identity for audit entries.
-
-    Tries (in order):
-      - Authelia Remote-User forwarded by a trusted proxy
-      - The username half of a Basic auth header
-      - 'bearer-token' when a Bearer header was presented
-      - 'anonymous' as the final fallback
-    """
-    try:
-        remote = _trusted_proxy_auth.identity(handler)
-        if remote:
-            return remote
-    except Exception as exc:  # noqa: BLE001
-        logging.getLogger("media_stack").debug(
-            "[DEBUG] _audit_actor_from trusted_proxy_auth raised: %s", exc,
-        )
-    auth = (handler.headers.get(_H_AUTHORIZATION, "") if
-            getattr(handler, "headers", None) else "") or ""
-    if auth.startswith("Basic "):
+        Runs AFTER the handler returns so the logged result includes the
+        status the business logic chose (400/404/500 mutations aren't
+        audited as successful changes). Falls back silently on any error
+        so a misbehaving audit path can't block a real request.
+        """
+        if _build_user_service is None:
+            return
         try:
-            decoded = base64.b64decode(auth[6:]).decode("utf-8", "replace")
-            return decoded.partition(":")[0] or "anonymous"
+            status = int(getattr(handler, "_last_status", 0))
+            if not (HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES):
+                return
+            path = (getattr(handler, "path", "") or "").split("?")[0]
+            if path in self._skip_post_paths:
+                return
+            # User-mgmt endpoints write their own audit entries with more
+            # detail; skip here to avoid duplicate rows.
+            if (path == "/api/users" or path.startswith("/api/users/")
+                    or path.startswith("/api/invites")
+                    or path.startswith("/api/roles/")
+                    or path == "/api/users-bulk-import"
+                    or path == "/api/users-reconcile/import"
+                    or path == "/api/users-reconcile/unlink"):
+                return
+            svc = _build_user_service()
+            svc._audit.append(
+                actor=self.actor_from(handler),
+                action="api_mutation",
+                target=path,
+                result="ok",
+                detail={
+                    "method": getattr(handler, "command", "POST"),
+                    "status": status,
+                    "client": _trusted_proxy_auth.client_ip(handler),
+                },
+            )
         except Exception as exc:  # noqa: BLE001
             logging.getLogger("media_stack").debug(
-                "[DEBUG] _audit_actor_from Basic decode failed: %s", exc,
+                "[DEBUG] _audit_mutation failed: %s", exc,
             )
-            return "anonymous"
-    if auth.startswith("Bearer "):
-        return "bearer-token"
-    return "anonymous"
 
 
-# Paths whose POST traffic we audit. GET is not audited (reads don't
-# change state); the user-mgmt service has its own finer-grained audit
-# that runs in addition to this so detail-rich entries still happen.
-_AUDIT_SKIP_POST_PATHS = frozenset({
-    "/healthz", "/readyz", "/webhooks/arr",
-})
+_audit_emitter = _AuditEmitter()
+_audit_actor_from = _audit_emitter.actor_from
+_audit_mutation = _audit_emitter.emit_mutation
 
-
-def _audit_mutation(handler) -> None:
-    """Emit an audit-log entry for a 2xx mutating POST.
-
-    Runs AFTER the handler returns so the logged result includes the
-    status the business logic chose (400/404/500 mutations aren't
-    audited as successful changes). Falls back silently on any error
-    so a misbehaving audit path can't block a real request.
-    """
-    if _build_user_service is None:
-        return
-    try:
-        status = int(getattr(handler, "_last_status", 0))
-        if not (HTTPStatus.OK <= status < HTTPStatus.MULTIPLE_CHOICES):
-            return
-        path = (getattr(handler, "path", "") or "").split("?")[0]
-        if path in _AUDIT_SKIP_POST_PATHS:
-            return
-        # User-mgmt endpoints write their own audit entries with more
-        # detail; skip here to avoid duplicate rows.
-        if (path == "/api/users" or path.startswith("/api/users/")
-                or path.startswith("/api/invites")
-                or path.startswith("/api/roles/")
-                or path == "/api/users-bulk-import"
-                or path == "/api/users-reconcile/import"
-                or path == "/api/users-reconcile/unlink"):
-            return
-        svc = _build_user_service()
-        svc._audit.append(
-            actor=_audit_actor_from(handler),
-            action="api_mutation",
-            target=path,
-            result="ok",
-            detail={
-                "method": getattr(handler, "command", "POST"),
-                "status": status,
-                "client": _trusted_proxy_auth.client_ip(handler),
-            },
-        )
-    except Exception as exc:  # noqa: BLE001
-        logging.getLogger("media_stack").debug(
-            "[DEBUG] _audit_mutation failed: %s", exc,
-        )
-
-
-def _verify_basic_auth(auth_header: str, fb_user: str, fb_pass: str) -> bool:
-    """Verify basic-auth. Prefer the store-backed verifier so password
-    resets in the UI take effect immediately; fall back to env creds.
-    """
-    if not auth_header.startswith("Basic "):
-        return False
-    try:
-        decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
-    except Exception as exc:  # noqa: BLE001
-        logging.getLogger("media_stack").debug("[DEBUG] bad auth header: %s", exc)
-        return False
-    provided_user, _, provided_pass = decoded.partition(":")
-    if _build_auth_verifier is not None:
-        try:
-            if _build_auth_verifier().verify(provided_user, provided_pass):
-                return True
-        except Exception as exc:  # noqa: BLE001
-            logging.getLogger("media_stack").debug(
-                "[DEBUG] store-backed verifier failed: %s", exc,
-            )
-    return provided_user == fb_user and provided_pass == fb_pass
 
 # Re-export for backward compatibility — other modules import these from server.py
 from .webhooks import _fire_webhooks  # noqa: F401
@@ -717,18 +819,41 @@ _CORE_ACTION_PRIORITY: dict[str, int] = {
     "discover-indexers": 70,
 }
 
-def _build_action_priority() -> dict[str, int]:
-    """Build ACTION_PRIORITY from core + contract-discovered jobs."""
-    priorities = dict(_CORE_ACTION_PRIORITY)
-    try:
-        from media_stack.services.jobs.framework import discover_jobs_from_contracts
-        _PHASE_BASE = {"media_server": 40, "download_clients": 50, "default": 55, "post": 75}
-        for job in discover_jobs_from_contracts():
-            base = _PHASE_BASE.get(job["phase"], 55)
-            priorities.setdefault(job["name"], base + job.get("priority", 50) // 10)
-    except Exception as exc:
-        log_swallowed(exc)
-    return priorities
+
+class _ActionPriorityResolver:
+    """Build the ACTION_PRIORITY mapping by merging the static core
+    table with contract-discovered jobs. A class so the construction
+    is constructor-injected rather than a free function."""
+
+    _PHASE_BASE: dict[str, int] = {
+        "media_server": 40,
+        "download_clients": 50,
+        "default": 55,
+        "post": 75,
+    }
+
+    def __init__(
+        self,
+        *,
+        core_priority: dict[str, int] = _CORE_ACTION_PRIORITY,
+    ) -> None:
+        self._core_priority = core_priority
+
+    def build(self) -> dict[str, int]:
+        """Build ACTION_PRIORITY from core + contract-discovered jobs."""
+        priorities = dict(self._core_priority)
+        try:
+            from media_stack.services.jobs.framework import discover_jobs_from_contracts
+            for job in discover_jobs_from_contracts():
+                base = self._PHASE_BASE.get(job["phase"], 55)
+                priorities.setdefault(job["name"], base + job.get("priority", 50) // 10)
+        except Exception as exc:
+            log_swallowed(exc)
+        return priorities
+
+
+_action_priority_resolver = _ActionPriorityResolver()
+_build_action_priority = _action_priority_resolver.build
 
 ACTION_PRIORITY: dict[str, int] = _build_action_priority()
 DEFAULT_ACTION_PRIORITY = 50
@@ -751,6 +876,12 @@ _AUTH_REQUIRED_PREFIXES = ("/actions/", "/api/restart/", "/api/stack/")
 # auth/RBAC/sudo but BEFORE Router dispatch so a flood-of-mutations
 # attack hits the limit early and a CSRF-missing request 403s without
 # touching any handler body.
+#
+# Kept as a top-level function so the AST-walk ratchets that scan
+# server.py for `_global_post_preflight` (rate-limit-bucket-coverage +
+# csrf-on-mutating-security-endpoints) continue to find it. The body
+# delegates to the module-level rate limiter and the `_check_csrf`
+# alias so the structure check and the call-graph check both pass.
 def _global_post_preflight(handler: Any) -> bool:
     """Rate-limit + CSRF gate applied to every POST.
 
@@ -790,34 +921,6 @@ def _global_post_preflight(handler: Any) -> bool:
     return True
 
 
-def _check_csrf(handler: Any) -> bool:
-    """CSRF enforcement -- smart default + Origin/Referer cross-check.
-
-    Requests that include a session cookie are assumed to come from a
-    browser and must present a matching X-CSRF-Token header. Requests
-    without a cookie are API clients using basic-auth from a script;
-    they're not CSRF-vulnerable and are allowed through unless
-    CSRF_ENFORCE=1 forces strict mode.
-    """
-    mode = (os.getenv("CSRF_ENFORCE", "") or "").strip()
-    if mode == "0":
-        return True
-    headers = getattr(handler, "headers", None)
-    if headers is None:
-        return True
-    try:
-        cookie_header = headers.get("Cookie", "") or ""
-        csrf_header = headers.get(_csrf_issuer.header_name, "") or ""
-    except AttributeError:
-        return True
-    has_cookie = bool(cookie_header.strip())
-    if not (mode == "1" or has_cookie):
-        return True
-    return _csrf_issuer.verify(
-        cookie_header=cookie_header, header_value=csrf_header,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Request Handler
 # ---------------------------------------------------------------------------
@@ -827,6 +930,18 @@ class ControllerAPIHandler(BaseHTTPRequestHandler):
 
     state: ControllerState
     _callbacks: dict[str, Any] = {}
+
+    # Sibling helper singletons constructor-injected as class-level
+    # attributes. Keeping them on the class (rather than per-instance)
+    # avoids touching ``__init__`` (BaseHTTPRequestHandler's __init__
+    # runs the request synchronously). Methods on the handler reach
+    # them via ``self._security_gate`` etc., but they can also be
+    # swapped at the class level for tests.
+    _security_gate: _RequestSecurityGate = _security_gate
+    _auth_policy: _AuthPolicy = _auth_policy
+    _controller_rbac: _ControllerRBAC = _controller_rbac
+    _sudo_gate: _SudoGate = _sudo_gate
+    _audit_emitter: _AuditEmitter = _audit_emitter
 
     # BaseHTTPRequestHandler defaults to "BaseHTTP/0.x Python/3.y.z",
     # which leaks the Python version + a recognisable stdlib banner
