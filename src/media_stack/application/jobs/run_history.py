@@ -86,6 +86,15 @@ class _RunHistoryFileIO:
     def lock(self) -> threading.RLock:
         return self._rlock
 
+    def path(self) -> Path:
+        """Resolve the run-history file path freshly from the env-aware
+        ``resolve_run_history_path`` each call. Aliased to the
+        module-level ``_path`` symbol so that
+        ``mock.patch.object(run_history, "_path", …)`` (used by the
+        controller-startup + history-cap tests) keeps redirecting writes
+        to a tempdir without each method having to consult ``self``."""
+        return Path(resolve_run_history_path())
+
     def _ensure_parent(self) -> Path:
         # Delegate to the module-level ``_path`` alias so tests that
         # do ``mock.patch.object(run_history, "_path", …)`` keep
@@ -523,21 +532,6 @@ class RunHistoryRepository:
 
 
 # ---------------------------------------------------------------------------
-# Module-level path resolver.
-#
-# Kept as a free function (not on ``_RunHistoryFileIO``) because
-# tests do ``mock.patch.object(run_history, "_path", return_value=…)``
-# to redirect writes into a tempdir, and the file-io class delegates
-# to this alias rather than to ``self``. Moving this onto the class
-# would silently break those mocks.
-# ---------------------------------------------------------------------------
-
-
-def _path() -> Path:
-    return Path(resolve_run_history_path())
-
-
-# ---------------------------------------------------------------------------
 # Module-level singletons + thin function aliases.
 #
 # The wider codebase (orchestrator, framework, jobs.py, post_misc.py,
@@ -565,6 +559,14 @@ _read_all_records = _FILE_IO._read_all_records
 _write_all_records = _FILE_IO._write_all_records
 _append_record = _FILE_IO._append_record
 _trim_to_cap_if_needed = _FILE_IO._trim_to_cap_if_needed
+
+# Path resolver alias — bound to the file-io's ``path`` method.
+# Tests rely on ``mock.patch.object(run_history, "_path", return_value=…)``
+# to redirect writes into a tempdir; that monkey-patch lands on this
+# module attribute and the in-class methods all look it up via
+# ``_path()`` from module scope rather than ``self.path()``, so the
+# mock survives the ADR-0012 class-fold.
+_path = _FILE_IO.path
 
 # Public API.
 record_run_start = _REPOSITORY.record_run_start

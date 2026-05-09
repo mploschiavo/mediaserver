@@ -2203,13 +2203,6 @@ _MEDIA_INTEGRITY_JOB_ADAPTERS = MediaIntegrityJobAdapters()
 _API_KEY_DISCOVERY_JOB_ADAPTERS = ApiKeyDiscoveryJobAdapters()
 
 
-def _self_module():
-    """Return this module from ``sys.modules`` so internal cross-class
-    calls hit the module attribute (and any active ``mock.patch`` on
-    it) rather than the bound method."""
-    return sys.modules[__name__]
-
-
 # --- _HttpRequestFactory -----------------------------------------------
 _make_servarr_http_request = _HTTP_REQUEST_FACTORY.make_servarr_http_request
 

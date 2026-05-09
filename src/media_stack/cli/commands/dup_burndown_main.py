@@ -261,61 +261,20 @@ class DupBurndownCommand:
 _DETECTOR = DupBurndownDetector()
 _COMMAND = DupBurndownCommand(_DETECTOR)
 
-
-def _load_ratchet_module():
-    return _DETECTOR.load_ratchet_module()
-
-
-def _repo_root() -> Path:
-    return _DETECTOR.repo_root()
-
-
-def _baseline_file() -> Path:
-    return _DETECTOR.baseline_file()
-
-
-def _ast_dup_count() -> tuple[int, dict[str, list[str]]]:
-    return _DETECTOR.ast_dup_count()
-
-
-def _find_pmd() -> str | None:
-    return _DETECTOR.find_pmd()
-
-
-def _run_pmd_cpd(min_tokens: int = 100) -> tuple[int, str]:
-    return _DETECTOR.run_pmd_cpd(min_tokens=min_tokens)
-
-
-def _read_baseline() -> int:
-    return _DETECTOR.read_baseline()
-
-
-def _write_baseline(value: int) -> None:
-    _DETECTOR.write_baseline(value)
-
-
-def _print_top_clusters(groups: dict[str, list[str]], top: int = 10) -> None:
-    _COMMAND.print_top_clusters(groups, top=top)
-
-
-def cmd_report(args: argparse.Namespace) -> int:
-    return _COMMAND.cmd_report(args)
-
-
-def cmd_tighten(args: argparse.Namespace) -> int:
-    return _COMMAND.cmd_tighten(args)
-
-
-def cmd_check(args: argparse.Namespace) -> int:
-    return _COMMAND.cmd_check(args)
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    return _COMMAND.build_parser()
-
-
-def main(argv: Iterable[str] | None = None) -> int:
-    return _COMMAND.main(argv)
+_load_ratchet_module = _DETECTOR.load_ratchet_module
+_repo_root = _DETECTOR.repo_root
+_baseline_file = _DETECTOR.baseline_file
+_ast_dup_count = _DETECTOR.ast_dup_count
+_find_pmd = _DETECTOR.find_pmd
+_run_pmd_cpd = _DETECTOR.run_pmd_cpd
+_read_baseline = _DETECTOR.read_baseline
+_write_baseline = _DETECTOR.write_baseline
+_print_top_clusters = _COMMAND.print_top_clusters
+cmd_report = _COMMAND.cmd_report
+cmd_tighten = _COMMAND.cmd_tighten
+cmd_check = _COMMAND.cmd_check
+_build_parser = _COMMAND.build_parser
+main = _COMMAND.main
 
 
 if __name__ == "__main__":

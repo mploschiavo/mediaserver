@@ -758,42 +758,10 @@ _RULES: list[Callable[..., Story | None]] = [
 
 _engine = HealthStoriesEngine(rules=_rules, rule_set=_RULES)
 
-
-def compose(
-    *,
-    health: dict,
-    integrity: dict,
-    crashloops: dict,
-    heal_events: list[dict],
-    now_ts: float | None = None,
-) -> list[dict]:
-    """Module-level entry point preserved for callers and tests.
-
-    Delegates to the singleton :class:`HealthStoriesEngine`."""
-    return _engine.compose(
-        health=health,
-        integrity=integrity,
-        crashloops=crashloops,
-        heal_events=heal_events,
-        now_ts=now_ts,
-    )
-
-
-def compose_live() -> dict:
-    """Module-level entry point preserved for the GET handler and
-    tests that monkey-patch ``compose_live``."""
-    return _engine.compose_live()
-
-
-def job_flapping_stories(history: list[dict]) -> list[dict]:
-    """Module-level entry point preserved for callers and tests."""
-    return _engine.job_flapping_stories(history)
-
-
-def guardrail_streak_stories(
-    streaks: list[dict] | None,
-    *,
-    min_streak: int = 2,
-) -> list[dict]:
-    """Module-level entry point preserved for callers and tests."""
-    return _engine.guardrail_streak_stories(streaks, min_streak=min_streak)
+# Module-level entry points preserved for callers and tests that import
+# these names directly. Bound-method aliases on the singleton engine —
+# no loose ``def``s, per ADR-0012 OO discipline.
+compose = _engine.compose
+compose_live = _engine.compose_live
+job_flapping_stories = _engine.job_flapping_stories
+guardrail_streak_stories = _engine.guardrail_streak_stories

@@ -180,57 +180,19 @@ class SetPvcStorageClassCommand:
 _TRANSFORMER = YamlPvcDocumentTransformer()
 _COMMAND = SetPvcStorageClassCommand(transformer=_TRANSFORMER)
 
-
-def _indent_width(line: str) -> int:
-    return _TRANSFORMER._indent_width(line)
-
-
-def _is_pvc_document(lines: list[str]) -> bool:
-    return _TRANSFORMER._is_pvc_document(lines)
-
-
-def _find_spec_index(lines: list[str]) -> int:
-    return _TRANSFORMER._find_spec_index(lines)
-
-
-def _remove_storage_class(lines: list[str]) -> list[str]:
-    return _TRANSFORMER._remove_storage_class(lines)
-
-
-def _find_spec_block_end(lines: list[str], spec_idx: int, spec_indent: int) -> int:
-    return _TRANSFORMER._find_spec_block_end(lines, spec_idx, spec_indent)
-
-
-def _set_storage_class(lines: list[str], class_name: str) -> list[str]:
-    return _TRANSFORMER._set_storage_class(lines, class_name)
-
-
-def split_yaml_documents(text: str) -> list[str]:
-    return _TRANSFORMER.split_yaml_documents(text)
-
-
-def render_yaml_documents(parts: list[str]) -> str:
-    return _TRANSFORMER.render_yaml_documents(parts)
-
-
-def transform_storage_class_manifest(text: str, class_name: str, clear_mode: bool) -> str:
-    return _TRANSFORMER.transform_storage_class_manifest(text, class_name, clear_mode)
-
-
-def build_arg_parser(default_file: Path) -> argparse.ArgumentParser:
-    return _COMMAND.build_arg_parser(default_file)
-
-
-def parse_config(argv: list[str] | None = None) -> SetStorageClassConfig:
-    return _COMMAND.parse_config(argv)
-
-
-def run(cfg: SetStorageClassConfig, fs: FileSystem, logger: logging.Logger) -> int:
-    return _COMMAND.run(cfg, fs, logger)
-
-
-def main(argv: list[str] | None = None) -> int:
-    return _COMMAND.main(argv)
+_indent_width = _TRANSFORMER._indent_width
+_is_pvc_document = _TRANSFORMER._is_pvc_document
+_find_spec_index = _TRANSFORMER._find_spec_index
+_remove_storage_class = _TRANSFORMER._remove_storage_class
+_find_spec_block_end = _TRANSFORMER._find_spec_block_end
+_set_storage_class = _TRANSFORMER._set_storage_class
+split_yaml_documents = _TRANSFORMER.split_yaml_documents
+render_yaml_documents = _TRANSFORMER.render_yaml_documents
+transform_storage_class_manifest = _TRANSFORMER.transform_storage_class_manifest
+build_arg_parser = _COMMAND.build_arg_parser
+parse_config = _COMMAND.parse_config
+run = _COMMAND.run
+main = _COMMAND.main
 
 
 if __name__ == "__main__":
