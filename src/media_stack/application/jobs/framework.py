@@ -1193,6 +1193,25 @@ class _JobFrameworkBuilder:
             return {"service": service_id}
         return wrapper
 
+    def make_lifecycle_wrapper(self, handler_fn: Callable, service_id: str) -> Callable:
+        """Wrap a ``LifecycleHandlerAdapter.bind`` closure as a Job handler.
+
+        The bound closure expects an ``OrchestrationContext`` (with
+        ``.service_id`` / ``.config`` / ``.secrets``), but the Job
+        framework hands it a ``JobContext`` (with ``.cfg`` /
+        ``.config_root``). Translate by building a real
+        ``OrchestrationContext`` from the service's contract YAML
+        — same path the lifecycle dispatcher uses — then invoke.
+        """
+        def wrapper(ctx: "JobContext") -> dict[str, Any]:
+            from media_stack.infrastructure.promises.dispatcher import (
+                LifecycleResolver,
+            )
+            resolver = LifecycleResolver()
+            orch_ctx = resolver.context_for(service_id)
+            return handler_fn(orch_ctx)
+        return wrapper
+
     def build_job_framework(self) -> Job:
         """Build the bootstrap job tree by scanning service contracts."""
         discovered = discover_jobs_from_contracts()
@@ -1234,16 +1253,25 @@ class _JobFrameworkBuilder:
                 handler_path = j["handler"]
                 try:
                     raw_fn = _resolve_handler(handler_path)
-                    # If handler takes (ctx) → use directly; if (cfg, root, timeout) → wrap
-                    import inspect
-                    sig = inspect.signature(raw_fn)
-                    params = list(sig.parameters.keys())
-                    if len(params) == 1 and params[0] == "ctx":
-                        handler = raw_fn
-                    elif len(params) >= 2:
-                        handler = _make_handler_wrapper(raw_fn, j["service"])
+                    # Lifecycle-adapter handlers carry the
+                    # `_lifecycle_target_class` tag set by
+                    # `LifecycleHandlerAdapter.bind`. They expect
+                    # an `OrchestrationContext`, not the framework's
+                    # `JobContext`; wrap with a translator that builds
+                    # the right shape from the contract YAML.
+                    if hasattr(raw_fn, "_lifecycle_target_class"):
+                        handler = _make_lifecycle_wrapper(raw_fn, j["service"])
                     else:
-                        handler = raw_fn
+                        # If handler takes (ctx) → use directly; if (cfg, root, timeout) → wrap
+                        import inspect
+                        sig = inspect.signature(raw_fn)
+                        params = list(sig.parameters.keys())
+                        if len(params) == 1 and params[0] == "ctx":
+                            handler = raw_fn
+                        elif len(params) >= 2:
+                            handler = _make_handler_wrapper(raw_fn, j["service"])
+                        else:
+                            handler = raw_fn
                 except Exception:
                     runtime_platform.log(
                         f"[WARN] Cannot resolve handler for job {j['name']}: {handler_path}"
@@ -1343,6 +1371,7 @@ class _JobFrameworkBuilder:
 _FRAMEWORK_BUILDER = _JobFrameworkBuilder()
 _resolve_handler = _FRAMEWORK_BUILDER.resolve_handler
 _make_handler_wrapper = _FRAMEWORK_BUILDER.make_handler_wrapper
+_make_lifecycle_wrapper = _FRAMEWORK_BUILDER.make_lifecycle_wrapper
 build_job_framework = _FRAMEWORK_BUILDER.build_job_framework
 get_job_registry = _FRAMEWORK_BUILDER.get_job_registry
 run_job = _FRAMEWORK_BUILDER.run_job

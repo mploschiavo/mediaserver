@@ -74,6 +74,15 @@ class LifecycleHandlerAdapter:
             method = getattr(instance, method_name)
             outcome = method(ctx)
             return cls.outcome_to_dict(outcome)
+        # Tag the closure so the application-layer Job framework can
+        # detect lifecycle-style handlers and translate the
+        # framework's ``JobContext`` to an ``OrchestrationContext``
+        # before invocation. The tag is the bound class + method
+        # plus any constructor kwargs (so a shared family class like
+        # ``ServarrLifecycle`` carries its ``service_id`` through).
+        handler._lifecycle_target_class = target_class  # type: ignore[attr-defined]
+        handler._lifecycle_method_name = method_name  # type: ignore[attr-defined]
+        handler._lifecycle_constructor_kwargs = dict(constructor_kwargs)  # type: ignore[attr-defined]
         return handler
 
     @classmethod

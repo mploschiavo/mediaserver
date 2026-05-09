@@ -18,6 +18,6 @@ resources:
 images:
   - name: harbor.iomio.io/library/media-stack-controller
     newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.327
+    newTag: v1.0.328
 patches:
   - path: ingress-tls-patch.yaml
