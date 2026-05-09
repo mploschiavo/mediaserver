@@ -115,27 +115,23 @@ class PromiseUsesLifecycleDispatch(unittest.TestCase):
             f"{_EXPECTED_PROBE_METHOD!r}",
         )
 
-    def test_promise_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_promise_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — promise→Job migration. The ensurer is
+        a JobEnsurer pointing at ``maintainerr:ensure-rules-linked-to-arr``
+        whose handler binds to ``MaintainerrLifecycle.ensure_rules_linked_to_arr``
+        via the shared ``LifecycleHandlerAdapter``."""
+        from media_stack.domain.services.promises import JobEnsurer
         promise = self.by_id[_PROMISE_ID]
         self.assertIsInstance(
-            promise.ensurer, LifecycleEnsurer,
-            f"{_PROMISE_ID}: ensurer regressed from lifecycle dispatch "
+            promise.ensurer, JobEnsurer,
+            f"{_PROMISE_ID}: ensurer regressed from Job dispatch "
             f"(got {type(promise.ensurer).__name__})",
         )
         self.assertEqual(
-            promise.ensurer.service, _EXPECTED_SERVICE,
-            f"{_PROMISE_ID}: ensurer.service expected "
-            f"{_EXPECTED_SERVICE!r}",
-        )
-        self.assertEqual(
-            promise.ensurer.method, _EXPECTED_ENSURER_METHOD,
-            f"{_PROMISE_ID}: ensurer.method expected "
-            f"{_EXPECTED_ENSURER_METHOD!r}. The wide-handler "
-            f"delegation pattern routes the lifecycle method to the "
-            f"legacy ``ensure_maintainerr_integrations`` handler — "
-            f"do NOT split into per-arr ensurers, the rule-sync "
-            f"surface clobbers itself if invoked twice.",
+            promise.ensurer.job_name,
+            "maintainerr:ensure-rules-linked-to-arr",
+            f"{_PROMISE_ID}: ensurer.job_name should target the "
+            f"contract Job entry that wraps the lifecycle method.",
         )
 
 

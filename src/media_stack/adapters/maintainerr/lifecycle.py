@@ -78,4 +78,21 @@ _check: ServiceLifecycle = MaintainerrLifecycle()
 del _check
 
 
-__all__ = ["MaintainerrLifecycle"]
+# ADR-0010 Phase 7 — module-level Job-handler alias the
+# ``maintainerr:ensure-rules-linked-to-arr`` contract entry references.
+# The closure created by ``LifecycleHandlerAdapter.bind`` constructs
+# a fresh ``MaintainerrLifecycle`` per call and adapts its
+# ``Outcome`` return to the Job-handler dict shape.
+from media_stack.domain.services.lifecycle_handler_adapter import (  # noqa: E402
+    LifecycleHandlerAdapter,
+)
+
+ensure_rules_linked_to_arr = LifecycleHandlerAdapter.bind(
+    MaintainerrLifecycle, "ensure_rules_linked_to_arr",
+)
+
+
+__all__ = [
+    "MaintainerrLifecycle",
+    "ensure_rules_linked_to_arr",
+]

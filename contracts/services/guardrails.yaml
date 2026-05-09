@@ -59,14 +59,19 @@ plugin:
       handler: "media_stack.application.guardrails.job_handlers:guardrails_evaluate"
       label: "Evaluate guardrail rules"
       # ``post`` phase keeps the cycle out of the bootstrap critical
-      # path. Cadence is owned by the auto-heal daemon (which calls
-      # ``run_job`` every 60s) and ``tick()``'s internal throttle
-      # (default 5 min). Returning ``{"skipped": "throttled"}`` when
-      # the throttle is in effect keeps the handler idempotent and
-      # makes "loop is alive" observable in /api/runs.
+      # path. Cadence is now owned by the framework's
+      # SchedulerService via the ``triggers:`` block below (ADR-0009
+      # Phase 6.5); the auto-heal daemon's hand-rolled
+      # ``run_job("guardrails:evaluate")`` every 60s was retired in
+      # the same change. ``tick()``'s internal throttle (default
+      # 5 min) still gates the actual work so a sub-throttle tick
+      # short-circuits with ``{"skipped": "throttled"}``.
       phase: post
       priority: 90
       requires: []
+      triggers:
+        - event: schedule
+          every: 60s
 
     # Promise-style ensurer — closes any run-history records stuck
     # at ``status=running`` for >5 minutes. Companion to v1.0.293's
@@ -82,6 +87,11 @@ plugin:
       phase: post
       priority: 80
       requires: []
+      # ADR-0009 Phase 6.5 — cadence migrated from the auto-heal
+      # daemon's hand-rolled poller to the framework SchedulerService.
+      triggers:
+        - event: schedule
+          every: 60s
 
     # ADR-0003 Phase 4c — shadow-mode orchestrator. Calls
     # satisfy_promises in dry_run=True so probes fire but ensurers
@@ -96,6 +106,11 @@ plugin:
       phase: post
       priority: 70
       requires: []
+      # ADR-0009 Phase 6.5 — cadence migrated from the auto-heal
+      # daemon's hand-rolled poller to the framework SchedulerService.
+      triggers:
+        - event: schedule
+          every: 60s
 
     # ADR-0005 Phase 1+2 — blocking ``satisfy_promises_blocking``
     # cycle, now wired as the FINAL post-phase job of the bootstrap

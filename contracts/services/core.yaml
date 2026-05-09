@@ -51,6 +51,57 @@ plugin:
   jobs:
 
     # ---------------------------------------------------------------
+    # ``bootstrap`` (and its alias ``reconcile``) — metadata-only
+    # entry for the synthesized DAG root. ``tree_skip: true`` keeps
+    # the tree builder from double-adding it; the trigger index +
+    # ``JobLifecycleMetadataHandler`` still see it via discovery.
+    #
+    # End-of-batch declarative metadata (ADR-0009 Phase 6.4):
+    # * ``marks_initial_bootstrap_done`` — on success the framework
+    #   calls ``ControllerState.mark_initial_bootstrap_done()``.
+    #   Replaces the per-Job ``mark-initial-bootstrap-done`` handler.
+    # * ``retry_on_failure`` — on failure the framework spawns a
+    #   daemon timer for ``delay_seconds``, then dispatches
+    #   ``target`` if ``when`` passes. Replaces the per-Job
+    #   ``heal-sweep`` handler.
+    # ---------------------------------------------------------------
+
+    bootstrap:
+      handler: media_stack.application.jobs.framework:_noop
+      label: "Bootstrap"
+      requires: []
+      tree_skip: true
+      # Cross-cutting prereq satisfaction (e.g. discovering an API
+      # key that ten downstream jobs depend on) takes more rounds
+      # than a leaf job's default of 3. 30 is empirically plenty.
+      max_attempts: 30
+      # Phase order — sequences the per-phase groups built from
+      # ``plugin.jobs.<name>.phase`` fields. ``pre_bootstrap`` runs
+      # first because the legacy adapter-hooks pipeline discovers
+      # API keys downstream phases need; ``infrastructure`` runs
+      # second because auth + edge routing are foundational (every
+      # later phase talks through the gateway). Phases not in this
+      # list are appended in alphabetical order after the listed
+      # phases — plugin-defined phases work without editing this
+      # entry.
+      phase_order:
+        - pre_bootstrap
+        - infrastructure
+        - media_server
+        - download_clients
+        - default
+        - post
+      # Plugin-pluggable flag name (Cleanup #7 — ControllerState
+      # gained ``set_deployment_flag`` / ``is_deployment_flag_set``).
+      # Plugins declare their own flag names; the framework calls
+      # ``state.set_deployment_flag(<name>)`` on Job completion.
+      marks_setup_complete: initial_bootstrap_done
+      retry_on_failure:
+        target: reconcile
+        delay_seconds: 120
+        when: any_service_failed
+
+    # ---------------------------------------------------------------
     # pre_bootstrap phase — runs FIRST so per-app jobs find state
     # populated. Replaces the inline preflights+runner.run that used
     # to live in action_bootstrap; without this job the dispatch
@@ -319,3 +370,4 @@ plugin:
       phase: post
       priority: 80
       requires: []
+

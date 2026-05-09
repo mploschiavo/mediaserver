@@ -98,16 +98,24 @@ class PromiseUsesLifecycleDispatch(unittest.TestCase):
         self.assertEqual(self.promise.probe.service, "qbittorrent")
         self.assertEqual(self.promise.probe.method, "probe_categories")
 
-    def test_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — promise→Job migration. The ensurer is
+        a JobEnsurer pointing at ``qbittorrent:ensure-categories``;
+        the Job's ``handler`` field references the wirer's module-
+        level alias (``categories_wiring:ensure_categories``), which
+        binds to ``CategoriesWirer.run_as_job``."""
+        from media_stack.domain.services.promises import JobEnsurer
         self.assertIsInstance(
-            self.promise.ensurer, LifecycleEnsurer,
-            f"{_PROMISE_ID}: ensurer regressed from lifecycle dispatch "
-            f"(got {type(self.promise.ensurer).__name__}). The cutover "
-            "uses ``QbittorrentLifecycle.ensure_categories``.",
+            self.promise.ensurer, JobEnsurer,
+            f"{_PROMISE_ID}: ensurer regressed from Job dispatch "
+            f"(got {type(self.promise.ensurer).__name__}). ADR-0010 "
+            "Phase 7 routes via ``run_job(qbittorrent:ensure-categories)`` "
+            "instead of the legacy lifecycle dispatch.",
         )
-        self.assertEqual(self.promise.ensurer.service, "qbittorrent")
-        self.assertEqual(self.promise.ensurer.method, "ensure_categories")
+        self.assertEqual(
+            self.promise.ensurer.job_name,
+            "qbittorrent:ensure-categories",
+        )
 
 
 class PromiseIsBlocking(unittest.TestCase):

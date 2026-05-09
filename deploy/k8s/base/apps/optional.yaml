@@ -323,7 +323,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: controller-reconcile
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.325
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.326
               imagePullPolicy: IfNotPresent
               env:
                 - name: SABNZBD_API_KEY
@@ -479,7 +479,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: jellyfin-prewarm
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.325
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.326
               imagePullPolicy: IfNotPresent
               env:
                 - name: JELLYFIN_API_KEY
@@ -556,7 +556,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: media-hygiene
-              image: harbor.iomio.io/library/media-stack-controller:v1.0.325
+              image: harbor.iomio.io/library/media-stack-controller:v1.0.326
               imagePullPolicy: IfNotPresent
               env:
                 - name: STACK_ADMIN_USERNAME

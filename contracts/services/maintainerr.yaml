@@ -22,6 +22,15 @@ plugin:
   service_technology_map:
     maintainerr_service: maintainerr
     maintainerr_policy_service: maintainerr
+  jobs:
+    # ADR-0010 Phase 7 — promise→Job migration for the
+    # ``maintainerr-rules-linked-to-arr`` promise. Replaces the
+    # ``ensured_by: type: lifecycle`` indirection.
+    "maintainerr:ensure-rules-linked-to-arr":
+      handler: media_stack.adapters.maintainerr.lifecycle:ensure_rules_linked_to_arr
+      label: "Ensure Maintainerr rules linked to *arr"
+      satisfies: [maintainerr-rules-linked-to-arr]
+      requires: []
   event_handlers:
     ENSURE:
       ensure_maintainerr_policy: media_stack.services.apps.maintainerr.runtime_ops:ensure_maintainerr_policy
@@ -69,9 +78,8 @@ plugin:
         service: maintainerr
         method: probe_rules_linked_to_arr
       ensured_by:
-        type: lifecycle
-        service: maintainerr
-        method: ensure_rules_linked_to_arr
+        type: job
+        job_name: "maintainerr:ensure-rules-linked-to-arr"
 defaults:
   enabled: true
   required: false

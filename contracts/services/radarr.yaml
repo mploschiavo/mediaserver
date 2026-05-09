@@ -64,6 +64,36 @@ plugin:
   # verbatim (probe shape, ensured_by job-name strings, platform
   # tags). None carry ``bootstrap_blocking`` — the orchestrator's
   # post-bootstrap reconciliation handles them.
+  jobs:
+    # ADR-0010 Phase 7 — promise→Job migration. Each handler binds
+    # to ``ServarrLifecycle.<method>`` parameterized with
+    # ``service_id="radarr"`` via ``LifecycleHandlerAdapter.bind``
+    # (see servarr/lifecycle.py module-level aliases).
+    "radarr:ensure-jellyfin-notifier":
+      handler: media_stack.adapters.servarr.lifecycle:radarr_ensure_jellyfin_notifier
+      label: "Ensure Radarr Jellyfin notifier"
+      satisfies: [radarr-jellyfin-notifier]
+      requires: []
+    "radarr:ensure-indexers":
+      handler: media_stack.adapters.servarr.lifecycle:radarr_ensure_indexers
+      label: "Ensure Radarr indexers"
+      satisfies: [radarr-has-indexers]
+      requires: []
+    "radarr:ensure-runtime-defaults":
+      handler: media_stack.adapters.servarr.lifecycle:radarr_ensure_runtime_defaults
+      label: "Ensure Radarr runtime defaults (quality profiles + import-lists-auto)"
+      satisfies: [radarr-import-lists-auto, radarr-quality-profiles]
+      requires: []
+    "radarr:ensure-download-client":
+      handler: media_stack.adapters.servarr.lifecycle:radarr_ensure_download_client
+      label: "Ensure Radarr download client"
+      satisfies: [radarr-download-client]
+      requires: []
+    "radarr:ensure-api-key-discoverable":
+      handler: media_stack.adapters.servarr.lifecycle:radarr_ensure_api_key_discoverable
+      label: "Ensure Radarr API key discoverable"
+      satisfies: [radarr-api-key-discoverable]
+      requires: []
   promises:
     # --- Radarr → Jellyfin notifier ---------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -79,9 +109,8 @@ plugin:
         service: radarr
         method: probe_jellyfin_notifier
       ensured_by:
-        type: lifecycle
-        service: radarr
-        method: ensure_jellyfin_notifier
+        type: job
+        job_name: "radarr:ensure-jellyfin-notifier"
 
     # --- Indexer pipeline (Radarr side) -----------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -101,9 +130,8 @@ plugin:
         service: radarr
         method: probe_has_indexers
       ensured_by:
-        type: lifecycle
-        service: radarr
-        method: ensure_indexers
+        type: job
+        job_name: "radarr:ensure-indexers"
 
     # --- Default-profile content (Radarr import lists) --------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -123,9 +151,8 @@ plugin:
         service: radarr
         method: probe_import_lists_auto
       ensured_by:
-        type: lifecycle
-        service: radarr
-        method: ensure_runtime_defaults
+        type: job
+        job_name: "radarr:ensure-runtime-defaults"
 
     # --- qBittorrent download client wiring (Radarr) ----------------------
     # ADR-0005 Phase 5b cutover: probe + ensurer dispatch through
@@ -143,9 +170,8 @@ plugin:
         service: radarr
         method: probe_download_client
       ensured_by:
-        type: lifecycle
-        service: radarr
-        method: ensure_download_client
+        type: job
+        job_name: "radarr:ensure-download-client"
 
     # --- Quality profiles (Radarr) ----------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -164,9 +190,8 @@ plugin:
         service: radarr
         method: probe_quality_profiles
       ensured_by:
-        type: lifecycle
-        service: radarr
-        method: ensure_runtime_defaults
+        type: job
+        job_name: "radarr:ensure-runtime-defaults"
 
     # --- API-key discoverability (Radarr) ---------------------------------
     # ADR-0005 Phase 5c.1 (wide) — see Sonarr's analogous promise for
@@ -181,6 +206,5 @@ plugin:
         service: radarr
         method: probe_api_key_discoverable
       ensured_by:
-        type: lifecycle
-        service: radarr
-        method: ensure_api_key_discoverable
+        type: job
+        job_name: "radarr:ensure-api-key-discoverable"

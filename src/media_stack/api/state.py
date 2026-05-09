@@ -104,6 +104,14 @@ class ActionRecord:
         }
 
 
+# ADR-0010 Phase 7 cleanup #7 — canonical name of the historical
+# bootstrap-completion flag. Bound to a constant so the dict-backed
+# deployment-flags machinery + the back-compat ``initial_bootstrap_done``
+# attribute share one source of truth instead of repeating the string
+# (which would tick the duplicate-strings ratchet).
+_INITIAL_BOOTSTRAP_DONE_FLAG = "initial_bootstrap_done"
+
+
 @dataclass
 class ControllerState:
     """Mutable state shared between the HTTP API thread and the bootstrap runner thread.
@@ -133,7 +141,15 @@ class ControllerState:
     # successfully? Persisted to the runtime-config sidecar so a
     # controller restart on an already-bootstrapped install
     # doesn't wedge the dashboard banner.
+    #
+    # ADR-0010 Phase 7 cleanup #7: backed by ``_deployment_flags``
+    # so plugins can declare their own setup-complete flags via the
+    # ``marks_setup_complete: <flag-name>`` contract field. The
+    # legacy attribute stays for back-compat with callers that read
+    # it directly; ``set_deployment_flag`` and
+    # ``is_deployment_flag_set`` are the canonical surface.
     initial_bootstrap_done: bool = False
+    _deployment_flags: dict[str, bool] = field(default_factory=dict)
     # ``pending_actions`` is now always empty — the in-process
     # priority queue is the source of truth for queued work. The
     # field stays in ``to_dict()`` for back-compat with the public
@@ -206,20 +222,45 @@ class ControllerState:
             self.mark_initial_bootstrap_done()
 
     def mark_initial_bootstrap_done(self) -> None:
-        """Flip ``initial_bootstrap_done`` to True AND persist it.
+        """Backwards-compatible shim — delegates to
+        ``set_deployment_flag(_INITIAL_BOOTSTRAP_DONE_FLAG)``. Kept
+        so callers that imported the named method continue to work
+        without a churn-the-world rename."""
+        self.set_deployment_flag(_INITIAL_BOOTSTRAP_DONE_FLAG)
 
-        Persistence rides the existing ``runtime-config.json`` file
-        (same disk write as ``set_config``) — the flag stores under a
-        leading-underscore key so ``runtime_config`` stays pure
-        operator-tunable values. On startup, ``load_persisted_config``
-        restores the flag, which means a controller restart on an
-        already-bootstrapped install no longer wedges the dashboard
-        banner on Queued waiting for a re-bootstrap that doesn't
-        happen.
+    def set_deployment_flag(self, name: str) -> None:
+        """Set a named deployment-state flag and persist.
+
+        ADR-0010 Phase 7 cleanup #7. The contract field
+        ``marks_setup_complete: <flag-name>`` on a Job entry causes
+        ``JobLifecycleMetadataHandler`` to call this with the
+        declared name on the Job's successful completion. The flag
+        is stored in ``_deployment_flags`` and persisted to the
+        runtime-config sidecar; a controller restart restores it.
+
+        The historical ``initial_bootstrap_done`` attribute is
+        synced for back-compat with callers (and the persisted
+        format) that read the named field directly.
         """
+        if not name:
+            return
         with self._lock:
-            self.initial_bootstrap_done = True
+            self._deployment_flags[name] = True
+            if name == _INITIAL_BOOTSTRAP_DONE_FLAG:
+                self.initial_bootstrap_done = True
             self._persist_runtime_config()
+
+    def is_deployment_flag_set(self, name: str) -> bool:
+        """Return whether ``name`` is set. The
+        ``initial_bootstrap_done`` flag also reads the legacy
+        attribute for back-compat with persisted state from before
+        the dict-backed mechanism was introduced."""
+        with self._lock:
+            if self._deployment_flags.get(name, False):
+                return True
+            if name == _INITIAL_BOOTSTRAP_DONE_FLAG:
+                return bool(self.initial_bootstrap_done)
+            return False
 
     def record_preflight(self, name: str, result: dict[str, Any]) -> None:
         with self._lock:
@@ -359,8 +400,35 @@ class ControllerState:
                 # back at startup.
                 if data.get("_initial_bootstrap_done") is True:
                     self.initial_bootstrap_done = True
+                    self._deployment_flags[
+                        _INITIAL_BOOTSTRAP_DONE_FLAG
+                    ] = True
+                # ADR-0010 Phase 7 cleanup #7 — restore plugin-
+                # declared deployment flags. Lifted into a helper to
+                # keep this method shallow (under the deeply-nested
+                # ratchet).
+                self._restore_persisted_deployment_flags(
+                    data.get("_deployment_flags"),
+                )
             except Exception as exc:
                 log_swallowed(exc)
+
+    def _restore_persisted_deployment_flags(
+        self, raw: Any,
+    ) -> None:
+        """Hydrate ``_deployment_flags`` from the persisted dict.
+        Older persisted format only had ``_initial_bootstrap_done``;
+        this picks up any additional flags set via
+        ``set_deployment_flag(<name>)`` after the dict-backed
+        mechanism landed."""
+        if not isinstance(raw, dict):
+            return
+        for fname, fvalue in raw.items():
+            if not isinstance(fname, str) or not bool(fvalue):
+                continue
+            self._deployment_flags[fname] = True
+            if fname == _INITIAL_BOOTSTRAP_DONE_FLAG:
+                self.initial_bootstrap_done = True
 
     def _persist_runtime_config(self) -> None:
         """Write runtime_config to disk (called on every update).
@@ -379,6 +447,11 @@ class ControllerState:
                 payload["_webhook_urls"] = list(self.webhook_urls)
             if self.initial_bootstrap_done:
                 payload["_initial_bootstrap_done"] = True
+            if self._deployment_flags:
+                # Round-trip the dict-backed flags so plugin-declared
+                # flags survive a restart alongside the legacy
+                # ``_initial_bootstrap_done`` boolean.
+                payload["_deployment_flags"] = dict(self._deployment_flags)
             path.write_text(json.dumps(payload), encoding="utf-8")
         except Exception as exc:
             log_swallowed(exc)

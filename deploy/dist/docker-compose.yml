@@ -8,13 +8,13 @@
 # Prerequisites: Docker Engine 24+ with Compose V2.
 #
 # NOTE: This file expects to run from a repo checkout. Bind mounts reference
-# ../config, ../contracts, ../examples. If you are using this file standalone,
-# clone the repo and run from the docker/ directory instead:
-#   git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver/docker
+# ../../config, ../../contracts, ../examples. If you are using this file
+# standalone, clone the repo and run from the deploy/compose/ directory instead:
+#   git clone https://github.com/mploschiavo/mediaserver.git && cd mediaserver/deploy/compose
 #   docker compose up -d
 #
-# Regenerate this file after editing docker/docker-compose.yml:
-#   bin/regen-dist.sh
+# Regenerate this file after editing deploy/compose/docker-compose.yml:
+#   bin/release/regen-dist.sh
 name: ${COMPOSE_PROJECT_NAME:-media-stack}
 # Image references are digest-pinned as of 2026-03-28.
 #
@@ -24,7 +24,8 @@ name: ${COMPOSE_PROJECT_NAME:-media-stack}
 #   docker compose --profile full up -d           # full (+ lidarr, readarr)
 #
 # All settings come from the profile YAML mounted into init/bootstrap containers.
-# Storage paths default to ./config, ./media, ./data relative to this file.
+# Storage paths default to ../../config, ../../media, ../../data relative to
+# this file (i.e. the repo root, since this file lives at deploy/compose/).
 # Override via .env or shell: CONFIG_ROOT=/srv/media-stack/config
 
 x-arr-env: &arr-env
@@ -33,9 +34,9 @@ x-arr-env: &arr-env
   TZ: ${TZ:-UTC}
 
 x-media-vols: &media-vols
-  - ${MEDIA_ROOT:-../media}:/media
-  - ${DATA_ROOT:-../data}/torrents:/data/torrents
-  - ${DATA_ROOT:-../data}/usenet:/data/usenet
+  - ${MEDIA_ROOT:-../../media}:/media
+  - ${DATA_ROOT:-../../data}/torrents:/data/torrents
+  - ${DATA_ROOT:-../../data}/usenet:/data/usenet
 
 services:
   # Init service: create config/data directories with correct ownership.
@@ -69,9 +70,9 @@ services:
         done
         chown -R ${PUID:-1000}:${PGID:-1000} /cfg /data /media
     volumes:
-      - ${CONFIG_ROOT:-../config}:/cfg
-      - ${DATA_ROOT:-../data}:/data
-      - ${MEDIA_ROOT:-../media}:/media
+      - ${CONFIG_ROOT:-../../config}:/cfg
+      - ${DATA_ROOT:-../../data}:/data
+      - ${MEDIA_ROOT:-../../media}:/media
     restart: "no"
 
   traefik:
@@ -92,7 +93,7 @@ services:
       - "${TRAEFIK_DASHBOARD_PORT:-8088}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ${CONFIG_ROOT:-../config}/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ${CONFIG_ROOT:-../../config}/traefik/dynamic:/etc/traefik/dynamic:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ping"]
@@ -132,8 +133,8 @@ services:
     environment:
       TZ: ${TZ:-UTC}
     volumes:
-      - ${CONFIG_ROOT:-../config}/authelia:/config
-      - ../config/defaults/compose/auth/authelia:/defaults:ro
+      - ${CONFIG_ROOT:-../../config}/authelia:/config
+      - ../../config/defaults/compose/auth/authelia:/defaults:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
@@ -157,7 +158,7 @@ services:
       POSTGRES_USER: ${AUTHENTIK_PG_USER:-authentik}
       POSTGRES_PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
     volumes:
-      - ${DATA_ROOT:-../data}/authentik/postgresql:/var/lib/postgresql/data
+      - ${DATA_ROOT:-../../data}/authentik/postgresql:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test:
@@ -184,8 +185,8 @@ services:
       AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASS:-authentik}
       AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
     volumes:
-      - ${CONFIG_ROOT:-../config}/authentik/data:/data
-      - ${CONFIG_ROOT:-../config}/authentik/custom-templates:/templates
+      - ${CONFIG_ROOT:-../../config}/authentik/data:/data
+      - ${CONFIG_ROOT:-../../config}/authentik/custom-templates:/templates
     restart: unless-stopped
     shm_size: 512mb
     healthcheck:
@@ -219,9 +220,9 @@ services:
       AUTHENTIK_ERROR_REPORTING__ENABLED: ${AUTHENTIK_ERROR_REPORTING__ENABLED:-false}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${CONFIG_ROOT:-../config}/authentik/data:/data
-      - ${CONFIG_ROOT:-../config}/authentik/certs:/certs
-      - ${CONFIG_ROOT:-../config}/authentik/custom-templates:/templates
+      - ${CONFIG_ROOT:-../../config}/authentik/data:/data
+      - ${CONFIG_ROOT:-../../config}/authentik/certs:/certs
+      - ${CONFIG_ROOT:-../../config}/authentik/custom-templates:/templates
     restart: unless-stopped
     shm_size: 512mb
 
@@ -265,14 +266,14 @@ services:
     volumes:
       - ./docker-compose.yml:/compose/docker-compose.yml:ro
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:ro
-      - ${CONFIG_ROOT:-../config}:/runtime-config:rw
-      - ../contracts:/contracts:ro
-      - ../config/defaults:/defaults:ro
+      - ${CONFIG_ROOT:-../../config}:/runtime-config:rw
+      - ../../contracts:/contracts:ro
+      - ../../config/defaults:/defaults:ro
       # RW so the generator can mint a self-signed cert the first time
       # the stack comes up (see _resolve_or_mint_certs in
       # core/platforms/compose/edge/providers/envoy/dynamic_config.py).
       # envoy itself still mounts this read-only below.
-      - ${CONFIG_ROOT:-../config}/certs:/certs:rw
+      - ${CONFIG_ROOT:-../../config}/certs:/certs:rw
     restart: "no"
 
   envoy:
@@ -293,8 +294,8 @@ services:
       - "80:8080"
       - "${ENVOY_ADMIN_PORT:-9901}:9901"
     volumes:
-      - ${CONFIG_ROOT:-../config}/envoy:/etc/envoy:ro
-      - ${CONFIG_ROOT:-../config}/certs:/certs:ro
+      - ${CONFIG_ROOT:-../../config}/envoy:/etc/envoy:ro
+      - ${CONFIG_ROOT:-../../config}/certs:/certs:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "envoy", "--mode", "validate", "-c", "/etc/envoy/envoy.yaml"]
@@ -314,7 +315,7 @@ services:
       PGID: ${PGID:-1000}
       HOMEPAGE_ALLOWED_HOSTS: "*"
     volumes:
-      - ${CONFIG_ROOT:-../config}/homepage:/app/config
+      - ${CONFIG_ROOT:-../../config}/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "${HOMEPAGE_PORT:-3000}:3000"
@@ -344,9 +345,9 @@ services:
       TZ: ${TZ:-UTC}
       JELLYFIN_PublishedServerUrl: ""
     volumes:
-      - ${CONFIG_ROOT:-../config}/jellyfin:/config
-      - ${DATA_ROOT:-../data}/transcode:/cache
-      - ${MEDIA_ROOT:-../media}:/media
+      - ${CONFIG_ROOT:-../../config}/jellyfin:/config
+      - ${DATA_ROOT:-../../data}/transcode:/cache
+      - ${MEDIA_ROOT:-../../media}:/media
     ports:
       - "${JELLYFIN_PORT:-8096}:8096"
     restart: unless-stopped
@@ -381,7 +382,7 @@ services:
       NODE_TLS_REJECT_UNAUTHORIZED: "0"
       BASE_URL: ${JELLYSEERR_BASE_PATH:-}
     volumes:
-      - ${CONFIG_ROOT:-../config}/jellyseerr:/app/config
+      - ${CONFIG_ROOT:-../../config}/jellyseerr:/app/config
     ports:
       - "${JELLYSEERR_PORT:-5055}:5055"
     restart: unless-stopped
@@ -403,7 +404,7 @@ services:
     container_name: prowlarr
     environment: *arr-env
     volumes:
-      - ${CONFIG_ROOT:-../config}/prowlarr:/config
+      - ${CONFIG_ROOT:-../../config}/prowlarr:/config
     ports:
       - "${PROWLARR_PORT:-9696}:9696"
     restart: unless-stopped
@@ -427,8 +428,8 @@ services:
       WEBUI_PORT: 8080
       QBT_WEBUI_PORT: 8080
     volumes:
-      - ${CONFIG_ROOT:-../config}/qbittorrent:/config
-      - ${DATA_ROOT:-../data}/torrents:/data/torrents
+      - ${CONFIG_ROOT:-../../config}/qbittorrent:/config
+      - ${DATA_ROOT:-../../data}/torrents:/data/torrents
     ports:
       - "${QBITTORRENT_PUBLISHED_PORT:-8080}:8080"
       - "6881:6881"
@@ -449,10 +450,10 @@ services:
     container_name: sonarr
     environment: *arr-env
     volumes:
-      - ${CONFIG_ROOT:-../config}/sonarr:/config
-      - ${MEDIA_ROOT:-../media}:/media
-      - ${DATA_ROOT:-../data}/torrents:/data/torrents
-      - ${DATA_ROOT:-../data}/usenet:/data/usenet
+      - ${CONFIG_ROOT:-../../config}/sonarr:/config
+      - ${MEDIA_ROOT:-../../media}:/media
+      - ${DATA_ROOT:-../../data}/torrents:/data/torrents
+      - ${DATA_ROOT:-../../data}/usenet:/data/usenet
     ports:
       - "${SONARR_PORT:-8989}:8989"
     restart: unless-stopped
@@ -472,10 +473,10 @@ services:
     container_name: radarr
     environment: *arr-env
     volumes:
-      - ${CONFIG_ROOT:-../config}/radarr:/config
-      - ${MEDIA_ROOT:-../media}:/media
-      - ${DATA_ROOT:-../data}/torrents:/data/torrents
-      - ${DATA_ROOT:-../data}/usenet:/data/usenet
+      - ${CONFIG_ROOT:-../../config}/radarr:/config
+      - ${MEDIA_ROOT:-../../media}:/media
+      - ${DATA_ROOT:-../../data}/torrents:/data/torrents
+      - ${DATA_ROOT:-../../data}/usenet:/data/usenet
     ports:
       - "${RADARR_PORT:-7878}:7878"
     restart: unless-stopped
@@ -495,10 +496,10 @@ services:
     container_name: lidarr
     environment: *arr-env
     volumes:
-      - ${CONFIG_ROOT:-../config}/lidarr:/config
-      - ${MEDIA_ROOT:-../media}:/media
-      - ${DATA_ROOT:-../data}/torrents:/data/torrents
-      - ${DATA_ROOT:-../data}/usenet:/data/usenet
+      - ${CONFIG_ROOT:-../../config}/lidarr:/config
+      - ${MEDIA_ROOT:-../../media}:/media
+      - ${DATA_ROOT:-../../data}/torrents:/data/torrents
+      - ${DATA_ROOT:-../../data}/usenet:/data/usenet
     ports:
       - "${LIDARR_PORT:-8686}:8686"
     restart: unless-stopped
@@ -518,10 +519,10 @@ services:
     container_name: readarr
     environment: *arr-env
     volumes:
-      - ${CONFIG_ROOT:-../config}/readarr:/config
-      - ${MEDIA_ROOT:-../media}:/media
-      - ${DATA_ROOT:-../data}/torrents:/data/torrents
-      - ${DATA_ROOT:-../data}/usenet:/data/usenet
+      - ${CONFIG_ROOT:-../../config}/readarr:/config
+      - ${MEDIA_ROOT:-../../media}:/media
+      - ${DATA_ROOT:-../../data}/torrents:/data/torrents
+      - ${DATA_ROOT:-../../data}/usenet:/data/usenet
     ports:
       - "${READARR_PORT:-8787}:8787"
     restart: unless-stopped
@@ -541,8 +542,8 @@ services:
     container_name: bazarr
     environment: *arr-env
     volumes:
-      - ${CONFIG_ROOT:-../config}/bazarr:/config
-      - ${MEDIA_ROOT:-../media}:/media
+      - ${CONFIG_ROOT:-../../config}/bazarr:/config
+      - ${MEDIA_ROOT:-../../media}:/media
     ports:
       - "${BAZARR_PORT:-6767}:6767"
     restart: unless-stopped
@@ -564,9 +565,9 @@ services:
       TZ: ${TZ:-UTC}
       UN_CONFIG_FILE: /etc/unpackerr/unpackerr.conf
     volumes:
-      - ${CONFIG_ROOT:-../config}/unpackerr:/etc/unpackerr:ro
-      - ${DATA_ROOT:-../data}/torrents:/data/torrents
-      - ${DATA_ROOT:-../data}/usenet:/data/usenet
+      - ${CONFIG_ROOT:-../../config}/unpackerr:/etc/unpackerr:ro
+      - ${DATA_ROOT:-../../data}/torrents:/data/torrents
+      - ${DATA_ROOT:-../../data}/usenet:/data/usenet
     restart: unless-stopped
     depends_on: [sonarr, radarr, lidarr, readarr]
 
@@ -590,7 +591,7 @@ services:
       UI_PORT: 6246
       BASE_PATH: ${MAINTAINERR_BASE_PATH:-/app/maintainerr}
     volumes:
-      - ${CONFIG_ROOT:-../config}/maintainerr:/opt/data
+      - ${CONFIG_ROOT:-../../config}/maintainerr:/opt/data
     ports:
       - "${MAINTAINERR_PORT:-6246}:6246"
     restart: unless-stopped
@@ -604,8 +605,9 @@ services:
       - traefik.http.routers.maintainerr.rule=Host(`maintainerr.local`)
       - traefik.http.services.maintainerr.loadbalancer.server.port=6246
 
-  # sabnzbd retired from the default stack on 2026-04-26 — re-add
-  # under ``profiles: ["usenet"]`` if needed.
+  # sabnzbd was retired from the default stack on 2026-04-26 — qBittorrent
+  # covers torrent fetches and the team isn't using usenet today. Re-add
+  # under a ``profiles: ["usenet"]`` if/when needed.
 
   plex:
     image: lscr.io/linuxserver/plex@sha256:a27f1ce1e1d14cd3627ed217f042bf8de0f796ed274fb27b2dc971ae22a64b95
@@ -618,13 +620,15 @@ services:
       TZ: ${TZ:-UTC}
       VERSION: docker
     volumes:
-      - ${CONFIG_ROOT:-../config}/plex:/config
-      - ${MEDIA_ROOT:-../media}:/media
-      - ${DATA_ROOT:-../data}/transcode:/transcode
+      - ${CONFIG_ROOT:-../../config}/plex:/config
+      - ${MEDIA_ROOT:-../../media}:/media
+      - ${DATA_ROOT:-../../data}/transcode:/transcode
     restart: unless-stopped
 
-  # tautulli retired from the default stack on 2026-04-26 — Plex-only
-  # tool. Re-add under ``profiles: ["plex"]`` if a Plex deploy needs it.
+  # tautulli was retired from the default stack on 2026-04-26 — Jellyfin
+  # is the only media server in the standard profile and Tautulli is
+  # Plex-only. Re-add under a ``profiles: ["plex"]`` if a Plex deploy
+  # needs it.
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr@sha256:7962759d99d7e125e108e0f5e7f3cdbcd36161776d058d1d9b7153b92ef1af9e
@@ -650,13 +654,13 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
     volumes:
-      - ${CONFIG_ROOT:-../config}/jellyfin:/config
-      - ${DATA_ROOT:-../data}/transcode:/cache
-      - ${MEDIA_ROOT:-../media}:/media
+      - ${CONFIG_ROOT:-../../config}/jellyfin:/config
+      - ${DATA_ROOT:-../../data}/transcode:/cache
+      - ${MEDIA_ROOT:-../../media}:/media
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.326}
     container_name: media-stack-controller
     # Image ENTRYPOINT is already "media-stack-controller" — only
     # pass flags here, otherwise the binary's own name re-arrives as
@@ -685,6 +689,15 @@ services:
       ENVOY_LISTENER_PORT: "8880"
       BOOTSTRAP_API_PORT: "9100"
       FULLY_PRECONFIGURED: "1"
+      # ADR-0003 Phase 5 staged rollout knob. Comma-separated list
+      # of service ids whose ensurers run for real (the orchestrator
+      # remains in dry-run-shadow for everything else). Empty/unset
+      # = full Phase-4c shadow. 5a: jellyfin only. 5b: + Servarr
+      # family. 5c (current): all 16 Phase-3-covered services. 5d
+      # retires the legacy auto-heal hooks. 5e deletes the legacy
+      # preflight code. Operator can shrink to roll back without
+      # rebuilding.
+      ORCHESTRATOR_LIVE_SERVICES: "${ORCHESTRATOR_LIVE_SERVICES:-jellyfin,sonarr,radarr,lidarr,readarr,prowlarr,qbittorrent,sabnzbd,bazarr,jellyseerr,maintainerr,authelia,authentik,homepage,flaresolverr,envoy}"
       # In-place upgrade button on the dashboard. When set, the
       # controller exposes /api/stack/upgrade which spawns a
       # docker:cli sibling container holding the docker socket and
@@ -731,8 +744,8 @@ services:
       TAUTULLI_API_KEY: "${TAUTULLI_API_KEY:-}"
     volumes:
       - ${BOOTSTRAP_PROFILE_FILE:-../examples/bootstrap-profiles/media-compose-standard.yaml}:/profile/profile.yaml:rw
-      - ../contracts:/contracts:ro
-      - ${CONFIG_ROOT:-../config}:/srv-config:rw
+      - ../../contracts:/contracts:ro
+      - ${CONFIG_ROOT:-../../config}:/srv-config:rw
       - /var/run/docker.sock:/var/run/docker.sock
       # MUST match the envoy-config-init mount. The controller also
       # runs the Envoy config generator in-process (on /api/routing,
@@ -742,7 +755,7 @@ services:
       # HTTP envoy.yaml — which overwrites the working TLS config and
       # breaks HTTPS on :443 until envoy-config-init is rerun by hand.
       # This was a recurring regression before the mount was added.
-      - ${CONFIG_ROOT:-../config}/certs:/certs:rw
+      - ${CONFIG_ROOT:-../../config}/certs:/certs:rw
     depends_on:
       init-permissions:
         condition: service_completed_successfully
@@ -763,7 +776,7 @@ services:
 
   media-stack-ui:
     container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-ui
-    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:latest}
+    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.82}
     restart: unless-stopped
     depends_on:
       media-stack-controller:

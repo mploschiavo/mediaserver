@@ -131,27 +131,25 @@ class EachPromiseEnsurerIsLifecycleAndShared(unittest.TestCase):
     def setUp(self) -> None:
         self.by_id = _LoadedRegistry.get().by_id()
 
-    def test_each_promise_ensurer_is_lifecycle_and_shared(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_each_promise_ensurer_is_shared_per_service_job(self) -> None:
+        """ADR-0010 Phase 7 — multiple per-service runtime-defaults
+        promises share a single Job per *arr
+        (``<service>:ensure-runtime-defaults``). The legacy ensurer
+        is monolithic; per-promise Jobs would clobber the shared
+        *arr settings document."""
+        from media_stack.domain.services.promises import JobEnsurer
         for pid, expected_service, _expected_probe in _EXPECTED_PROMISES:
             promise = self.by_id[pid]
             self.assertIsInstance(
-                promise.ensurer, LifecycleEnsurer,
-                f"{pid}: ensurer regressed from lifecycle dispatch "
+                promise.ensurer, JobEnsurer,
+                f"{pid}: ensurer regressed from Job dispatch "
                 f"(got {type(promise.ensurer).__name__})",
             )
             self.assertEqual(
-                promise.ensurer.service, expected_service,
-                f"{pid}: ensurer.service expected {expected_service!r}",
-            )
-            self.assertEqual(
-                promise.ensurer.method, _SHARED_ENSURER_METHOD,
-                f"{pid}: ensurer.method expected "
-                f"{_SHARED_ENSURER_METHOD!r}. All three runtime-"
-                "defaults promises intentionally share one ensurer "
-                "— the legacy ``apply_arr_runtime_defaults`` is "
-                "monolithic and per-promise ensurers would clobber "
-                "the shared *arr settings.",
+                promise.ensurer.job_name,
+                f"{expected_service}:ensure-runtime-defaults",
+                f"{pid}: ensurer.job_name expected the per-service "
+                f"shared runtime-defaults Job",
             )
 
 

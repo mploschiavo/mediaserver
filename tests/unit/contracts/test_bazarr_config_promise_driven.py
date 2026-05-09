@@ -117,31 +117,28 @@ class EachPromiseUsesLifecycleDispatch(unittest.TestCase):
                 f"{pid}: probe.method expected {expected_method!r}",
             )
 
-    def test_each_promise_ensurer_is_lifecycle_and_shared(self) -> None:
-        """All five promises point at the same ensurer method
-        (``ensure_config_wiring``). Splitting into per-promise ensurers
-        would mean five redundant POSTs that each clobber the shared
-        settings document."""
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_each_promise_ensurer_is_shared_job(self) -> None:
+        """ADR-0010 Phase 7 — all five promises point at the same
+        Job (``bazarr:ensure-config-wiring``). The Job's handler
+        binds to ``BazarrLifecycle.ensure_config_wiring``; splitting
+        into per-promise Jobs would mean five redundant POSTs that
+        each clobber the shared settings document."""
+        from media_stack.domain.services.promises import JobEnsurer
+        expected_job = "bazarr:ensure-config-wiring"
         for pid, _expected_probe in _EXPECTED_PROBE_METHODS:
             promise = self.by_id[pid]
             self.assertIsInstance(
-                promise.ensurer, LifecycleEnsurer,
-                f"{pid}: ensurer regressed from lifecycle dispatch "
+                promise.ensurer, JobEnsurer,
+                f"{pid}: ensurer regressed from Job dispatch "
                 f"(got {type(promise.ensurer).__name__})",
             )
             self.assertEqual(
-                promise.ensurer.service, _EXPECTED_SERVICE,
-                f"{pid}: ensurer.service expected {_EXPECTED_SERVICE!r}",
-            )
-            self.assertEqual(
-                promise.ensurer.method, _SHARED_ENSURER_METHOD,
-                f"{pid}: ensurer.method expected "
-                f"{_SHARED_ENSURER_METHOD!r}. All five Bazarr promises "
-                "intentionally share one ensurer — the legacy handler "
-                "does profile + toggles + providers + arr-integration "
-                "+ plugin-XML in one round-trip; per-promise ensurers "
-                "would clobber the shared settings document.",
+                promise.ensurer.job_name, expected_job,
+                f"{pid}: ensurer.job_name expected {expected_job!r} — "
+                "all five Bazarr promises share a single Job because "
+                "the underlying handler does profile + toggles + "
+                "providers + arr-integration + plugin-XML in one "
+                "round-trip.",
             )
 
 

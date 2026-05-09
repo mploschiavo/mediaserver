@@ -405,7 +405,18 @@ class AutoHealService:
         t0 = time.time()
         snapshots = self.snapshot_healthy()
         heals = self.heal_corrupt()
-        # Guardrail evaluation rides the auto-heal cycle so we
+        # ADR-0009 Phase 6.5 — guardrails:evaluate,
+        # jobs:close-stale-runs, and orchestrator:satisfy-shadow
+        # used to ride the auto-heal cycle via three hand-rolled
+        # ``run_job(...)`` calls. They moved to the SchedulerService
+        # via ``triggers: [event: schedule, every: 60s]`` blocks on
+        # each job's contract entry in
+        # ``contracts/services/guardrails.yaml``. Their cadence is
+        # now framework-driven; the auto-heal cycle keeps the
+        # snapshot/heal half plus the run-history record below.
+
+        # Guardrail evaluation NOTE (legacy): used to ride the
+        # auto-heal cycle so we
         # don't spawn a second daemon thread (and so a stop-the-
         # world heal can pause guardrails too).
         #
@@ -420,11 +431,8 @@ class AutoHealService:
         # Lazy-imported to avoid pulling the registry into every
         # test that constructs an ``AutoHealService`` with a
         # noop snapshot store.
-        try:
-            from media_stack.application.jobs.framework import run_job
-            run_job("guardrails:evaluate", source="auto-heal", actor="auto-heal")
-        except Exception as exc:  # noqa: BLE001
-            _log.debug("[DEBUG] auto-heal: guardrail run_job failed: %s", exc)
+        # ``run_job("guardrails:evaluate", ...)`` retired — see ADR-0009
+        # Phase 6.5 note above. SchedulerService drives the cadence now.
 
         # Note: Jellyfin API-key minting is no longer invoked
         # directly here. The orchestrator's
@@ -440,18 +448,9 @@ class AutoHealService:
         # that fix — try/finally prevents NEW zombies; this catches
         # OLD ones left behind by SIGKILL / OOM / force-recreate.
         # Idempotent; short-circuits in <10ms when none are stale.
-        try:
-            from media_stack.application.jobs.framework import run_job
-            run_job(
-                "jobs:close-stale-runs",
-                source="auto-heal",
-                actor="auto-heal",
-            )
-        except Exception as exc:  # noqa: BLE001
-            _log.debug(
-                "[DEBUG] auto-heal: jobs:close-stale-runs run_job failed: %s",
-                exc,
-            )
+        # ``run_job("jobs:close-stale-runs", ...)`` retired — see
+        # ADR-0009 Phase 6.5 note above. SchedulerService drives the
+        # cadence now.
 
         # Orchestrator tick (see ADR-0003). Calls satisfy_promises
         # with dry_run=True at the job level; per-service "live vs
@@ -461,19 +460,9 @@ class AutoHealService:
         # history under triggered_by=auto-heal; per-
         # promise outcomes live in cooldown state file. Phase 5 will
         # flip dry_run off and retire the legacy ensurers.
-        try:
-            from media_stack.application.jobs.framework import run_job
-            run_job(
-                "orchestrator:satisfy-shadow",
-                source="auto-heal",
-                actor="auto-heal",
-            )
-        except Exception as exc:  # noqa: BLE001
-            _log.debug(
-                "[DEBUG] auto-heal: orchestrator:satisfy-shadow run_job "
-                "failed: %s",
-                exc,
-            )
+        # ``run_job("orchestrator:satisfy-shadow", ...)`` retired —
+        # see ADR-0009 Phase 6.5 note above. SchedulerService drives
+        # the cadence now.
         elapsed = round(time.time() - t0, 2)
         # Surface the cycle in /api/jobs.history with an
         # ``auto-heal`` source tag whenever it actually took action

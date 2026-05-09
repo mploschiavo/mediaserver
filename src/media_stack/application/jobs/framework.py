@@ -42,6 +42,15 @@ from media_stack.domain.jobs.types import (
     register_prereq,
 )
 
+# Imported at module top to keep ``_apply_contract_lifecycle_metadata``
+# free of a function-level import (which would tick the
+# CIRCULAR_IMPORT_RISK_RATCHET). The lifecycle handler module imports
+# only from sibling ``application/jobs/`` modules, so there's no
+# cycle in the static graph — the import is safe.
+from media_stack.application.jobs.job_lifecycle_metadata import (
+    JobLifecycleMetadataHandler as _JobLifecycleMetadataHandler,
+)
+
 
 # ---------------------------------------------------------------------------
 # Config loading from service contracts
@@ -628,7 +637,63 @@ class JobRunner:
                 )
             except Exception as exc:  # noqa: BLE001
                 log_swallowed(exc)
+        # ADR-0009 Phase 6.3 — emit ``job.completed`` / ``job.failed``
+        # at batch end so the TriggerEngine can wire downstream Jobs
+        # declaratively. The singleton ``fire`` is a no-op when no
+        # dispatcher has been installed (early boot, unit tests that
+        # don't care about triggers).
+        try:
+            from media_stack.application.jobs.trigger_dispatcher import (
+                TriggerDispatcherSingleton,
+            )
+            TriggerDispatcherSingleton.fire(
+                "job.completed" if errors == 0 else "job.failed",
+                job=getattr(self.root, "name", ""),
+                ctx=self.ctx,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
+        # ADR-0009 Phase 6.4 (redo) — apply contract-declared
+        # end-of-batch side-effects (``marks_setup_complete``
+        # + ``retry_on_failure``) declaratively. The lifecycle handler
+        # is a no-op when the root Job's contract entry has no such
+        # fields — the common case for plugin and per-app Jobs.
+        try:
+            if errors == 0:
+                self._apply_contract_lifecycle_metadata_on_success()
+            else:
+                self._apply_contract_lifecycle_metadata_on_failure()
+        except Exception as exc:  # noqa: BLE001
+            log_swallowed(exc)
         return result
+
+    def _apply_contract_lifecycle_metadata_on_success(self) -> None:
+        """Apply ``marks_setup_complete`` (if declared on the root
+        Job's contract entry). Looks up the entry by name; no-op if
+        the Job has no contract metadata. Split from the failure
+        path to avoid a boolean flag argument."""
+        job_def = self._lookup_root_contract_def()
+        if job_def is None:
+            return
+        _JobLifecycleMetadataHandler.default().apply_on_completion(job_def)
+
+    def _apply_contract_lifecycle_metadata_on_failure(self) -> None:
+        """Apply ``retry_on_failure`` (if declared on the root
+        Job's contract entry)."""
+        job_def = self._lookup_root_contract_def()
+        if job_def is None:
+            return
+        _JobLifecycleMetadataHandler.default().apply_on_failure(job_def)
+
+    def _lookup_root_contract_def(self) -> dict[str, Any] | None:
+        root_name = getattr(self.root, "name", "")
+        return next(
+            (
+                j for j in discover_jobs_from_contracts()
+                if j.get("name") == root_name
+            ),
+            None,
+        )
 
     def _flatten(self, job: Job) -> list[Job]:
         """Flatten the job tree to a priority-ordered list.
@@ -987,6 +1052,68 @@ def discover_jobs_from_contracts() -> list[dict[str, Any]]:
                     # upstream non_blocking job (e.g. tag-indexers needs
                     # the indexers discover-indexers added).
                     "after": list(job_def.get("after", [])),
+                    # ADR-0009 Phase 6.1 — declarative triggers. Each
+                    # entry is a dict ``{event: <kind>, ...}``; the
+                    # ``TriggerEngine`` validates kinds (``manual``,
+                    # ``schedule``, ``job.completed``, ``job.failed``,
+                    # ``promise.satisfied``, ``promise.violated``,
+                    # ``controller.started``) and ``when:`` predicate
+                    # names against the closed registry at boot.
+                    # Absence = job is manual-only (today's behavior).
+                    # The key is ``event:`` not ``on:`` because PyYAML
+                    # parses bare ``on:`` as the boolean ``True``
+                    # (YAML 1.1's deprecated ``on/off`` alias).
+                    "triggers": list(job_def.get("triggers", [])),
+                    # ADR-0010 Phase 7.1 — promises this Job's
+                    # successful completion satisfies. Loader emits
+                    # ``promise.satisfied`` to the TriggerEngine for
+                    # each entry on Job.complete; downstream Jobs
+                    # subscribed via ``triggers: [event:
+                    # promise.satisfied, scope: …]`` fire
+                    # automatically. Replaces the legacy
+                    # lifecycle-wirer promise→ensurer mapping.
+                    "satisfies": list(job_def.get("satisfies", [])),
+                    # ADR-0009 Phase 6.4 (redo) — declarative
+                    # end-of-batch side-effects on the Job that owns
+                    # them. Replace the per-Job handler files
+                    # (``mark_initial_bootstrap_done.py`` etc.) with
+                    # contract metadata; ``JobLifecycleMetadataHandler``
+                    # reads them at end-of-batch and applies the
+                    # requested side-effect.
+                    #
+                    # ``marks_setup_complete`` (bool):
+                    # framework calls
+                    # ``ControllerState.mark_initial_bootstrap_done()``
+                    # on Job success. Multiple Jobs may set this;
+                    # the call is idempotent at the state level.
+                    #
+                    # ``retry_on_failure``: ``{target, delay_seconds,
+                    # when}`` dict. Schedules a daemon timer for the
+                    # delay, then dispatches ``target`` via the
+                    # trigger dispatcher when the predicate ``when``
+                    # passes (omitted/unknown predicate = always-on).
+                    "marks_setup_complete": bool(
+                        job_def.get("marks_setup_complete", False),
+                    ),
+                    "retry_on_failure": (
+                        dict(job_def["retry_on_failure"])
+                        if isinstance(
+                            job_def.get("retry_on_failure"), dict,
+                        )
+                        else None
+                    ),
+                    # When true, this entry exists for metadata only
+                    # (e.g., the synthesized ``bootstrap`` root). The
+                    # tree builder skips it; the trigger index +
+                    # lifecycle metadata reader still see it.
+                    "tree_skip": bool(job_def.get("tree_skip", False)),
+                    # ``phase_order`` is read by ``build_job_framework``
+                    # from the synthesized-root entry (``tree_skip:
+                    # true``) to decide how per-phase groups are
+                    # sequenced. Phases not in this list get appended
+                    # alphabetically after, so plugin-defined phases
+                    # work without editing the root entry.
+                    "phase_order": list(job_def.get("phase_order", []) or []),
                     # Human-readable label shown in the dashboard
                     # toast / job tree / activity feed. Falls back
                     # to a slug → Title Case translation if
@@ -1094,33 +1221,37 @@ def build_job_framework() -> Job:
     Remove a service → its jobs disappear.
     """
     discovered = discover_jobs_from_contracts()
-    # The synthesized ``bootstrap`` root walks every per-app phase
-    # under it; cross-cutting prereq satisfaction (e.g. discovering
-    # an API key that ten downstream jobs depend on) takes more
-    # rounds than a leaf job's default of 3. 30 is empirically
-    # plenty — the previous hardcoded ``max_wait=180`` in dispatch
-    # was wishful padding.
-    root = Job("bootstrap", _noop, max_attempts=30)
+    # ``phase_order`` and ``max_attempts`` for the synthesized root
+    # come from the ``tree_skip:true`` ``bootstrap`` entry in
+    # ``contracts/services/core.yaml`` — keeps phase sequencing and
+    # cross-cutting retry budget out of framework code (ADR-0009
+    # Phase 6.4 redo). Missing entry falls back to empty
+    # phase_order + default max_attempts so test fixtures that
+    # ship a stripped contracts dir keep working.
+    _root_entry = next(
+        (
+            j for j in discovered
+            if j.get("name") == "bootstrap" and j.get("tree_skip")
+        ),
+        None,
+    )
+    _root_max_attempts = (
+        _root_entry.get("max_attempts") if _root_entry else None
+    ) or 30
+    phase_order: list[str] = list(
+        _root_entry.get("phase_order", []) if _root_entry else []
+    )
+    root = Job("bootstrap", _noop, max_attempts=_root_max_attempts)
 
-    # Group by phase
+    # Group by phase, skipping metadata-only entries (the synthesized
+    # ``bootstrap`` root carries declarative end-of-batch metadata
+    # via a ``tree_skip: true`` contract entry that must NOT appear
+    # again as a sub-job — see ADR-0009 Phase 6.4 redo notes).
     phases: dict[str, list[dict[str, Any]]] = {}
     for j in discovered:
+        if j.get("tree_skip"):
+            continue
         phases.setdefault(j["phase"], []).append(j)
-
-    # Phase ordering. ``pre_bootstrap`` runs first because the
-    # legacy adapter-hooks pipeline that lives there discovers API
-    # keys that every per-app phase job needs as a prereq.
-    # ``infrastructure`` runs second — auth + edge routing are
-    # FOUNDATIONAL: every later phase that talks through the gateway
-    # (OIDC discovery, Jellyfin Library/Refresh via webhook, *arr
-    # connection tests via /app/<arr>/...) needs them ready. Before
-    # this phase existed, auth + envoy lived in ``default`` which
-    # ran AFTER media_server + download_clients — anything that
-    # tried to reach a service through Envoy during early bootstrap
-    # silently failed. (v1.0.149.)
-    phase_order = ["pre_bootstrap", "infrastructure",
-                   "media_server", "download_clients",
-                   "default", "post"]
     for phase_name in phase_order:
         phase_jobs = phases.pop(phase_name, [])
         if not phase_jobs:

@@ -8,8 +8,8 @@
 # Prerequisites: Kubernetes 1.25+ with a default StorageClass
 # More info: https://github.com/mploschiavo/mediaserver
 #
-# Generated from k8s/ manifests (kubectl kustomize k8s/).
-# Do NOT hand-edit — regenerate with `bin/regen-dist.sh`.
+# Generated from deploy/k8s/ manifests (kubectl kustomize deploy/k8s/).
+# Do NOT hand-edit — regenerate with `bin/release/regen-dist.sh`.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -165,6 +165,9 @@ data:
       name: media-stack
       platform: k8s
       purpose: standard
+      country: US
+      description: Standard k8s stack profile
+      language: en
     resources:
       disk_space_gb: 500
       network_cidr: 192.168.1.0/24
@@ -225,6 +228,19 @@ data:
       fail_on_error: false
       username_env: STACK_ADMIN_USERNAME
       password_env: STACK_ADMIN_PASSWORD
+    # ADR-0008 disk-guardrails: per-install pressure thresholds.
+    # Uncomment and override any keys from
+    # contracts/defaults/operations.yaml::disk_guardrails. The values
+    # below are the laptop-tuned defaults from ADR-0008 Phase 4; remove
+    # or adjust for bigger servers. Three-tier merge order at runtime:
+    # operations.yaml defaults -> profile.yaml -> guardrails.json
+    # (UI-saved, highest priority). The Registry's UI overrides at
+    # /srv-config/.controller/guardrails.json always win at runtime.
+    # disk_guardrails:
+    #   max_used_percent: 50
+    #   target_used_percent: 40
+    #   lockdown_percent: 75
+    #   release_percent: 60
 kind: ConfigMap
 metadata:
   name: media-stack-controller-profile
@@ -233,7 +249,6 @@ metadata:
 apiVersion: v1
 data:
   envoy.runtime.base.yaml: |
-    # Keep in sync with config/defaults/compose/envoy.runtime.base.yaml
     static_resources:
       listeners:
         - name: listener_http
@@ -248,6 +263,75 @@ data:
                     "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                     stat_prefix: ingress_http
                     codec_type: AUTO
+                    # === Real client IP via XFF ===
+                    # Without this, downstream_remote_address is the
+                    # immediate proxy hop (nginx-ingress / Cloudflare /
+                    # Traefik / docker bridge), not the actual client.
+                    # ``use_remote_address: true`` tells Envoy to walk the
+                    # X-Forwarded-For chain and substitute that as the
+                    # source address; ``xff_num_trusted_hops`` controls
+                    # how far back to walk. v1.0.252 default is 1 (one
+                    # proxy: K8s ingress controller). Override via
+                    # ``MEDIA_STACK_TRUSTED_PROXY_HOPS`` env at deploy
+                    # time:
+                    #   * 1 → bare K8s Ingress / direct compose
+                    #   * 2 → Cloudflare in front of an ingress controller
+                    #   * 3 → CDN + ingress + extra proxy
+                    # Wrong value class:
+                    #   - too high: client can spoof its IP by stuffing
+                    #     XFF headers (we'd trust them).
+                    #   - too low: we still see the proxy IP.
+                    use_remote_address: true
+                    xff_num_trusted_hops: 1
+                    # === Access log to stdout (JSON) ===
+                    # Envoy's container stdout is captured by docker /
+                    # K8s, so the controller can tail it via the K8s API
+                    # or ``docker compose logs`` without a shared volume.
+                    # JSON format keeps parsing trivial; the controller's
+                    # access-log service reads the documented key
+                    # synonyms (start_time / x-forwarded-for / etc.).
+                    access_log:
+                      - name: envoy.access_loggers.stdout
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                          log_format:
+                            json_format:
+                              # Timestamp + request line.
+                              ts: "%START_TIME%"
+                              method: "%REQ(:METHOD)%"
+                              path: "%REQ(:PATH)%"
+                              protocol: "%PROTOCOL%"
+                              # Status + duration.
+                              status: "%RESPONSE_CODE%"
+                              response_flags: "%RESPONSE_FLAGS%"
+                              duration_ms: "%DURATION%"
+                              bytes_sent: "%BYTES_SENT%"
+                              bytes_received: "%BYTES_RECEIVED%"
+                              # Source identity — three layers, in order
+                              # of trust:
+                              # 1. ``client_ip`` — Envoy's resolved
+                              #    downstream_remote_address AFTER the
+                              #    use_remote_address/xff trim. This is
+                              #    the source the operator should care
+                              #    about; the others are audit trail.
+                              # 2. ``x_forwarded_for`` — full chain as
+                              #    received, useful when an extra hop
+                              #    is added between deploys.
+                              # 3. ``cf_connecting_ip`` — Cloudflare's
+                              #    authoritative client IP (CF strips
+                              #    inbound CF-* headers, so it's safe).
+                              client_ip: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+                              x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+                              cf_connecting_ip: "%REQ(CF-CONNECTING-IP)%"
+                              x_real_ip: "%REQ(X-REAL-IP)%"
+                              # Routing identity.
+                              host: "%REQ(:AUTHORITY)%"
+                              upstream_cluster: "%UPSTREAM_CLUSTER%"
+                              upstream_host: "%UPSTREAM_HOST%"
+                              # Useful for triage.
+                              user_agent: "%REQ(USER-AGENT)%"
+                              referer: "%REQ(REFERER)%"
+                              request_id: "%REQ(X-REQUEST-ID)%"
                     route_config:
                       name: media_stack_routes
                       virtual_hosts: []
@@ -267,6 +351,14 @@ data:
                             end
 
                             local function media_stack_rewrite_base_href(html, prefix)
+                              -- Rewrite <base href="/"> to <base href="/app/<service>/">.
+                              -- SPAs like Bazarr emit <base href="/"> with ./ relative asset
+                              -- paths. With prefix stripping, the browser resolves ./assets/foo.js
+                              -- to /assets/foo.js (root), bypassing the app prefix route.
+                              -- Rewriting the <base> tag makes ALL relative URLs resolve through
+                              -- the prefix: ./assets/foo.js -> /app/bazarr/assets/foo.js.
+                              -- Dynamic import() also resolves correctly since the importing
+                              -- module URL is under the prefixed path.
                               if prefix == nil or prefix == "" or prefix == "/" then
                                 return html
                               end
@@ -300,6 +392,7 @@ data:
                                 return
                               end
 
+                              -- Rewrite <base href="/"> so relative assets route through the prefix
                               html = media_stack_rewrite_base_href(html, prefix)
 
                               local escaped_prefix = media_stack_escape_js_string(prefix)
@@ -438,24 +531,6 @@ spec:
     targetPort: 6767
   selector:
     app: bazarr
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: envoy
-  namespace: media-stack
-spec:
-  ports:
-  - name: http
-    nodePort: 30180
-    port: 80
-    targetPort: 8880
-  - name: admin
-    port: 9901
-    targetPort: 9901
-  selector:
-    app: envoy
-  type: NodePort
 ---
 apiVersion: v1
 kind: Service
@@ -621,18 +696,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sabnzbd
-  namespace: media-stack
-spec:
-  ports:
-  - port: 8080
-    targetPort: 8080
-  selector:
-    app: sabnzbd
----
-apiVersion: v1
-kind: Service
-metadata:
   name: sonarr
   namespace: media-stack
 spec:
@@ -641,18 +704,6 @@ spec:
     targetPort: 8989
   selector:
     app: sonarr
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tautulli
-  namespace: media-stack
-spec:
-  ports:
-  - port: 8181
-    targetPort: 8181
-  selector:
-    app: tautulli
 ---
 apiVersion: v1
 kind: LimitRange
@@ -718,7 +769,7 @@ spec:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 100Mi
+      storage: 1Gi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -1073,79 +1124,6 @@ spec:
       - name: media
         persistentVolumeClaim:
           claimName: media-stack-media
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: envoy
-  namespace: media-stack
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: envoy
-  template:
-    metadata:
-      labels:
-        app: envoy
-    spec:
-      containers:
-      - args:
-        - -c
-        - /etc/envoy/envoy.yaml
-        - --service-cluster
-        - media-stack-edge
-        - --log-level
-        - info
-        image: envoyproxy/envoy:v1.31.2
-        livenessProbe:
-          httpGet:
-            path: /ready
-            port: admin
-          initialDelaySeconds: 10
-          periodSeconds: 30
-        name: envoy
-        ports:
-        - containerPort: 8880
-          name: http
-        - containerPort: 9901
-          name: admin
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: admin
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        volumeMounts:
-        - mountPath: /etc/envoy
-          name: envoy-config
-          readOnly: true
-      initContainers:
-      - command:
-        - sh
-        - -c
-        - |
-          if [ ! -f /etc/envoy/envoy.yaml ]; then
-            echo "Seeding base envoy config from template..."
-            cp /base-template/envoy.runtime.base.yaml /etc/envoy/envoy.yaml
-          else
-            echo "envoy.yaml already exists, skipping seed."
-          fi
-        image: busybox:1.36
-        name: seed-base-config
-        volumeMounts:
-        - mountPath: /etc/envoy
-          name: envoy-config
-        - mountPath: /base-template
-          name: envoy-base-template
-          readOnly: true
-      volumes:
-      - name: envoy-config
-        persistentVolumeClaim:
-          claimName: media-stack-config-envoy
-      - configMap:
-          name: media-stack-envoy-base-template
-        name: envoy-base-template
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -1724,6 +1702,8 @@ spec:
           value: "9100"
         - name: ENVOY_LISTENER_PORT
           value: "8880"
+        - name: ORCHESTRATOR_LIVE_SERVICES
+          value: jellyfin,sonarr,radarr,lidarr,readarr,prowlarr,qbittorrent,sabnzbd,bazarr,jellyseerr,maintainerr,authelia,authentik,homepage,flaresolverr,envoy
         - name: STACK_UPDATE_ALLOW_INPLACE
           value: "true"
         - name: BOOTSTRAP_WAIT_INTERVAL_SECONDS
@@ -1736,7 +1716,7 @@ spec:
           value: /profile/profile.yaml
         - name: BOOTSTRAP_CONFIG_FILE
           value: /controller-config/config.json
-        image: harbor.iomio.io/library/media-stack-controller:v1.0.321
+        image: harbor.iomio.io/library/media-stack-controller:v1.0.326
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1909,7 +1889,7 @@ spec:
       - env:
         - name: API_UPSTREAM
           value: media-stack-controller:9100
-        image: harbor.iomio.io/library/media-stack-ui:v1.3.10
+        image: harbor.iomio.io/library/media-stack-ui:v1.3.20
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3
@@ -2335,84 +2315,6 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sabnzbd
-  namespace: media-stack
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: sabnzbd
-  template:
-    metadata:
-      labels:
-        app: sabnzbd
-    spec:
-      containers:
-      - env:
-        - name: PUID
-          value: "1000"
-        - name: PGID
-          value: "1000"
-        image: lscr.io/linuxserver/sabnzbd@sha256:15b1220aaa1f8ff428790a3d56f5ca2822427ea0b33e978eee43554e42579d0f
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        name: sabnzbd
-        ports:
-        - containerPort: 8080
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 8080
-          initialDelaySeconds: 20
-          periodSeconds: 15
-        resources:
-          limits:
-            cpu: "2"
-            memory: 2Gi
-          requests:
-            cpu: 100m
-            memory: 256Mi
-        startupProbe:
-          failureThreshold: 60
-          httpGet:
-            path: /
-            port: 8080
-          periodSeconds: 10
-        volumeMounts:
-        - mountPath: /config
-          name: config
-        - mountPath: /data/usenet
-          name: usenet
-      initContainers:
-      - command:
-        - sh
-        - -c
-        - mkdir -p /data/usenet/incomplete /data/usenet/completed /data/usenet/completed/tv
-          /data/usenet/completed/movies /data/usenet/completed/music /data/usenet/completed/books
-          /config/Downloads/incomplete /config/Downloads/complete && chmod -R 0777
-          /data/usenet /config/Downloads
-        image: busybox:1.36
-        name: init-sab-dirs
-        volumeMounts:
-        - mountPath: /config
-          name: config
-        - mountPath: /data/usenet
-          name: usenet
-      volumes:
-      - name: config
-        persistentVolumeClaim:
-          claimName: media-stack-config-sabnzbd
-      - name: usenet
-        persistentVolumeClaim:
-          claimName: media-stack-data-usenet
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
   name: sonarr
   namespace: media-stack
 spec:
@@ -2500,59 +2402,6 @@ spec:
       - name: usenet
         persistentVolumeClaim:
           claimName: media-stack-data-usenet
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tautulli
-  namespace: media-stack
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: tautulli
-  template:
-    metadata:
-      labels:
-        app: tautulli
-    spec:
-      containers:
-      - image: lscr.io/linuxserver/tautulli@sha256:b7ab997603ac54ce9cebd0e546f2c626c646d9f5b9841d8842b8a75edbc3326a
-        livenessProbe:
-          httpGet:
-            path: /status
-            port: 8181
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        name: tautulli
-        ports:
-        - containerPort: 8181
-        readinessProbe:
-          httpGet:
-            path: /status
-            port: 8181
-          initialDelaySeconds: 20
-          periodSeconds: 15
-        resources:
-          limits:
-            cpu: "2"
-            memory: 2Gi
-          requests:
-            cpu: 100m
-            memory: 256Mi
-        startupProbe:
-          failureThreshold: 60
-          httpGet:
-            path: /status
-            port: 8181
-          periodSeconds: 10
-        volumeMounts:
-        - mountPath: /config
-          name: config
-      volumes:
-      - name: config
-        persistentVolumeClaim:
-          claimName: media-stack-config-tautulli
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -2693,7 +2542,7 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.321
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.326
             imagePullPolicy: IfNotPresent
             name: controller-reconcile
             volumeMounts:
@@ -2833,7 +2682,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.321
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.326
             imagePullPolicy: IfNotPresent
             name: jellyfin-prewarm
             volumeMounts:
@@ -2932,7 +2781,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.321
+            image: harbor.iomio.io/library/media-stack-controller:v1.0.326
             imagePullPolicy: IfNotPresent
             name: media-hygiene
             volumeMounts:

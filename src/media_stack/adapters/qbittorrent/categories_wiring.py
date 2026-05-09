@@ -453,4 +453,14 @@ class CategoriesWirer(LifecycleWirerBase):
             return (True, f"unreachable: {exc}", {"error": str(exc)})
 
 
-__all__ = ["CategoriesWirer"]
+# ADR-0010 Phase 7 — module-level Job-handler alias the
+# ``qbittorrent:ensure-categories`` contract entry references via
+# ``handler: media_stack.adapters.qbittorrent.categories_wiring:ensure_categories``.
+# ``bind_method_as_job()`` (inherited from ``LifecycleWirerBase``)
+# returns a closure that calls ``CategoriesWirer().ensure(ctx)``
+# and adapts the ``Outcome`` to the Job-handler dict shape — keeps
+# the file free of a top-level ``def``.
+ensure_categories = CategoriesWirer.bind_method_as_job()
+
+
+__all__ = ["CategoriesWirer", "ensure_categories"]

@@ -30,7 +30,6 @@ import yaml
 
 from media_stack.domain.services.lifecycle import ServiceLifecycle
 from media_stack.domain.services.promises import (
-    LifecycleEnsurer,
     LifecycleProbe,
     Promise,
 )
@@ -110,20 +109,11 @@ class PromiseDispatchResolutionRatchet(unittest.TestCase):
             "Lifecycle probe resolution failed:\n" + "\n".join(offenders),
         )
 
-    def test_lifecycle_ensurers_resolve_to_real_methods(self) -> None:
-        offenders: list[str] = []
-        for p in self.promises:
-            if not isinstance(p.ensurer, LifecycleEnsurer):
-                continue
-            sid = p.ensurer.service
-            method = p.ensurer.method
-            offenders.extend(
-                self._resolve_lifecycle_method(p.id, sid, method, "ensurer"),
-            )
-        self.assertEqual(
-            offenders, [],
-            "Lifecycle ensurer resolution failed:\n" + "\n".join(offenders),
-        )
+    # ADR-0010 Phase 7 retired ``LifecycleEnsurer``; the
+    # ``test_lifecycle_ensurers_resolve_to_real_methods`` test that
+    # lived here is no longer applicable. Equivalent invariant for
+    # JobEnsurers (handler module:callable resolves) is enforced by
+    # the contract loader's handler-resolution at boot.
 
     def _resolve_lifecycle_method(
         self, pid: str, sid: str, method: str, role: str,

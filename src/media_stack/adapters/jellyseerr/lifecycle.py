@@ -307,4 +307,33 @@ _check: ServiceLifecycle = JellyseerrLifecycle()
 del _check
 
 
-__all__ = ["JellyseerrLifecycle"]
+# ADR-0010 Phase 7 — module-level Job-handler aliases the
+# ``jellyseerr:*`` contract entries reference. One alias per
+# ensure-method; each binds via ``LifecycleHandlerAdapter.bind`` to
+# convert the lifecycle's ``Outcome`` return into the Job-handler
+# dict shape.
+from media_stack.domain.services.lifecycle_handler_adapter import (  # noqa: E402
+    LifecycleHandlerAdapter,
+)
+
+ensure_oidc = LifecycleHandlerAdapter.bind(
+    JellyseerrLifecycle, "ensure_oidc",
+)
+ensure_application_url = LifecycleHandlerAdapter.bind(
+    JellyseerrLifecycle, "ensure_application_url",
+)
+ensure_arr_servers = LifecycleHandlerAdapter.bind(
+    JellyseerrLifecycle, "ensure_arr_servers",
+)
+ensure_api_key_discoverable = LifecycleHandlerAdapter.bind(
+    JellyseerrLifecycle, "ensure_api_key_discoverable",
+)
+
+
+__all__ = [
+    "JellyseerrLifecycle",
+    "ensure_oidc",
+    "ensure_application_url",
+    "ensure_arr_servers",
+    "ensure_api_key_discoverable",
+]

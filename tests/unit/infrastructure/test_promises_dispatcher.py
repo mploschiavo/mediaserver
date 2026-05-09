@@ -145,44 +145,15 @@ class TestLifecycleProbe:
         assert "kaboom" in result.detail
 
 
-class TestLifecycleEnsurer:
-    def test_returns_lifecycle_outcome(self) -> None:
-        impl = _FakeLifecycle(mint_outcome=Outcome.success("minted"))
-        r = _StubResolver(impls={"fake": impl})
-        outcome = dispatch_ensurer(
-            LifecycleEnsurer(service="fake", method="mint_api_key"),
-            resolver=r, now=0.0,
-        )
-        assert outcome.ok
-        assert outcome.value == "minted"
-
-    def test_non_transient_when_lifecycle_missing(self) -> None:
-        # Operator config error — orchestrator should NOT keep
-        # retrying on cooldown.
-        r = _StubResolver(impls={})
-        outcome = dispatch_ensurer(
-            LifecycleEnsurer(service="absent", method="mint_api_key"),
-            resolver=r, now=0.0,
-        )
-        assert not outcome.ok
-        assert outcome.transient is False
-
-    def test_transient_when_lifecycle_method_raises(self) -> None:
-        class Boom:
-            service_id = "boom"
-            def probe_running(self, ctx): return ProbeResult.ok()
-            def probe_has_api_key(self, ctx): return ProbeResult.ok()
-            def mint_api_key(self, ctx): raise RuntimeError("connection refused")
-            def discover_api_key(self, ctx): return None
-            def persist_api_key(self, k, ctx): return Outcome.success()
-        r = _StubResolver(impls={"boom": Boom()})
-        outcome = dispatch_ensurer(
-            LifecycleEnsurer(service="boom", method="mint_api_key"),
-            resolver=r, now=0.0,
-        )
-        assert not outcome.ok
-        assert outcome.transient is True
-        assert "connection refused" in outcome.error
+# ADR-0010 Phase 7 — ``TestLifecycleEnsurer`` removed. The
+# ``_ensure_lifecycle`` dispatcher branch was retired; every promise
+# now uses ``JobEnsurer``. ``LifecycleEnsurer`` survives as a legacy
+# dataclass for parser/test fixture compatibility but constructing
+# one and routing it through ``dispatch_ensurer`` is no longer a
+# supported flow — the dispatcher falls through to "unknown ensurer
+# kind". The architecture ratchet
+# ``test_no_lifecycle_ensurer_in_contracts`` pins the absence of
+# any contract reference.
 
 
 # --- HTTP probe dispatch ----------------------------------------------

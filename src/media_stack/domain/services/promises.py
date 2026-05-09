@@ -115,8 +115,8 @@ class EnsurerSpecProtocol(Protocol):
     """Structural contract every ensurer-spec variant satisfies.
 
     Mirrors :class:`ProbeSpecProtocol`. The four current variants
-    (``LifecycleEnsurer``, ``JobEnsurer``, ``DeployEnsurer``,
-    ``InfraEnsurer``) all conform.
+    (``LifecycleEnsurer`` (legacy, parser-only), ``JobEnsurer``,
+    ``DeployEnsurer``, ``InfraEnsurer``) all conform.
     """
 
     kind: str
@@ -289,7 +289,13 @@ ProbeSpec = Union[
 
 @dataclass(frozen=True)
 class LifecycleEnsurer:
-    """Ensure via a ``ServiceLifecycle`` method (mint_api_key, etc.)."""
+    """Legacy ensurer kind. ADR-0010 Phase 7 retired this from the
+    runtime dispatcher; no contract may reference it (architecture
+    ratchet ``test_no_lifecycle_ensurer_in_contracts``). The dataclass
+    itself stays so legacy tests + the registry parser's typed
+    dispatch surface still resolve symbolically. Constructing one
+    and routing it through ``dispatch_ensurer`` is a no-op (the
+    type is unhandled in the dispatcher's ``isinstance`` chain)."""
 
     kind: Literal["lifecycle"] = "lifecycle"
     service: str = ""
@@ -388,13 +394,11 @@ class Promise:
     @property
     def service_id(self) -> str | None:
         """The service id this promise pertains to, for staged-rollout
-        allowlist gating. Reads ``probe.service`` first (the most
-        direct signal), then falls back to ``ensurer.service`` for
-        ``LifecycleEnsurer``.
-
-        Returns ``None`` when the promise has no service-bound probe
-        (file probes, k8s_resource probes, infra ensurers) — those
-        always honor the global ``dry_run`` flag."""
+        allowlist gating. Reads ``probe.service`` (lifecycle probes
+        carry it; other probe kinds don't). Returns ``None`` when the
+        promise has no service-bound probe (file probes, k8s_resource
+        probes, infra ensurers) — those always honor the global
+        ``dry_run`` flag."""
         probe_service = getattr(self.probe, "service", "")
         if probe_service:
             return str(probe_service).strip().lower() or None

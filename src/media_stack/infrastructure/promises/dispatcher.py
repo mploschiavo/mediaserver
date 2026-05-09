@@ -51,7 +51,6 @@ from media_stack.domain.services.promises import (
     JobEnsurer,
     K8sExecProbe,
     K8sResourceProbe,
-    LifecycleEnsurer,
     LifecycleProbe,
     ProbeSpec,
 )
@@ -727,8 +726,15 @@ def dispatch_ensurer(
     promise records ok; if not, the operator looks at the deploy
     tooling.
     """
-    if isinstance(spec, LifecycleEnsurer):
-        return _ensure_lifecycle(spec, resolver, now, secrets)
+    # ADR-0010 Phase 7 — ``LifecycleEnsurer`` retired. All
+    # production promises now use ``JobEnsurer``; the ensurer
+    # method body lives on a per-service Lifecycle / Wirer class
+    # and is exposed as a Job handler via
+    # ``LifecycleHandlerAdapter.bind`` at module-import time. The
+    # ``test_no_lifecycle_ensurer_in_contracts`` architecture
+    # ratchet prevents contracts from re-introducing ``type:
+    # lifecycle`` on ``ensured_by:`` — no defensive branch needed
+    # here.
     if isinstance(spec, JobEnsurer):
         return _ensure_job(spec, now)
     if isinstance(spec, DeployEnsurer):
@@ -745,42 +751,6 @@ def dispatch_ensurer(
         f"unknown ensurer kind {type(spec).__name__}",
         transient=False,
     )
-
-
-def _ensure_lifecycle(
-    spec: LifecycleEnsurer,
-    resolver: LifecycleResolver,
-    now: float,
-    secrets: Mapping[str, str] | None,
-) -> Outcome[Any]:
-    impl = resolver.resolve(spec.service)
-    if impl is None:
-        return Outcome.failure(
-            f"no lifecycle for service {spec.service!r}",
-            transient=False,
-        )
-    method = getattr(impl, spec.method, None)
-    if not callable(method):
-        return Outcome.failure(
-            f"lifecycle for {spec.service!r} has no method {spec.method!r}",
-            transient=False,
-        )
-    ctx = resolver.context_for(spec.service, secrets=secrets, now_fn=lambda: now)
-    try:
-        result = method(ctx)
-    except Exception as exc:  # noqa: BLE001 - ensurers never raise
-        return Outcome.failure(
-            f"lifecycle {spec.service}.{spec.method} raised: {exc}",
-            transient=True,
-            evidence={"error": str(exc)},
-        )
-    if not isinstance(result, Outcome):
-        return Outcome.failure(
-            f"lifecycle {spec.service}.{spec.method} returned non-Outcome: "
-            f"{type(result).__name__}",
-            transient=False,
-        )
-    return result
 
 
 def _ensure_job(spec: JobEnsurer, now: float) -> Outcome[Any]:
@@ -810,9 +780,15 @@ def _ensure_job(spec: JobEnsurer, now: float) -> Outcome[Any]:
             transient=True,
         )
     if result.get("error"):
+        # ADR-0010 Phase 7: ensurer Job handlers return ``transient``
+        # alongside ``error`` so the orchestrator's cooldown machinery
+        # can distinguish a transient retry-soon failure from a
+        # permanent config-error that needs operator action. Default
+        # ``True`` preserves the prior always-retry behaviour for
+        # legacy Jobs that don't set the field.
         return Outcome.failure(
             f"run_job({spec.job_name!r}) error: {result['error']}",
-            transient=True,
+            transient=bool(result.get("transient", True)),
             evidence=dict(result),
         )
     if result.get("status") == "ok" or result.get("skipped"):

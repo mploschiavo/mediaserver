@@ -279,4 +279,20 @@ _check: ServiceLifecycle = BazarrLifecycle()
 del _check
 
 
-__all__ = ["BazarrLifecycle"]
+# ADR-0010 Phase 7 — module-level Job-handler alias the
+# ``bazarr:ensure-config-wiring`` contract entry references. All
+# six bazarr-* promises share this single Job (legacy ensurer's
+# settings POST writes profile + toggles + providers + arr-
+# integration in one round-trip; splitting would clobber the
+# shared settings document). The Job's ``satisfies:`` list reflects
+# all six promises.
+from media_stack.domain.services.lifecycle_handler_adapter import (  # noqa: E402
+    LifecycleHandlerAdapter,
+)
+
+ensure_config_wiring = LifecycleHandlerAdapter.bind(
+    BazarrLifecycle, "ensure_config_wiring",
+)
+
+
+__all__ = ["BazarrLifecycle", "ensure_config_wiring"]

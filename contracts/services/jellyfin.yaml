@@ -53,6 +53,20 @@ plugin:
   # Each job can be triggered individually: POST /actions/{name}
   # Or all jobs for this service: POST /actions/configure-jellyfin
   jobs:
+    # ADR-0010 Phase 7 — promise→Job migration. Job handlers bind
+    # to ``JellyfinLifecycle.<method>`` via
+    # ``LifecycleHandlerAdapter.bind`` (see jellyfin/lifecycle.py).
+    "jellyfin:mint-api-key":
+      handler: media_stack.adapters.jellyfin.lifecycle:mint_api_key
+      label: "Mint Jellyfin API key"
+      satisfies: [jellyfin-api-key-discoverable]
+      requires: []
+    "jellyfin:ensure-libraries":
+      handler: media_stack.adapters.jellyfin.lifecycle:ensure_libraries
+      label: "Ensure Jellyfin libraries"
+      satisfies: [jellyfin-libraries]
+      requires: []
+
     configure-libraries:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries
       label: "Update libraries"
@@ -192,9 +206,8 @@ plugin:
         service: jellyfin
         method: probe_has_api_key
       ensured_by:
-        type: lifecycle
-        service: jellyfin
-        method: mint_api_key
+        type: job
+        job_name: "jellyfin:mint-api-key"
 
     - id: jellyfin-libraries
       description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*
@@ -207,9 +220,8 @@ plugin:
       # libraries`` line AND flip the probe back to ``http_json`` +
       # the inline ``assert`` block.
       ensured_by:
-        type: lifecycle
-        service: jellyfin
-        method: ensure_libraries
+        type: job
+        job_name: "jellyfin:ensure-libraries"
       platforms: [compose, k8s]
       bootstrap_blocking: true
       depends_on: [jellyfin-api-key-discoverable]

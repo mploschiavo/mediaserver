@@ -101,18 +101,17 @@ from http import HTTPStatus
 from typing import Any, Callable
 
 from media_stack.api.routing import RouteModule, post
-from media_stack.api.services.lifecycle_ensurer_invoker import (
-    LifecycleEnsurerInvocation,
-    LifecycleEnsurerInvoker,
-    SOURCE_OPERATOR,
-)
-from media_stack.domain.services.identifiers import (
-    EnsurerMethod,
-    InvocationSource,
-    ServiceId,
-)
+from media_stack.application.jobs.framework import run_job
 from media_stack.core.auth.csrf import CsrfProtector
 from media_stack.core.logging_utils import log_swallowed
+
+# ADR-0010 Phase 7 — the legacy ``LifecycleEnsurerInvoker`` admin
+# route was retired with the lifecycle-ensurer dispatch path. The
+# ``/api/lifecycle-ensurers/<svc>/<method>`` route now resolves the
+# (service, method) pair to the per-service Job name
+# (``<svc>:ensure-<method-kebab>``) and dispatches via ``run_job`` —
+# same path UI Run-Now uses, no separate invoker class needed.
+SOURCE_OPERATOR = "operator"
 
 
 # ---------------------------------------------------------------------------
@@ -711,7 +710,6 @@ class AdminOpsPostRoutes(RouteModule):
         guardrails_service: GuardrailsService | None = None,
         restore_service: RestoreService | None = None,
         media_server_reset: MediaServerResetService | None = None,
-        lifecycle_invoker: LifecycleEnsurerInvoker | None = None,
     ) -> None:
         self._gate = mutation_gate or PostMutationGate()
         self._stack_upgrader = stack_upgrader or StackUpgrader()
@@ -726,9 +724,6 @@ class AdminOpsPostRoutes(RouteModule):
         self._restore = restore_service or RestoreService()
         self._media_server_reset = (
             media_server_reset or MediaServerResetService()
-        )
-        self._lifecycle_invoker = (
-            lifecycle_invoker or LifecycleEnsurerInvoker()
         )
 
     # --- gate helper ---------------------------------------------------
@@ -951,33 +946,49 @@ class AdminOpsPostRoutes(RouteModule):
     def handle_lifecycle_ensurer_invoke(
         self, handler: Any, *, service: str, method: str,
     ) -> None:
-        """Manually dispatch a single lifecycle ensurer.
+        """Manually dispatch the per-service Job that satisfies a
+        ``(service, method)`` ensurer pair.
 
-        Body: ``{overrides?: dict, source?: str}`` (source defaults
-        to ``"operator"`` since the operator dashboard is the
-        primary caller; auto-heal passes ``"auto-heal"``).
-
-        ADR-0005 Phase 5b: the surface that lets operator + auto-heal
-        migrate off ``action_trigger("ensure-X")`` to the same
-        ``dispatch_ensurer`` path the orchestrator already uses.
-        Unknown ``(service, method)`` pairs return 404 with the
-        offending pair echoed; outcome envelopes (success / transient
-        / permanent) flow through the 200 body — see
-        ``LifecycleEnsurerInvoker`` for the mapping.
+        Body: ``{source?: str}`` (defaults to ``"operator"``).
+        ADR-0010 Phase 7 retired the lifecycle-dispatch indirection;
+        every promise's ensurer is now a Job named
+        ``<service>:<method-kebab>``. The route resolves the URL
+        pair to that name and calls ``run_job`` — same path UI
+        Run-Now uses. ``method`` is converted to kebab-case for the
+        Job-name lookup (``ensure_jellyfin_notifier`` →
+        ``ensure-jellyfin-notifier``); unknown Job names return 404
+        echoing the resolved name.
         """
         if not self._gated(handler):
             return
         body = handler._read_json_body() or {}
-        invocation = LifecycleEnsurerInvocation(
-            service=ServiceId(service),
-            method=EnsurerMethod(method),
-            source=InvocationSource(
-                body.get("source", SOURCE_OPERATOR),
-            ),
-            overrides=body.get("overrides") or {},
-        )
-        status, response = self._lifecycle_invoker.invoke(invocation)
+        source = body.get("source") or SOURCE_OPERATOR
+        job_name = f"{service}:{method.replace('_', '-')}"
+        status, response = self._dispatch_job_for_route(job_name, source)
         handler._json_response(status, response)
+
+    @classmethod
+    def _dispatch_job_for_route(
+        cls, job_name: str, source: str,
+    ) -> tuple[int, dict[str, Any]]:
+        """Run ``job_name`` and translate the result into an
+        ``(http-status, response-dict)`` pair the route hands to
+        ``_json_response``. Lifted out of the route to keep the
+        route body shallow (under the deeply-nested ratchet)."""
+        try:
+            result = run_job(job_name, source=source)
+        except Exception as exc:  # noqa: BLE001
+            return (
+                int(HTTPStatus.INTERNAL_SERVER_ERROR),
+                {"error": f"run_job({job_name!r}) raised: {exc}"},
+            )
+        err = str(result.get("error") or "")
+        if err and "Unknown job" in err:
+            return (
+                int(HTTPStatus.NOT_FOUND),
+                {"error": err, "job_name": job_name},
+            )
+        return (int(HTTPStatus.OK), result)
 
     @post("/api/media-server/reset")
     def handle_media_server_reset(self, handler: Any) -> None:

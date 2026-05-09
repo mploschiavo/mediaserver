@@ -100,21 +100,21 @@ class PromiseUsesLifecycleDispatch(unittest.TestCase):
             "'probe_libraries'",
         )
 
-    def test_promise_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_promise_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — promise→Job migration. Routes via
+        ``run_job(jellyfin:ensure-libraries)`` instead of the
+        legacy ``LifecycleEnsurer`` dispatch."""
+        from media_stack.domain.services.promises import JobEnsurer
         self.assertIsInstance(
-            self.promise.ensurer, LifecycleEnsurer,
-            f"{self._PROMISE_ID}: ensurer regressed from lifecycle "
+            self.promise.ensurer, JobEnsurer,
+            f"{self._PROMISE_ID}: ensurer regressed from Job "
             f"dispatch (got {type(self.promise.ensurer).__name__})",
         )
         self.assertEqual(
-            self.promise.ensurer.service, "jellyfin",
-            f"{self._PROMISE_ID}: ensurer.service expected 'jellyfin'",
-        )
-        self.assertEqual(
-            self.promise.ensurer.method, "ensure_libraries",
-            f"{self._PROMISE_ID}: ensurer.method expected "
-            "'ensure_libraries'",
+            self.promise.ensurer.job_name,
+            "jellyfin:ensure-libraries",
+            f"{self._PROMISE_ID}: ensurer.job_name expected "
+            "'jellyfin:ensure-libraries'",
         )
 
 

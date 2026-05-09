@@ -30,6 +30,18 @@ plugin:
       label: "Update download categories"
       phase: download_clients
       priority: 10
+
+    # ADR-0010 Phase 7 — promise→Job migration. Replaces the
+    # ``ensured_by: type: lifecycle`` indirection: the promise's
+    # ``ensured_by`` now points at this Job by name; JobRunner.run
+    # invokes the wirer's ensure() via the module-level alias.
+    # ``satisfies:`` mirrors the promise id so the orchestrator's
+    # promise-id → Job-name resolution is data-driven.
+    "qbittorrent:ensure-categories":
+      handler: media_stack.adapters.qbittorrent.categories_wiring:ensure_categories
+      label: "Ensure qBittorrent categories"
+      satisfies: [qbittorrent-categories]
+      requires: []
   event_handlers:
     ACQUIRE:
       torrent_client_login: media_stack.services.apps.qbittorrent.runtime_ops:torrent_client_login
@@ -92,6 +104,5 @@ plugin:
         service: qbittorrent
         method: probe_categories
       ensured_by:
-        type: lifecycle
-        service: qbittorrent
-        method: ensure_categories
+        type: job
+        job_name: "qbittorrent:ensure-categories"

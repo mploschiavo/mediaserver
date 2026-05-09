@@ -121,22 +121,26 @@ class EachPromiseUsesLifecycleDispatch(unittest.TestCase):
                 f"{pid}: probe.method expected {probe_method!r}",
             )
 
-    def test_each_promise_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_each_promise_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — each Jellyseerr promise's ensurer is
+        a JobEnsurer pointing at the contract Job whose handler
+        binds to the corresponding ``JellyseerrLifecycle.<method>``."""
+        from media_stack.domain.services.promises import JobEnsurer
         for pid, _probe_method, ensure_method in self._EXPECTED:
             promise = self.by_id[pid]
             self.assertIsInstance(
-                promise.ensurer, LifecycleEnsurer,
-                f"{pid}: ensurer regressed from lifecycle dispatch "
+                promise.ensurer, JobEnsurer,
+                f"{pid}: ensurer regressed from Job dispatch "
                 f"(got {type(promise.ensurer).__name__})",
             )
-            self.assertEqual(
-                promise.ensurer.service, "jellyseerr",
-                f"{pid}: ensurer.service expected 'jellyseerr'",
+            # ``ensure_oidc`` → ``jellyseerr:ensure-oidc`` etc.
+            expected_job = (
+                f"jellyseerr:{ensure_method.replace('_', '-')}"
+                .replace("ensure-", "ensure-")
             )
             self.assertEqual(
-                promise.ensurer.method, ensure_method,
-                f"{pid}: ensurer.method expected {ensure_method!r}",
+                promise.ensurer.job_name, expected_job,
+                f"{pid}: ensurer.job_name expected {expected_job!r}",
             )
 
 

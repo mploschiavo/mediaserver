@@ -76,18 +76,20 @@ class EachPromiseUsesLifecycleDispatch(unittest.TestCase):
                 promise.probe.method, "probe_api_key_discoverable",
             )
 
-    def test_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — every api-key-discoverable promise
+        routes via ``run_job(<service>:ensure-api-key-discoverable)``."""
+        from media_stack.domain.services.promises import JobEnsurer
         for pid, expected_service in _EXPECTED_PROMISES:
             promise = self.by_id[pid]
             self.assertIsInstance(
-                promise.ensurer, LifecycleEnsurer,
-                f"{pid}: ensurer regressed from lifecycle dispatch "
+                promise.ensurer, JobEnsurer,
+                f"{pid}: ensurer regressed from Job dispatch "
                 f"(got {type(promise.ensurer).__name__})",
             )
-            self.assertEqual(promise.ensurer.service, expected_service)
             self.assertEqual(
-                promise.ensurer.method, "ensure_api_key_discoverable",
+                promise.ensurer.job_name,
+                f"{expected_service}:ensure-api-key-discoverable",
             )
 
 

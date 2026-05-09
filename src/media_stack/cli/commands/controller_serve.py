@@ -570,8 +570,98 @@ def _run_serve(args: argparse.Namespace) -> None:
     )
     sched_thread.start()
 
-    auto_run = args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
-    if auto_run:
+    # ------------------------------------------------------------------
+    # ADR-0009 Phase 6.4 — TriggerEngine + dispatcher wiring.
+    #
+    # Build the trigger index from the same per-service contracts the
+    # job tree is built from, then install a dispatcher whose
+    # ``run_fn`` re-uses the local ``action_trigger`` closure so
+    # triggered jobs flow through the existing action queue (and pick
+    # up its audit / timeout / cancel infrastructure for free).
+    #
+    # Hardcoded ``action_name == "bootstrap"`` branches in the action
+    # loop (the post-bootstrap recovery cascade, the heal-sweep timer,
+    # the mark-initial-bootstrap-done call) are gone — the framework
+    # owns those wirings via the contract-declared ``triggers:`` blocks
+    # on ``post-bootstrap-recovery`` / ``heal-sweep`` /
+    # ``mark-initial-bootstrap-done`` in ``contracts/services/core.yaml``.
+    # ------------------------------------------------------------------
+    try:
+        from media_stack.application.jobs import framework as _jf_module
+        from media_stack.application.jobs.controller_state_accessor import (
+            ControllerStateAccessor,
+        )
+        from media_stack.application.jobs.framework_predicates import (
+            FrameworkPredicates,
+        )
+        from media_stack.application.jobs.trigger_dispatcher import (
+            TriggerDispatchService,
+            TriggerDispatcherSingleton,
+        )
+        from media_stack.application.jobs.trigger_engine import (
+            TriggerEngine,
+        )
+
+        # Make the controller state visible to the framework's
+        # end-of-batch lifecycle metadata handler (which reads
+        # contract-declared ``marks_initial_bootstrap_done`` /
+        # ``retry_on_failure`` fields and applies the side-effects).
+        ControllerStateAccessor.set(state)
+        FrameworkPredicates.install(state=state)
+        FrameworkPredicates.register_all()
+
+        _trigger_engine = TriggerEngine(
+            _jf_module.discover_jobs_from_contracts(),
+        )
+        _trigger_engine.validate_when_predicates_now()
+        TriggerDispatcherSingleton.set(
+            TriggerDispatchService(
+                _trigger_engine,
+                run_fn=lambda name: action_trigger(
+                    name, {"_triggered_by": "trigger"},
+                ),
+            ),
+        )
+
+        # ADR-0009 Phase 6.5 — push every ``event: schedule`` trigger
+        # into the existing SchedulerService so trigger-driven and
+        # legacy-seeded schedules share one persisted store. Dedup
+        # mirrors the seed loop in ``_scheduler_loop``: skip an entry
+        # whose action is already registered (idempotent across
+        # controller restarts).
+        from media_stack.api.services import scheduler as _sched_mod
+        _existing_sched_actions = {
+            s.get("action")
+            for s in _sched_mod.get_schedules().get("schedules") or []
+        }
+        def _register_if_new(**payload: Any) -> None:
+            if payload.get("action") in _existing_sched_actions:
+                return
+            _sched_mod.add_schedule(
+                action=payload["action"],
+                interval_seconds=payload.get("interval_seconds", 0),
+                label=f"trigger-driven: {payload['action']}",
+            )
+        _trigger_engine.register_schedules(_register_if_new)
+        runtime_platform.log(
+            f"[INFO] TriggerEngine ready — "
+            f"{len(_trigger_engine.event_kinds())} event kinds indexed"
+        )
+    except Exception as exc:
+        runtime_platform.log(
+            f"[WARN] TriggerEngine wiring failed: {exc} — "
+            "controller will run without trigger-driven recovery"
+        )
+
+    # Auto-run the bootstrap Job on first start when the operator
+    # asked for it (``--auto-run``) or the legacy
+    # ``FULLY_PRECONFIGURED`` deployment flag is set, AND the
+    # initial-bootstrap-done flag isn't already set on
+    # ControllerState (idempotent across container restarts).
+    auto_run_requested = (
+        args.auto_run or os.environ.get("FULLY_PRECONFIGURED") == "1"
+    )
+    if auto_run_requested and not state.initial_bootstrap_done:
         runtime_platform.log("[INFO] Auto-run: queuing initial bootstrap action")
         action_trigger("bootstrap", {})
 
@@ -727,16 +817,15 @@ def _run_serve(args: argparse.Namespace) -> None:
                 if error_msg:
                     runtime_platform.log(f"[ERR] Action {action_name} failed: {error_msg}")
 
-                    if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                        state.mark_initial_bootstrap_done()
-                        runtime_platform.log(
-                            "[WARN] Initial bootstrap had errors but service is marked ready"
-                        )
-                        for queued in ["configure-media-server", "post-setup", "envoy-config", "validate-credentials"]:
-                            runtime_platform.log(f"[INFO] Auto-queuing {queued} despite bootstrap error")
-                            # Tag as auto-heal so the dashboard badges
-                            # the recovery cascade correctly.
-                            action_trigger(queued, {"_source": "auto-heal"})
+                    # ADR-0009 Phase 6.4: the post-bootstrap recovery
+                    # cascade, heal-sweep timer, and
+                    # mark-initial-bootstrap-done call all moved to
+                    # trigger-driven Jobs in
+                    # ``contracts/services/core.yaml``. The framework
+                    # fires those Jobs via ``TriggerEngine.dispatch``
+                    # off ``JobRunner.run`` lifecycle hooks; the
+                    # action loop no longer branches on ``action_name``
+                    # to decide what runs next.
 
                     if attempt <= retry_limit:
                         delay = min(10.0, 2.0 ** (attempt - 1))
@@ -755,47 +844,17 @@ def _run_serve(args: argparse.Namespace) -> None:
                         "elapsed_seconds": elapsed_seconds,
                     })
 
-                    if state.get_failed_services() and action_name in ("bootstrap", "reconcile"):
-                        heal_delay = int(os.environ.get("AUTO_HEAL_DELAY_SECONDS", "120"))
-                        runtime_platform.log(
-                            f"[HEAL] {len(state.get_failed_services())} services need healing. "
-                            f"Auto-queuing reconcile in {heal_delay}s."
-                        )
-                        # Tag the auto-queued reconcile as auto-heal so
-                        # the history badge reads ``auto-heal`` instead
-                        # of ``unknown`` — operators need to distinguish
-                        # "the controller decided to retry" from "the
-                        # cron schedule fired".
-                        threading.Timer(
-                            heal_delay,
-                            lambda: action_trigger(
-                                "reconcile", {"_source": "auto-heal"},
-                            ),
-                        ).start()
-
                     break  # Exhausted retries.
 
                 else:
-                    # Success
+                    # Success — webhooks only; bootstrap-completion
+                    # side effects (mark-initial-bootstrap-done) flow
+                    # through the contract-declared trigger.
                     _fire_webhooks(state, "action_complete", {
                         "action": action_name,
                         "status": "complete",
                         "elapsed_seconds": elapsed_seconds,
                     })
-
-                    if action_name == "bootstrap" and not state.initial_bootstrap_done:
-                        state.mark_initial_bootstrap_done()
-                        runtime_platform.log("[INFO] Initial bootstrap complete — service is ready")
-                        # Historical: this used to auto-queue
-                        # ``configure-media-server / post-setup / envoy-config /
-                        # discover-indexers / validate-credentials`` because
-                        # the original ``bootstrap`` was a thin wrapper that
-                        # didn't run them. Bootstrap is now the full DAG (see
-                        # contracts/services/core.yaml::bootstrap-orchestrate),
-                        # so re-queuing those wastes ~14 min on a second
-                        # discover-indexers pass and does nothing else useful.
-                        # If a job needs to run AFTER bootstrap, add it as a
-                        # downstream contract job — don't bring this back.
 
                     break  # Success — exit retry loop.
 

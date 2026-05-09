@@ -109,23 +109,21 @@ class PromiseUsesLifecycleDispatch(unittest.TestCase):
             f"{self._EXPECTED_PROBE_METHOD!r}",
         )
 
-    def test_promise_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_promise_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — Sonarr seed-series promise routes via
+        ``run_job(sonarr:ensure-has-series)``."""
+        from media_stack.domain.services.promises import JobEnsurer
         promise = self.by_id[self._PROMISE_ID]
         self.assertIsInstance(
-            promise.ensurer, LifecycleEnsurer,
-            f"{self._PROMISE_ID}: ensurer regressed from lifecycle "
+            promise.ensurer, JobEnsurer,
+            f"{self._PROMISE_ID}: ensurer regressed from Job "
             f"dispatch (got {type(promise.ensurer).__name__})",
         )
         self.assertEqual(
-            promise.ensurer.service, self._EXPECTED_SERVICE,
-            f"{self._PROMISE_ID}: ensurer.service expected "
-            f"{self._EXPECTED_SERVICE!r}",
-        )
-        self.assertEqual(
-            promise.ensurer.method, self._EXPECTED_ENSURE_METHOD,
-            f"{self._PROMISE_ID}: ensurer.method expected "
-            f"{self._EXPECTED_ENSURE_METHOD!r}",
+            promise.ensurer.job_name,
+            f"{self._EXPECTED_SERVICE}:ensure-has-series",
+            f"{self._PROMISE_ID}: ensurer.job_name expected the "
+            f"sonarr seed-series Job",
         )
 
 

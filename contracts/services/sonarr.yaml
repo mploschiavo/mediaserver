@@ -48,19 +48,6 @@ plugin:
     supports_seed_series: true
   adapter_classes:
     servarr: media_stack.services.apps.servarr.technologies.sonarr:SonarrAdapter
-  jobs:
-    configure-arr-clients:
-      handler: media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients
-      label: "Update download client config"
-      phase: download_clients
-      priority: 10
-      requires: []
-    configure-auto-scan:
-      handler: media_stack.services.apps.servarr.configure_auto_scan_job:configure_auto_scan
-      label: "Update auto-scan"
-      phase: post
-      priority: 80
-      requires: []
 
   # ADR-0006 Phase 3 — Servarr family migration. The Sonarr-side
   # promises live HERE alongside the service's jobs / lifecycle_class
@@ -80,6 +67,53 @@ plugin:
   # verbatim (probe shape, ensured_by job-name strings, platform
   # tags). None carry ``bootstrap_blocking`` — the orchestrator's
   # post-bootstrap reconciliation handles them.
+  jobs:
+    configure-arr-clients:
+      handler: media_stack.services.apps.servarr.configure_arr_clients_job:configure_arr_clients
+      label: "Update download client config"
+      phase: download_clients
+      priority: 10
+      requires: []
+    configure-auto-scan:
+      handler: media_stack.services.apps.servarr.configure_auto_scan_job:configure_auto_scan
+      label: "Update auto-scan"
+      phase: post
+      priority: 80
+      requires: []
+
+    # ADR-0010 Phase 7 — promise→Job migration. Each handler binds
+    # to ``ServarrLifecycle.<method>`` parameterized with
+    # ``service_id="sonarr"`` via ``LifecycleHandlerAdapter.bind``.
+    "sonarr:ensure-jellyfin-notifier":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_jellyfin_notifier
+      label: "Ensure Sonarr Jellyfin notifier"
+      satisfies: [sonarr-jellyfin-notifier]
+      requires: []
+    "sonarr:ensure-indexers":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_indexers
+      label: "Ensure Sonarr indexers"
+      satisfies: [sonarr-has-indexers]
+      requires: []
+    "sonarr:ensure-has-series":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_has_series
+      label: "Ensure Sonarr has seed series"
+      satisfies: [sonarr-has-series]
+      requires: []
+    "sonarr:ensure-runtime-defaults":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_runtime_defaults
+      label: "Ensure Sonarr runtime defaults (quality profiles)"
+      satisfies: [sonarr-quality-profiles]
+      requires: []
+    "sonarr:ensure-download-client":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_download_client
+      label: "Ensure Sonarr download client"
+      satisfies: [sonarr-download-client]
+      requires: []
+    "sonarr:ensure-api-key-discoverable":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_api_key_discoverable
+      label: "Ensure Sonarr API key discoverable"
+      satisfies: [sonarr-api-key-discoverable]
+      requires: []
   promises:
     # --- Sonarr → Jellyfin notifier ---------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -97,9 +131,8 @@ plugin:
         service: sonarr
         method: probe_jellyfin_notifier
       ensured_by:
-        type: lifecycle
-        service: sonarr
-        method: ensure_jellyfin_notifier
+        type: job
+        job_name: "sonarr:ensure-jellyfin-notifier"
 
     # --- Indexer pipeline (Sonarr side) -----------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -119,9 +152,8 @@ plugin:
         service: sonarr
         method: probe_has_indexers
       ensured_by:
-        type: lifecycle
-        service: sonarr
-        method: ensure_indexers
+        type: job
+        job_name: "sonarr:ensure-indexers"
 
     # --- Sonarr seed series -----------------------------------------------
     # ADR-0005 Phase 3 cutover (wide-handler delegation): probe +
@@ -144,9 +176,8 @@ plugin:
         service: sonarr
         method: probe_has_series
       ensured_by:
-        type: lifecycle
-        service: sonarr
-        method: ensure_has_series
+        type: job
+        job_name: "sonarr:ensure-has-series"
 
     # --- qBittorrent download client wiring (Sonarr) ----------------------
     # ADR-0005 Phase 5b cutover: probe + ensurer dispatch through
@@ -164,9 +195,8 @@ plugin:
         service: sonarr
         method: probe_download_client
       ensured_by:
-        type: lifecycle
-        service: sonarr
-        method: ensure_download_client
+        type: job
+        job_name: "sonarr:ensure-download-client"
 
     # --- Quality profiles (Sonarr) ----------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -190,9 +220,8 @@ plugin:
         service: sonarr
         method: probe_quality_profiles
       ensured_by:
-        type: lifecycle
-        service: sonarr
-        method: ensure_runtime_defaults
+        type: job
+        job_name: "sonarr:ensure-runtime-defaults"
 
     # --- API-key discoverability (Sonarr) ---------------------------------
     # ADR-0005 Phase 5c.1 (wide) — port the legacy
@@ -215,9 +244,8 @@ plugin:
         service: sonarr
         method: probe_api_key_discoverable
       ensured_by:
-        type: lifecycle
-        service: sonarr
-        method: ensure_api_key_discoverable
+        type: job
+        job_name: "sonarr:ensure-api-key-discoverable"
 defaults:
   root_folder: /media/tv
   discovery_lists:

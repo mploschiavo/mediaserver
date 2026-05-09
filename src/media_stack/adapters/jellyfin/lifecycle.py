@@ -356,4 +356,22 @@ _check: ServiceLifecycle = JellyfinLifecycle()
 del _check
 
 
-__all__ = ["JellyfinLifecycle"]
+# ADR-0010 Phase 7 — module-level Job-handler aliases the
+# ``jellyfin:*`` contract entries reference.
+from media_stack.domain.services.lifecycle_handler_adapter import (  # noqa: E402
+    LifecycleHandlerAdapter,
+)
+
+mint_api_key = LifecycleHandlerAdapter.bind(
+    JellyfinLifecycle, "mint_api_key",
+)
+ensure_libraries = LifecycleHandlerAdapter.bind(
+    JellyfinLifecycle, "ensure_libraries",
+)
+
+
+__all__ = [
+    "JellyfinLifecycle",
+    "mint_api_key",
+    "ensure_libraries",
+]

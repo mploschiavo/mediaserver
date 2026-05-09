@@ -69,13 +69,14 @@ _INFRA_ENSURED_BY = frozenset({
 })
 
 
-# Dict-typed ensurer schema vocabulary. Lifecycle is the typed-
-# dispatch path the orchestrator owns at runtime; deploy is the
-# externally-ensured marker (service-running promises that the
-# deploy tooling brings up — the orchestrator just probes). Both
-# pre-date Phase 5b.5; the regression class this ratchet targets
-# is string-typed ``ensured_by: ensure-*`` re-introductions.
-_ALLOWED_DICT_TYPES = frozenset({"lifecycle", "deploy"})
+# Dict-typed ensurer schema vocabulary. ``lifecycle`` was the legacy
+# typed dispatch (ADR-0005 Phase 3); ``job`` is the ADR-0010 Phase 7
+# replacement (orchestrator routes via ``run_job(<name>)``); ``deploy``
+# is the externally-ensured marker (service-running promises that
+# the deploy tooling brings up — the orchestrator just probes).
+# This ratchet's regression class is string-typed
+# ``ensured_by: ensure-*`` re-introductions, not the typed forms.
+_ALLOWED_DICT_TYPES = frozenset({"lifecycle", "job", "deploy"})
 
 
 class EnsuredByVocabularyAllowlist(unittest.TestCase):

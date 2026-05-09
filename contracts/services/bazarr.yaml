@@ -29,6 +29,23 @@ plugin:
     bazarr_service: media_stack.services.apps.bazarr.service:BazarrService
   service_technology_map:
     bazarr_service: bazarr
+  jobs:
+    # ADR-0010 Phase 7 — single Job satisfies all five bazarr-*
+    # promises. The legacy ensurer writes profile + toggles +
+    # providers + arr-integration + jellyfin-plugin-config in one
+    # form-encoded POST; splitting into per-promise Jobs would
+    # cause five redundant POSTs to clobber the shared settings
+    # document.
+    "bazarr:ensure-config-wiring":
+      handler: media_stack.adapters.bazarr.lifecycle:ensure_config_wiring
+      label: "Ensure Bazarr config (profile + providers + arr + jellyfin-plugin)"
+      satisfies:
+        - bazarr-language-profile
+        - bazarr-default-profile-toggles
+        - bazarr-providers
+        - bazarr-arr-integration
+        - bazarr-jellyfin-plugin-config
+      requires: []
   # ADR-0006 Phase 3b — Bazarr family migration. The five Bazarr
   # promises live HERE alongside the service's lifecycle_class /
   # event_handlers / app_service_classes declarations rather than in
@@ -67,9 +84,8 @@ plugin:
         service: bazarr
         method: probe_language_profile
       ensured_by:
-        type: lifecycle
-        service: bazarr
-        method: ensure_config_wiring
+        type: job
+        job_name: "bazarr:ensure-config-wiring"
 
     - id: bazarr-default-profile-toggles
       description: Bazarr auto-assigns the default profile to new series + movies
@@ -80,9 +96,8 @@ plugin:
         service: bazarr
         method: probe_default_profile_toggles
       ensured_by:
-        type: lifecycle
-        service: bazarr
-        method: ensure_config_wiring
+        type: job
+        job_name: "bazarr:ensure-config-wiring"
 
     - id: bazarr-providers
       description: Bazarr has the curated subtitle provider set enabled
@@ -93,9 +108,8 @@ plugin:
         service: bazarr
         method: probe_providers
       ensured_by:
-        type: lifecycle
-        service: bazarr
-        method: ensure_config_wiring
+        type: job
+        job_name: "bazarr:ensure-config-wiring"
 
     - id: bazarr-arr-integration
       description: Bazarr has Sonarr + Radarr connections configured
@@ -106,9 +120,8 @@ plugin:
         service: bazarr
         method: probe_arr_integration
       ensured_by:
-        type: lifecycle
-        service: bazarr
-        method: ensure_config_wiring
+        type: job
+        job_name: "bazarr:ensure-config-wiring"
 
     - id: bazarr-jellyfin-plugin-config
       description: Jellyfin Bazarr plugin config has the right URL + API key
@@ -119,9 +132,8 @@ plugin:
         service: bazarr
         method: probe_jellyfin_plugin_config
       ensured_by:
-        type: lifecycle
-        service: bazarr
-        method: ensure_config_wiring
+        type: job
+        job_name: "bazarr:ensure-config-wiring"
 
   event_handlers:
     ENSURE:

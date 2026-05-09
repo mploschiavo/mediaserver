@@ -193,8 +193,16 @@ class TestAllMediaServerJobsRun(unittest.TestCase):
             run_all_media_server_jobs, PREREQS, discover_jobs_from_contracts,
         )
 
-        # Get expected job names from contracts
-        expected_jobs = {j["name"] for j in discover_jobs_from_contracts()}
+        # Get expected job names from contracts. ``tree_skip`` entries
+        # exist for declarative metadata only (e.g., the synthesized
+        # ``bootstrap`` root carries ``marks_initial_bootstrap_done``
+        # / ``retry_on_failure`` fields without being added to the
+        # tree as a sub-job — see ADR-0009 Phase 6.4 redo); they
+        # legitimately do not appear in the runner's dispatch output.
+        expected_jobs = {
+            j["name"] for j in discover_jobs_from_contracts()
+            if not j.get("tree_skip")
+        }
 
         # Mock all prereqs + all handlers
         handler_patches = {

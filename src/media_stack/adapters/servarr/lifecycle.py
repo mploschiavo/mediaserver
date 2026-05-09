@@ -536,4 +536,91 @@ _check: ServiceLifecycle = ServarrLifecycle("sonarr")
 del _check
 
 
-__all__ = ["ServarrLifecycle"]
+# ADR-0010 Phase 7 — module-level Job-handler aliases the
+# ``<service>:<verb-noun>`` contract entries reference. One alias
+# per (service_id, ensure-method) pair the *arr promise registry
+# uses; ``LifecycleHandlerAdapter.bind(ServarrLifecycle, method,
+# service_id=...)`` constructs a fresh ServarrLifecycle per call
+# with the right ``service_id`` baked in, then adapts the
+# ``Outcome`` return to the Job-handler dict shape.
+#
+# Naming convention: ``<service>_<ensurer>`` mirrors the contract
+# Job name ``<service>:<verb-noun>``. ``ensure_jellyfin_notifier``
+# stays underscored in the Python alias (the Python name) and is
+# kebab-cased in the Job name (the contract identifier).
+from media_stack.domain.services.lifecycle_handler_adapter import (  # noqa: E402
+    LifecycleHandlerAdapter,
+)
+
+# Per-service ensure_jellyfin_notifier (radarr, sonarr, lidarr).
+radarr_ensure_jellyfin_notifier = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_jellyfin_notifier", service_id="radarr",
+)
+sonarr_ensure_jellyfin_notifier = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_jellyfin_notifier", service_id="sonarr",
+)
+lidarr_ensure_jellyfin_notifier = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_jellyfin_notifier", service_id="lidarr",
+)
+
+# Per-service ensure_indexers (radarr, sonarr).
+radarr_ensure_indexers = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_indexers", service_id="radarr",
+)
+sonarr_ensure_indexers = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_indexers", service_id="sonarr",
+)
+
+# Per-service ensure_has_series (sonarr only).
+sonarr_ensure_has_series = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_has_series", service_id="sonarr",
+)
+
+# Per-service ensure_runtime_defaults (radarr, sonarr).
+radarr_ensure_runtime_defaults = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_runtime_defaults", service_id="radarr",
+)
+sonarr_ensure_runtime_defaults = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_runtime_defaults", service_id="sonarr",
+)
+
+# Per-service ensure_download_client (radarr, sonarr).
+radarr_ensure_download_client = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_download_client", service_id="radarr",
+)
+sonarr_ensure_download_client = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_download_client", service_id="sonarr",
+)
+
+# Per-service ensure_api_key_discoverable (all four *arrs).
+radarr_ensure_api_key_discoverable = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_api_key_discoverable", service_id="radarr",
+)
+sonarr_ensure_api_key_discoverable = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_api_key_discoverable", service_id="sonarr",
+)
+lidarr_ensure_api_key_discoverable = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_api_key_discoverable", service_id="lidarr",
+)
+readarr_ensure_api_key_discoverable = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_api_key_discoverable", service_id="readarr",
+)
+
+
+__all__ = [
+    "ServarrLifecycle",
+    "radarr_ensure_jellyfin_notifier",
+    "sonarr_ensure_jellyfin_notifier",
+    "lidarr_ensure_jellyfin_notifier",
+    "radarr_ensure_indexers",
+    "sonarr_ensure_indexers",
+    "sonarr_ensure_has_series",
+    "radarr_ensure_runtime_defaults",
+    "sonarr_ensure_runtime_defaults",
+    "radarr_ensure_download_client",
+    "sonarr_ensure_download_client",
+    "radarr_ensure_api_key_discoverable",
+    "sonarr_ensure_api_key_discoverable",
+    "lidarr_ensure_api_key_discoverable",
+    "readarr_ensure_api_key_discoverable",
+]

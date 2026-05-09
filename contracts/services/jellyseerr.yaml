@@ -35,7 +35,31 @@ plugin:
   # only path — the ``jellyseerr-arr-servers`` promise binds via
   # lifecycle dispatch. The legacy handler stays importable for the
   # wirer; only the YAML registration shell is gone.
-  jobs: {}
+  jobs:
+    # ADR-0010 Phase 7 — promise→Job migration. One Job per
+    # ensurer-method on JellyseerrLifecycle; each
+    # ``handler:`` references a module-level alias produced by
+    # ``LifecycleHandlerAdapter.bind`` in ``jellyseerr/lifecycle.py``.
+    "jellyseerr:ensure-oidc":
+      handler: media_stack.adapters.jellyseerr.lifecycle:ensure_oidc
+      label: "Ensure Jellyseerr OIDC sign-in"
+      satisfies: [jellyseerr-oidc]
+      requires: []
+    "jellyseerr:ensure-application-url":
+      handler: media_stack.adapters.jellyseerr.lifecycle:ensure_application_url
+      label: "Ensure Jellyseerr applicationUrl"
+      satisfies: [jellyseerr-application-url]
+      requires: []
+    "jellyseerr:ensure-arr-servers":
+      handler: media_stack.adapters.jellyseerr.lifecycle:ensure_arr_servers
+      label: "Ensure Jellyseerr Sonarr+Radarr+Jellyfin connections"
+      satisfies: [jellyseerr-arr-servers]
+      requires: []
+    "jellyseerr:ensure-api-key-discoverable":
+      handler: media_stack.adapters.jellyseerr.lifecycle:ensure_api_key_discoverable
+      label: "Ensure Jellyseerr API key is discoverable"
+      satisfies: [jellyseerr-api-key-discoverable]
+      requires: []
 
   # ADR-0006 Phase 3c — Jellyseerr family migration. The three
   # Jellyseerr promises live HERE alongside the service's jobs /
@@ -71,9 +95,8 @@ plugin:
         service: jellyseerr
         method: probe_oidc
       ensured_by:
-        type: lifecycle
-        service: jellyseerr
-        method: ensure_oidc
+        type: job
+        job_name: "jellyseerr:ensure-oidc"
 
     - id: jellyseerr-application-url
       description: Jellyseerr applicationUrl is set HTTPS so OIDC redirect_uri matches Authelia's registered list
@@ -84,9 +107,8 @@ plugin:
         service: jellyseerr
         method: probe_application_url
       ensured_by:
-        type: lifecycle
-        service: jellyseerr
-        method: ensure_application_url
+        type: job
+        job_name: "jellyseerr:ensure-application-url"
 
     - id: jellyseerr-arr-servers
       description: Jellyseerr has Sonarr+Radarr+Jellyfin connections with API keys
@@ -97,9 +119,8 @@ plugin:
         service: jellyseerr
         method: probe_arr_servers
       ensured_by:
-        type: lifecycle
-        service: jellyseerr
-        method: ensure_arr_servers
+        type: job
+        job_name: "jellyseerr:ensure-arr-servers"
 
     # --- API-key discoverability (Jellyseerr) -----------------------------
     # ADR-0005 Phase 5c.1 (wide) — port the legacy
@@ -120,9 +141,8 @@ plugin:
         service: jellyseerr
         method: probe_api_key_discoverable
       ensured_by:
-        type: lifecycle
-        service: jellyseerr
-        method: ensure_api_key_discoverable
+        type: job
+        job_name: "jellyseerr:ensure-api-key-discoverable"
 
   event_handlers:
     RUN:

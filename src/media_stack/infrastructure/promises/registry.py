@@ -277,6 +277,12 @@ class EnsurerSpecParser:
         infra_vocabulary: frozenset[str] = _INFRA_VOCABULARY,
     ) -> None:
         self._infra_vocabulary = infra_vocabulary
+        # ADR-0010 Phase 7 — ``lifecycle`` ensurer dispatch was
+        # retired in the runtime dispatcher (no contract may
+        # reference it; architecture ratchet enforces). The parser
+        # entry stays so legacy tests that exercise the symbolic
+        # surface still resolve; constructed ``LifecycleEnsurer``
+        # values just no-op when handed to ``dispatch_ensurer``.
         self._typed_dispatch: dict[
             str, Callable[[str, Mapping[str, Any]], EnsurerSpec]
         ] = {

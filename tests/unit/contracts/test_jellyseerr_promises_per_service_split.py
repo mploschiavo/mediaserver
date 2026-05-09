@@ -165,24 +165,25 @@ class EnsurerCarriesForward(unittest.TestCase):
                 f"move-not-edit must keep all three promises live.",
             )
 
-    def test_ensurer_lifecycle_methods_preserved(self) -> None:
-        # Post-Phase-3 cutover: ensurer.method holds the lifecycle
-        # method name. Reverting the cutover (restoring string
-        # ``ensured_by: ensure-jellyseerr-oidc``) flips this.
+    def test_ensurer_targets_preserved_across_phase_7(self) -> None:
+        """ADR-0010 Phase 7 — Jellyseerr promises now target Jobs
+        (``jellyseerr:ensure-<topic>``) instead of lifecycle dispatch.
+        The lifecycle method name is preserved as the
+        last-segment-with-dashes inside the Job name; this test
+        pins the mapping so a regression that points the promise at
+        the wrong Job (or back to the legacy LifecycleEnsurer) fails."""
         for pid, expected_method in self._EXPECTED_LIFECYCLE_METHOD.items():
             promise = self.by_id[pid]
-            actual_method = getattr(promise.ensurer, "method", None)
-            actual_service = getattr(promise.ensurer, "service", None)
-            self.assertEqual(
-                actual_service, "jellyseerr",
-                f"{pid}: ensurer.service drifted to {actual_service!r} "
-                f"— expected 'jellyseerr' (cutover routes through "
-                f"JellyseerrLifecycle).",
+            job_name = getattr(promise.ensurer, "job_name", None)
+            expected_job = (
+                f"jellyseerr:{expected_method.replace('_', '-')}"
             )
             self.assertEqual(
-                actual_method, expected_method,
-                f"{pid}: ensurer.method drifted to {actual_method!r} "
-                f"— expected {expected_method!r} (Phase 3 cutover).",
+                job_name, expected_job,
+                f"{pid}: ensurer.job_name drifted to {job_name!r} "
+                f"— expected {expected_job!r} (Phase 7 routes via "
+                f"``run_job(<job-name>)`` instead of lifecycle "
+                f"dispatch).",
             )
 
     def test_platforms_preserved(self) -> None:

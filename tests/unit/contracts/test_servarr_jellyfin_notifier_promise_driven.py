@@ -101,22 +101,22 @@ class EachPromiseUsesLifecycleDispatch(unittest.TestCase):
                 f"{pid}: probe.method expected probe_jellyfin_notifier",
             )
 
-    def test_each_promise_ensurer_is_lifecycle(self) -> None:
-        from media_stack.domain.services.promises import LifecycleEnsurer
+    def test_each_promise_ensurer_is_job(self) -> None:
+        """ADR-0010 Phase 7 — promise→Job migration. Each *arr's
+        notifier promise routes via
+        ``run_job(<service>:ensure-jellyfin-notifier)``."""
+        from media_stack.domain.services.promises import JobEnsurer
         for pid, expected_service in self._EXPECTED:
             promise = self.by_id[pid]
             self.assertIsInstance(
-                promise.ensurer, LifecycleEnsurer,
-                f"{pid}: ensurer regressed from lifecycle dispatch "
+                promise.ensurer, JobEnsurer,
+                f"{pid}: ensurer regressed from Job dispatch "
                 f"(got {type(promise.ensurer).__name__})",
             )
             self.assertEqual(
-                promise.ensurer.service, expected_service,
-                f"{pid}: ensurer.service expected {expected_service!r}",
-            )
-            self.assertEqual(
-                promise.ensurer.method, "ensure_jellyfin_notifier",
-                f"{pid}: ensurer.method expected ensure_jellyfin_notifier",
+                promise.ensurer.job_name,
+                f"{expected_service}:ensure-jellyfin-notifier",
+                f"{pid}: ensurer.job_name expected per-service Job",
             )
 
 

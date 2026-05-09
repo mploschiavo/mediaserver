@@ -54,6 +54,13 @@ plugin:
   # ``promises.yaml``) and aggregates with cross-file id-uniqueness +
   # depends_on resolution — see
   # ``infrastructure/promises/registry.py::PromiseRegistryLoader``.
+  jobs:
+    # ADR-0010 Phase 7 — promise→Job migration.
+    "readarr:ensure-api-key-discoverable":
+      handler: media_stack.adapters.servarr.lifecycle:readarr_ensure_api_key_discoverable
+      label: "Ensure Readarr API key discoverable"
+      satisfies: [readarr-api-key-discoverable]
+      requires: []
   promises:
     # --- API-key discoverability (Readarr) --------------------------------
     # ADR-0005 Phase 5c.1 (wide) — port the legacy
@@ -70,6 +77,5 @@ plugin:
         service: readarr
         method: probe_api_key_discoverable
       ensured_by:
-        type: lifecycle
-        service: readarr
-        method: ensure_api_key_discoverable
+        type: job
+        job_name: "readarr:ensure-api-key-discoverable"

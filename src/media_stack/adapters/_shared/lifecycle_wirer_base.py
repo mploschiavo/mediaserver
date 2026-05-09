@@ -35,6 +35,15 @@ from media_stack.domain.services import (
     ProbeResult,
 )
 
+# Module-top import of the Phase 7 adapter — keeps
+# ``bind_method_as_job`` free of a function-level import (which
+# would tick the CIRCULAR_IMPORT_RISK_RATCHET). The adapter module
+# imports only from ``domain.services``, so no cycle exists in the
+# static graph.
+from media_stack.domain.services.lifecycle_handler_adapter import (
+    LifecycleHandlerAdapter,
+)
+
 
 class LifecycleWirerBase:
     """Common helpers for ADR-0005 Phase 3 wirer classes.
@@ -156,6 +165,51 @@ class LifecycleWirerBase:
         # except clause should narrow to known types; reaching here
         # means a bug.
         raise exc
+
+    # --- Outcome → Job-handler dict adapter -----------------------
+    #
+    # ADR-0010 Phase 7: each wirer's ``ensure(...)`` becomes the
+    # body of a single-step Job whose contract entry has
+    # ``satisfies: [<promise-id>]``. JobRunner expects ``(ctx) ->
+    # dict`` from a handler; ``ensure(...)`` returns ``Outcome``.
+    # This adapter lives on the shared base because it's the only
+    # place that knows BOTH halves (Wirer + Outcome shape).
+    # Lifecycle dispatch (``_ensure_lifecycle``) is retired in the
+    # same phase; this helper replaces the indirection layer.
+
+    @classmethod
+    def bind_method_as_job(
+        cls,
+        method_name: str = "ensure",
+        *,
+        service_id: str | None = None,
+    ) -> Any:
+        """Return a Job-handler closure bound to a wirer method.
+
+        Convenience wrapper around
+        ``LifecycleHandlerAdapter.bind`` for wirer subclasses —
+        threads the calling subclass into the adapter, plus the
+        ``service_id`` parameter for Servarr-family wirers whose
+        ensure signature is ``(service_id, ctx)``.
+
+        Module-level aliases bind once at import:
+
+            ensure_categories = CategoriesWirer.bind_method_as_job()
+            ensure_oidc = JellyseerrConfigWirer.bind_method_as_job("ensure_oidc")
+            ensure_radarr_api_key = ApiKeyWirer.bind_method_as_job(service_id="radarr")
+        """
+        if service_id is None:
+            return LifecycleHandlerAdapter.bind(cls, method_name)
+
+        # Servarr-family wirers take ``(service_id, ctx)`` rather
+        # than ``(ctx)`` — wrap so the adapter's ``(ctx) -> dict``
+        # shape still holds.
+        def handler(ctx: OrchestrationContext) -> dict[str, Any]:
+            method = getattr(cls(), method_name)
+            outcome = method(service_id, ctx)
+            return LifecycleHandlerAdapter.outcome_to_dict(outcome)
+
+        return handler
 
     # --- Secret-discovery helper -----------------------------------
 
