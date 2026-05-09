@@ -18,7 +18,6 @@ import logging
 import os
 import urllib.error
 import urllib.request
-from pathlib import Path
 
 from media_stack.adapters.bazarr.config_wiring import BazarrConfigWirer
 from media_stack.domain.services import (
@@ -26,6 +25,9 @@ from media_stack.domain.services import (
     Outcome,
     ProbeResult,
     ServiceLifecycle,
+)
+from media_stack.domain.services.lifecycle_api_key_helpers import (
+    LifecycleApiKeyHelpers,
 )
 
 
@@ -46,6 +48,10 @@ _BAZARR_CONFIG_WIRER = BazarrConfigWirer()
 
 class BazarrLifecycle:
     service_id: str = "bazarr"
+
+    _API_KEY_HELPERS = LifecycleApiKeyHelpers(
+        default_api_key_env=_DEFAULT_API_KEY_ENV,
+    )
 
     def probe_running(self, ctx: OrchestrationContext) -> ProbeResult:
         url = self._health_url(ctx)
@@ -90,26 +96,26 @@ class BazarrLifecycle:
                 "api key discoverable",
                 evidence={
                     "key_length": len(key),
-                    "source": _classify_source(ctx, key),
+                    "source": self._API_KEY_HELPERS.classify_source(ctx, key),
                 },
                 evaluated_at=ctx.now(),
             )
         return ProbeResult.failed(
             "no api key in env or bazarr config.yaml",
             evidence={
-                "env_var_checked": _api_key_env(ctx),
-                "config_path": str(_config_path(ctx)),
+                "env_var_checked": self._API_KEY_HELPERS.api_key_env(ctx),
+                "config_path": str(self._API_KEY_HELPERS.config_path(ctx)),
             },
             evaluated_at=ctx.now(),
         )
 
     def discover_api_key(self, ctx: OrchestrationContext) -> str | None:
-        env_var = _api_key_env(ctx)
+        env_var = self._API_KEY_HELPERS.api_key_env(ctx)
         value = (ctx.secrets.get(env_var) or os.environ.get(env_var) or "").strip()
         if value:
             return value
 
-        path = _config_path(ctx)
+        path = self._API_KEY_HELPERS.config_path(ctx)
         if not path or not path.is_file():
             return None
 
@@ -135,7 +141,7 @@ class BazarrLifecycle:
                 evidence={"reason": "already_discoverable"},
             )
 
-        path = _config_path(ctx)
+        path = self._API_KEY_HELPERS.config_path(ctx)
         if not path:
             return Outcome.failure(
                 "no api_key_config path in config — cannot mint",
@@ -208,7 +214,7 @@ class BazarrLifecycle:
     def persist_api_key(
         self, key: str, ctx: OrchestrationContext,
     ) -> Outcome[None]:
-        env_var = _api_key_env(ctx)
+        env_var = self._API_KEY_HELPERS.api_key_env(ctx)
         if not key:
             return Outcome.failure(
                 "refusing to persist empty key",
@@ -247,32 +253,6 @@ class BazarrLifecycle:
         scheme = (ctx.config.get("scheme") or "http").strip()
         path = ctx.config.get("health_path") or _DEFAULT_HEALTH_PATH
         return f"{scheme}://{host}:{port}{path}"
-
-
-def _api_key_env(ctx: OrchestrationContext) -> str:
-    return (ctx.config.get("api_key_env") or _DEFAULT_API_KEY_ENV).strip()
-
-
-def _config_path(ctx: OrchestrationContext) -> Path | None:
-    rel = ctx.config.get("api_key_config")
-    if not rel:
-        return None
-    config_root = (
-        ctx.config.get("config_root")
-        or ctx.extra.get("config_root")
-        or os.environ.get("CONFIG_ROOT")
-        or ""
-    )
-    return Path(config_root) / rel if config_root else Path(rel)
-
-
-def _classify_source(ctx: OrchestrationContext, key: str) -> str:
-    env_var = _api_key_env(ctx)
-    if (ctx.secrets.get(env_var) or "").strip() == key:
-        return "secrets"
-    if os.environ.get(env_var, "").strip() == key:
-        return "env"
-    return "config_file"
 
 
 _check: ServiceLifecycle = BazarrLifecycle()

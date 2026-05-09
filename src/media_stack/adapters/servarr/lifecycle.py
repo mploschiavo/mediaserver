@@ -29,7 +29,6 @@ import logging
 import os
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from media_stack.adapters.servarr.api_key_wiring import (
@@ -56,6 +55,9 @@ from media_stack.domain.services import (
     ProbeResult,
     ServiceLifecycle,
 )
+from media_stack.domain.services.lifecycle_api_key_helpers import (
+    LifecycleApiKeyHelpers,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,12 @@ _SUPPORTED_SERVICE_IDS = frozenset(
 _DEFAULT_HEALTH_PATH = "/ping"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_FORMAT = "xml"
+# Per-arr contracts always set ``api_key_env`` explicitly
+# (``SONARR_API_KEY`` / ``RADARR_API_KEY`` / etc.), so this default
+# is a safety fallback that should never fire in production. Kept as
+# a named constant rather than a literal so the
+# ``LifecycleApiKeyHelpers`` wiring stays uniform across adapters.
+_DEFAULT_API_KEY_ENV = "SERVARR_API_KEY"
 
 # Stateless module-level singleton — the wirer is per-call
 # parameterized by service_id + arr_api_key + ctx, so one instance
@@ -136,6 +144,10 @@ class ServarrLifecycle:
     ``OrchestrationContext.config``.
     """
 
+    _API_KEY_HELPERS = LifecycleApiKeyHelpers(
+        default_api_key_env=_DEFAULT_API_KEY_ENV,
+    )
+
     def __init__(self, service_id: str) -> None:
         sid = (service_id or "").strip().lower()
         if sid not in _SUPPORTED_SERVICE_IDS:
@@ -192,15 +204,15 @@ class ServarrLifecycle:
                 "api key discoverable",
                 evidence={
                     "key_length": len(key),
-                    "source": _classify_source(ctx, key),
+                    "source": self._API_KEY_HELPERS.classify_source(ctx, key),
                 },
                 evaluated_at=ctx.now(),
             )
         return ProbeResult.failed(
             "no api key in env or config.xml",
             evidence={
-                "env_var_checked": _api_key_env(ctx),
-                "config_path": str(_config_path(ctx)),
+                "env_var_checked": self._API_KEY_HELPERS.api_key_env(ctx),
+                "config_path": str(self._API_KEY_HELPERS.config_path(ctx)),
             },
             evaluated_at=ctx.now(),
         )
@@ -208,12 +220,12 @@ class ServarrLifecycle:
     # --- discover ---------------------------------------------------
 
     def discover_api_key(self, ctx: OrchestrationContext) -> str | None:
-        env_var = _api_key_env(ctx)
+        env_var = self._API_KEY_HELPERS.api_key_env(ctx)
         env_value = (ctx.secrets.get(env_var) or os.environ.get(env_var) or "").strip()
         if env_value:
             return env_value
 
-        config_path = _config_path(ctx)
+        config_path = self._API_KEY_HELPERS.config_path(ctx)
         if not config_path or not config_path.is_file():
             return None
 
@@ -248,7 +260,7 @@ class ServarrLifecycle:
                 evidence={"reason": "already_discoverable"},
             )
 
-        config_path = _config_path(ctx)
+        config_path = self._API_KEY_HELPERS.config_path(ctx)
         if not config_path:
             return Outcome.failure(
                 "no api_key_config path in config — cannot mint",
@@ -455,7 +467,7 @@ class ServarrLifecycle:
     def persist_api_key(
         self, key: str, ctx: OrchestrationContext,
     ) -> Outcome[None]:
-        env_var = _api_key_env(ctx)
+        env_var = self._API_KEY_HELPERS.api_key_env(ctx)
         if not key:
             return Outcome.failure(
                 "refusing to persist empty key",
@@ -497,37 +509,6 @@ class ServarrLifecycle:
         scheme = (ctx.config.get("scheme") or "http").strip()
         path = ctx.config.get("health_path") or _DEFAULT_HEALTH_PATH
         return f"{scheme}://{host}:{port}{path}"
-
-
-# --- module helpers (private) ---------------------------------------
-
-def _api_key_env(ctx: OrchestrationContext) -> str:
-    return (
-        ctx.config.get("api_key_env")
-        or f"{ctx.service_id.upper()}_API_KEY"
-    ).strip()
-
-
-def _config_path(ctx: OrchestrationContext) -> Path | None:
-    rel = ctx.config.get("api_key_config")
-    if not rel:
-        return None
-    config_root = (
-        ctx.config.get("config_root")
-        or ctx.extra.get("config_root")
-        or os.environ.get("CONFIG_ROOT")
-        or ""
-    )
-    return Path(config_root) / rel if config_root else Path(rel)
-
-
-def _classify_source(ctx: OrchestrationContext, key: str) -> str:
-    env_var = _api_key_env(ctx)
-    if (ctx.secrets.get(env_var) or "").strip() == key:
-        return "secrets"
-    if os.environ.get(env_var, "").strip() == key:
-        return "env"
-    return "config_file"
 
 
 # Type-check at import time. A constructor crash would surface here
