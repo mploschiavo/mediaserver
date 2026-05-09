@@ -8,7 +8,7 @@ they mean a non-technical user never has to learn the word
 
 Winner-picking policy
 ---------------------
-When a release has ≥ 2 files the reconciler picks ONE to keep by
+When a release has >= 2 files the reconciler picks ONE to keep by
 these rules, in order:
 
 1. **Highest quality score first.** That's the adapter's own
@@ -16,7 +16,7 @@ these rules, in order:
    profile ordering (e.g., WEBDL-2160p > WEBDL-1080p > HDTV-1080p).
 2. **Earliest ``added_at`` wins ties.** A tie on quality score is
    usually two variants of the same tier. Keeping the earlier one
-   is stable — the later import was the surprise.
+   is stable - the later import was the surprise.
 3. **Smallest ``size`` wins remaining ties.** If quality + time are
    genuinely identical, a smaller file is likely a clean mux and a
    larger file is likely a bloated re-encode; we bias toward the
@@ -24,7 +24,7 @@ these rules, in order:
 
 If rule 3 still can't pick, emit
 ``MediaIntegrityDuplicateReviewNeeded`` and leave both files in
-place. That's the ONLY case the UI surfaces — a calm "needs
+place. That's the ONLY case the UI surfaces - a calm "needs
 review" chip, not a panic alert.
 
 Hardlink safety
@@ -33,13 +33,15 @@ Hardlink safety
 the library file share an inode. Deleting the library copy does
 NOT delete the torrent's copy; the filesystem reference count
 drops by one. That's what makes this reconciler safe under the
-canonical policy — we're never destroying a user's torrent.
+canonical policy - we're never destroying a user's torrent.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+import re
+import sys
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 from media_stack.core.auth.users.audit_actions import (
@@ -62,7 +64,7 @@ from media_stack.domain.media_integrity.arr_protocol import (
 
 
 # Sentinel for "this file's quality_name is not in the profile". The
-# winner-picker treats it as the worst possible rank — unknown
+# winner-picker treats it as the worst possible rank - unknown
 # qualities sort to the bottom so a known-good file always beats them.
 _UNKNOWN_PROFILE_RANK = 1 << 30
 
@@ -116,7 +118,167 @@ class _AuditSink:
         user_agent: str = "",
         detail: dict[str, Any] | None = None,
     ) -> Any:
-        ...  # pragma: no cover — structural
+        ...  # pragma: no cover - structural
+
+
+class _WinnerPicker:
+    """Pure winner-picking helpers (no side effects, easy to unit-test).
+
+    Encapsulates the rules described in the module docstring. Held as
+    a stateless instance and dispatched through ``sys.modules[__name__]``
+    aliases so tests can ``mock.patch`` the module-level names.
+    """
+
+    def pick_winner(
+        self,
+        files: Iterable[MediaFile],
+        adapter: ArrApp,
+        *,
+        profile_order: dict[str, int] | None = None,
+    ) -> tuple[MediaFile | None, list[MediaFile]]:
+        """Apply the winner-picking rules.
+
+        Returns ``(winner, losers)`` where ``losers`` is every other
+        file. If the rules can't decide (total tie), ``winner`` is
+        ``None`` - the reconciler then emits a review-needed event.
+
+        When ``profile_order`` is supplied (and non-empty), it overrides
+        the raw ``quality_score`` for the primary tiebreak: the index in
+        the profile's ordered ``items`` list determines preference (lower
+        index = preferred). Files whose ``quality_name`` doesn't appear
+        in the map sort to the back. Without a profile, we fall back to
+        the historical ``adapter.quality_score(file)`` ordering.
+        """
+        files = list(files)
+        if not files:
+            return None, []
+        if len(files) == 1:
+            return files[0], []
+
+        use_profile = bool(profile_order)
+        ordered = sorted(
+            files,
+            key=lambda f: self._sort_key(
+                f, adapter, profile_order=profile_order, use_profile=use_profile
+            ),
+        )
+        top = ordered[0]
+        runner_up = ordered[1]
+        if self.keys_equal(top, runner_up, adapter, profile_order=profile_order):
+            # Genuine tie across all 3 rules - needs human review.
+            return None, []
+        return top, ordered[1:]
+
+    def _sort_key(
+        self,
+        f: MediaFile,
+        adapter: ArrApp,
+        *,
+        profile_order: dict[str, int] | None,
+        use_profile: bool,
+    ) -> tuple[int, str, int]:
+        if use_profile:
+            assert profile_order is not None
+            rank = profile_order.get(f.quality_name, _UNKNOWN_PROFILE_RANK)
+            # Lower rank = better; sort ascending.
+            return (rank, f.added_at, f.size)
+        # We want the "winner" to have the LARGEST quality_score
+        # (highest tier), the EARLIEST added_at, and the SMALLEST
+        # size. Python sorts ascending, so negate score.
+        return (-adapter.quality_score(f), f.added_at, f.size)
+
+    def keys_equal(
+        self,
+        a: MediaFile,
+        b: MediaFile,
+        adapter: ArrApp,
+        *,
+        profile_order: dict[str, int] | None = None,
+    ) -> bool:
+        if profile_order:
+            rank_a = profile_order.get(a.quality_name, _UNKNOWN_PROFILE_RANK)
+            rank_b = profile_order.get(b.quality_name, _UNKNOWN_PROFILE_RANK)
+            primary_equal = rank_a == rank_b
+        else:
+            primary_equal = adapter.quality_score(a) == adapter.quality_score(b)
+        return primary_equal and a.added_at == b.added_at and a.size == b.size
+
+    def profile_order_for(
+        self,
+        release: MediaRelease,
+        profiles_by_id: dict[int, QualityProfile],
+    ) -> dict[str, int]:
+        """Build ``{quality_name: rank}`` for the release's profile.
+
+        Returns an empty dict (= "use raw quality_score fallback") when
+        the release has no ``quality_profile_id`` or the id isn't in the
+        cached profile list."""
+        pid = release.quality_profile_id
+        if pid is None:
+            return {}
+        profile = profiles_by_id.get(pid)
+        if profile is None:
+            return {}
+        return self.flatten_profile_items(profile.items)
+
+    def flatten_profile_items(
+        self,
+        items: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """Walk a Servarr profile's items list, including nested groups,
+        and return ``{quality_name: index}`` where lower index is preferred.
+
+        Servarr profile shapes seen across versions:
+          - leaf:  ``{"quality": {"id": 7, "name": "WEBDL-1080p"}, "allowed": true}``
+          - group: ``{"name": "WEBDL", "items": [{leaf...}, ...], "allowed": true}``
+
+        Items with ``allowed=false`` are skipped - disallowed qualities
+        can't be a winner. The flat-walk index is the rank."""
+        out: dict[str, int] = {}
+        counter = [0]
+        self._walk_profile_items(items, out, counter)
+        return out
+
+    def _walk_profile_items(
+        self,
+        seq: Iterable[Any],
+        out: dict[str, int],
+        counter: list[int],
+    ) -> None:
+        for item in seq:
+            if not isinstance(item, dict):
+                continue
+            if item.get("allowed", True) is False:
+                continue
+            nested = item.get("items")
+            if isinstance(nested, list) and nested:
+                self._walk_profile_items(nested, out, counter)
+                continue
+            quality = item.get("quality")
+            if isinstance(quality, dict):
+                name = quality.get("name")
+                if isinstance(name, str) and name and name not in out:
+                    out[name] = counter[0]
+                    counter[0] += 1
+
+
+class _ErrorRedactor:
+    """Strips secrets from exception text before audit/log surfaces."""
+
+    _APIKEY_RE = re.compile(r"(?i)(apikey|api_key|x-api-key)\s*[=:]\s*\S+")
+    _HEX_RE = re.compile(r"[a-f0-9]{32,}")
+
+    def redact(self, text: str) -> str:
+        if not text:
+            return ""
+        redacted = self._APIKEY_RE.sub(r"\1=REDACTED", text)
+        redacted = self._HEX_RE.sub("REDACTED", redacted)
+        return redacted[:500]
+
+
+# Singletons - instantiated once at import; the helpers are stateless.
+_winner_picker = _WinnerPicker()
+_error_redactor = _ErrorRedactor()
 
 
 class MediaIntegrityReconciler:
@@ -177,7 +339,7 @@ class MediaIntegrityReconciler:
         except Exception as exc:
             self._record_failure(adapter, "", exc, failures, actor=actor)
             return AdapterReconcileResult(app=adapter.name, failures=tuple(failures))
-        # Cache profiles once per pass — the reconciler may walk
+        # Cache profiles once per pass - the reconciler may walk
         # thousands of releases and we don't want N HTTP calls.
         profiles_by_id = self._load_profiles(adapter)
         for release in releases:
@@ -207,7 +369,7 @@ class MediaIntegrityReconciler:
 
     def _load_profiles(self, adapter: ArrApp) -> dict[int, QualityProfile]:
         """Best-effort profile fetch. A missing/erroring profile list
-        is recoverable — winner-picking falls back to ``quality_score``."""
+        is recoverable - winner-picking falls back to ``quality_score``."""
         try:
             profiles = adapter.quality_profiles()
         except Exception:
@@ -227,8 +389,13 @@ class MediaIntegrityReconciler:
         files = adapter.list_files_for(release.id)
         if len(files) < 2:
             return None  # desired state
-        profile_order = _profile_order_for(release, profiles_by_id)
-        winner, losers = _pick_winner(files, adapter, profile_order=profile_order)
+        # Dispatch through sys.modules[__name__] so tests that
+        # ``mock.patch`` the module-level helper aliases see the override.
+        _self_module = sys.modules[__name__]
+        profile_order = _self_module._profile_order_for(release, profiles_by_id)
+        winner, losers = _self_module._pick_winner(
+            files, adapter, profile_order=profile_order
+        )
         if winner is None:
             return self._emit_needs_review(adapter, release, files, actor=actor)
         bytes_freed = 0
@@ -255,7 +422,7 @@ class MediaIntegrityReconciler:
             try:
                 adapter.delete_file(loser.id)
             except Exception as exc:
-                failure_msg = f"delete_file({loser.id}): {_redact(str(exc))}"
+                failure_msg = f"delete_file({loser.id}): {_self_module._redact(str(exc))}"
                 if self._bus is not None:
                     try:
                         self._bus.publish(
@@ -379,7 +546,7 @@ class MediaIntegrityReconciler:
         *,
         actor: str,
     ) -> None:
-        error = _redact(str(exc))
+        error = sys.modules[__name__]._redact(str(exc))
         failures.append(f"{release_id or '*'}: {error}")
         if self._bus is not None:
             try:
@@ -404,130 +571,14 @@ class MediaIntegrityReconciler:
 
 
 # ---------------------------------------------------------------------------
-# Winner-picking (pure, no side effects — easy to unit-test)
+# Module-level aliases - preserve the legacy import surface and let tests
+# ``mock.patch`` the helpers without reaching into the singleton instances.
+# Every public name here forwards to the corresponding instance method on
+# the module-scope singleton.
 # ---------------------------------------------------------------------------
 
-
-def _pick_winner(
-    files: Iterable[MediaFile],
-    adapter: ArrApp,
-    *,
-    profile_order: dict[str, int] | None = None,
-) -> tuple[MediaFile | None, list[MediaFile]]:
-    """Apply the winner-picking rules.
-
-    Returns ``(winner, losers)`` where ``losers`` is every other
-    file. If the rules can't decide (total tie), ``winner`` is
-    ``None`` — the reconciler then emits a review-needed event.
-
-    When ``profile_order`` is supplied (and non-empty), it overrides
-    the raw ``quality_score`` for the primary tiebreak: the index in
-    the profile's ordered ``items`` list determines preference (lower
-    index = preferred). Files whose ``quality_name`` doesn't appear
-    in the map sort to the back. Without a profile, we fall back to
-    the historical ``adapter.quality_score(file)`` ordering.
-    """
-    files = list(files)
-    if not files:
-        return None, []
-    if len(files) == 1:
-        return files[0], []
-
-    use_profile = bool(profile_order)
-
-    def sort_key(f: MediaFile) -> tuple[int, str, int]:
-        if use_profile:
-            assert profile_order is not None
-            rank = profile_order.get(f.quality_name, _UNKNOWN_PROFILE_RANK)
-            # Lower rank = better; sort ascending.
-            return (rank, f.added_at, f.size)
-        # We want the "winner" to have the LARGEST quality_score
-        # (highest tier), the EARLIEST added_at, and the SMALLEST
-        # size. Python sorts ascending, so negate score.
-        return (-adapter.quality_score(f), f.added_at, f.size)
-
-    ordered = sorted(files, key=sort_key)
-    top = ordered[0]
-    runner_up = ordered[1]
-    if _keys_equal(top, runner_up, adapter, profile_order=profile_order):
-        # Genuine tie across all 3 rules — needs human review.
-        return None, []
-    return top, ordered[1:]
-
-
-def _keys_equal(
-    a: MediaFile,
-    b: MediaFile,
-    adapter: ArrApp,
-    *,
-    profile_order: dict[str, int] | None = None,
-) -> bool:
-    if profile_order:
-        rank_a = profile_order.get(a.quality_name, _UNKNOWN_PROFILE_RANK)
-        rank_b = profile_order.get(b.quality_name, _UNKNOWN_PROFILE_RANK)
-        primary_equal = rank_a == rank_b
-    else:
-        primary_equal = adapter.quality_score(a) == adapter.quality_score(b)
-    return primary_equal and a.added_at == b.added_at and a.size == b.size
-
-
-def _profile_order_for(
-    release: MediaRelease, profiles_by_id: dict[int, QualityProfile]
-) -> dict[str, int]:
-    """Build ``{quality_name: rank}`` for the release's profile.
-
-    Returns an empty dict (= "use raw quality_score fallback") when
-    the release has no ``quality_profile_id`` or the id isn't in the
-    cached profile list."""
-    pid = release.quality_profile_id
-    if pid is None:
-        return {}
-    profile = profiles_by_id.get(pid)
-    if profile is None:
-        return {}
-    return _flatten_profile_items(profile.items)
-
-
-def _flatten_profile_items(
-    items: tuple[dict[str, Any], ...] | list[dict[str, Any]],
-) -> dict[str, int]:
-    """Walk a Servarr profile's items list, including nested groups,
-    and return ``{quality_name: index}`` where lower index is preferred.
-
-    Servarr profile shapes seen across versions:
-      - leaf:  ``{"quality": {"id": 7, "name": "WEBDL-1080p"}, "allowed": true}``
-      - group: ``{"name": "WEBDL", "items": [{leaf...}, ...], "allowed": true}``
-
-    Items with ``allowed=false`` are skipped — disallowed qualities
-    can't be a winner. The flat-walk index is the rank."""
-    out: dict[str, int] = {}
-    counter = [0]
-
-    def walk(seq: Iterable[Any]) -> None:
-        for item in seq:
-            if not isinstance(item, dict):
-                continue
-            if item.get("allowed", True) is False:
-                continue
-            nested = item.get("items")
-            if isinstance(nested, list) and nested:
-                walk(nested)
-                continue
-            quality = item.get("quality")
-            if isinstance(quality, dict):
-                name = quality.get("name")
-                if isinstance(name, str) and name and name not in out:
-                    out[name] = counter[0]
-                    counter[0] += 1
-
-    walk(items)
-    return out
-
-
-def _redact(text: str) -> str:
-    if not text:
-        return ""
-    import re
-    redacted = re.sub(r"(?i)(apikey|api_key|x-api-key)\s*[=:]\s*\S+", r"\1=REDACTED", text)
-    redacted = re.sub(r"[a-f0-9]{32,}", "REDACTED", redacted)
-    return redacted[:500]
+_pick_winner = _winner_picker.pick_winner
+_keys_equal = _winner_picker.keys_equal
+_profile_order_for = _winner_picker.profile_order_for
+_flatten_profile_items = _winner_picker.flatten_profile_items
+_redact = _error_redactor.redact

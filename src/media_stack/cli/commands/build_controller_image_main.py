@@ -25,92 +25,101 @@ class BuildControllerImageConfig:
     root_dir: Path
 
 
-def _truthy(value: str | None, default: bool) -> bool:
-    if value is None:
-        return default
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+class BuildControllerImageCommand:
+    def truthy(self, value: str | None, default: bool) -> bool:
+        if value is None:
+            return default
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def detect_engine(self, preferred: str | None) -> str:
+        explicit = str(preferred or "").strip().lower()
+        if explicit:
+            if explicit not in {"docker", "podman"}:
+                raise ConfigError(f"Unsupported container engine '{explicit}'. Use docker or podman.")
+            if not shutil.which(explicit):
+                raise ConfigError(f"Requested engine '{explicit}' is not installed.")
+            return explicit
+        for candidate in ("docker", "podman"):
+            if shutil.which(candidate):
+                return candidate
+        raise ConfigError("Neither docker nor podman was found in PATH.")
+
+    def parse_config(self, argv: list[str] | None = None) -> BuildControllerImageConfig:
+        module = sys.modules[__name__]
+        root_dir = repo_root_from_script_file(__file__)
+        parser = argparse.ArgumentParser(
+            prog="bin/build-controller-image.sh",
+            description="Build controller image used by deploy/k8s/base/controller/controller.yaml, deploy/compose/docker-compose.yml, and CronJobs.",
+        )
+        parser.add_argument(
+            "--image",
+            default=default_controller_image(),
+        )
+        push_default = module.truthy(os.environ.get("PUSH_IMAGE"), True)
+        parser.add_argument("--push", dest="push_image", action="store_true", default=push_default)
+        parser.add_argument("--no-push", dest="push_image", action="store_false")
+        parser.add_argument("--engine", default=os.environ.get("CONTAINER_ENGINE", ""))
+        parser.add_argument(
+            "--dockerfile",
+            default=os.environ.get(
+                "DOCKERFILE", str(root_dir / "deploy" / "compose" / "controller.Dockerfile")
+            ),
+        )
+        args = parser.parse_args(argv)
+
+        image = str(args.image or "").strip()
+        if not image:
+            raise ConfigError("Image reference cannot be empty.")
+        dockerfile = Path(str(args.dockerfile or "")).expanduser().resolve()
+        if not dockerfile.is_file():
+            raise ConfigError(f"Dockerfile not found: {dockerfile}")
+        engine = module.detect_engine(str(args.engine or "").strip())
+        return BuildControllerImageConfig(
+            image=image,
+            push_image=bool(args.push_image),
+            engine=engine,
+            dockerfile=dockerfile,
+            root_dir=root_dir,
+        )
+
+    def run(self, cfg: BuildControllerImageConfig) -> int:
+        run_command(
+            [
+                cfg.engine,
+                "build",
+                "-f",
+                str(cfg.dockerfile),
+                "-t",
+                cfg.image,
+                str(cfg.root_dir),
+            ]
+        )
+        if cfg.push_image:
+            run_command([cfg.engine, "push", cfg.image])
+
+        print(f"Built controller image: {cfg.image}")
+        if cfg.push_image:
+            print(f"Pushed controller image: {cfg.image}")
+        return 0
+
+    def main(self, argv: list[str] | None = None) -> int:
+        module = sys.modules[__name__]
+        try:
+            cfg = module.parse_config(argv)
+            return module.run(cfg)
+        except (ConfigError, MediaStackError, OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
 
 
-def _detect_engine(preferred: str | None) -> str:
-    explicit = str(preferred or "").strip().lower()
-    if explicit:
-        if explicit not in {"docker", "podman"}:
-            raise ConfigError(f"Unsupported container engine '{explicit}'. Use docker or podman.")
-        if not shutil.which(explicit):
-            raise ConfigError(f"Requested engine '{explicit}' is not installed.")
-        return explicit
-    for candidate in ("docker", "podman"):
-        if shutil.which(candidate):
-            return candidate
-    raise ConfigError("Neither docker nor podman was found in PATH.")
-
-
-def parse_config(argv: list[str] | None = None) -> BuildControllerImageConfig:
-    root_dir = repo_root_from_script_file(__file__)
-    parser = argparse.ArgumentParser(
-        prog="bin/build-controller-image.sh",
-        description="Build controller image used by deploy/k8s/base/controller/controller.yaml, deploy/compose/docker-compose.yml, and CronJobs.",
-    )
-    parser.add_argument(
-        "--image",
-        default=default_controller_image(),
-    )
-    push_default = _truthy(os.environ.get("PUSH_IMAGE"), True)
-    parser.add_argument("--push", dest="push_image", action="store_true", default=push_default)
-    parser.add_argument("--no-push", dest="push_image", action="store_false")
-    parser.add_argument("--engine", default=os.environ.get("CONTAINER_ENGINE", ""))
-    parser.add_argument(
-        "--dockerfile",
-        default=os.environ.get(
-            "DOCKERFILE", str(root_dir / "deploy" / "compose" / "controller.Dockerfile")
-        ),
-    )
-    args = parser.parse_args(argv)
-
-    image = str(args.image or "").strip()
-    if not image:
-        raise ConfigError("Image reference cannot be empty.")
-    dockerfile = Path(str(args.dockerfile or "")).expanduser().resolve()
-    if not dockerfile.is_file():
-        raise ConfigError(f"Dockerfile not found: {dockerfile}")
-    engine = _detect_engine(str(args.engine or "").strip())
-    return BuildControllerImageConfig(
-        image=image,
-        push_image=bool(args.push_image),
-        engine=engine,
-        dockerfile=dockerfile,
-        root_dir=root_dir,
-    )
-
-
-def run(cfg: BuildControllerImageConfig) -> int:
-    run_command(
-        [
-            cfg.engine,
-            "build",
-            "-f",
-            str(cfg.dockerfile),
-            "-t",
-            cfg.image,
-            str(cfg.root_dir),
-        ]
-    )
-    if cfg.push_image:
-        run_command([cfg.engine, "push", cfg.image])
-
-    print(f"Built controller image: {cfg.image}")
-    if cfg.push_image:
-        print(f"Pushed controller image: {cfg.image}")
-    return 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    try:
-        cfg = parse_config(argv)
-        return run(cfg)
-    except (ConfigError, MediaStackError, OSError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+_INSTANCE = BuildControllerImageCommand()
+truthy = _INSTANCE.truthy
+_truthy = _INSTANCE.truthy
+detect_engine = _INSTANCE.detect_engine
+_detect_engine = _INSTANCE.detect_engine
+parse_config = _INSTANCE.parse_config
+run = _INSTANCE.run
+main = _INSTANCE.main
 
 
 if __name__ == "__main__":

@@ -13,7 +13,10 @@ from media_stack.adapters.compose.services.edge_route_graph import (  # noqa: E4
     ComposeEdgeRouteGraphRender,
     ComposeEdgeRouteGraphService,
     _coerce_scalar,
+    _default_middleware_prefix,
+    _default_service_prefix,
     _normalize_token,
+    _parse_label_group,
     _set_nested,
     _split_csv,
     _truthy,
@@ -178,31 +181,31 @@ class SetNestedTests(unittest.TestCase):
 
 class DefaultServicePrefixTests(unittest.TestCase):
     def test_replaces_routers_with_services(self):
-        result = ComposeEdgeRouteGraphService._default_service_prefix(
+        result = _default_service_prefix(
             "traefik.http.routers."
         )
         self.assertEqual(result, "traefik.http.services.")
 
     def test_no_routers_token(self):
-        result = ComposeEdgeRouteGraphService._default_service_prefix(
+        result = _default_service_prefix(
             "custom.prefix."
         )
         self.assertEqual(result, "")
 
     def test_empty(self):
-        result = ComposeEdgeRouteGraphService._default_service_prefix("")
+        result = _default_service_prefix("")
         self.assertEqual(result, "")
 
 
 class DefaultMiddlewarePrefixTests(unittest.TestCase):
     def test_replaces_routers_with_middlewares(self):
-        result = ComposeEdgeRouteGraphService._default_middleware_prefix(
+        result = _default_middleware_prefix(
             "traefik.http.routers."
         )
         self.assertEqual(result, "traefik.http.middlewares.")
 
     def test_empty(self):
-        result = ComposeEdgeRouteGraphService._default_middleware_prefix("")
+        result = _default_middleware_prefix("")
         self.assertEqual(result, "")
 
 
@@ -213,7 +216,7 @@ class ParseLabelGroupTests(unittest.TestCase):
             "traefik.http.routers.sonarr.service": "sonarr",
             "traefik.http.routers.radarr.rule": "Host(`radarr.local`)",
         }
-        result = ComposeEdgeRouteGraphService._parse_label_group(
+        result = _parse_label_group(
             labels, "traefik.http.routers."
         )
         self.assertIn("sonarr", result)
@@ -223,19 +226,19 @@ class ParseLabelGroupTests(unittest.TestCase):
 
     def test_no_matching_prefix(self):
         labels = {"other.label": "value"}
-        result = ComposeEdgeRouteGraphService._parse_label_group(
+        result = _parse_label_group(
             labels, "traefik.http.routers."
         )
         self.assertEqual(result, {})
 
     def test_empty_prefix(self):
         labels = {"foo.bar.baz": "value"}
-        result = ComposeEdgeRouteGraphService._parse_label_group(labels, "")
+        result = _parse_label_group(labels, "")
         self.assertEqual(result, {})
 
     def test_key_without_dot_suffix(self):
         labels = {"traefik.http.routers.sonarr": "value"}
-        result = ComposeEdgeRouteGraphService._parse_label_group(
+        result = _parse_label_group(
             labels, "traefik.http.routers."
         )
         self.assertEqual(result, {})

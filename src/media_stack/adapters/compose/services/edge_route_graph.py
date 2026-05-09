@@ -26,59 +26,52 @@ _TOKEN_RENAMES = {
 }
 
 
-def _truthy(value: object) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on", "y"}
+class EdgeRouteGraph:
+    """Container for module-level edge-route-graph helpers (ADR-0012).
 
+    Plain instance methods only; module-level aliases are bound to a
+    singleton instance so existing callers and tests can `mock.patch`
+    via `sys.modules[__name__]`.
+    """
 
-def _split_csv(value: object) -> list[str]:
-    return [token.strip() for token in str(value or "").split(",") if token.strip()]
+    def truthy(self, value: object) -> bool:
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on", "y"}
 
+    def split_csv(self, value: object) -> list[str]:
+        return [token.strip() for token in str(value or "").split(",") if token.strip()]
 
-def _coerce_scalar(value: object) -> Any:
-    token = str(value or "").strip()
-    lower = token.lower()
-    if lower in {"true", "false"}:
-        return lower == "true"
-    try:
-        return int(token)
-    except Exception:
-        return token
+    def coerce_scalar(self, value: object) -> Any:
+        token = str(value or "").strip()
+        lower = token.lower()
+        if lower in {"true", "false"}:
+            return lower == "true"
+        try:
+            return int(token)
+        except Exception:
+            return token
 
+    def normalize_token(self, name: str) -> str:
+        token = str(name or "").strip()
+        return _TOKEN_RENAMES.get(token.lower(), token)
 
-def _normalize_token(name: str) -> str:
-    token = str(name or "").strip()
-    return _TOKEN_RENAMES.get(token.lower(), token)
+    def set_nested(self, payload: dict[str, Any], dotted_path: str, value: Any) -> None:
+        keys = [
+            self.normalize_token(part)
+            for part in str(dotted_path or "").split(".")
+            if part
+        ]
+        if not keys:
+            return
+        cursor = payload
+        for key in keys[:-1]:
+            nested = cursor.get(key)
+            if not isinstance(nested, dict):
+                nested = {}
+                cursor[key] = nested
+            cursor = nested
+        cursor[keys[-1]] = value
 
-
-def _set_nested(payload: dict[str, Any], dotted_path: str, value: Any) -> None:
-    keys = [_normalize_token(part) for part in str(dotted_path or "").split(".") if part]
-    if not keys:
-        return
-    cursor = payload
-    for key in keys[:-1]:
-        nested = cursor.get(key)
-        if not isinstance(nested, dict):
-            nested = {}
-            cursor[key] = nested
-        cursor = nested
-    cursor[keys[-1]] = value
-
-
-@dataclass(frozen=True)
-class ComposeEdgeRouteGraphRender:
-    payload: dict[str, Any]
-    router_count: int
-    service_count: int
-    middleware_count: int
-
-
-@dataclass
-class ComposeEdgeRouteGraphService:
-    label_service: ComposeLabelService
-    spec_resolver: ComposeSpecResolver
-
-    @staticmethod
-    def _default_service_prefix(router_prefix: str) -> str:
+    def default_service_prefix(self, router_prefix: str) -> str:
         token = str(router_prefix or "").strip()
         if not token:
             return ""
@@ -86,8 +79,7 @@ class ComposeEdgeRouteGraphService:
             return token.replace(".routers.", ".services.")
         return ""
 
-    @staticmethod
-    def _default_middleware_prefix(router_prefix: str) -> str:
+    def default_middleware_prefix(self, router_prefix: str) -> str:
         token = str(router_prefix or "").strip()
         if not token:
             return ""
@@ -95,20 +87,9 @@ class ComposeEdgeRouteGraphService:
             return token.replace(".routers.", ".middlewares.")
         return ""
 
-    def _label_prefixes(self) -> tuple[str, str, str, str]:
-        provider_spec = self.label_service.provider_spec()
-        enable_key = str(provider_spec.get("enable_label_key") or "").strip()
-        router_prefix = str(provider_spec.get("router_label_prefix") or "").strip()
-        service_prefix = str(provider_spec.get("service_label_prefix") or "").strip()
-        middleware_prefix = str(provider_spec.get("middleware_label_prefix") or "").strip()
-        if not service_prefix:
-            service_prefix = self._default_service_prefix(router_prefix)
-        if not middleware_prefix:
-            middleware_prefix = self._default_middleware_prefix(router_prefix)
-        return enable_key, router_prefix, service_prefix, middleware_prefix
-
-    @staticmethod
-    def _parse_label_group(labels: dict[str, str], prefix: str) -> dict[str, dict[str, str]]:
+    def parse_label_group(
+        self, labels: dict[str, str], prefix: str
+    ) -> dict[str, dict[str, str]]:
         out: dict[str, dict[str, str]] = {}
         token = str(prefix or "").strip()
         if not token:
@@ -127,6 +108,43 @@ class ComposeEdgeRouteGraphService:
                 continue
             out.setdefault(group, {})[field_key] = str(raw_value or "")
         return out
+
+
+_INSTANCE = EdgeRouteGraph()
+_truthy = _INSTANCE.truthy
+_split_csv = _INSTANCE.split_csv
+_coerce_scalar = _INSTANCE.coerce_scalar
+_normalize_token = _INSTANCE.normalize_token
+_set_nested = _INSTANCE.set_nested
+_default_service_prefix = _INSTANCE.default_service_prefix
+_default_middleware_prefix = _INSTANCE.default_middleware_prefix
+_parse_label_group = _INSTANCE.parse_label_group
+
+
+@dataclass(frozen=True)
+class ComposeEdgeRouteGraphRender:
+    payload: dict[str, Any]
+    router_count: int
+    service_count: int
+    middleware_count: int
+
+
+@dataclass
+class ComposeEdgeRouteGraphService:
+    label_service: ComposeLabelService
+    spec_resolver: ComposeSpecResolver
+
+    def _label_prefixes(self) -> tuple[str, str, str, str]:
+        provider_spec = self.label_service.provider_spec()
+        enable_key = str(provider_spec.get("enable_label_key") or "").strip()
+        router_prefix = str(provider_spec.get("router_label_prefix") or "").strip()
+        service_prefix = str(provider_spec.get("service_label_prefix") or "").strip()
+        middleware_prefix = str(provider_spec.get("middleware_label_prefix") or "").strip()
+        if not service_prefix:
+            service_prefix = _default_service_prefix(router_prefix)
+        if not middleware_prefix:
+            middleware_prefix = _default_middleware_prefix(router_prefix)
+        return enable_key, router_prefix, service_prefix, middleware_prefix
 
     def render(self, services: dict[str, dict[str, Any]]) -> ComposeEdgeRouteGraphRender:
         enable_key, router_prefix, service_prefix, middleware_prefix = self._label_prefixes()
@@ -156,7 +174,7 @@ class ComposeEdgeRouteGraphService:
             if not _truthy(labels.get(enable_key)):
                 continue
 
-            router_groups = self._parse_label_group(labels, router_prefix)
+            router_groups = _parse_label_group(labels, router_prefix)
             for router_name, fields in router_groups.items():
                 router_cfg = routers.setdefault(router_name, {})
                 for field_name, raw_value in fields.items():
@@ -176,7 +194,7 @@ class ComposeEdgeRouteGraphService:
                     router_cfg["service"] = router_service
                 service_owner.setdefault(router_service, service_key)
 
-            service_groups = self._parse_label_group(labels, service_prefix)
+            service_groups = _parse_label_group(labels, service_prefix)
             for logical_service_name, fields in service_groups.items():
                 service_owner.setdefault(logical_service_name, service_key)
                 raw_port = str(fields.get("loadbalancer.server.port") or "").strip()
@@ -193,7 +211,7 @@ class ComposeEdgeRouteGraphService:
                 if raw_pass_host is not None:
                     service_pass_host_header[logical_service_name] = _truthy(raw_pass_host)
 
-            middleware_groups = self._parse_label_group(labels, middleware_prefix)
+            middleware_groups = _parse_label_group(labels, middleware_prefix)
             for middleware_name, fields in middleware_groups.items():
                 middleware_cfg = middlewares.setdefault(middleware_name, {})
                 for field_name, raw_value in fields.items():

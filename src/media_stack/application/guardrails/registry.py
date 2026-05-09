@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -37,14 +38,7 @@ _log = logging.getLogger("media_stack.guardrails")
 
 
 _OVERRIDE_FILE_DEFAULT = "/srv-config/.controller/guardrails.json"
-
-
-def _override_path() -> Path:
-    """Resolve the override JSON path. Honours ``CONFIG_ROOT``."""
-    config_root = os.environ.get("CONFIG_ROOT", "")
-    if config_root:
-        return Path(config_root) / ".controller" / "guardrails.json"
-    return Path(_OVERRIDE_FILE_DEFAULT)
+_SEV_ORDER = {"critical": 0, "warning": 1, "info": 2}
 
 
 @dataclass
@@ -85,8 +79,17 @@ class GuardrailRegistry:
         self._rules: dict[str, _RuleEntry] = {}
         self._overrides: dict[str, dict[str, Any]] = {}
         self._lock = threading.RLock()
-        self._override_path_fn = override_path_fn or _override_path
+        self._override_path_fn = override_path_fn or self._default_override_path
         self._loaded = False
+
+    # -- Override path resolution --------------------------------------
+
+    def _default_override_path(self) -> Path:
+        """Resolve the override JSON path. Honours ``CONFIG_ROOT``."""
+        config_root = os.environ.get("CONFIG_ROOT", "")
+        if config_root:
+            return Path(config_root) / ".controller" / "guardrails.json"
+        return Path(_OVERRIDE_FILE_DEFAULT)
 
     # -- Registration ---------------------------------------------------
 
@@ -292,7 +295,7 @@ class GuardrailRegistry:
         # synthesize one. Many rules will key off the same field of
         # ``state`` they used in evaluate(); a few (auth-spike) emit
         # a count.
-        current = _extract_current(rule, state)
+        current = self._extract_current(rule, state)
         return Trigger(
             rule_id=rule.id,
             domain=rule.domain,
@@ -303,6 +306,25 @@ class GuardrailRegistry:
             detail="",
             evaluated_at=now,
         )
+
+    def _extract_current(
+        self, rule: Guardrail, state: Mapping[str, Any],
+    ) -> Any:
+        """Best-effort current-value extraction for the API payload.
+
+        The protocol doesn't require rules to expose a ``current_value``
+        helper — most just compare a state field to a threshold. We
+        inspect the rule for an optional ``current_value(state)`` method
+        and call it if present; otherwise return ``None`` and let the
+        UI render "—".
+        """
+        fn = getattr(rule, "current_value", None)
+        if callable(fn):
+            try:
+                return fn(state)
+            except Exception:  # noqa: BLE001
+                return None
+        return None
 
     def remediate_all(
         self, triggers: Iterable[Trigger], state: Mapping[str, Any],
@@ -388,65 +410,64 @@ class GuardrailRegistry:
             self._loaded = False
 
 
-_SEV_ORDER = {"critical": 0, "warning": 1, "info": 2}
+# ---------------------------------------------------------------------------
+# Module-level singleton accessor + decorator
+# ---------------------------------------------------------------------------
 
 
-def _extract_current(
-    rule: Guardrail, state: Mapping[str, Any],
-) -> Any:
-    """Best-effort current-value extraction for the API payload.
+class _RegistryAccessor:
+    """Owns the process-wide ``GuardrailRegistry`` singleton + the
+    public module-level helpers (``default``, ``reset_default``,
+    ``register_guardrail``).
 
-    The protocol doesn't require rules to expose a ``current_value``
-    helper — most just compare a state field to a threshold. We
-    inspect the rule for an optional ``current_value(state)`` method
-    and call it if present; otherwise return ``None`` and let the
-    UI render "—".
+    Folded into a class per ADR-0012 so the module exposes class-based
+    handlers exclusively; the public names below are bound to instance
+    methods on a single ``_INSTANCE`` so existing callers (and tests
+    that ``mock.patch`` via ``sys.modules[__name__]``) keep working.
     """
-    fn = getattr(rule, "current_value", None)
-    if callable(fn):
-        try:
-            return fn(state)
-        except Exception:  # noqa: BLE001
-            return None
-    return None
+
+    def __init__(self) -> None:
+        self._registry: GuardrailRegistry | None = None
+        self._lock = threading.Lock()
+
+    def default(self) -> GuardrailRegistry:
+        """Return the process-wide registry. Lazily initialised so test
+        fixtures can monkey-patch ``CONFIG_ROOT`` before first use."""
+        if self._registry is None:
+            with self._lock:
+                if self._registry is None:
+                    self._registry = GuardrailRegistry()
+        return self._registry
+
+    def reset_default(self) -> None:
+        """Test helper — clear the singleton so the next ``default()``
+        call returns a fresh instance. Domain modules don't auto-import
+        on default() so test code must explicitly re-import them after
+        reset to repopulate the rule set."""
+        with self._lock:
+            self._registry = None
+
+    def register_guardrail(self, rule: Guardrail) -> Guardrail:
+        """Decorator/function: register on the default registry. Domain
+        modules call this at import time so the singleton always sees
+        the rule the moment ``application.guardrails`` is imported.
+
+        Dispatches via ``sys.modules[__name__]`` so test code that
+        ``mock.patch``es ``default`` on this module sees its patched
+        version through the decorator path too."""
+        _mod = sys.modules[__name__]
+        _mod.default().register(rule)
+        return rule
 
 
-# ---------------------------------------------------------------------------
-# Module-level singleton + decorator
-# ---------------------------------------------------------------------------
+_INSTANCE = _RegistryAccessor()
 
-
-_DEFAULT: GuardrailRegistry | None = None
-_DEFAULT_LOCK = threading.Lock()
-
-
-def default() -> GuardrailRegistry:
-    """Return the process-wide registry. Lazily initialised so test
-    fixtures can monkey-patch ``_override_path`` before first use."""
-    global _DEFAULT
-    if _DEFAULT is None:
-        with _DEFAULT_LOCK:
-            if _DEFAULT is None:
-                _DEFAULT = GuardrailRegistry()
-    return _DEFAULT
-
-
-def reset_default() -> None:
-    """Test helper — clear the singleton so the next ``default()``
-    call returns a fresh instance. Domain modules don't auto-import
-    on default() so test code must explicitly re-import them after
-    reset to repopulate the rule set."""
-    global _DEFAULT
-    with _DEFAULT_LOCK:
-        _DEFAULT = None
-
-
-def register_guardrail(rule: Guardrail) -> Guardrail:
-    """Decorator/function: register on the default registry. Domain
-    modules call this at import time so the singleton always sees
-    the rule the moment ``application.guardrails`` is imported."""
-    default().register(rule)
-    return rule
+# Module-level aliases — every public name remains importable as a
+# bare callable so existing ``from …registry import default`` lines
+# (and ``mock.patch("…registry.default")``) keep working unchanged.
+default = _INSTANCE.default
+reset_default = _INSTANCE.reset_default
+register_guardrail = _INSTANCE.register_guardrail
 
 
 __all__ = [
