@@ -8,6 +8,15 @@ Each job is a self-contained configuration step that:
 - Can be composed into larger jobs (bootstrap = all jobs)
 
 A job can contain sub-jobs (job has jobs pattern).
+
+ADR-0012 — the previously-loose helpers in this module are now
+instance methods on six small classes. Module-level singleton
+instances + name aliases preserve every public + underscore name
+the rest of the codebase / test suite relies on, so callers can
+keep importing ``_record_history``, ``_resolve_handler``, etc.
+exactly as before. Methods route through the module-level aliases
+(not ``self.method``) so ``mock.patch("framework.foo", …)`` from
+the test fixtures still hits the call site.
 """
 
 from __future__ import annotations
@@ -24,7 +33,7 @@ from typing import Any, Callable
 import yaml
 
 import media_stack.services.runtime_platform as runtime_platform
-import logging
+import logging  # noqa: F401  # legacy import retained for callers who do ``framework.logging``
 
 # ``Job``, ``CancelledError``, ``_noop``, ``PREREQS``, ``register_prereq``
 # and the history-schema constants live in the domain layer (pure
@@ -53,51 +62,14 @@ from media_stack.application.jobs.job_lifecycle_metadata import (
 
 
 # ---------------------------------------------------------------------------
-# Config loading from service contracts
+# Class 1 — service-contracts config loader
 # ---------------------------------------------------------------------------
 
-def _find_contracts_dir() -> Path | None:
-    """Locate the contracts/services/ YAML directory."""
-    # Single env read — the previous ``X if X else None`` pattern read
-    # SERVICES_REGISTRY_DIR twice, doubling the os.environ count without
-    # adding semantic value.
-    _override = os.environ.get("SERVICES_REGISTRY_DIR", "")
-    candidates = [
-        Path(_override) if _override else None,
-        Path("/opt/media-stack/contracts/services"),
-        Path(__file__).resolve().parents[4] / "contracts" / "services",
-        Path("contracts/services"),
-    ]
-    for p in candidates:
-        if p and p.is_dir() and any(p.glob("*.yaml")):
-            return p
-    return None
 
-
-def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Build a flat config dict from per-service YAML contracts.
-
-    Services with all-complex defaults (e.g., jellyfin whose defaults are
-    all dicts/lists like libraries, livetv, plugins) are flattened:
-        jellyfin.defaults.libraries → cfg["jellyfin_libraries"]
-
-    Services with mixed types (e.g., bazarr has enabled, url as scalars)
-    keep their service-id form: cfg["bazarr"]
-
-    Technology bindings are derived from service capabilities when not
-    provided by the profile (e.g., jellyfin declares media_server: true).
-    """
-    cfg: dict[str, Any] = {}
-
-    # Technology bindings + app auth from profile
-    if profile:
-        for key in ("technology_bindings", "app_auth"):
-            if key in profile:
-                cfg[key] = profile[key]
-
-    svc_dir = _find_contracts_dir()
-    if not svc_dir:
-        return cfg
+class _ServiceContractsConfigLoader:
+    """Locates the contracts/services/ YAML directory and flattens
+    per-service ``defaults`` blocks into the flat ``cfg`` dict that
+    handler functions consume."""
 
     # Capability → technology_bindings role mapping
     _CAPABILITY_TO_ROLE = {
@@ -107,77 +79,116 @@ def _load_cfg_from_contracts(profile: dict[str, Any] | None = None) -> dict[str,
         "request_manager": "request_manager",
         "indexer_manager": "indexer_manager",
     }
-    derived_bindings: dict[str, str] = {}
 
-    for svc_yaml in sorted(svc_dir.glob("*.yaml")):
-        if svc_yaml.name.startswith("_"):
-            continue
-        try:
-            svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
-            svc_id = svc_data.get("service", {}).get("id", "")
-            if not svc_id:
+    def find_contracts_dir(self) -> Path | None:
+        """Locate the contracts/services/ YAML directory."""
+        # Single env read — the previous ``X if X else None`` pattern read
+        # SERVICES_REGISTRY_DIR twice, doubling the os.environ count without
+        # adding semantic value.
+        _override = os.environ.get("SERVICES_REGISTRY_DIR", "")
+        candidates = [
+            Path(_override) if _override else None,
+            Path("/opt/media-stack/contracts/services"),
+            Path(__file__).resolve().parents[4] / "contracts" / "services",
+            Path("contracts/services"),
+        ]
+        for p in candidates:
+            if p and p.is_dir() and any(p.glob("*.yaml")):
+                return p
+        return None
+
+    def load_cfg_from_contracts(
+        self, profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Build a flat config dict from per-service YAML contracts."""
+        cfg: dict[str, Any] = {}
+
+        # Technology bindings + app auth from profile
+        if profile:
+            for key in ("technology_bindings", "app_auth"):
+                if key in profile:
+                    cfg[key] = profile[key]
+
+        svc_dir = _find_contracts_dir()
+        if not svc_dir:
+            return cfg
+
+        derived_bindings: dict[str, str] = {}
+
+        for svc_yaml in sorted(svc_dir.glob("*.yaml")):
+            if svc_yaml.name.startswith("_"):
+                continue
+            try:
+                svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
+                svc_id = svc_data.get("service", {}).get("id", "")
+                if not svc_id:
+                    continue
+
+                # Derive technology bindings from capabilities
+                capabilities = svc_data.get("plugin", {}).get("capabilities", {})
+                for cap_key, role in self._CAPABILITY_TO_ROLE.items():
+                    if capabilities.get(cap_key):
+                        derived_bindings.setdefault(role, svc_id)
+
+                defaults = svc_data.get("defaults", {})
+                if not defaults:
+                    continue
+                all_complex = all(isinstance(v, (dict, list)) for v in defaults.values())
+                if all_complex:
+                    for sub_key, sub_val in defaults.items():
+                        cfg[f"{svc_id}_{sub_key}"] = sub_val
+                else:
+                    cfg[svc_id] = defaults
+            except Exception as exc:
+                runtime_platform.log(f"[DEBUG] Failed to load contract {svc_yaml.name}: {exc}")
                 continue
 
-            # Derive technology bindings from capabilities
-            capabilities = svc_data.get("plugin", {}).get("capabilities", {})
-            for cap_key, role in _CAPABILITY_TO_ROLE.items():
-                if capabilities.get(cap_key):
-                    derived_bindings.setdefault(role, svc_id)
+        # Fill in technology_bindings from service capabilities if not in profile
+        if "technology_bindings" not in cfg and derived_bindings:
+            cfg["technology_bindings"] = derived_bindings
+        elif "technology_bindings" in cfg:
+            # Merge: profile takes precedence, derived fills gaps
+            for role, svc_id in derived_bindings.items():
+                cfg["technology_bindings"].setdefault(role, svc_id)
 
-            defaults = svc_data.get("defaults", {})
-            if not defaults:
-                continue
-            all_complex = all(isinstance(v, (dict, list)) for v in defaults.values())
-            if all_complex:
-                for sub_key, sub_val in defaults.items():
-                    cfg[f"{svc_id}_{sub_key}"] = sub_val
-            else:
-                cfg[svc_id] = defaults
-        except Exception as exc:
-            runtime_platform.log(f"[DEBUG] Failed to load contract {svc_yaml.name}: {exc}")
-            continue
+        # Apply per-app config overrides (from {service}/controller.yaml),
+        # then fall back to profile overrides. Per-app config wins over profile.
+        from media_stack.services.app_config_service import load_app_config
 
-    # Fill in technology_bindings from service capabilities if not in profile
-    if "technology_bindings" not in cfg and derived_bindings:
-        cfg["technology_bindings"] = derived_bindings
-    elif "technology_bindings" in cfg:
-        # Merge: profile takes precedence, derived fills gaps
-        for role, svc_id in derived_bindings.items():
-            cfg["technology_bindings"].setdefault(role, svc_id)
+        # Media server overrides: per-app config → profile fallback
+        ms_id = cfg.get("technology_bindings", {}).get("media_server", "")
+        if ms_id:
+            ms_app = load_app_config(ms_id)
+            # Livetv override
+            livetv_override = ms_app.get("livetv", {})
+            if not livetv_override and profile:
+                livetv_override = profile.get("live_tv_defaults", {})
+            livetv_key = f"{ms_id}_livetv"
+            if livetv_override and livetv_key in cfg:
+                target = cfg[livetv_key]
+                for k, v in livetv_override.items():
+                    if v is not None:
+                        target[k] = v
+            # Libraries override
+            lib_override = ms_app.get("libraries")
+            if not lib_override and profile:
+                ms_prof = profile.get(ms_id, {})
+                if isinstance(ms_prof, dict):
+                    lib_override = ms_prof.get("libraries")
+            lib_key = f"{ms_id}_libraries"
+            if lib_override and lib_key in cfg:
+                cfg[lib_key]["libraries"] = lib_override
 
-    # Apply per-app config overrides (from {service}/controller.yaml),
-    # then fall back to profile overrides. Per-app config wins over profile.
-    from media_stack.services.app_config_service import load_app_config
+        # Enrich tuners/guides with required handler fields
+        from media_stack.services.livetv_config_service import enrich_livetv_entries
+        enrich_livetv_entries(cfg, profile or {})
 
-    # Media server overrides: per-app config → profile fallback
-    ms_id = cfg.get("technology_bindings", {}).get("media_server", "")
-    if ms_id:
-        ms_app = load_app_config(ms_id)
-        # Livetv override
-        livetv_override = ms_app.get("livetv", {})
-        if not livetv_override and profile:
-            livetv_override = profile.get("live_tv_defaults", {})
-        livetv_key = f"{ms_id}_livetv"
-        if livetv_override and livetv_key in cfg:
-            target = cfg[livetv_key]
-            for k, v in livetv_override.items():
-                if v is not None:
-                    target[k] = v
-        # Libraries override
-        lib_override = ms_app.get("libraries")
-        if not lib_override and profile:
-            ms_prof = profile.get(ms_id, {})
-            if isinstance(ms_prof, dict):
-                lib_override = ms_prof.get("libraries")
-        lib_key = f"{ms_id}_libraries"
-        if lib_override and lib_key in cfg:
-            cfg[lib_key]["libraries"] = lib_override
+        return cfg
 
-    # Enrich tuners/guides with required handler fields
-    from media_stack.services.livetv_config_service import enrich_livetv_entries
-    enrich_livetv_entries(cfg, profile or {})
 
-    return cfg
+_CONFIG_LOADER = _ServiceContractsConfigLoader()
+_find_contracts_dir = _CONFIG_LOADER.find_contracts_dir
+_load_cfg_from_contracts = _CONFIG_LOADER.load_cfg_from_contracts
 
 
 # Re-export for backward compatibility with tests
@@ -189,141 +200,171 @@ from media_stack.services.livetv_config_service import (  # noqa: E402,F811
 
 
 # ---------------------------------------------------------------------------
-# Job execution history — last N runs with per-job timing
+# Class 2 — job-history recorder
 # ---------------------------------------------------------------------------
 
 
-def _history_file() -> Path:
-    config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
-    return Path(config_root) / ".controller" / "job-history.json"
+class _JobHistoryRecorder:
+    """Reads and writes the on-disk run history (last N runs) plus
+    the helpers that map framework results to history-record fields."""
 
+    _ERROR_TRUNCATE_LEN = 500
+    _SKIP_REASON_TRUNCATE_LEN = 200
 
-def get_job_history() -> list[dict[str, Any]]:
-    """Return recent job execution history (newest first). Reads from disk.
+    def history_file(self) -> Path:
+        config_root = os.environ.get("CONFIG_ROOT", "/srv-config")
+        return Path(config_root) / ".controller" / "job-history.json"
 
-    Pre-existing entries on disk that lack a ``source`` field are
-    backfilled with ``"unknown"`` here so the UI never has to
-    handle a missing key — old serialized entries from before the
-    field existed remain readable.
-    """
-    path = _history_file()
-    if not path.is_file():
-        return []
-    try:
-        import json
-        entries = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(entries, list):
+    def get_job_history(self) -> list[dict[str, Any]]:
+        """Return recent job execution history (newest first)."""
+        path = _history_file()
+        if not path.is_file():
             return []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            entry.setdefault("source", "unknown")
-            entry.setdefault("actor", None)
-        return list(reversed(entries))
-    except Exception:
-        return []
+        try:
+            import json
+            entries = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(entries, list):
+                return []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                entry.setdefault("source", "unknown")
+                entry.setdefault("actor", None)
+            return list(reversed(entries))
+        except Exception:
+            return []
 
-
-def _terminal_status(result: dict[str, Any] | None) -> str:
-    """Map a framework result dict to a ``RunStatus`` terminal
-    string. The framework uses ``"running_in_background"`` for in-
-    flight async jobs and ``"prereq_not_met"`` for blocked-by-
-    prereq skips; both collapse to the appropriate terminal value
-    in the run-history record."""
-    from media_stack.domain.jobs.run_record import RunStatus
-    if not result:
+    def terminal_status(self, result: dict[str, Any] | None) -> str:
+        """Map a framework result dict to a ``RunStatus`` terminal string."""
+        from media_stack.domain.jobs.run_record import RunStatus
+        if not result:
+            return RunStatus.OK
+        raw = str(result.get("status") or "").lower()
+        if raw in {"ok", "complete"}:
+            return RunStatus.OK
+        if raw in {"error", "errors", "failed"}:
+            return RunStatus.ERROR
+        if raw in {"skipped", "prereq_not_met"}:
+            return RunStatus.SKIPPED
+        if raw == "cancelled":
+            return RunStatus.CANCELLED
+        if raw in {"timeout", "timed_out"}:
+            return RunStatus.TIMEOUT
         return RunStatus.OK
-    raw = str(result.get("status") or "").lower()
-    if raw in {"ok", "complete"}:
-        return RunStatus.OK
-    if raw in {"error", "errors", "failed"}:
-        return RunStatus.ERROR
-    if raw in {"skipped", "prereq_not_met"}:
-        return RunStatus.SKIPPED
-    if raw == "cancelled":
-        return RunStatus.CANCELLED
-    if raw in {"timeout", "timed_out"}:
-        return RunStatus.TIMEOUT
-    return RunStatus.OK
+
+    def iso_at(self, epoch_seconds: float) -> str:
+        """ISO-8601 UTC timestamp for the run-history log-anchor field."""
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(
+            epoch_seconds, tz=timezone.utc,
+        ).isoformat()
+
+    def build_per_job_history_record(self, r: dict[str, Any]) -> dict[str, Any]:
+        """Trim a per-job framework result down to dashboard-relevant fields."""
+        out: dict[str, Any] = {
+            "status": r.get("status", "?"),
+            "elapsed": r.get("elapsed", 0),
+        }
+        err = r.get("error")
+        if err:
+            out["error"] = str(err)[:self._ERROR_TRUNCATE_LEN]
+        skip_reason = r.get("skip_reason") or r.get("skipped_reason")
+        if skip_reason:
+            out["skip_reason"] = str(skip_reason)[:self._SKIP_REASON_TRUNCATE_LEN]
+        attempts = r.get("attempts") or r.get("attempt_count")
+        if isinstance(attempts, int) and attempts > 1:
+            out["attempts"] = attempts
+        return out
+
+    def record_history(
+        self,
+        result: dict[str, Any],
+        *,
+        source: str | None = None,
+        actor: str | None = None,
+    ) -> None:
+        """Record a job run result in history."""
+        import json
+        entry = {
+            "ts": time.time(),
+            "elapsed": result.get("elapsed", 0),
+            "ok": result.get("ok", 0),
+            "skipped": result.get("skipped", 0),
+            "errors": result.get("errors", 0),
+            "source": _normalize_source(source),
+            "actor": (str(actor).strip() or None) if actor else None,
+            "jobs": {
+                name: _build_per_job_history_record(r)
+                for name, r in result.get("jobs", {}).items()
+            },
+        }
+        path = _history_file()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
+            if not isinstance(existing, list):
+                existing = []
+            existing.append(entry)
+            if len(existing) > _JOB_HISTORY_MAX:
+                existing = existing[-_JOB_HISTORY_MAX:]
+            path.write_text(json.dumps(existing), encoding="utf-8")
+        except Exception as exc:
+            log_swallowed(exc)
 
 
-def _iso_at(epoch_seconds: float) -> str:
-    """ISO-8601 UTC timestamp for the run-history log-anchor field."""
-    from datetime import datetime, timezone
-    return datetime.fromtimestamp(
-        epoch_seconds, tz=timezone.utc,
-    ).isoformat()
+_HISTORY_RECORDER = _JobHistoryRecorder()
+_history_file = _HISTORY_RECORDER.history_file
+get_job_history = _HISTORY_RECORDER.get_job_history
+_terminal_status = _HISTORY_RECORDER.terminal_status
+_iso_at = _HISTORY_RECORDER.iso_at
+_build_per_job_history_record = _HISTORY_RECORDER.build_per_job_history_record
+_record_history = _HISTORY_RECORDER.record_history
 
 
-def _build_per_job_history_record(r: dict[str, Any]) -> dict[str, Any]:
-    """Trim a per-job framework result down to the fields the
-    dashboard's Jobs UI surfaces, preserving the operator-debugging
-    payload (``error`` text, ``skip_reason`` for "why was this
-    skipped?" tooltips, ``attempts`` for retry counters). Pre-v1.0.270
-    this dropped ``error`` entirely — operators saw a red status chip
-    with no way to read the failure short of ssh + ``cat
-    job-history.json``."""
-    out: dict[str, Any] = {
-        "status": r.get("status", "?"),
-        "elapsed": r.get("elapsed", 0),
-    }
-    err = r.get("error")
-    if err:
-        # The framework already truncates exception strings to 200
-        # chars at the writer site; truncate here too as a
-        # belt-and-suspenders cap so a misbehaving handler can't
-        # bloat history.json.
-        out["error"] = str(err)[:500]
-    skip_reason = r.get("skip_reason") or r.get("skipped_reason")
-    if skip_reason:
-        out["skip_reason"] = str(skip_reason)[:200]
-    attempts = r.get("attempts") or r.get("attempt_count")
-    if isinstance(attempts, int) and attempts > 1:
-        out["attempts"] = attempts
-    return out
+# ---------------------------------------------------------------------------
+# Class 3 — module-level cancel flag
+# ---------------------------------------------------------------------------
+
+# Module-level cancel flag — set by SIGTERM handler in subprocess
+# (legacy) or by the in-process action loop (ADR-0005 Phase 5c.4).
+# JobContext checks this so cancellation propagates through the job tree.
+# Test fixtures reset this directly via ``jf._cancel_requested = False``,
+# so it MUST stay a module-level mutable name.
+_cancel_requested = False
 
 
-def _record_history(
-    result: dict[str, Any],
-    *,
-    source: str | None = None,
-    actor: str | None = None,
-) -> None:
-    """Record a job run result in history. Writes to disk (survives subprocess).
+class _JobCancelFlag:
+    """Tiny wrapper around the module-level ``_cancel_requested`` flag.
 
-    ``source`` tags who triggered the run (``"cron"``, ``"manual"``,
-    ``"auto-heal"``, ``"scheduler"``, ``"unknown"``); sub-tagging
-    like ``"cron:reconcile"`` is preserved. ``actor`` carries the
-    authenticated username for ``manual`` runs (``None``
-    otherwise). Defaults keep the function backwards-compatible
-    with callers that don't yet thread a source through.
-    """
-    import json
-    entry = {
-        "ts": time.time(),
-        "elapsed": result.get("elapsed", 0),
-        "ok": result.get("ok", 0),
-        "skipped": result.get("skipped", 0),
-        "errors": result.get("errors", 0),
-        "source": _normalize_source(source),
-        "actor": (str(actor).strip() or None) if actor else None,
-        "jobs": {
-            name: _build_per_job_history_record(r)
-            for name, r in result.get("jobs", {}).items()
-        },
-    }
-    path = _history_file()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
-        if not isinstance(existing, list):
-            existing = []
-        existing.append(entry)
-        if len(existing) > _JOB_HISTORY_MAX:
-            existing = existing[-_JOB_HISTORY_MAX:]
-        path.write_text(json.dumps(existing), encoding="utf-8")
-    except Exception as exc:
-        log_swallowed(exc)
+    Methods route through the module global by name (not via
+    ``self``) so the value-object semantics are preserved for the
+    test fixtures that poke ``jf._cancel_requested`` directly."""
+
+    def request_cancel(self) -> None:
+        """Signal cancellation from outside (e.g., SIGTERM handler)."""
+        global _cancel_requested
+        _cancel_requested = True
+
+    def clear_cancel(self) -> None:
+        """Reset the module-global cancel flag.
+
+        The legacy subprocess shape didn't need this — the SIGTERM-set
+        flag died with the subprocess at action end. The in-process
+        action loop (ADR-0005 Phase 5c.4) reuses the same module
+        namespace across actions, so each new dispatch must clear the
+        flag or the second action would inherit the first's cancel.
+        """
+        global _cancel_requested
+        _cancel_requested = False
+
+    def is_cancel_requested(self) -> bool:
+        return _cancel_requested
+
+
+_CANCEL_FLAG = _JobCancelFlag()
+request_cancel = _CANCEL_FLAG.request_cancel
+clear_cancel = _CANCEL_FLAG.clear_cancel
+_is_cancel_requested = _CANCEL_FLAG.is_cancel_requested
 
 
 # ---------------------------------------------------------------------------
@@ -709,36 +750,6 @@ class JobRunner:
             jobs.extend(self._flatten(sub))
         return jobs
 
-# Module-level cancel flag — set by SIGTERM handler in subprocess
-# (legacy) or by the in-process action loop (ADR-0005 Phase 5c.4).
-# JobContext checks this so cancellation propagates through the job tree.
-_cancel_requested = False
-
-
-def request_cancel() -> None:
-    """Signal cancellation from outside (e.g., SIGTERM handler, or
-    the in-process action-watchdog when an action exceeds its
-    timeout / the operator hits POST /cancel)."""
-    global _cancel_requested
-    _cancel_requested = True
-
-
-def clear_cancel() -> None:
-    """Reset the module-global cancel flag.
-
-    The legacy subprocess shape didn't need this — the SIGTERM-set
-    flag died with the subprocess at action end. The in-process
-    action loop (ADR-0005 Phase 5c.4) reuses the same module
-    namespace across actions, so each new dispatch must clear the
-    flag or the second action would inherit the first's cancel.
-    """
-    global _cancel_requested
-    _cancel_requested = False
-
-
-def _is_cancel_requested() -> bool:
-    return _cancel_requested
-
 
 class JobContext:
     """Shared context for all bootstrap jobs."""
@@ -772,12 +783,7 @@ class JobContext:
 
     @property
     def cfg(self) -> dict[str, Any]:
-        """Build config from service contract YAMLs + profile.
-
-        Reads defaults directly from per-service YAML contracts
-        (contracts/services/*.yaml), producing flat keys that handlers
-        expect (e.g., jellyfin_libraries, jellyfin_livetv).
-        """
+        """Build config from service contract YAMLs + profile."""
         if self._cfg_cache is None:
             self._cfg_cache = _load_cfg_from_contracts(self.profile)
         return self._cfg_cache
@@ -834,136 +840,123 @@ class JobContext:
 
 
 # ---------------------------------------------------------------------------
-# Job implementations — each directly calls the app-layer function
+# Class 4 — media-server job helpers + prereqs
 # ---------------------------------------------------------------------------
 
-def _ensure_media_server_api_key(ctx: JobContext) -> None:
-    """Discover and set the media server API key if not already in env.
 
-    Tries multiple sources in order:
-    1. Environment variable (already set by preflight)
-    2. Config file / DB read (registry reader)
-    3. HTTP API key endpoint on the running service
-    """
-    ms_id = ctx.media_server_id()
-    if not ms_id:
-        return
-    key = ctx.media_server_api_key()
-    if key:
-        return
-    from media_stack.core.service_registry.registry import SERVICE_MAP, read_api_key_from_file, read_api_key_via_http
-    svc = SERVICE_MAP.get(ms_id)
-    if not svc or not svc.api_key_env:
-        return
-    # Try file/DB discovery
-    discovered = read_api_key_from_file(ms_id, ctx.config_root)
-    # Try HTTP discovery if file didn't work
-    if not discovered:
-        try:
-            discovered = read_api_key_via_http(ms_id)
-        except Exception as exc:
-            runtime_platform.log(f"[DEBUG] {ms_id}: HTTP API key discovery failed: {exc}")
-    if discovered:
-        os.environ[svc.api_key_env] = discovered
-        runtime_platform.log(f"[OK] {ms_id}: API key auto-discovered for job")
+class _MediaServerJobHelpers:
+    """Discovers media-server API keys, dispatches generic media-
+    server handlers, and answers the four ``media_server_*`` /
+    ``arr_apps_reachable`` prereq predicates."""
 
-
-def _run_media_server_handler(ctx: JobContext, handler_suffix: str, label: str) -> dict[str, Any]:
-    """Generic runner for media server handlers. Ensures API key is set first."""
-    ms_id = ctx.media_server_id()
-    if not ms_id:
-        return {"skipped": "no media server configured"}
-    _ensure_media_server_api_key(ctx)
-    if not ctx.media_server_api_key():
-        return {"skipped": f"no API key for {ms_id} — run bootstrap first"}
-    try:
-        mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
-        fn = getattr(mod, f"ensure_{ms_id}_{handler_suffix}", None)
-        if fn:
-            fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
-            return {"service": ms_id}
-        return {"skipped": f"no {label} handler for {ms_id}"}
-    except Exception as exc:
-        raise RuntimeError(f"{label} configuration failed: {exc}") from exc
-
-
-    # All handler functions now live in their respective app modules.
-    # Contracts point directly to them (e.g., configure_categories_job.py).
-
-
-# ---------------------------------------------------------------------------
-# Build the job tree
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Prerequisite registrations — media server conditions
-# ---------------------------------------------------------------------------
-
-def _prereq_media_server_id(ctx: "JobContext") -> bool:
-    return bool(ctx.media_server_id())
-
-def _prereq_media_server_api_key(ctx: "JobContext") -> bool:
-    _ensure_media_server_api_key(ctx)
-    return bool(ctx.media_server_api_key())
-
-def _prereq_media_server_reachable(ctx: "JobContext") -> bool:
-    url = ctx.media_server_url()
-    if not url:
-        return False
-    try:
-        import urllib.request
-        with urllib.request.urlopen(f"{url}/System/Info/Public", timeout=5) as r:
-            return r.status == 200
-    except Exception:
-        return False
-
-def _prereq_arr_apps_reachable(ctx: "JobContext") -> bool:
-    """True when every *arr app whose container is in the registry
-    responds to ``/api/v{N}/system/status`` within a short timeout.
-    Used by ``validate-credentials`` so it doesn't fire while
-    services are still warming up — the previous behaviour produced
-    a cosmetic ``5/7 credential checks did not pass`` warning on
-    every fresh install.
-
-    URLs come from the service registry (``ctx.service_url()``), NOT
-    from ``ctx.cfg`` — the flat-cfg layout doesn't carry per-service
-    URLs because they're derived from the container hostname/port at
-    runtime. Same for API keys: ``ctx.api_key()`` reads the env var
-    set by discover-api-keys, falling back to the on-disk config.
-
-    Returns True when no *arr apps are present in the registry (no
-    preconditions to satisfy) so single-service profiles aren't
-    blocked."""
-    import urllib.request
-    from media_stack.core.service_registry.registry import SERVICE_MAP
-    arr_specs = (
+    _ARR_SPECS = (
         ("sonarr", "v3"), ("radarr", "v3"), ("lidarr", "v1"),
         ("readarr", "v1"), ("prowlarr", "v1"),
     )
-    checked = 0
-    for name, ver in arr_specs:
-        if name not in SERVICE_MAP:
-            continue
-        url = ctx.service_url(name)
-        api_key = ctx.api_key(name)
-        if not url or not api_key:
-            # No key yet → discover-api-keys hasn't read it from
-            # the service config. Treat as "not ready" so the
-            # gate keeps waiting rather than letting validate-
-            # credentials fire too early.
-            return False
-        checked += 1
-        req = urllib.request.Request(
-            f"{url.rstrip('/')}/api/{ver}/system/status",
-            headers={"X-Api-Key": api_key},
+
+    def ensure_media_server_api_key(self, ctx: "JobContext") -> None:
+        """Discover and set the media server API key if not already in env."""
+        ms_id = ctx.media_server_id()
+        if not ms_id:
+            return
+        key = ctx.media_server_api_key()
+        if key:
+            return
+        from media_stack.core.service_registry.registry import (
+            SERVICE_MAP, read_api_key_from_file, read_api_key_via_http,
         )
+        svc = SERVICE_MAP.get(ms_id)
+        if not svc or not svc.api_key_env:
+            return
+        # Try file/DB discovery
+        discovered = read_api_key_from_file(ms_id, ctx.config_root)
+        # Try HTTP discovery if file didn't work
+        if not discovered:
+            try:
+                discovered = read_api_key_via_http(ms_id)
+            except Exception as exc:
+                runtime_platform.log(f"[DEBUG] {ms_id}: HTTP API key discovery failed: {exc}")
+        if discovered:
+            os.environ[svc.api_key_env] = discovered
+            runtime_platform.log(f"[OK] {ms_id}: API key auto-discovered for job")
+
+    def run_media_server_handler(
+        self, ctx: "JobContext", handler_suffix: str, label: str,
+    ) -> dict[str, Any]:
+        """Generic runner for media server handlers. Ensures API key is set first."""
+        ms_id = ctx.media_server_id()
+        if not ms_id:
+            return {"skipped": "no media server configured"}
+        # Route through the module-level alias so test patches that
+        # target ``framework._ensure_media_server_api_key`` land here.
+        _ensure_media_server_api_key(ctx)
+        if not ctx.media_server_api_key():
+            return {"skipped": f"no API key for {ms_id} — run bootstrap first"}
         try:
-            with urllib.request.urlopen(req, timeout=3) as r:
-                if r.status != 200:
-                    return False
+            mod = importlib.import_module(f"media_stack.services.apps.{ms_id}.runtime_ops")
+            fn = getattr(mod, f"ensure_{ms_id}_{handler_suffix}", None)
+            if fn:
+                fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
+                return {"service": ms_id}
+            return {"skipped": f"no {label} handler for {ms_id}"}
+        except Exception as exc:
+            raise RuntimeError(f"{label} configuration failed: {exc}") from exc
+
+    def prereq_media_server_id(self, ctx: "JobContext") -> bool:
+        return bool(ctx.media_server_id())
+
+    def prereq_media_server_api_key(self, ctx: "JobContext") -> bool:
+        _ensure_media_server_api_key(ctx)
+        return bool(ctx.media_server_api_key())
+
+    def prereq_media_server_reachable(self, ctx: "JobContext") -> bool:
+        url = ctx.media_server_url()
+        if not url:
+            return False
+        try:
+            import urllib.request
+            with urllib.request.urlopen(f"{url}/System/Info/Public", timeout=5) as r:
+                return r.status == 200
         except Exception:
             return False
-    return True
+
+    def prereq_arr_apps_reachable(self, ctx: "JobContext") -> bool:
+        """True when every *arr app whose container is in the registry
+        responds to ``/api/v{N}/system/status`` within a short timeout."""
+        import urllib.request
+        from media_stack.core.service_registry.registry import SERVICE_MAP
+        for name, ver in self._ARR_SPECS:
+            if name not in SERVICE_MAP:
+                continue
+            url = ctx.service_url(name)
+            api_key = ctx.api_key(name)
+            if not url or not api_key:
+                # No key yet → discover-api-keys hasn't read it from
+                # the service config. Treat as "not ready" so the
+                # gate keeps waiting rather than letting validate-
+                # credentials fire too early.
+                return False
+            req = urllib.request.Request(
+                f"{url.rstrip('/')}/api/{ver}/system/status",
+                headers={"X-Api-Key": api_key},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=3) as r:
+                    if r.status != 200:
+                        return False
+            except Exception:
+                return False
+        return True
+
+
+_MEDIA_SERVER_HELPERS = _MediaServerJobHelpers()
+_ensure_media_server_api_key = _MEDIA_SERVER_HELPERS.ensure_media_server_api_key
+_run_media_server_handler = _MEDIA_SERVER_HELPERS.run_media_server_handler
+_prereq_media_server_id = _MEDIA_SERVER_HELPERS.prereq_media_server_id
+_prereq_media_server_api_key = _MEDIA_SERVER_HELPERS.prereq_media_server_api_key
+_prereq_media_server_reachable = _MEDIA_SERVER_HELPERS.prereq_media_server_reachable
+_prereq_arr_apps_reachable = _MEDIA_SERVER_HELPERS.prereq_arr_apps_reachable
+
 
 register_prereq("media_server_id", _prereq_media_server_id)
 register_prereq("media_server_api_key", _prereq_media_server_api_key)
@@ -972,430 +965,386 @@ register_prereq("arr_apps_reachable", _prereq_arr_apps_reachable)
 
 
 # ---------------------------------------------------------------------------
-# Job tree definitions — these are specific to *this* workflow.
-# Delete them and define a completely different workflow. The framework
-# (Job, JobRunner, PREREQS) doesn't change.
+# Class 5 — contracts discovery + alias resolution (caches)
 # ---------------------------------------------------------------------------
 
-def _resolve_handler(handler_path: str) -> Callable:
-    """Import a handler from a dotted module:function path."""
-    if ":" in handler_path:
-        mod_path, func_name = handler_path.rsplit(":", 1)
-    elif "." in handler_path:
-        mod_path, func_name = handler_path.rsplit(".", 1)
-    else:
-        raise ValueError(f"Invalid handler path: {handler_path}")
-    mod = importlib.import_module(mod_path)
-    fn = getattr(mod, func_name, None)
-    if fn is None:
-        raise AttributeError(f"{handler_path}: function not found")
-    return fn
-
-
-def _make_handler_wrapper(handler_fn: Callable, service_id: str) -> Callable:
-    """Wrap a raw ensure_* handler (cfg, config_root, timeout) as a Job handler (ctx)."""
-    def wrapper(ctx: "JobContext") -> dict[str, Any]:
-        handler_fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
-        return {"service": service_id}
-    return wrapper
-
-
+# Module-level caches kept as module globals so test fixtures can
+# clear them via ``_jf._DISCOVERED_JOBS_CACHE = None`` / ``_jf
+# ._DISCOVERED_ALIASES_CACHE = None`` (the established reset shape).
 _DISCOVERED_JOBS_CACHE: list[dict[str, Any]] | None = None
-
-def discover_jobs_from_contracts() -> list[dict[str, Any]]:
-    """Scan service contracts for job definitions. Cached after first call.
-
-    Returns flat list of job defs:
-        [{"name": "configure-libraries", "handler": "...", "phase": "media_server",
-          "priority": 10, "requires": [...], "service": "jellyfin"}, ...]
-    """
-    global _DISCOVERED_JOBS_CACHE
-    if _DISCOVERED_JOBS_CACHE is not None:
-        return _DISCOVERED_JOBS_CACHE
-    svc_dir = _find_contracts_dir()
-    if not svc_dir:
-        return []
-
-    jobs: list[dict[str, Any]] = []
-    for svc_yaml in sorted(svc_dir.glob("*.yaml")):
-        if svc_yaml.name.startswith("_"):
-            continue
-        try:
-            svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
-            svc_id = svc_data.get("service", {}).get("id", "")
-            plugin = svc_data.get("plugin", {})
-            job_defs = plugin.get("jobs", {})
-            if not isinstance(job_defs, dict) or not svc_id:
-                continue
-            for job_name, job_def in job_defs.items():
-                if not isinstance(job_def, dict):
-                    continue
-                jobs.append({
-                    "name": job_name,
-                    "handler": job_def.get("handler", ""),
-                    "phase": job_def.get("phase", "default"),
-                    "priority": int(job_def.get("priority", 50)),
-                    "requires": list(job_def.get("requires", [])),
-                    # ``max_attempts`` is optional. ``None`` means
-                    # "use the framework default" (currently 3).
-                    "max_attempts": (
-                        int(job_def["max_attempts"])
-                        if "max_attempts" in job_def
-                        else None
-                    ),
-                    # ``non_blocking: true`` makes the runner spawn
-                    # the job in a daemon thread and immediately move
-                    # on to the next job without waiting. Use for
-                    # slow probes (indexer discovery, EPG channel
-                    # scan) so the dashboard becomes usable before
-                    # they complete. Default false = blocking.
-                    "non_blocking": bool(job_def.get("non_blocking", False)),
-                    # ``after: [job-name, ...]`` — wait for those jobs
-                    # to FULLY COMPLETE before this one starts. Distinct
-                    # from ``requires:`` (named conditions). Use this
-                    # when a downstream job needs the SIDE EFFECTS of an
-                    # upstream non_blocking job (e.g. tag-indexers needs
-                    # the indexers discover-indexers added).
-                    "after": list(job_def.get("after", [])),
-                    # ADR-0009 Phase 6.1 — declarative triggers. Each
-                    # entry is a dict ``{event: <kind>, ...}``; the
-                    # ``TriggerEngine`` validates kinds (``manual``,
-                    # ``schedule``, ``job.completed``, ``job.failed``,
-                    # ``promise.satisfied``, ``promise.violated``,
-                    # ``controller.started``) and ``when:`` predicate
-                    # names against the closed registry at boot.
-                    # Absence = job is manual-only (today's behavior).
-                    # The key is ``event:`` not ``on:`` because PyYAML
-                    # parses bare ``on:`` as the boolean ``True``
-                    # (YAML 1.1's deprecated ``on/off`` alias).
-                    "triggers": list(job_def.get("triggers", [])),
-                    # ADR-0010 Phase 7.1 — promises this Job's
-                    # successful completion satisfies. Loader emits
-                    # ``promise.satisfied`` to the TriggerEngine for
-                    # each entry on Job.complete; downstream Jobs
-                    # subscribed via ``triggers: [event:
-                    # promise.satisfied, scope: …]`` fire
-                    # automatically. Replaces the legacy
-                    # lifecycle-wirer promise→ensurer mapping.
-                    "satisfies": list(job_def.get("satisfies", [])),
-                    # ADR-0009 Phase 6.4 (redo) — declarative
-                    # end-of-batch side-effects on the Job that owns
-                    # them. Replace the per-Job handler files
-                    # (``mark_initial_bootstrap_done.py`` etc.) with
-                    # contract metadata; ``JobLifecycleMetadataHandler``
-                    # reads them at end-of-batch and applies the
-                    # requested side-effect.
-                    #
-                    # ``marks_setup_complete`` (bool):
-                    # framework calls
-                    # ``ControllerState.mark_initial_bootstrap_done()``
-                    # on Job success. Multiple Jobs may set this;
-                    # the call is idempotent at the state level.
-                    #
-                    # ``retry_on_failure``: ``{target, delay_seconds,
-                    # when}`` dict. Schedules a daemon timer for the
-                    # delay, then dispatches ``target`` via the
-                    # trigger dispatcher when the predicate ``when``
-                    # passes (omitted/unknown predicate = always-on).
-                    "marks_setup_complete": bool(
-                        job_def.get("marks_setup_complete", False),
-                    ),
-                    "retry_on_failure": (
-                        dict(job_def["retry_on_failure"])
-                        if isinstance(
-                            job_def.get("retry_on_failure"), dict,
-                        )
-                        else None
-                    ),
-                    # When true, this entry exists for metadata only
-                    # (e.g., the synthesized ``bootstrap`` root). The
-                    # tree builder skips it; the trigger index +
-                    # lifecycle metadata reader still see it.
-                    "tree_skip": bool(job_def.get("tree_skip", False)),
-                    # ``phase_order`` is read by ``build_job_framework``
-                    # from the synthesized-root entry (``tree_skip:
-                    # true``) to decide how per-phase groups are
-                    # sequenced. Phases not in this list get appended
-                    # alphabetically after, so plugin-defined phases
-                    # work without editing the root entry.
-                    "phase_order": list(job_def.get("phase_order", []) or []),
-                    # Human-readable label shown in the dashboard
-                    # toast / job tree / activity feed. Falls back
-                    # to a slug → Title Case translation if
-                    # missing. The label lives WITH the job
-                    # definition (not in dashboard.html) so adding
-                    # a new contract job is one-place.
-                    "label": str(job_def.get("label") or "").strip(),
-                    "service": svc_id,
-                })
-        except Exception as exc:
-            runtime_platform.log(f"[DEBUG] Failed to discover jobs from {svc_yaml.name}: {exc}")
-            continue
-
-    _DISCOVERED_JOBS_CACHE = sorted(jobs, key=lambda j: (j["phase"], j["priority"]))
-    return _DISCOVERED_JOBS_CACHE
-
-
 _DISCOVERED_ALIASES_CACHE: dict[str, str] | None = None
 
 
-def discover_job_aliases() -> dict[str, str]:
-    """Walk every service contract for a ``plugin.job_aliases`` map
-    and return the merged ``alias -> canonical`` dict.
+class _JobContractsDiscovery:
+    """Walks ``contracts/services/*.yaml`` for ``plugin.jobs`` and
+    ``plugin.job_aliases`` blocks and resolves alias chains.
 
-    Aliases are job metadata, not dispatch code. Putting them in
-    the YAML keeps the dispatch a single ``run_job(name)`` call:
-    when the dashboard hits ``/actions/reconcile``, ``run_job``
-    resolves the alias to ``bootstrap`` and walks the same tree
-    everything else does. New aliases ship by editing one YAML
-    file — the kind of change a third-party developer can make
-    without touching any Python.
+    Reads/writes ``_DISCOVERED_JOBS_CACHE`` / ``_DISCOVERED_ALIASES_CACHE``
+    as module-level globals so tests that clear those caches keep
+    the existing reset shape."""
 
-    First-write-wins on collisions, with a debug log. The cache
-    matches the discover_jobs_from_contracts cache lifecycle so
-    tests can clear both with ``_DISCOVERED_*_CACHE = None``."""
-    global _DISCOVERED_ALIASES_CACHE
-    if _DISCOVERED_ALIASES_CACHE is not None:
-        return _DISCOVERED_ALIASES_CACHE
-    svc_dir = _find_contracts_dir()
-    if not svc_dir:
-        _DISCOVERED_ALIASES_CACHE = {}
-        return _DISCOVERED_ALIASES_CACHE
+    _ALIAS_HOP_LIMIT = 8
 
-    aliases: dict[str, str] = {}
-    for svc_yaml in sorted(svc_dir.glob("*.yaml")):
-        if svc_yaml.name.startswith("_"):
-            continue
-        try:
-            svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
-            plugin = svc_data.get("plugin", {})
-            raw = plugin.get("job_aliases", {})
-            if not isinstance(raw, dict):
+    def discover_jobs_from_contracts(self) -> list[dict[str, Any]]:
+        """Scan service contracts for job definitions. Cached after first call."""
+        global _DISCOVERED_JOBS_CACHE
+        if _DISCOVERED_JOBS_CACHE is not None:
+            return _DISCOVERED_JOBS_CACHE
+        svc_dir = _find_contracts_dir()
+        if not svc_dir:
+            return []
+
+        jobs: list[dict[str, Any]] = []
+        for svc_yaml in sorted(svc_dir.glob("*.yaml")):
+            if svc_yaml.name.startswith("_"):
                 continue
-            for alias, canonical in raw.items():
-                if not isinstance(alias, str) or not isinstance(canonical, str):
+            try:
+                svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
+                svc_id = svc_data.get("service", {}).get("id", "")
+                plugin = svc_data.get("plugin", {})
+                job_defs = plugin.get("jobs", {})
+                if not isinstance(job_defs, dict) or not svc_id:
                     continue
-                if alias in aliases and aliases[alias] != canonical:
+                for job_name, job_def in job_defs.items():
+                    if not isinstance(job_def, dict):
+                        continue
+                    jobs.append(self._normalize_job_def(job_name, job_def, svc_id))
+            except Exception as exc:
+                runtime_platform.log(f"[DEBUG] Failed to discover jobs from {svc_yaml.name}: {exc}")
+                continue
+
+        _DISCOVERED_JOBS_CACHE = sorted(jobs, key=lambda j: (j["phase"], j["priority"]))
+        return _DISCOVERED_JOBS_CACHE
+
+    def _normalize_job_def(
+        self, job_name: str, job_def: dict[str, Any], svc_id: str,
+    ) -> dict[str, Any]:
+        """Map a raw plugin.jobs entry into the flat dict the runtime
+        consumes. Documents every optional field — comments preserved
+        verbatim from the original loose-function form."""
+        return {
+            "name": job_name,
+            "handler": job_def.get("handler", ""),
+            "phase": job_def.get("phase", "default"),
+            "priority": int(job_def.get("priority", 50)),
+            "requires": list(job_def.get("requires", [])),
+            # ``max_attempts`` is optional. ``None`` means
+            # "use the framework default" (currently 3).
+            "max_attempts": (
+                int(job_def["max_attempts"])
+                if "max_attempts" in job_def
+                else None
+            ),
+            # ``non_blocking: true`` makes the runner spawn
+            # the job in a daemon thread and immediately move
+            # on to the next job without waiting. Use for
+            # slow probes (indexer discovery, EPG channel
+            # scan) so the dashboard becomes usable before
+            # they complete. Default false = blocking.
+            "non_blocking": bool(job_def.get("non_blocking", False)),
+            # ``after: [job-name, ...]`` — wait for those jobs
+            # to FULLY COMPLETE before this one starts. Distinct
+            # from ``requires:`` (named conditions). Use this
+            # when a downstream job needs the SIDE EFFECTS of an
+            # upstream non_blocking job (e.g. tag-indexers needs
+            # the indexers discover-indexers added).
+            "after": list(job_def.get("after", [])),
+            # ADR-0009 Phase 6.1 — declarative triggers. Each
+            # entry is a dict ``{event: <kind>, ...}``; the
+            # ``TriggerEngine`` validates kinds (``manual``,
+            # ``schedule``, ``job.completed``, ``job.failed``,
+            # ``promise.satisfied``, ``promise.violated``,
+            # ``controller.started``) and ``when:`` predicate
+            # names against the closed registry at boot.
+            # Absence = job is manual-only (today's behavior).
+            # The key is ``event:`` not ``on:`` because PyYAML
+            # parses bare ``on:`` as the boolean ``True``
+            # (YAML 1.1's deprecated ``on/off`` alias).
+            "triggers": list(job_def.get("triggers", [])),
+            # ADR-0010 Phase 7.1 — promises this Job's
+            # successful completion satisfies.
+            "satisfies": list(job_def.get("satisfies", [])),
+            # ADR-0009 Phase 6.4 (redo) — declarative
+            # end-of-batch side-effects on the Job that owns them.
+            "marks_setup_complete": bool(
+                job_def.get("marks_setup_complete", False),
+            ),
+            "retry_on_failure": (
+                dict(job_def["retry_on_failure"])
+                if isinstance(
+                    job_def.get("retry_on_failure"), dict,
+                )
+                else None
+            ),
+            # When true, this entry exists for metadata only
+            # (e.g., the synthesized ``bootstrap`` root). The
+            # tree builder skips it; the trigger index +
+            # lifecycle metadata reader still see it.
+            "tree_skip": bool(job_def.get("tree_skip", False)),
+            # ``phase_order`` is read by ``build_job_framework``
+            # from the synthesized-root entry (``tree_skip:
+            # true``) to decide how per-phase groups are
+            # sequenced.
+            "phase_order": list(job_def.get("phase_order", []) or []),
+            # Human-readable label shown in the dashboard
+            # toast / job tree / activity feed.
+            "label": str(job_def.get("label") or "").strip(),
+            "service": svc_id,
+        }
+
+    def discover_job_aliases(self) -> dict[str, str]:
+        """Walk every service contract for a ``plugin.job_aliases`` map
+        and return the merged ``alias -> canonical`` dict."""
+        global _DISCOVERED_ALIASES_CACHE
+        if _DISCOVERED_ALIASES_CACHE is not None:
+            return _DISCOVERED_ALIASES_CACHE
+        svc_dir = _find_contracts_dir()
+        if not svc_dir:
+            _DISCOVERED_ALIASES_CACHE = {}
+            return _DISCOVERED_ALIASES_CACHE
+
+        aliases: dict[str, str] = {}
+        for svc_yaml in sorted(svc_dir.glob("*.yaml")):
+            if svc_yaml.name.startswith("_"):
+                continue
+            try:
+                svc_data = yaml.safe_load(svc_yaml.read_text(encoding="utf-8")) or {}
+                plugin = svc_data.get("plugin", {})
+                raw = plugin.get("job_aliases", {})
+                if not isinstance(raw, dict):
+                    continue
+                for alias, canonical in raw.items():
+                    if not isinstance(alias, str) or not isinstance(canonical, str):
+                        continue
+                    if alias in aliases and aliases[alias] != canonical:
+                        runtime_platform.log(
+                            f"[DEBUG] job alias collision for {alias!r}: "
+                            f"{aliases[alias]!r} (kept) vs {canonical!r} "
+                            f"(from {svc_yaml.name})"
+                        )
+                        continue
+                    aliases[alias] = canonical
+            except Exception as exc:
+                runtime_platform.log(
+                    f"[DEBUG] Failed to discover aliases from "
+                    f"{svc_yaml.name}: {exc}"
+                )
+                continue
+
+        _DISCOVERED_ALIASES_CACHE = aliases
+        return aliases
+
+    def resolve_alias(self, name: str) -> str:
+        """Return the canonical job name for ``name``. Falls through
+        when ``name`` isn't an alias — so callers can always invoke
+        this safely. Resolves transitively in case a future alias
+        points at another alias (capped at 8 hops to avoid loops)."""
+        aliases = discover_job_aliases()
+        seen: set[str] = set()
+        current = name
+        for _ in range(self._ALIAS_HOP_LIMIT):
+            if current in seen:
+                return current  # cycle guard
+            seen.add(current)
+            nxt = aliases.get(current)
+            if nxt is None or nxt == current:
+                return current
+            current = nxt
+        return current
+
+
+_CONTRACTS_DISCOVERY = _JobContractsDiscovery()
+discover_jobs_from_contracts = _CONTRACTS_DISCOVERY.discover_jobs_from_contracts
+discover_job_aliases = _CONTRACTS_DISCOVERY.discover_job_aliases
+resolve_alias = _CONTRACTS_DISCOVERY.resolve_alias
+
+
+# ---------------------------------------------------------------------------
+# Class 6 — job-tree builder, registry, run_job entrypoints
+# ---------------------------------------------------------------------------
+
+_DEFAULT_JOB_MAX_ATTEMPTS = 3
+
+
+class _JobFrameworkBuilder:
+    """Composes the bootstrap job tree from contract entries, dispatches
+    individual jobs by name, and exposes the flat name → handler registry."""
+
+    _DEFAULT_ROOT_MAX_ATTEMPTS = 30
+
+    def resolve_handler(self, handler_path: str) -> Callable:
+        """Import a handler from a dotted module:function path."""
+        if ":" in handler_path:
+            mod_path, func_name = handler_path.rsplit(":", 1)
+        elif "." in handler_path:
+            mod_path, func_name = handler_path.rsplit(".", 1)
+        else:
+            raise ValueError(f"Invalid handler path: {handler_path}")
+        mod = importlib.import_module(mod_path)
+        fn = getattr(mod, func_name, None)
+        if fn is None:
+            raise AttributeError(f"{handler_path}: function not found")
+        return fn
+
+    def make_handler_wrapper(self, handler_fn: Callable, service_id: str) -> Callable:
+        """Wrap a raw ensure_* handler (cfg, config_root, timeout) as a Job handler (ctx)."""
+        def wrapper(ctx: "JobContext") -> dict[str, Any]:
+            handler_fn(ctx.cfg, ctx.config_root, ctx.wait_timeout)
+            return {"service": service_id}
+        return wrapper
+
+    def build_job_framework(self) -> Job:
+        """Build the bootstrap job tree by scanning service contracts."""
+        discovered = discover_jobs_from_contracts()
+        # ``phase_order`` and ``max_attempts`` for the synthesized root
+        # come from the ``tree_skip:true`` ``bootstrap`` entry in
+        # ``contracts/services/core.yaml``.
+        _root_entry = next(
+            (
+                j for j in discovered
+                if j.get("name") == "bootstrap" and j.get("tree_skip")
+            ),
+            None,
+        )
+        _root_max_attempts = (
+            _root_entry.get("max_attempts") if _root_entry else None
+        ) or self._DEFAULT_ROOT_MAX_ATTEMPTS
+        phase_order: list[str] = list(
+            _root_entry.get("phase_order", []) if _root_entry else []
+        )
+        root = Job("bootstrap", _noop, max_attempts=_root_max_attempts)
+
+        # Group by phase, skipping metadata-only entries.
+        phases: dict[str, list[dict[str, Any]]] = {}
+        for j in discovered:
+            if j.get("tree_skip"):
+                continue
+            phases.setdefault(j["phase"], []).append(j)
+        for phase_name in phase_order:
+            phase_jobs = phases.pop(phase_name, [])
+            if not phase_jobs:
+                continue
+            phase_label = f"configure-{phase_name.replace('_', '-')}"
+            # Collect prereqs from children for the phase group
+            phase_prereqs: set[str] = set()
+            for j in phase_jobs:
+                phase_prereqs.update(j.get("requires", []))
+            phase_job = Job(phase_label, _noop, requires=sorted(phase_prereqs))
+            for j in phase_jobs:
+                handler_path = j["handler"]
+                try:
+                    raw_fn = _resolve_handler(handler_path)
+                    # If handler takes (ctx) → use directly; if (cfg, root, timeout) → wrap
+                    import inspect
+                    sig = inspect.signature(raw_fn)
+                    params = list(sig.parameters.keys())
+                    if len(params) == 1 and params[0] == "ctx":
+                        handler = raw_fn
+                    elif len(params) >= 2:
+                        handler = _make_handler_wrapper(raw_fn, j["service"])
+                    else:
+                        handler = raw_fn
+                except Exception:
                     runtime_platform.log(
-                        f"[DEBUG] job alias collision for {alias!r}: "
-                        f"{aliases[alias]!r} (kept) vs {canonical!r} "
-                        f"(from {svc_yaml.name})"
+                        f"[WARN] Cannot resolve handler for job {j['name']}: {handler_path}"
                     )
                     continue
-                aliases[alias] = canonical
-        except Exception as exc:
-            runtime_platform.log(
-                f"[DEBUG] Failed to discover aliases from "
-                f"{svc_yaml.name}: {exc}"
-            )
-            continue
-
-    _DISCOVERED_ALIASES_CACHE = aliases
-    return aliases
-
-
-def resolve_alias(name: str) -> str:
-    """Return the canonical job name for ``name``. Falls through
-    when ``name`` isn't an alias — so callers can always invoke
-    this safely. Resolves transitively in case a future alias
-    points at another alias (capped at 8 hops to avoid loops)."""
-    aliases = discover_job_aliases()
-    seen: set[str] = set()
-    current = name
-    for _ in range(8):
-        if current in seen:
-            return current  # cycle guard
-        seen.add(current)
-        nxt = aliases.get(current)
-        if nxt is None or nxt == current:
-            return current
-        current = nxt
-    return current
-
-
-def build_job_framework() -> Job:
-    """Build the bootstrap job tree by scanning service contracts.
-
-    No hardcoded job list. Each service declares its own jobs in its
-    YAML contract. The tree is grouped by phase.
-
-    Phases (execution order):
-      media_server → download_clients → post
-
-    Add a service with jobs → they appear automatically.
-    Remove a service → its jobs disappear.
-    """
-    discovered = discover_jobs_from_contracts()
-    # ``phase_order`` and ``max_attempts`` for the synthesized root
-    # come from the ``tree_skip:true`` ``bootstrap`` entry in
-    # ``contracts/services/core.yaml`` — keeps phase sequencing and
-    # cross-cutting retry budget out of framework code (ADR-0009
-    # Phase 6.4 redo). Missing entry falls back to empty
-    # phase_order + default max_attempts so test fixtures that
-    # ship a stripped contracts dir keep working.
-    _root_entry = next(
-        (
-            j for j in discovered
-            if j.get("name") == "bootstrap" and j.get("tree_skip")
-        ),
-        None,
-    )
-    _root_max_attempts = (
-        _root_entry.get("max_attempts") if _root_entry else None
-    ) or 30
-    phase_order: list[str] = list(
-        _root_entry.get("phase_order", []) if _root_entry else []
-    )
-    root = Job("bootstrap", _noop, max_attempts=_root_max_attempts)
-
-    # Group by phase, skipping metadata-only entries (the synthesized
-    # ``bootstrap`` root carries declarative end-of-batch metadata
-    # via a ``tree_skip: true`` contract entry that must NOT appear
-    # again as a sub-job — see ADR-0009 Phase 6.4 redo notes).
-    phases: dict[str, list[dict[str, Any]]] = {}
-    for j in discovered:
-        if j.get("tree_skip"):
-            continue
-        phases.setdefault(j["phase"], []).append(j)
-    for phase_name in phase_order:
-        phase_jobs = phases.pop(phase_name, [])
-        if not phase_jobs:
-            continue
-        phase_label = f"configure-{phase_name.replace('_', '-')}"
-        # Collect prereqs from children for the phase group
-        phase_prereqs = set()
-        for j in phase_jobs:
-            phase_prereqs.update(j.get("requires", []))
-        phase_job = Job(phase_label, _noop, requires=sorted(phase_prereqs))
-        for j in phase_jobs:
-            handler_path = j["handler"]
-            try:
-                raw_fn = _resolve_handler(handler_path)
-                # If handler takes (ctx) → use directly; if (cfg, root, timeout) → wrap
-                import inspect
-                sig = inspect.signature(raw_fn)
-                params = list(sig.parameters.keys())
-                if len(params) == 1 and params[0] == "ctx":
-                    handler = raw_fn
-                elif len(params) >= 2:
-                    handler = _make_handler_wrapper(raw_fn, j["service"])
-                else:
-                    handler = raw_fn
-            except Exception:
-                runtime_platform.log(f"[WARN] Cannot resolve handler for job {j['name']}: {handler_path}")
-                continue
-            phase_job.add_sub_job(Job(
-                j["name"], handler,
-                requires=j.get("requires", []),
-                max_attempts=j.get("max_attempts"),
-                non_blocking=j.get("non_blocking", False),
-                after=j.get("after", []),
-            ))
-        root.add_sub_job(phase_job)
-
-    # Any remaining phases
-    for phase_name, phase_jobs in sorted(phases.items()):
-        phase_job = Job(f"configure-{phase_name}", _noop)
-        for j in phase_jobs:
-            try:
-                raw_fn = _resolve_handler(j["handler"])
-                handler = _make_handler_wrapper(raw_fn, j["service"])
                 phase_job.add_sub_job(Job(
                     j["name"], handler,
                     requires=j.get("requires", []),
                     max_attempts=j.get("max_attempts"),
                     non_blocking=j.get("non_blocking", False),
+                    after=j.get("after", []),
                 ))
-            except Exception as exc:
-                runtime_platform.log(f"[WARN] Cannot resolve handler for remaining-phase job {j['name']}: {exc}")
-                continue
-        root.add_sub_job(phase_job)
+            root.add_sub_job(phase_job)
 
-    return root
+        # Any remaining phases
+        for phase_name, phase_jobs in sorted(phases.items()):
+            phase_job = Job(f"configure-{phase_name}", _noop)
+            for j in phase_jobs:
+                try:
+                    raw_fn = _resolve_handler(j["handler"])
+                    handler = _make_handler_wrapper(raw_fn, j["service"])
+                    phase_job.add_sub_job(Job(
+                        j["name"], handler,
+                        requires=j.get("requires", []),
+                        max_attempts=j.get("max_attempts"),
+                        non_blocking=j.get("non_blocking", False),
+                    ))
+                except Exception as exc:
+                    runtime_platform.log(
+                        f"[WARN] Cannot resolve handler for remaining-phase job {j['name']}: {exc}"
+                    )
+                    continue
+            root.add_sub_job(phase_job)
 
-
-# ---------------------------------------------------------------------------
-# Flat job registry for individual action dispatch
-# ---------------------------------------------------------------------------
-
-def get_job_registry() -> dict[str, Callable[[JobContext], dict[str, Any]]]:
-    """Return flat map of job-name → handler, discovered from contracts."""
-    root = build_job_framework()
-    registry: dict[str, Callable] = {}
-    def _collect(job: Job) -> None:
-        if job.handler is not _noop:
-            registry[job.name] = job.handler
-        for sub in job.sub_jobs:
-            _collect(sub)
-    _collect(root)
-    return registry
-
-
-_DEFAULT_JOB_MAX_ATTEMPTS = 3
-
-
-def run_job(
-    job_name: str,
-    *,
-    source: str | None = None,
-    actor: str | None = None,
-) -> dict[str, Any]:
-    """Run a single job by name. Uses JobRunner for prereq waiting.
-
-    Resolves contract-declared aliases first (so callers can pass
-    user-facing names like ``reconcile`` and reach the canonical
-    job ``bootstrap``), then reads ``max_attempts`` from the
-    resolved Job instance — the contract is the source of truth.
-    No more ``run_job(name, max_wait=180)`` callers; if a job
-    needs special timing it declares it in YAML.
-
-    ``source`` / ``actor`` are optional and propagate through to
-    the history entry written by ``JobRunner.run`` so the dashboard
-    can show ``cron`` / ``manual`` / ``auto-heal`` badges. Default
-    values keep older callers (e.g. test fixtures) working without
-    a code change.
-    """
-    job_name = resolve_alias(job_name)
-    root = build_job_framework()
-    job = _find_job_in_tree(root, job_name)
-    if not job:
-        registry = get_job_registry()
-        handler = registry.get(job_name)
-        if not handler:
-            return {"error": f"Unknown job: {job_name}", "known": sorted(registry.keys())}
-        job = Job(job_name, handler)
-    ctx = JobContext()
-    attempts = job.max_attempts if job.max_attempts is not None else _DEFAULT_JOB_MAX_ATTEMPTS
-    return JobRunner(
-        job, ctx, max_attempts=attempts, source=source, actor=actor,
-    ).run()
-
-
-def run_all_media_server_jobs(
-    max_wait: int = 180,
-    *,
-    source: str | None = None,
-    actor: str | None = None,
-) -> dict[str, Any]:
-    """Run all media server configuration jobs.
-
-    Uses JobRunner which waits for prerequisites with active retry
-    before executing the tree. ``source`` / ``actor`` propagate
-    into the recorded history entry (see ``run_job``).
-    """
-    ctx = JobContext()
-    root = build_job_framework()
-    return JobRunner(
-        root, ctx, max_wait=max_wait, source=source, actor=actor,
-    ).run()
-
-
-def _find_job_in_tree(root: Job, name: str) -> Job | None:
-    """Find a job by name in a tree (DFS)."""
-    if root.name == name:
         return root
-    for sub in root.sub_jobs:
-        found = _find_job_in_tree(sub, name)
-        if found:
-            return found
-    return None
+
+    def get_job_registry(self) -> dict[str, Callable[[JobContext], dict[str, Any]]]:
+        """Return flat map of job-name → handler, discovered from contracts."""
+        root = build_job_framework()
+        registry: dict[str, Callable] = {}
+        def _collect(job: Job) -> None:
+            if job.handler is not _noop:
+                registry[job.name] = job.handler
+            for sub in job.sub_jobs:
+                _collect(sub)
+        _collect(root)
+        return registry
+
+    def run_job(
+        self,
+        job_name: str,
+        *,
+        source: str | None = None,
+        actor: str | None = None,
+    ) -> dict[str, Any]:
+        """Run a single job by name. Uses JobRunner for prereq waiting."""
+        job_name = resolve_alias(job_name)
+        root = build_job_framework()
+        job = _find_job_in_tree(root, job_name)
+        if not job:
+            registry = get_job_registry()
+            handler = registry.get(job_name)
+            if not handler:
+                return {"error": f"Unknown job: {job_name}", "known": sorted(registry.keys())}
+            job = Job(job_name, handler)
+        ctx = JobContext()
+        attempts = job.max_attempts if job.max_attempts is not None else _DEFAULT_JOB_MAX_ATTEMPTS
+        return JobRunner(
+            job, ctx, max_attempts=attempts, source=source, actor=actor,
+        ).run()
+
+    def run_all_media_server_jobs(
+        self,
+        max_wait: int = 180,
+        *,
+        source: str | None = None,
+        actor: str | None = None,
+    ) -> dict[str, Any]:
+        """Run all media server configuration jobs."""
+        ctx = JobContext()
+        root = build_job_framework()
+        return JobRunner(
+            root, ctx, max_wait=max_wait, source=source, actor=actor,
+        ).run()
+
+    def find_job_in_tree(self, root: Job, name: str) -> Job | None:
+        """Find a job by name in a tree (DFS)."""
+        if root.name == name:
+            return root
+        for sub in root.sub_jobs:
+            found = _find_job_in_tree(sub, name)
+            if found:
+                return found
+        return None
+
+
+_FRAMEWORK_BUILDER = _JobFrameworkBuilder()
+_resolve_handler = _FRAMEWORK_BUILDER.resolve_handler
+_make_handler_wrapper = _FRAMEWORK_BUILDER.make_handler_wrapper
+build_job_framework = _FRAMEWORK_BUILDER.build_job_framework
+get_job_registry = _FRAMEWORK_BUILDER.get_job_registry
+run_job = _FRAMEWORK_BUILDER.run_job
+run_all_media_server_jobs = _FRAMEWORK_BUILDER.run_all_media_server_jobs
+_find_job_in_tree = _FRAMEWORK_BUILDER.find_job_in_tree

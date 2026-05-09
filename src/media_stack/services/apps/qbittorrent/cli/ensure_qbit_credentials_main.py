@@ -11,6 +11,19 @@ clients — qbittorrent) deliberately leaves the CLI helpers in
 place; Phase 16-F or a follow-up batch will revisit once the
 file-path-based test loaders are migrated to import the new module
 path.
+
+ADR-0012 redo: 19 loose helpers consolidated into three classes:
+- ``EnsureQbitCredentialsCommand``: CLI orchestration (parser/parse/run/main).
+- ``QbitCredentialReconciler``: credential reconciliation against the qB pod
+  (login probes, secret patching, in-pod API + on-disk config sync, restarts,
+  forced reset, PBKDF2 generation, temp-password log scraping).
+- ``KubeClient``: absorbs the previously module-level ``_run`` subprocess
+  shim as a private instance method.
+
+Module-level aliases preserve the public API the file-path-based test loader
+in ``tests/unit/apps/qbittorrent/test_ensure_qbit_credentials_cli.py`` patches
+and asserts on (``parse_config``, ``resolve_target_credentials``,
+``build_secret_patch``, plus the dataclasses and ``ConfigError``).
 """
 
 from __future__ import annotations
@@ -33,32 +46,7 @@ from media_stack.core.platforms.kubernetes.kube_client import resolve_kubectl_bi
 
 _TEMP_PASSWORD_RE = re.compile(r"temporary password[^:]*:\s*(.+)$", re.IGNORECASE)
 
-
-def _truthy(raw: str | None, *, default: bool = False) -> bool:
-    if raw is None:
-        return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _run(
-    cmd: list[str],
-    *,
-    check: bool = True,
-    input_text: str | None = None,
-) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
-        cmd,
-        check=False,
-        capture_output=True,
-        text=True,
-        input=input_text,
-    )
-    if check and proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        stdout = (proc.stdout or "").strip()
-        detail = stderr or stdout or f"exit code {proc.returncode}"
-        raise MediaStackError(f"Command failed ({' '.join(cmd)}): {detail}")
-    return proc
+_TRUTHY_TOKENS = frozenset({"1", "true", "yes", "on"})
 
 
 @dataclass(frozen=True)
@@ -84,21 +72,44 @@ class CredentialResolution:
 
 
 class KubeClient:
+    """Thin kubectl wrapper. Owns the subprocess shim previously at module scope."""
+
     def __init__(self, prefix: list[str], namespace: str) -> None:
         self._prefix = prefix
         self._namespace = namespace
+
+    def _run(
+        self,
+        cmd: list[str],
+        *,
+        check: bool = True,
+        input_text: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            input=input_text,
+        )
+        if check and proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()
+            stdout = (proc.stdout or "").strip()
+            detail = stderr or stdout or f"exit code {proc.returncode}"
+            raise MediaStackError(f"Command failed ({' '.join(cmd)}): {detail}")
+        return proc
 
     def run(
         self, args: Iterable[str], *, check: bool = True, input_text: str | None = None
     ) -> subprocess.CompletedProcess[str]:
         cmd = [*self._prefix, *list(args)]
-        return _run(cmd, check=check, input_text=input_text)
+        return self._run(cmd, check=check, input_text=input_text)
 
     def run_ns(
         self, args: Iterable[str], *, check: bool = True, input_text: str | None = None
     ) -> subprocess.CompletedProcess[str]:
         cmd = [*self._prefix, "-n", self._namespace, *list(args)]
-        return _run(cmd, check=check, input_text=input_text)
+        return self._run(cmd, check=check, input_text=input_text)
 
     def get_secret_value(self, secret_name: str, key: str) -> str:
         proc = self.run_ns(
@@ -122,109 +133,86 @@ class KubeClient:
             return ""
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="bin/ensure-qbit-credentials.sh",
-        description=(
-            "Ensure qBittorrent credentials are secret-backed and persisted in qB config."
-        ),
-    )
-    return parser
+class QbitCredentialReconciler:
+    """Reconcile the qBittorrent WebUI credentials against the K8s secret.
 
+    All the in-pod curl/sed/PBKDF2 dance, secret patching, rollout-restart loops,
+    and temp-password scraping that previously lived as 13 loose helpers are
+    methods here. Constructor-injected ``KubeClient`` + frozen
+    ``EnsureQbitCredentialsConfig``; no module-level kubectl plumbing.
+    """
 
-def parse_config(argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
-    _build_parser().parse_args(argv)
+    def __init__(
+        self, kube: KubeClient, cfg: EnsureQbitCredentialsConfig
+    ) -> None:
+        self._kube = kube
+        self._cfg = cfg
 
-    return EnsureQbitCredentialsConfig(
-        namespace=os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack",
-        secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets").strip()
-        or "media-stack-secrets",
-        rollout_timeout=os.environ.get("ROLL_OUT_TIMEOUT", "5m").strip() or "5m",
-        qbit_wait_seconds=max(1, int(os.environ.get("QBIT_WAIT_SECONDS", "120"))),
-        qbit_deployment=os.environ.get("QBIT_DEPLOYMENT", "qbittorrent").strip() or "qbittorrent",
-        qbit_startup_username=str(os.environ.get("QBIT_STARTUP_USERNAME") or "").strip(),
-        force_reset_on_auth_failure=_truthy(
-            os.environ.get("FORCE_RESET_ON_AUTH_FAILURE", "1"), default=True
-        ),
-        qbit_force_config_sync=_truthy(os.environ.get("QBIT_FORCE_CONFIG_SYNC", "1"), default=True),
-        qbit_strict_login_check=_truthy(
-            os.environ.get("QBIT_STRICT_LOGIN_CHECK", "0"), default=False
-        ),
-        qbit_api_validation=_truthy(os.environ.get("QBIT_API_VALIDATION", "0"), default=False),
-    )
-
-
-def ensure_secret_present(kube: KubeClient, cfg: EnsureQbitCredentialsConfig) -> None:
-    proc = kube.run_ns(["get", "secret", cfg.secret_name], check=False)
-    if proc.returncode == 0:
-        return
-    raise ConfigError(
-        f"Secret {cfg.namespace}/{cfg.secret_name} not found. "
-        "Create it first (for example: bin/generate-secrets.sh)."
-    )
-
-
-def resolve_target_credentials(
-    stack_admin_user: str,
-    stack_admin_pass: str,
-) -> CredentialResolution:
-    resolved_stack_user = str(stack_admin_user or "").strip()
-    resolved_stack_pass = str(stack_admin_pass or "").strip()
-    if not resolved_stack_user:
-        raise ConfigError("Missing STACK_ADMIN_USERNAME in media-stack secret.")
-    if not resolved_stack_pass:
-        raise ConfigError("Missing STACK_ADMIN_PASSWORD in media-stack secret.")
-    if resolved_stack_pass == "change-me":
+    def ensure_secret_present(self) -> None:
+        cfg = self._cfg
+        proc = self._kube.run_ns(["get", "secret", cfg.secret_name], check=False)
+        if proc.returncode == 0:
+            return
         raise ConfigError(
-            "STACK_ADMIN_PASSWORD is still 'change-me'. Set a real password in the secret."
+            f"Secret {cfg.namespace}/{cfg.secret_name} not found. "
+            "Create it first (for example: bin/generate-secrets.sh)."
         )
 
-    return CredentialResolution(
-        stack_admin_user=resolved_stack_user,
-        stack_admin_pass=resolved_stack_pass,
-        qb_user=resolved_stack_user,
-        qb_pass=resolved_stack_pass,
-    )
+    def resolve_target_credentials(
+        self,
+        stack_admin_user: str,
+        stack_admin_pass: str,
+    ) -> CredentialResolution:
+        resolved_stack_user = str(stack_admin_user or "").strip()
+        resolved_stack_pass = str(stack_admin_pass or "").strip()
+        if not resolved_stack_user:
+            raise ConfigError("Missing STACK_ADMIN_USERNAME in media-stack secret.")
+        if not resolved_stack_pass:
+            raise ConfigError("Missing STACK_ADMIN_PASSWORD in media-stack secret.")
+        if resolved_stack_pass == "change-me":
+            raise ConfigError(
+                "STACK_ADMIN_PASSWORD is still 'change-me'. Set a real password in the secret."
+            )
 
+        return CredentialResolution(
+            stack_admin_user=resolved_stack_user,
+            stack_admin_pass=resolved_stack_pass,
+            qb_user=resolved_stack_user,
+            qb_pass=resolved_stack_pass,
+        )
 
-def build_secret_patch(creds: CredentialResolution) -> dict[str, dict[str, str]]:
-    string_data: dict[str, str] = {
-        "STACK_ADMIN_USERNAME": creds.stack_admin_user,
-        "STACK_ADMIN_PASSWORD": creds.stack_admin_pass,
-    }
-    return {"stringData": string_data}
+    def build_secret_patch(self, creds: CredentialResolution) -> dict[str, dict[str, str]]:
+        string_data: dict[str, str] = {
+            "STACK_ADMIN_USERNAME": creds.stack_admin_user,
+            "STACK_ADMIN_PASSWORD": creds.stack_admin_pass,
+        }
+        return {"stringData": string_data}
 
+    def patch_secret(self, patch: dict[str, object]) -> None:
+        self._kube.run_ns(
+            [
+                "patch",
+                "secret",
+                self._cfg.secret_name,
+                "--type",
+                "merge",
+                "-p",
+                json.dumps(patch, separators=(",", ":")),
+            ]
+        )
 
-def patch_secret(
-    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, patch: dict[str, object]
-) -> None:
-    kube.run_ns(
-        [
-            "patch",
-            "secret",
-            cfg.secret_name,
-            "--type",
-            "merge",
-            "-p",
-            json.dumps(patch, separators=(",", ":")),
-        ]
-    )
-
-
-def qbit_login_in_pod(
-    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, username: str, password: str
-) -> bool:
-    proc = kube.run_ns(
-        [
-            "exec",
-            f"deploy/{cfg.qbit_deployment}",
-            "--",
-            "env",
-            f"QB_USER={username}",
-            f"QB_PASS={password}",
-            "sh",
-            "-lc",
-            """
+    def qbit_login_in_pod(self, username: str, password: str) -> bool:
+        proc = self._kube.run_ns(
+            [
+                "exec",
+                f"deploy/{self._cfg.qbit_deployment}",
+                "--",
+                "env",
+                f"QB_USER={username}",
+                f"QB_PASS={password}",
+                "sh",
+                "-lc",
+                """
 tmp_body="/tmp/qb-login-body.$$"
 code="$(curl -sS -o "$tmp_body" -w "%{http_code}" \\
   -H "Origin: http://127.0.0.1:8080" \\
@@ -240,34 +228,32 @@ case "$code" in
   *) false ;;
 esac
 """,
-        ],
-        check=False,
-    )
-    return proc.returncode == 0
+            ],
+            check=False,
+        )
+        return proc.returncode == 0
 
-
-def qbit_set_webui_credentials_in_pod(
-    kube: KubeClient,
-    cfg: EnsureQbitCredentialsConfig,
-    *,
-    auth_user: str,
-    auth_pass: str,
-    target_user: str,
-    target_pass: str,
-) -> bool:
-    proc = kube.run_ns(
-        [
-            "exec",
-            f"deploy/{cfg.qbit_deployment}",
-            "--",
-            "env",
-            f"AUTH_USER={auth_user}",
-            f"AUTH_PASS={auth_pass}",
-            f"TARGET_USER={target_user}",
-            f"TARGET_PASS={target_pass}",
-            "sh",
-            "-lc",
-            """
+    def qbit_set_webui_credentials_in_pod(
+        self,
+        *,
+        auth_user: str,
+        auth_pass: str,
+        target_user: str,
+        target_pass: str,
+    ) -> bool:
+        proc = self._kube.run_ns(
+            [
+                "exec",
+                f"deploy/{self._cfg.qbit_deployment}",
+                "--",
+                "env",
+                f"AUTH_USER={auth_user}",
+                f"AUTH_PASS={auth_pass}",
+                f"TARGET_USER={target_user}",
+                f"TARGET_PASS={target_pass}",
+                "sh",
+                "-lc",
+                """
 set -e
 cookie="/tmp/qb-cookie.$$"
 login_body="/tmp/qb-login.$$"
@@ -305,101 +291,98 @@ fi
 
 rm -f "$cookie" "$login_body" "$prefs_body" >/dev/null 2>&1 || true
 """,
-        ],
-        check=False,
-    )
-    return proc.returncode == 0
-
-
-def try_inpod_reconcile_with_auth(
-    kube: KubeClient,
-    cfg: EnsureQbitCredentialsConfig,
-    *,
-    source_label: str,
-    auth_user: str,
-    auth_pass: str,
-    target_user: str,
-    target_pass: str,
-) -> bool:
-    if not qbit_set_webui_credentials_in_pod(
-        kube,
-        cfg,
-        auth_user=auth_user,
-        auth_pass=auth_pass,
-        target_user=target_user,
-        target_pass=target_pass,
-    ):
-        return False
-    if qbit_login_in_pod(kube, cfg, target_user, target_pass):
-        print(f"[OK] qBittorrent WebUI credentials reconciled from {source_label} via in-pod API.")
-        return True
-    return False
-
-
-def rollout_restart_and_wait(
-    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, *, reason: str
-) -> None:
-    print(f"[INFO] Restarting deploy/{cfg.qbit_deployment} after {reason}")
-    kube.run_ns(["rollout", "restart", f"deploy/{cfg.qbit_deployment}"])
-    proc = kube.run_ns(
-        ["rollout", "status", f"deploy/{cfg.qbit_deployment}", f"--timeout={cfg.rollout_timeout}"],
-        check=False,
-    )
-    if proc.returncode != 0:
-        print(
-            f"[WARN] deploy/{cfg.qbit_deployment} did not fully roll out in {cfg.rollout_timeout} after {reason}.",
-            file=sys.stderr,
+            ],
+            check=False,
         )
+        return proc.returncode == 0
 
+    def try_inpod_reconcile_with_auth(
+        self,
+        *,
+        source_label: str,
+        auth_user: str,
+        auth_pass: str,
+        target_user: str,
+        target_pass: str,
+    ) -> bool:
+        if not self.qbit_set_webui_credentials_in_pod(
+            auth_user=auth_user,
+            auth_pass=auth_pass,
+            target_user=target_user,
+            target_pass=target_pass,
+        ):
+            return False
+        if self.qbit_login_in_pod(target_user, target_pass):
+            print(
+                f"[OK] qBittorrent WebUI credentials reconciled from {source_label} via in-pod API."
+            )
+            return True
+        return False
 
-def force_reset_qbit_auth(kube: KubeClient, cfg: EnsureQbitCredentialsConfig) -> bool:
-    print("[WARN] Forcing qBittorrent WebUI auth reset in qB config files under /config")
-    proc = kube.run_ns(
-        [
-            "exec",
-            f"deploy/{cfg.qbit_deployment}",
-            "--",
-            "sh",
-            "-lc",
-            """
+    def rollout_restart_and_wait(self, *, reason: str) -> None:
+        cfg = self._cfg
+        print(f"[INFO] Restarting deploy/{cfg.qbit_deployment} after {reason}")
+        self._kube.run_ns(["rollout", "restart", f"deploy/{cfg.qbit_deployment}"])
+        proc = self._kube.run_ns(
+            [
+                "rollout",
+                "status",
+                f"deploy/{cfg.qbit_deployment}",
+                f"--timeout={cfg.rollout_timeout}",
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            print(
+                f"[WARN] deploy/{cfg.qbit_deployment} did not fully roll out in "
+                f"{cfg.rollout_timeout} after {reason}.",
+                file=sys.stderr,
+            )
+
+    def force_reset_qbit_auth(self) -> bool:
+        print("[WARN] Forcing qBittorrent WebUI auth reset in qB config files under /config")
+        proc = self._kube.run_ns(
+            [
+                "exec",
+                f"deploy/{self._cfg.qbit_deployment}",
+                "--",
+                "sh",
+                "-lc",
+                """
 set -e
 for f in $(find /config -maxdepth 6 -name qBittorrent.conf 2>/dev/null); do
   cp "$f" "${f}.bak.$(date +%s)" || true
   sed -i -e '/^WebUI\\Username=/d' -e '/^WebUI\\Password/d' "$f" || true
 done
 """,
-        ],
-        check=False,
-    )
-    if proc.returncode != 0:
-        print("[WARN] Could not reset qB auth lines; continuing.", file=sys.stderr)
-        return False
-    rollout_restart_and_wait(kube, cfg, reason="auth reset")
-    return True
+            ],
+            check=False,
+        )
+        if proc.returncode != 0:
+            print("[WARN] Could not reset qB auth lines; continuing.", file=sys.stderr)
+            return False
+        self.rollout_restart_and_wait(reason="auth reset")
+        return True
 
+    def generate_qbit_pbkdf2_hash(self, password: str) -> str:
+        salt = secrets.token_bytes(16)
+        digest = hashlib.pbkdf2_hmac("sha512", password.encode("utf-8"), salt, 100000)
+        salt_b64 = base64.b64encode(salt).decode("ascii")
+        digest_b64 = base64.b64encode(digest).decode("ascii")
+        return f"@ByteArray({salt_b64}:{digest_b64})"
 
-def generate_qbit_pbkdf2_hash(password: str) -> str:
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha512", password.encode("utf-8"), salt, 100000)
-    salt_b64 = base64.b64encode(salt).decode("ascii")
-    digest_b64 = base64.b64encode(digest).decode("ascii")
-    return f"@ByteArray({salt_b64}:{digest_b64})"
-
-
-def sync_qbit_auth_config(
-    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, *, username: str, pbkdf2_hash: str
-) -> None:
-    proc = kube.run_ns(
-        [
-            "exec",
-            f"deploy/{cfg.qbit_deployment}",
-            "--",
-            "env",
-            f"QBIT_USER_ESC={username}",
-            f"QBIT_HASH_ESC={pbkdf2_hash}",
-            "sh",
-            "-lc",
-            """
+    def sync_qbit_auth_config(self, *, username: str, pbkdf2_hash: str) -> None:
+        proc = self._kube.run_ns(
+            [
+                "exec",
+                f"deploy/{self._cfg.qbit_deployment}",
+                "--",
+                "env",
+                f"QBIT_USER_ESC={username}",
+                f"QBIT_HASH_ESC={pbkdf2_hash}",
+                "sh",
+                "-lc",
+                """
 set -e
 found=0
 for f in $(find /config -maxdepth 6 -name qBittorrent.conf 2>/dev/null); do
@@ -417,183 +400,281 @@ if [ "$found" -eq 0 ]; then
   exit 1
 fi
 """,
-        ],
-        check=False,
-    )
-    if proc.stdout.strip():
-        print(proc.stdout.strip())
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        raise MediaStackError(stderr or "Failed syncing qBittorrent auth config")
-    rollout_restart_and_wait(kube, cfg, reason="config sync")
+            ],
+            check=False,
+        )
+        if proc.stdout.strip():
+            print(proc.stdout.strip())
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip()
+            raise MediaStackError(stderr or "Failed syncing qBittorrent auth config")
+        self.rollout_restart_and_wait(reason="config sync")
 
-
-def extract_temp_password_from_logs(
-    kube: KubeClient, cfg: EnsureQbitCredentialsConfig, pod_name: str | None
-) -> str:
-    logs: list[str] = []
-    if pod_name:
-        proc = kube.run_ns(["logs", pod_name, "--tail=300"], check=False)
-        if proc.stdout:
-            logs.append(proc.stdout)
-    else:
-        for args in (
-            ["logs", f"deploy/{cfg.qbit_deployment}", "--tail=300"],
-            ["logs", f"deploy/{cfg.qbit_deployment}", "--previous", "--tail=300"],
-        ):
-            proc = kube.run_ns(args, check=False)
+    def extract_temp_password_from_logs(self, pod_name: str | None) -> str:
+        cfg = self._cfg
+        logs: list[str] = []
+        if pod_name:
+            proc = self._kube.run_ns(["logs", pod_name, "--tail=300"], check=False)
             if proc.stdout:
                 logs.append(proc.stdout)
+        else:
+            for args in (
+                ["logs", f"deploy/{cfg.qbit_deployment}", "--tail=300"],
+                ["logs", f"deploy/{cfg.qbit_deployment}", "--previous", "--tail=300"],
+            ):
+                proc = self._kube.run_ns(args, check=False)
+                if proc.stdout:
+                    logs.append(proc.stdout)
 
-    last_match = ""
-    for chunk in logs:
-        for line in chunk.splitlines():
-            match = _TEMP_PASSWORD_RE.search(line)
-            if match:
-                candidate = match.group(1).strip().strip("\r")
-                if candidate:
-                    last_match = candidate
-    return last_match
+        last_match = ""
+        for chunk in logs:
+            for line in chunk.splitlines():
+                match = _TEMP_PASSWORD_RE.search(line)
+                if match:
+                    candidate = match.group(1).strip().strip("\r")
+                    if candidate:
+                        last_match = candidate
+        return last_match
+
+    def wait_for_temp_password(
+        self,
+        *,
+        pod_name: str | None,
+        max_wait_seconds: int,
+    ) -> str:
+        waited = 0
+        while waited < max_wait_seconds:
+            found = self.extract_temp_password_from_logs(pod_name)
+            if found:
+                return found
+            time.sleep(3)
+            waited += 3
+        return ""
 
 
-def wait_for_temp_password(
-    kube: KubeClient,
-    cfg: EnsureQbitCredentialsConfig,
-    *,
-    pod_name: str | None,
-    max_wait_seconds: int,
-) -> str:
-    waited = 0
-    while waited < max_wait_seconds:
-        found = extract_temp_password_from_logs(kube, cfg, pod_name)
-        if found:
-            return found
-        time.sleep(3)
-        waited += 3
-    return ""
+class EnsureQbitCredentialsCommand:
+    """CLI entrypoint orchestrator for ``bin/ensure-qbit-credentials.sh``.
 
+    Owns parser construction, env-driven config materialization, and the
+    high-level recovery flow. Constructs a ``QbitCredentialReconciler`` per
+    invocation; no shared module state.
+    """
 
-def run(cfg: EnsureQbitCredentialsConfig) -> int:
-    kube = KubeClient(resolve_kubectl_binary(), cfg.namespace)
+    @classmethod
+    def _truthy(cls, raw: str | None, *, default: bool = False) -> bool:
+        if raw is None:
+            return default
+        return str(raw).strip().lower() in _TRUTHY_TOKENS
 
-    ensure_secret_present(kube, cfg)
+    def _build_parser(self) -> argparse.ArgumentParser:
+        parser = argparse.ArgumentParser(
+            prog="bin/ensure-qbit-credentials.sh",
+            description=(
+                "Ensure qBittorrent credentials are secret-backed and persisted in qB config."
+            ),
+        )
+        return parser
 
-    stack_admin_user = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_USERNAME")
-    stack_admin_pass = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_PASSWORD")
+    def parse_config(self, argv: list[str] | None = None) -> EnsureQbitCredentialsConfig:
+        self._build_parser().parse_args(argv)
 
-    creds = resolve_target_credentials(
-        stack_admin_user=stack_admin_user,
-        stack_admin_pass=stack_admin_pass,
-    )
+        return EnsureQbitCredentialsConfig(
+            namespace=os.environ.get("NAMESPACE", "media-stack").strip() or "media-stack",
+            secret_name=os.environ.get("SECRET_NAME", "media-stack-secrets").strip()
+            or "media-stack-secrets",
+            rollout_timeout=os.environ.get("ROLL_OUT_TIMEOUT", "5m").strip() or "5m",
+            qbit_wait_seconds=max(1, int(os.environ.get("QBIT_WAIT_SECONDS", "120"))),
+            qbit_deployment=os.environ.get("QBIT_DEPLOYMENT", "qbittorrent").strip()
+            or "qbittorrent",
+            qbit_startup_username=str(os.environ.get("QBIT_STARTUP_USERNAME") or "").strip(),
+            force_reset_on_auth_failure=self._truthy(
+                os.environ.get("FORCE_RESET_ON_AUTH_FAILURE", "1"), default=True
+            ),
+            qbit_force_config_sync=self._truthy(
+                os.environ.get("QBIT_FORCE_CONFIG_SYNC", "1"), default=True
+            ),
+            qbit_strict_login_check=self._truthy(
+                os.environ.get("QBIT_STRICT_LOGIN_CHECK", "0"), default=False
+            ),
+            qbit_api_validation=self._truthy(
+                os.environ.get("QBIT_API_VALIDATION", "0"), default=False
+            ),
+        )
 
-    patch_secret(kube, cfg, build_secret_patch(creds))
-    print(
-        f"[OK] Secret {cfg.namespace}/{cfg.secret_name} now has qBittorrent credentials for user '{creds.qb_user}'."
-    )
-    print(
-        f"[INFO] Target qB credentials from secret: username='{creds.qb_user}', password_length={len(creds.qb_pass)}"
-    )
+    def run(self, cfg: EnsureQbitCredentialsConfig) -> int:
+        kube = KubeClient(resolve_kubectl_binary(), cfg.namespace)
+        reconciler = QbitCredentialReconciler(kube, cfg)
 
-    if qbit_login_in_pod(kube, cfg, creds.qb_user, creds.qb_pass):
-        print("[OK] qBittorrent credentials validated from inside the qB pod.")
-        return 0
+        reconciler.ensure_secret_present()
 
-    print("[WARN] In-pod qB credential check failed; continuing with recovery flow.")
+        stack_admin_user = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_USERNAME")
+        stack_admin_pass = kube.get_secret_value(cfg.secret_name, "STACK_ADMIN_PASSWORD")
 
-    temp_pass = wait_for_temp_password(kube, cfg, pod_name=None, max_wait_seconds=30)
-    if temp_pass:
-        if not cfg.qbit_startup_username:
+        creds = reconciler.resolve_target_credentials(
+            stack_admin_user=stack_admin_user,
+            stack_admin_pass=stack_admin_pass,
+        )
+
+        reconciler.patch_secret(reconciler.build_secret_patch(creds))
+        print(
+            f"[OK] Secret {cfg.namespace}/{cfg.secret_name} now has qBittorrent "
+            f"credentials for user '{creds.qb_user}'."
+        )
+        print(
+            f"[INFO] Target qB credentials from secret: username='{creds.qb_user}', "
+            f"password_length={len(creds.qb_pass)}"
+        )
+
+        if reconciler.qbit_login_in_pod(creds.qb_user, creds.qb_pass):
+            print("[OK] qBittorrent credentials validated from inside the qB pod.")
+            return 0
+
+        print("[WARN] In-pod qB credential check failed; continuing with recovery flow.")
+
+        temp_pass = reconciler.wait_for_temp_password(pod_name=None, max_wait_seconds=30)
+        if temp_pass:
+            if not cfg.qbit_startup_username:
+                print(
+                    "[WARN] QBIT_STARTUP_USERNAME is not set; skipping startup-password "
+                    "reconcile path to avoid implicit username fallback.",
+                )
+            elif reconciler.try_inpod_reconcile_with_auth(
+                source_label="temporary startup password",
+                auth_user=cfg.qbit_startup_username,
+                auth_pass=temp_pass,
+                target_user=creds.qb_user,
+                target_pass=creds.qb_pass,
+            ):
+                return 0
+
+        if cfg.force_reset_on_auth_failure:
             print(
-                "[WARN] QBIT_STARTUP_USERNAME is not set; skipping startup-password "
-                "reconcile path to avoid implicit username fallback.",
+                "[WARN] In-pod fallback auth did not work; forcing qB auth reset "
+                "and retrying once."
             )
-        elif try_inpod_reconcile_with_auth(
-            kube,
-            cfg,
-            source_label="temporary startup password",
-            auth_user=cfg.qbit_startup_username,
-            auth_pass=temp_pass,
-            target_user=creds.qb_user,
-            target_pass=creds.qb_pass,
+            if reconciler.force_reset_qbit_auth():
+                temp_pass = reconciler.wait_for_temp_password(
+                    pod_name=None, max_wait_seconds=90
+                )
+                if temp_pass:
+                    if not cfg.qbit_startup_username:
+                        print(
+                            "[WARN] QBIT_STARTUP_USERNAME is not set; skipping "
+                            "reset-password reconcile path to avoid implicit "
+                            "username fallback.",
+                        )
+                    elif reconciler.try_inpod_reconcile_with_auth(
+                        source_label="temporary password after reset",
+                        auth_user=cfg.qbit_startup_username,
+                        auth_pass=temp_pass,
+                        target_user=creds.qb_user,
+                        target_pass=creds.qb_pass,
+                    ):
+                        return 0
+
+        config_sync_done = False
+        if cfg.qbit_force_config_sync:
+            print(
+                "[INFO] qB deterministic credential sync enabled: writing PBKDF2 "
+                "hash to qB config."
+            )
+            reconciler.sync_qbit_auth_config(
+                username=creds.qb_user,
+                pbkdf2_hash=reconciler.generate_qbit_pbkdf2_hash(creds.qb_pass),
+            )
+            config_sync_done = True
+            print("[OK] qBittorrent auth synced in config to match Kubernetes secret.")
+
+        if (
+            config_sync_done
+            and not cfg.qbit_api_validation
+            and not cfg.qbit_strict_login_check
         ):
-            return 0
-
-    if cfg.force_reset_on_auth_failure:
-        print("[WARN] In-pod fallback auth did not work; forcing qB auth reset and retrying once.")
-        if force_reset_qbit_auth(kube, cfg):
-            temp_pass = wait_for_temp_password(kube, cfg, pod_name=None, max_wait_seconds=90)
-            if temp_pass:
-                if not cfg.qbit_startup_username:
-                    print(
-                        "[WARN] QBIT_STARTUP_USERNAME is not set; skipping reset-password "
-                        "reconcile path to avoid implicit username fallback.",
-                    )
-                elif try_inpod_reconcile_with_auth(
-                    kube,
-                    cfg,
-                    source_label="temporary password after reset",
-                    auth_user=cfg.qbit_startup_username,
-                    auth_pass=temp_pass,
-                    target_user=creds.qb_user,
-                    target_pass=creds.qb_pass,
-                ):
-                    return 0
-
-    config_sync_done = False
-    if cfg.qbit_force_config_sync:
-        print("[INFO] qB deterministic credential sync enabled: writing PBKDF2 hash to qB config.")
-        sync_qbit_auth_config(
-            kube,
-            cfg,
-            username=creds.qb_user,
-            pbkdf2_hash=generate_qbit_pbkdf2_hash(creds.qb_pass),
-        )
-        config_sync_done = True
-        print("[OK] qBittorrent auth synced in config to match Kubernetes secret.")
-
-    if config_sync_done and not cfg.qbit_api_validation and not cfg.qbit_strict_login_check:
-        if qbit_login_in_pod(kube, cfg, creds.qb_user, creds.qb_pass):
+            if reconciler.qbit_login_in_pod(creds.qb_user, creds.qb_pass):
+                print(
+                    "[INFO] qB API validation disabled (QBIT_API_VALIDATION=0); "
+                    "relying on deterministic config sync."
+                )
+                print(
+                    "[OK] qBittorrent credentials have been applied from secret "
+                    "via config-as-code."
+                )
+                return 0
             print(
-                "[INFO] qB API validation disabled (QBIT_API_VALIDATION=0); relying on deterministic config sync."
+                "[WARN] Deterministic config sync completed but in-pod login still "
+                "failed; continuing with recovery flow."
             )
-            print("[OK] qBittorrent credentials have been applied from secret via config-as-code.")
+
+        if reconciler.qbit_login_in_pod(creds.qb_user, creds.qb_pass):
+            print("[OK] qBittorrent WebUI credentials reconciled to secret values.")
             return 0
-        print(
-            "[WARN] Deterministic config sync completed but in-pod login still failed; continuing with recovery flow."
-        )
 
-    if qbit_login_in_pod(kube, cfg, creds.qb_user, creds.qb_pass):
-        print("[OK] qBittorrent WebUI credentials reconciled to secret values.")
-        return 0
+        if config_sync_done and not cfg.qbit_strict_login_check:
+            print(
+                "[WARN] qB API validation still failed, but config sync has been applied.",
+                file=sys.stderr,
+            )
+            print(
+                "[WARN] Continuing non-strict mode; downstream bootstrap will verify "
+                "qB connectivity from inside cluster.",
+                file=sys.stderr,
+            )
+            return 0
 
-    if config_sync_done and not cfg.qbit_strict_login_check:
         print(
-            "[WARN] qB API validation still failed, but config sync has been applied.",
+            "[ERR] Could not authenticate to qBittorrent with secret credentials, "
+            "temporary startup password, or forced auth reset.",
             file=sys.stderr,
         )
-        print(
-            "[WARN] Continuing non-strict mode; downstream bootstrap will verify qB connectivity from inside cluster.",
-            file=sys.stderr,
-        )
-        return 0
-
-    print(
-        "[ERR] Could not authenticate to qBittorrent with secret credentials, temporary startup password, or forced auth reset.",
-        file=sys.stderr,
-    )
-    print("[ERR] Manual recovery:", file=sys.stderr)
-    print("      bash bin/reset-qbit-webui-auth.sh", file=sys.stderr)
-    print("      bash bin/set-qbit-secret.sh <USERNAME> <PASSWORD>", file=sys.stderr)
-    return 1
-
-
-def main(argv: list[str] | None = None) -> int:
-    try:
-        cfg = parse_config(argv)
-        return run(cfg)
-    except (ConfigError, MediaStackError, subprocess.SubprocessError, OSError, ValueError) as exc:
-        print(f"[ERR] {exc}", file=sys.stderr)
+        print("[ERR] Manual recovery:", file=sys.stderr)
+        print("      bash bin/reset-qbit-webui-auth.sh", file=sys.stderr)
+        print("      bash bin/set-qbit-secret.sh <USERNAME> <PASSWORD>", file=sys.stderr)
         return 1
+
+    def main(self, argv: list[str] | None = None) -> int:
+        try:
+            cfg = self.parse_config(argv)
+            return self.run(cfg)
+        except (
+            ConfigError,
+            MediaStackError,
+            subprocess.SubprocessError,
+            OSError,
+            ValueError,
+        ) as exc:
+            print(f"[ERR] {exc}", file=sys.stderr)
+            return 1
+
+
+# ---------------------------------------------------------------------------
+# Module-level aliases — preserve the public surface that the file-path-based
+# test loader (``tests/unit/apps/qbittorrent/test_ensure_qbit_credentials_cli``)
+# patches and asserts on. ``parse_config`` / ``main`` are bound methods on a
+# shared command. ``resolve_target_credentials`` / ``build_secret_patch`` are
+# bound methods on a placeholder reconciler — both are pure (they never touch
+# the placeholder's kube client or config), so the inert injected dependencies
+# are intentional. No loose ``def`` introduced.
+# ---------------------------------------------------------------------------
+
+_COMMAND = EnsureQbitCredentialsCommand()
+_PURE_PLACEHOLDER_CFG = EnsureQbitCredentialsConfig(
+    namespace="",
+    secret_name="",
+    rollout_timeout="",
+    qbit_wait_seconds=1,
+    qbit_deployment="",
+    qbit_startup_username="",
+    force_reset_on_auth_failure=False,
+    qbit_force_config_sync=False,
+    qbit_strict_login_check=False,
+    qbit_api_validation=False,
+)
+_PURE_RECONCILER = QbitCredentialReconciler(KubeClient([], ""), _PURE_PLACEHOLDER_CFG)
+
+parse_config = _COMMAND.parse_config
+main = _COMMAND.main
+resolve_target_credentials = _PURE_RECONCILER.resolve_target_credentials
+build_secret_patch = _PURE_RECONCILER.build_secret_patch
 
 
 if __name__ == "__main__":
