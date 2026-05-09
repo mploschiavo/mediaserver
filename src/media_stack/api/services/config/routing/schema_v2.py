@@ -17,6 +17,12 @@ Design notes:
   type errors fall back to defaults. Validation runs separately in
   ``validator.py``. This split lets the UI render half-broken configs
   with field-level errors instead of refusing to load.
+
+Per ADR-0012, the module-level coercion helpers are encapsulated on
+``RoutingSchemaV2Coercer`` (instance methods, no ``@staticmethod``) and
+re-exposed as module-level aliases so both internal dataclass
+``from_dict`` classmethods and the sibling ``migrator.py`` module keep
+working unchanged.
 """
 
 from __future__ import annotations
@@ -92,82 +98,104 @@ class CatchAllAction(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers (encapsulated per ADR-0012)
 # ---------------------------------------------------------------------------
 
 
-def _coerce_enum(enum_cls: type[Enum], value: Any, default: Enum) -> Enum:
-    """Coerce a string/enum to ``enum_cls``; fall back to ``default`` when
-    the value isn't a valid member. Defensive on purpose — schema
-    parsing must not raise on bad data; the validator surfaces issues
-    field-by-field instead."""
-    if isinstance(value, enum_cls):
-        return value
-    if isinstance(value, str):
-        try:
-            return enum_cls(value)
-        except ValueError:
+class RoutingSchemaV2Coercer:
+    """Defensive value-coercion helpers for the v2 routing schema.
+
+    Methods are plain instance methods so subclasses (and tests, if
+    they ever need to) can override them; module-level aliases below
+    preserve the long-standing ``_coerce_*`` import surface used by
+    the sibling ``migrator.py``.
+    """
+
+    def coerce_enum(
+        self, enum_cls: type[Enum], value: Any, default: Enum
+    ) -> Enum:
+        """Coerce a string/enum to ``enum_cls``; fall back to ``default``
+        when the value isn't a valid member. Defensive on purpose —
+        schema parsing must not raise on bad data; the validator
+        surfaces issues field-by-field instead."""
+        if isinstance(value, enum_cls):
+            return value
+        if isinstance(value, str):
+            try:
+                return enum_cls(value)
+            except ValueError:
+                return default
+        return default
+
+    def coerce_str(self, value: Any, default: str = "") -> str:
+        if value is None:
             return default
-    return default
+        return str(value)
 
+    def coerce_int(self, value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
 
-def _coerce_str(value: Any, default: str = "") -> str:
-    if value is None:
+    def coerce_bool(self, value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() in ("true", "1", "yes", "on")
+        if isinstance(value, (int, float)):
+            return bool(value)
         return default
-    return str(value)
 
+    def coerce_str_list(self, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(v) for v in value if v is not None]
 
-def _coerce_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _coerce_bool(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
+    def enum_to_str(self, value: Any) -> Any:
+        """Recursively convert Enum values to their .value for serialisation."""
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, dict):
+            return {k: self.enum_to_str(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.enum_to_str(v) for v in value]
         return value
-    if isinstance(value, str):
-        return value.lower() in ("true", "1", "yes", "on")
-    if isinstance(value, (int, float)):
-        return bool(value)
-    return default
+
+    def dc_to_dict(self, obj: Any) -> dict[str, Any]:
+        """Dataclass → dict, dropping ``None`` for optional sub-dataclasses
+        so YAML stays tidy. Enum values become their string ``.value``."""
+        if not is_dataclass(obj):
+            raise TypeError(
+                f"_dc_to_dict expects a dataclass, got {type(obj).__name__}"
+            )
+        out: dict[str, Any] = {}
+        for f in fields(obj):
+            val = getattr(obj, f.name)
+            if val is None:
+                continue
+            if is_dataclass(val):
+                out[f.name] = self.dc_to_dict(val)
+            elif isinstance(val, list) and val and is_dataclass(val[0]):
+                out[f.name] = [self.dc_to_dict(v) for v in val]
+            else:
+                out[f.name] = self.enum_to_str(val)
+        return out
 
 
-def _coerce_str_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(v) for v in value if v is not None]
+_COERCER = RoutingSchemaV2Coercer()
 
-
-def _enum_to_str(value: Any) -> Any:
-    """Recursively convert Enum values to their .value for serialisation."""
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, dict):
-        return {k: _enum_to_str(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_enum_to_str(v) for v in value]
-    return value
-
-
-def _dc_to_dict(obj: Any) -> dict[str, Any]:
-    """Dataclass → dict, dropping ``None`` for optional sub-dataclasses
-    so YAML stays tidy. Enum values become their string ``.value``."""
-    if not is_dataclass(obj):
-        raise TypeError(f"_dc_to_dict expects a dataclass, got {type(obj).__name__}")
-    out: dict[str, Any] = {}
-    for f in fields(obj):
-        val = getattr(obj, f.name)
-        if val is None:
-            continue
-        if is_dataclass(val):
-            out[f.name] = _dc_to_dict(val)
-        elif isinstance(val, list) and val and is_dataclass(val[0]):
-            out[f.name] = [_dc_to_dict(v) for v in val]
-        else:
-            out[f.name] = _enum_to_str(val)
-    return out
+# Module-level aliases — preserve the long-standing import surface
+# (``from .schema_v2 import _coerce_str`` in ``migrator.py``) and the
+# ergonomics of using these helpers inside the dataclass classmethods
+# below without threading ``_COERCER`` through every call site.
+_coerce_enum = _COERCER.coerce_enum
+_coerce_str = _COERCER.coerce_str
+_coerce_int = _COERCER.coerce_int
+_coerce_bool = _COERCER.coerce_bool
+_coerce_str_list = _COERCER.coerce_str_list
+_enum_to_str = _COERCER.enum_to_str
+_dc_to_dict = _COERCER.dc_to_dict
 
 
 # ---------------------------------------------------------------------------

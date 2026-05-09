@@ -39,8 +39,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
-from pathlib import Path
-from typing import Any
+from typing import ClassVar
 
 from media_stack.adapters.jellyfin.libraries_wiring import (
     JellyfinLibrariesWirer,
@@ -50,6 +49,9 @@ from media_stack.domain.services import (
     Outcome,
     ProbeResult,
     ServiceLifecycle,
+)
+from media_stack.domain.services.jellyfin_lifecycle_api_key_helpers import (
+    JellyfinLifecycleApiKeyHelpers,
 )
 
 
@@ -82,6 +84,15 @@ class JellyfinLifecycle:
     """
 
     service_id: str = "jellyfin"
+
+    # ADR-0012 Phase B — single configured-instance helper shared with
+    # the bazarr/jellyseerr/sabnzbd/*arr family for env/secrets/key
+    # resolution; the Jellyfin subclass adds the SQLite-DB extras.
+    _API_KEY_HELPERS: ClassVar[JellyfinLifecycleApiKeyHelpers] = (
+        JellyfinLifecycleApiKeyHelpers(
+            default_api_key_env=_DEFAULT_API_KEY_ENV,
+        )
+    )
 
     # --- probes -----------------------------------------------------
 
@@ -128,14 +139,17 @@ class JellyfinLifecycle:
         if key:
             return ProbeResult.ok(
                 "api key discoverable",
-                evidence={"key_length": len(key), "source": _classify_source(ctx, key)},
+                evidence={
+                    "key_length": len(key),
+                    "source": self._API_KEY_HELPERS.classify_source(ctx, key),
+                },
                 evaluated_at=ctx.now(),
             )
         return ProbeResult.failed(
             "no api key in env or jellyfin sqlite db",
             evidence={
-                "env_var_checked": _api_key_env(ctx),
-                "db_path": _api_key_db_path(ctx),
+                "env_var_checked": self._API_KEY_HELPERS.api_key_env(ctx),
+                "db_path": self._API_KEY_HELPERS.api_key_db_path(ctx),
             },
             evaluated_at=ctx.now(),
         )
@@ -143,12 +157,14 @@ class JellyfinLifecycle:
     # --- discover ---------------------------------------------------
 
     def discover_api_key(self, ctx: OrchestrationContext) -> str | None:
-        env_var = _api_key_env(ctx)
+        env_var = self._API_KEY_HELPERS.api_key_env(ctx)
         env_value = (ctx.secrets.get(env_var) or os.environ.get(env_var) or "").strip()
         if env_value:
             return env_value
 
-        if not _bool_cfg(ctx.config, "auto_discover_api_key_from_db", True):
+        if not self._API_KEY_HELPERS.bool_cfg(
+            ctx.config, "auto_discover_api_key_from_db", True,
+        ):
             return None
 
         try:
@@ -156,10 +172,10 @@ class JellyfinLifecycle:
                 read_jellyfin_api_key_from_db,
             )
             token, _source = read_jellyfin_api_key_from_db(
-                _config_root(ctx),
+                self._API_KEY_HELPERS.config_root(ctx),
                 dict(ctx.config),
-                coerce_list=_coerce_list,
-                resolve_path=_resolve_path,
+                coerce_list=self._API_KEY_HELPERS.coerce_list,
+                resolve_path=self._API_KEY_HELPERS.resolve_path,
             )
             return token or None
         except Exception as exc:  # noqa: BLE001
@@ -228,7 +244,7 @@ class JellyfinLifecycle:
     def persist_api_key(
         self, key: str, ctx: OrchestrationContext,
     ) -> Outcome[None]:
-        env_var = _api_key_env(ctx)
+        env_var = self._API_KEY_HELPERS.api_key_env(ctx)
         if not key:
             return Outcome.failure(
                 "refusing to persist empty key",
@@ -301,53 +317,14 @@ class JellyfinLifecycle:
         return f"{scheme}://{host}:{port}"
 
 
-# --- module helpers (private) ---------------------------------------
-
-def _api_key_env(ctx: OrchestrationContext) -> str:
-    return (ctx.config.get("api_key_env") or _DEFAULT_API_KEY_ENV).strip()
-
-
-def _api_key_db_path(ctx: OrchestrationContext) -> str:
-    return str(ctx.config.get("api_key_db_path") or "jellyfin/data/jellyfin.db")
-
-
-def _config_root(ctx: OrchestrationContext) -> str:
-    return str(
-        ctx.config.get("config_root")
-        or ctx.extra.get("config_root")
-        or os.environ.get("CONFIG_ROOT")
-        or "",
-    )
-
-
-def _bool_cfg(cfg: dict[str, Any], key: str, default: bool) -> bool:
-    raw = cfg.get(key, default)
-    if isinstance(raw, bool):
-        return raw
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _coerce_list(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return list(value)
-    if value is None:
-        return []
-    return [value]
-
-
-def _resolve_path(config_root: str, db_rel_path: str) -> Path:
-    if not config_root:
-        return Path(db_rel_path)
-    return Path(config_root) / db_rel_path
-
-
-def _classify_source(ctx: OrchestrationContext, key: str) -> str:
-    env_var = _api_key_env(ctx)
-    if (ctx.secrets.get(env_var) or "").strip() == key:
-        return "secrets"
-    if os.environ.get(env_var, "").strip() == key:
-        return "env"
-    return "db"
+# ADR-0012 Phase B — the seven loose module-level helpers
+# (``_api_key_env`` / ``_api_key_db_path`` / ``_config_root`` /
+# ``_bool_cfg`` / ``_coerce_list`` / ``_resolve_path`` /
+# ``_classify_source``) collapsed into the configured-instance
+# ``JellyfinLifecycleApiKeyHelpers`` shared with the bazarr /
+# jellyseerr / sabnzbd / *arr family. Call sites read as
+# ``self._API_KEY_HELPERS.foo(ctx)``; no module-level FunctionDefs
+# remain so the OO-discipline ratchet stays at zero for this file.
 
 
 # Static type-check at import time: a structural mismatch fails here

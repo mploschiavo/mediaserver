@@ -79,7 +79,7 @@ _ALLOWED_VIOLATIONS: frozenset[str] = frozenset({
     "src/media_stack/api/services/content_download_settings_mixin.py:65",
     "src/media_stack/api/services/content_download_settings_mixin.py:157",
     # ---- Servarr callers (use X-Api-Key in follow-up) ----
-    "src/media_stack/adapters/compose/services/edge_http_smoke.py:389",
+    "src/media_stack/adapters/compose/services/edge_http_smoke.py:405",
     # ---- SABnzbd (accepts ?apikey= natively; header variant not
     #      supported by the SAB API, legitimate outlier) ----
     "src/media_stack/api/services/content.py:778",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+import importlib as _importlib
 import json
 import re
 from dataclasses import dataclass
@@ -10,7 +11,9 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib import parse
 
-import importlib as _importlib
+from media_stack.adapters.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
+from media_stack.adapters.compose.services.labels import ComposeLabelService
+from media_stack.adapters.compose.services.spec import ComposeSpecResolver
 from media_stack.core.service_registry.registry import SERVICE_MAP, SERVICES
 
 # Load dashboard constants from the management service's app layer — registry-driven.
@@ -26,9 +29,6 @@ for _svc in SERVICES:
         break
     except (ImportError, AttributeError, ModuleNotFoundError):
         continue
-from media_stack.adapters.compose.services.edge_route_graph import ComposeEdgeRouteGraphService
-from media_stack.adapters.compose.services.labels import ComposeLabelService
-from media_stack.adapters.compose.services.spec import ComposeSpecResolver
 
 _HOST_RULE_RE = re.compile(r"Host\((?P<body>[^)]*)\)", flags=re.IGNORECASE)
 _PATH_PREFIX_RULE_RE = re.compile(r"PathPrefix\((?P<body>[^)]*)\)", flags=re.IGNORECASE)
@@ -46,83 +46,99 @@ _SERVARR_STATUS_RE = re.compile(r"/api/(v\d+)/system/status$")
 _XML_API_KEY_RE = re.compile(r"<ApiKey>([^<]+)</ApiKey>", flags=re.IGNORECASE)
 
 
-def _build_servarr_maps() -> tuple[dict[str, str], dict[str, str]]:
-    """Build servarr API-version and app-name maps from the service registry.
+class EdgeHttpSmoke:
+    """Module-scope helpers for the compose edge HTTP smoke service.
 
-    A service is considered a servarr app when its ``version_path`` matches
-    ``/api/v<N>/system/status``.  Returns ``(api_version_map, app_name_map)``
-    keyed by service id.
+    All methods are plain instance methods. Module-level aliases below
+    expose the legacy underscore-prefixed import API, so callers and
+    pinned-line ratchets do not need to change.
     """
-    api_versions: dict[str, str] = {}
-    app_names: dict[str, str] = {}
-    for svc in SERVICE_MAP.values():
-        m = _SERVARR_STATUS_RE.search(svc.version_path)
-        if not m:
-            continue
-        api_versions[svc.id] = m.group(1)
-        app_names[svc.id] = svc.name
-    return api_versions, app_names
+
+    def build_servarr_maps(self) -> tuple[dict[str, str], dict[str, str]]:
+        """Build servarr API-version and app-name maps from the service registry.
+
+        A service is considered a servarr app when its ``version_path`` matches
+        ``/api/v<N>/system/status``.  Returns ``(api_version_map, app_name_map)``
+        keyed by service id.
+        """
+        api_versions: dict[str, str] = {}
+        app_names: dict[str, str] = {}
+        for svc in SERVICE_MAP.values():
+            m = _SERVARR_STATUS_RE.search(svc.version_path)
+            if not m:
+                continue
+            api_versions[svc.id] = m.group(1)
+            app_names[svc.id] = svc.name
+        return api_versions, app_names
+
+    def extract_backtick_tokens(self, value: str) -> tuple[str, ...]:
+        return tuple(
+            token.strip().lower()
+            for token in _BACKTICK_TOKEN_RE.findall(str(value or ""))
+            if str(token or "").strip()
+        )
+
+    def rule_hosts(self, rule: str) -> tuple[str, ...]:
+        match = _HOST_RULE_RE.search(str(rule or ""))
+        if not match:
+            return ()
+        return self.extract_backtick_tokens(str(match.group("body") or ""))
+
+    def rule_path_prefix(self, rule: str) -> str:
+        match = _PATH_PREFIX_RULE_RE.search(str(rule or ""))
+        if not match:
+            return ""
+        tokens = self.extract_backtick_tokens(str(match.group("body") or ""))
+        if not tokens:
+            return ""
+        value = str(tokens[0] or "").strip()
+        if not value:
+            return ""
+        if not value.startswith("/"):
+            value = f"/{value}"
+        return value
+
+    def normalize_port(self, value: object) -> int:
+        token = str(value or "").strip()
+        if token.startswith(":"):
+            token = token[1:]
+        if not token or not token.isdigit():
+            return 80
+        port = int(token)
+        if port < 1 or port > 65535:
+            return 80
+        return port
+
+    def response_header(self, headers: dict[str, str], key: str) -> str:
+        token = str(key or "").strip().lower()
+        for raw_key, raw_value in headers.items():
+            if str(raw_key or "").strip().lower() == token:
+                return str(raw_value or "")
+        return ""
+
+    def asset_is_optional(self, asset_ref: str) -> bool:
+        path = parse.urlparse(str(asset_ref or "")).path
+        base = str(path or "").rstrip("/").rsplit("/", 1)[-1].strip().lower()
+        if not base:
+            return False
+        return base in _OPTIONAL_ASSET_BASENAMES
+
+
+_HELPERS = EdgeHttpSmoke()
+
+# Module-level aliases preserving the legacy underscore-prefixed API
+# consumed by ``ComposeEdgeHttpSmokeService`` below and any future
+# ``mock.patch`` interceptors.
+_build_servarr_maps = _HELPERS.build_servarr_maps
+_extract_backtick_tokens = _HELPERS.extract_backtick_tokens
+_rule_hosts = _HELPERS.rule_hosts
+_rule_path_prefix = _HELPERS.rule_path_prefix
+_normalize_port = _HELPERS.normalize_port
+_response_header = _HELPERS.response_header
+_asset_is_optional = _HELPERS.asset_is_optional
 
 
 _SERVARR_STATUS_API_VERSION, _SERVARR_APP_NAME = _build_servarr_maps()
-
-
-def _extract_backtick_tokens(value: str) -> tuple[str, ...]:
-    return tuple(
-        token.strip().lower()
-        for token in _BACKTICK_TOKEN_RE.findall(str(value or ""))
-        if str(token or "").strip()
-    )
-
-
-def _rule_hosts(rule: str) -> tuple[str, ...]:
-    match = _HOST_RULE_RE.search(str(rule or ""))
-    if not match:
-        return ()
-    return _extract_backtick_tokens(str(match.group("body") or ""))
-
-
-def _rule_path_prefix(rule: str) -> str:
-    match = _PATH_PREFIX_RULE_RE.search(str(rule or ""))
-    if not match:
-        return ""
-    tokens = _extract_backtick_tokens(str(match.group("body") or ""))
-    if not tokens:
-        return ""
-    value = str(tokens[0] or "").strip()
-    if not value:
-        return ""
-    if not value.startswith("/"):
-        value = f"/{value}"
-    return value
-
-
-def _normalize_port(value: object) -> int:
-    token = str(value or "").strip()
-    if token.startswith(":"):
-        token = token[1:]
-    if not token or not token.isdigit():
-        return 80
-    port = int(token)
-    if port < 1 or port > 65535:
-        return 80
-    return port
-
-
-def _response_header(headers: dict[str, str], key: str) -> str:
-    token = str(key or "").strip().lower()
-    for raw_key, raw_value in headers.items():
-        if str(raw_key or "").strip().lower() == token:
-            return str(raw_value or "")
-    return ""
-
-
-def _asset_is_optional(asset_ref: str) -> bool:
-    path = parse.urlparse(str(asset_ref or "")).path
-    base = str(path or "").rstrip("/").rsplit("/", 1)[-1].strip().lower()
-    if not base:
-        return False
-    return base in _OPTIONAL_ASSET_BASENAMES
 
 
 @dataclass(frozen=True)
