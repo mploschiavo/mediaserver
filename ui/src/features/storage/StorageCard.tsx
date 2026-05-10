@@ -88,14 +88,20 @@ export function StorageCard() {
 
   const role = me.data?.role ?? "";
   const roleSlug = me.data?.role_slug ?? "";
-  // The controller's role gate keys mutating endpoints to
-  // `controller_admin`. Anything else (read_only, viewer, none)
-  // surfaces the buttons as disabled with a tooltip.
+  // Prefer the explicit ``controller_admin`` capability flag from
+  // /api/me (set by the controller based on the role's
+  // ``controller_admin`` field in ``contracts/roles.yaml``). The
+  // role-slug allowlist is the fallback for backwards compatibility
+  // with older controllers that don't surface the flag yet.
+  const controllerAdmin = me.data?.controller_admin === true;
   const isAdmin =
+    controllerAdmin ||
     role === "controller_admin" ||
     role === "admin" ||
+    role === "superadmin" ||
     roleSlug === "controller_admin" ||
-    roleSlug === "admin";
+    roleSlug === "admin" ||
+    roleSlug === "superadmin";
   const readOnly = !!me.data && !isAdmin;
 
   return (

@@ -231,11 +231,31 @@ class IntegrityProbeTests(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_missing_returns_missing(self) -> None:
+        # Create the service dir so the file-missing case (vs the
+        # service-not-deployed case introduced in v1.0.337) is the
+        # one exercised: ``status="missing"`` means "deployed but
+        # hasn't written its config yet (pre-bootstrap)";
+        # ``status="not_deployed"`` means "no service dir at all".
+        self._service_dir("prowlarr")
         svc = ConfigIntegrityService(
             config_root=self.root,
             services=[_svc("prowlarr", cfg="prowlarr/config.xml", fmt="xml")],
         )
         self.assertEqual(svc.check_service("prowlarr").status, "missing")
+
+    def test_not_deployed_returns_not_deployed(self) -> None:
+        # No service dir created — the parent of the config file
+        # doesn't exist, so the service hasn't been deployed on this
+        # platform. Distinguishing this from "missing" prevents the
+        # dashboard from flagging undeployed services (e.g. tautulli
+        # on a stack that didn't ship it) as "broken".
+        svc = ConfigIntegrityService(
+            config_root=self.root,
+            services=[_svc("tautulli", cfg="tautulli/config.ini", fmt="ini")],
+        )
+        result = svc.check_service("tautulli")
+        self.assertEqual(result.status, "not_deployed")
+        self.assertIn("service not deployed", result.reason)
 
     def test_unknown_service_id_returns_unknown(self) -> None:
         svc = ConfigIntegrityService(
@@ -286,9 +306,13 @@ class IntegrityProbeTests(unittest.TestCase):
         )
         self.assertEqual(results["prowlarr"]["status"], "ok")
         self.assertEqual(results["homepage"]["status"], "unknown")
-        # The Authelia config doesn't exist in this fixture's
-        # config_root, so its status is 'missing' — not invalid.
-        self.assertEqual(results["authelia"]["status"], "missing")
+        # The Authelia config dir doesn't exist in this fixture's
+        # config_root, so v1.0.337 reports ``not_deployed`` (parent
+        # dir missing) rather than the pre-v1.0.337 ``missing``
+        # (file missing inside an existing dir). Both reasons remain
+        # distinct because the dashboard's broken-count only counts
+        # the latter.
+        self.assertEqual(results["authelia"]["status"], "not_deployed")
 
 
 if __name__ == "__main__":

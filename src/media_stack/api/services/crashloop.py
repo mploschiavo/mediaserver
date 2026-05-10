@@ -265,6 +265,7 @@ class CrashloopClassifier:
             phase = (pod.status.phase or "") if pod.status else ""
             terminations: list[str] = []
             max_restarts = 0
+            min_running_since: float | None = None
             for cs in (pod.status.container_statuses or []) if pod.status else []:
                 max_restarts = max(max_restarts, int(cs.restart_count or 0))
                 term = (cs.last_state.terminated if cs.last_state else None)
@@ -273,10 +274,49 @@ class CrashloopClassifier:
                 wait = (cs.state.waiting if cs.state else None)
                 if wait and wait.reason in ("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull"):
                     terminations.append(str(wait.reason))
+                # Track the oldest current-container start across
+                # all containers in the pod; if every container has
+                # been Running stably we suppress the "problem" flag.
+                state = getattr(cs, "state", None)
+                running_state = getattr(state, "running", None) if state else None
+                started_at = (
+                    getattr(running_state, "started_at", None)
+                    if running_state else None
+                )
+                if started_at is not None:
+                    try:
+                        ts = float(started_at.timestamp())
+                    except (AttributeError, ValueError, TypeError):
+                        ts = None
+                    if ts is not None:
+                        min_running_since = (
+                            ts if min_running_since is None
+                            else min(min_running_since, ts)
+                        )
+            # Apply the same stability gate the per-service
+            # classifier uses: a Running pod whose current container
+            # has been up for at least _STABILITY_SECONDS is not
+            # "currently a problem" no matter how many historical
+            # restarts it has. Without this gate, the UI's
+            # "Other pods" panel shows every long-lived Deployment
+            # pod (like media-stack-ui) as a "problem" forever.
+            now = time.time()
+            running_stably = bool(
+                phase == "Running"
+                and min_running_since is not None
+                and (now - min_running_since) >= _STABILITY_SECONDS
+            )
             is_problem = (
-                phase in ("Failed",)
-                or max_restarts >= _RESTART_THRESHOLD
-                or any(t in {"CrashLoopBackOff", "OOMKilled", "Error", "ImagePullBackOff", "ErrImagePull"} for t in terminations)
+                not running_stably and (
+                    phase in ("Failed",)
+                    or max_restarts >= _RESTART_THRESHOLD
+                    or any(
+                        t in {
+                            "CrashLoopBackOff", "OOMKilled", "Error",
+                            "ImagePullBackOff", "ErrImagePull",
+                        } for t in terminations
+                    )
+                )
             )
             if not is_problem:
                 continue

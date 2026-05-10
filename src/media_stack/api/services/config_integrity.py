@@ -305,6 +305,24 @@ class ConfigIntegrityService:
                 checked_at=now,
             )
         if not path.exists():
+            # Distinguish "service isn't deployed at all" (parent
+            # config dir doesn't exist — no PVC bound, no compose
+            # container) from "service is deployed but hasn't
+            # written its config yet" (pre-bootstrap). The former
+            # is a false positive for the dashboard's broken-count;
+            # the latter is real signal worth surfacing.
+            if not path.parent.exists():
+                return IntegrityResult(
+                    service_id=probe_id,
+                    status="not_deployed",
+                    file=str(path),
+                    format=fmt,
+                    reason=(
+                        "service not deployed on this platform — "
+                        "config root has no directory for it"
+                    ),
+                    checked_at=now,
+                )
             return IntegrityResult(
                 service_id=probe_id,
                 status="missing",

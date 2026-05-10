@@ -582,19 +582,69 @@ class OpsService:
     def enable_gpu_transcoding(self) -> dict[str, Any]:
         """Auto-configure media server for hardware transcoding based on detected GPU.
 
-        Delegates to the media-server app layer which owns the config parsing
-        and container restart logic.
+        Delegates to the media-server app layer which owns the config
+        parsing + container/pod restart logic. The SERVICES registry
+        lists every supported media-server option
+        (emby/jellyfin/mythtv/plex/jellyseerr) but only one is active
+        on any given deploy. Walk all category=media services, find
+        the first one whose ``check_<id>_gpu`` reports has_gpu=True
+        (the active backend), and dispatch enable_gpu_transcoding
+        through its app-layer gpu module.
         """
         import importlib
-        ms = next((s for s in _SERVICES if s.category == "media"), None)
-        if not ms:
+        media_services = [
+            s for s in _SERVICES
+            if s.category == "media" and s.id != "jellyseerr"
+        ]
+        if not media_services:
             return {"status": "error", "error": "No media server in registry"}
+        # Find a no-op docker client for the probe (in-pod calls
+        # don't have docker; the check_fn's k8s branch fires).
         try:
-            gpu_mod = importlib.import_module(f"media_stack.services.apps.{ms.id}.gpu")
-            _enable = getattr(gpu_mod, "enable_gpu_transcoding")
+            import docker
+            client: Any = docker.from_env()
+        except Exception:  # noqa: BLE001
+            class _NoDockerClient:
+                class containers:
+                    @staticmethod
+                    def get(_name: str) -> Any:
+                        raise RuntimeError("docker unavailable")
+            client = _NoDockerClient()
+        last_error = ""
+        for ms in media_services:
+            try:
+                gpu_mod = importlib.import_module(
+                    f"media_stack.services.apps.{ms.id}.gpu",
+                )
+            except (ImportError, ModuleNotFoundError) as exc:
+                last_error = str(exc)
+                continue
+            check_fn = getattr(gpu_mod, f"check_{ms.id}_gpu", None)
+            if check_fn is None:
+                continue
+            try:
+                info = check_fn(client) or {}
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                continue
+            if not info.get(f"{ms.id}_has_gpu"):
+                continue
+            _enable = getattr(gpu_mod, "enable_gpu_transcoding", None)
+            if _enable is None:
+                return {
+                    "status": "error",
+                    "error": f"{ms.id} gpu module has no enable_gpu_transcoding",
+                }
             return _enable()
-        except (ImportError, AttributeError) as exc:
-            return {"status": "error", "error": f"GPU module not available for {ms.id}: {exc}"}
+        return {
+            "status": "error",
+            "error": (
+                "No active media server has GPU passthrough detected. "
+                "If the workload has nvidia.com/gpu, ensure the matching "
+                "app-layer gpu module is importable. "
+                f"(last probe error: {last_error or 'none'})"
+            ),
+        }
 
     def take_snapshot(self) -> dict[str, Any]:
         """Take a config snapshot now."""

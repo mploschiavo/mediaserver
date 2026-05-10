@@ -30,6 +30,14 @@ export interface MeProfile {
   email?: string;
   role?: string;
   role_slug?: string;
+  role_name?: string;
+  /**
+   * Resolved capability flag — true when the user's role in
+   * ``contracts/roles.yaml`` has ``controller_admin: true``. The
+   * UI gates mutating controls on this rather than guessing from
+   * the slug string.
+   */
+  controller_admin?: boolean;
   avatar_url?: string;
   last_login_at?: string;
   [key: string]: unknown;

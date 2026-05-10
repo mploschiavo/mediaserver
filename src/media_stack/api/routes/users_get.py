@@ -297,12 +297,25 @@ class _MeRecordBuilder:
     injected ``ForcedRotationGate`` because it's a UI-only gate —
     flipping the env knob suppresses it without rebuilding the
     user record on disk.
+
+    Also surfaces the resolved role's ``controller_admin`` capability
+    flag so the UI can gate mutating controls without having to know
+    the slug naming convention (``superadmin`` / ``family_admin`` /
+    operator-defined slugs — see ``contracts/roles.yaml``). Without
+    this, the UI's "is admin" check used to compare against hard-
+    coded strings (``"admin"`` / ``"controller_admin"``) and the
+    actual default admin slug (``"superadmin"``) didn't match,
+    leaving every mutating button greyed out for the real admin.
     """
 
     def __init__(
-        self, *, rotation_gate: ForcedRotationGate | None = None,
+        self,
+        *,
+        rotation_gate: ForcedRotationGate | None = None,
+        role_lookup: Callable[[str], dict[str, Any] | None] | None = None,
     ) -> None:
         self._rotation_gate = rotation_gate or ForcedRotationGate()
+        self._role_lookup = role_lookup
 
     def build(
         self,
@@ -318,18 +331,39 @@ class _MeRecordBuilder:
             if u.get("username", "").lower() != username.lower():
                 continue
             source = str(u.get("source", "") or "")
+            role_slug = str(u.get("role_slug") or "")
+            role_record = self._resolve_role(role_slug)
             detail.update({
                 "id": u["id"],
                 "email": u["email"],
                 "display_name": u["display_name"],
-                "role_slug": u["role_slug"],
+                "role_slug": role_slug,
                 "last_login_at": u.get("last_login_at", ""),
                 "source": source,
                 "needs_rotation":
                     self._rotation_gate.needs_rotation_for(source),
+                # Capability flags resolved from the role catalog.
+                # The UI reads these directly so it doesn't have to
+                # know slug strings; surfacing the flag explicitly
+                # also makes the "does this user see admin
+                # controls?" decision audit-friendly.
+                "controller_admin": bool(
+                    role_record.get("controller_admin")
+                    if role_record else False
+                ),
+                "role_name": str(role_record.get("name") or "")
+                    if role_record else "",
             })
             break
         return detail
+
+    def _resolve_role(self, slug: str) -> dict[str, Any] | None:
+        if not slug or self._role_lookup is None:
+            return None
+        try:
+            return self._role_lookup(slug)
+        except Exception:  # noqa: BLE001 — role lookup must not fail /api/me
+            return None
 
 
 class LoginHistoryRateLimitAdapter:
@@ -404,7 +438,19 @@ class UsersGetRoutes(RouteModule):
         self._identity_resolver = (
             identity_resolver or MeIdentityResolver()
         )
-        self._me_builder = me_record_builder or _MeRecordBuilder()
+        # Inject a role lookup callable so /api/me can surface the
+        # role's ``controller_admin`` capability flag — the UI gates
+        # mutating controls on this rather than guessing from the
+        # slug string.
+        def _role_lookup(slug: str) -> dict[str, Any] | None:
+            try:
+                svc = _user_service_factory_module.build_default_service()
+                return svc.get_role(slug) if svc else None
+            except Exception:  # noqa: BLE001
+                return None
+        self._me_builder = me_record_builder or _MeRecordBuilder(
+            role_lookup=_role_lookup,
+        )
         self._login_history_limiter = (
             login_history_limiter or LoginHistoryRateLimitAdapter()
         )
