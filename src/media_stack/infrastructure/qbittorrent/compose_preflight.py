@@ -238,6 +238,23 @@ class QbittorrentComposePreflight:
         info: InfoFn,
         **_: object,
     ) -> dict[str, str]:
+        """Compose-deploy preflight shim — delegates to the lifecycle.
+
+        ADR-0013 Phase 3b: the rotation body that used to live here
+        moved to ``adapters.qbittorrent.lifecycle.QbittorrentLifecycle.
+        ensure_credentials`` so the orchestrator's reconcile loop can
+        run it idempotently. This method now does only the deploy-time
+        bookkeeping (writing STACK_ADMIN_* defaults into the compose
+        env file) and dispatches the actual rotation through the
+        lifecycle path with a real ``OrchestrationContext``.
+
+        Phase 3 made the rotation work; Phase 3b makes the deploy
+        path stop bypassing the framework. The legacy callers
+        (``deploy_stack_main``'s preflight loop) keep working without
+        change — they call this function, this function calls the
+        lifecycle, and the orchestrator's later reconcile ticks reuse
+        the same code path. One body, two entry points.
+        """
         resolved_namespace = _text(namespace) or "media-stack"
         stack_username = _text(compose_env.get("STACK_ADMIN_USERNAME")) or "admin"
         stack_password = _text(compose_env.get("STACK_ADMIN_PASSWORD")) or resolved_namespace
@@ -252,76 +269,75 @@ class QbittorrentComposePreflight:
                 updates["STACK_ADMIN_PASSWORD"] = stack_password
             _upsert_env_file(Path(compose_env_file), updates)
 
+        # Resolve the qBittorrent compose container and wrap it as a
+        # ContainerAccess so the lifecycle method can do its rotation.
+        # If the container isn't running yet (compose ``up`` hasn't
+        # progressed past it), skip — the orchestrator will pick the
+        # work up on its first post-up reconcile tick.
         container = docker.get_container("qbittorrent")
         if container is None:
             info(
                 "Compose torrent-client preflight: container 'qbittorrent' not found; "
-                "skipping credential sync."
+                "skipping credential sync (orchestrator will run the contract job "
+                "qbittorrent:ensure-credentials once compose `up` completes)."
             )
             return {
                 "STACK_ADMIN_USERNAME": stack_username,
                 "STACK_ADMIN_PASSWORD": stack_password,
             }
 
-        if _wait_for_login(container, stack_username, stack_password, timeout_seconds=30):
-            info(
-                "Compose torrent-client preflight: stack-admin credentials already valid "
-                "for qBittorrent."
-            )
-            return {
-                "STACK_ADMIN_USERNAME": stack_username,
-                "STACK_ADMIN_PASSWORD": stack_password,
-            }
-
-        startup_password = _read_temporary_password(container, timeout_seconds=20)
-        startup_username = _text(compose_env.get("QBIT_STARTUP_USERNAME")) or "admin"
-        if not startup_password:
-            if not _reset_auth_config_in_container(container):
-                raise RuntimeError(
-                    "Compose torrent-client preflight could not reset qBittorrent WebUI "
-                    "auth configuration."
-                )
-            if not _restart_container(container):
-                raise RuntimeError(
-                    "Compose torrent-client preflight failed to restart qBittorrent after "
-                    "auth reset."
-                )
-            startup_password = _read_temporary_password(container, timeout_seconds=60)
-            if not startup_password:
-                raise RuntimeError(
-                    "Compose torrent-client preflight could not resolve qBittorrent "
-                    "temporary password after auth reset. Ensure qBittorrent startup logs "
-                    "are available."
-                )
-            info(
-                "Compose torrent-client preflight: regenerated temporary qBittorrent "
-                "startup credentials via auth reset."
-            )
-        if not _set_credentials_with_container(
-            container,
-            auth_user=startup_username,
-            auth_pass=startup_password,
-            target_user=stack_username,
-            target_pass=stack_password,
-        ):
-            raise RuntimeError(
-                "Compose torrent-client preflight could not authenticate with qBittorrent "
-                "startup credentials."
-            )
-        if not _wait_for_login(container, stack_username, stack_password):
-            raise RuntimeError(
-                "Compose torrent-client preflight updated qBittorrent credentials but "
-                "verification with stack-admin credentials failed."
-            )
-
-        info(
-            "Compose torrent-client preflight: synchronized qBittorrent WebUI credentials "
-            "to stack-admin credentials."
+        from media_stack.adapters.qbittorrent.lifecycle import (
+            QbittorrentLifecycle,
         )
-        return {
-            "STACK_ADMIN_USERNAME": stack_username,
-            "STACK_ADMIN_PASSWORD": stack_password,
-        }
+        from media_stack.domain.services import OrchestrationContext
+        from media_stack.infrastructure.platforms.compose.container_access import (
+            ComposeContainerAccess,
+        )
+
+        lifecycle = QbittorrentLifecycle()
+        outcome = lifecycle.ensure_credentials(
+            OrchestrationContext(
+                service_id="qbittorrent",
+                config={
+                    "host": "qbittorrent",
+                    "port": 8080,
+                    "scheme": "http",
+                    "login_path": "/api/v2/auth/login",
+                },
+                secrets={
+                    "STACK_ADMIN_USERNAME": stack_username,
+                    "STACK_ADMIN_PASSWORD": stack_password,
+                },
+                extra={
+                    "container_access": ComposeContainerAccess(container),
+                },
+            ),
+        )
+        if outcome.ok:
+            if (outcome.evidence or {}).get("rotated"):
+                info(
+                    "Compose torrent-client preflight: rotated qBittorrent WebUI "
+                    "credentials to stack-admin (via lifecycle)."
+                )
+            else:
+                info(
+                    "Compose torrent-client preflight: stack-admin credentials "
+                    "already valid for qBittorrent."
+                )
+            return {
+                "STACK_ADMIN_USERNAME": stack_username,
+                "STACK_ADMIN_PASSWORD": stack_password,
+            }
+        # Lifecycle returned failure. Translate to the legacy
+        # RuntimeError shape so existing deploy callers see the same
+        # error contract; embed the lifecycle's evidence so operators
+        # can trace which rotation phase failed.
+        evidence = dict(outcome.evidence or {})
+        phase = evidence.get("phase") or evidence.get("rotation_reason") or "verify"
+        raise RuntimeError(
+            f"Compose torrent-client preflight failed at {phase}: "
+            f"{outcome.error or 'unknown error'}"
+        )
 
 
 _instance = QbittorrentComposePreflight()
