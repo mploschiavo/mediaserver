@@ -90,12 +90,19 @@ class JellyfinGpu:
     def _check_k8s_gpu(self) -> dict[str, Any] | None:
         """Probe the jellyfin Deployment in k8s for GPU resources.
 
-        Uses ``kubectl get deploy/jellyfin -o json`` against the
-        env-configured ``K8S_NAMESPACE`` (defaults to ``media-stack``).
+        Reads the Deployment via the ``kubernetes`` Python client
+        (in-pod ``load_incluster_config`` first, then out-of-cluster
+        ``load_kube_config`` for local-dev runs). The earlier
+        revision shelled to ``kubectl``, which doesn't work inside
+        the controller pod — that image carries Python but no kubectl
+        binary. The Python client uses the pod's mounted service-
+        account token (``/var/run/secrets/kubernetes.io/serviceaccount/``)
+        so no extra wiring is needed.
+
         Returns ``{has_gpu: bool, evidence: {...}}`` on success, or
-        ``None`` when k8s isn't reachable / kubectl isn't available
-        (so the caller treats k8s as "not the active platform" and
-        leaves ``jellyfin_platform=none``).
+        ``None`` when k8s isn't reachable / the kubernetes library
+        isn't installed (caller treats that as "not the active
+        platform" and leaves ``jellyfin_platform=none``).
 
         ``has_gpu`` is True when the Deployment carries the GPU
         operator's signature: ``nvidia.com/gpu`` in resource limits
@@ -103,43 +110,38 @@ class JellyfinGpu:
         independently sufficient — the overlay sets both, but
         operators applying a custom patch may set only one.
         """
-        import json
-        import shutil
-        import subprocess
         try:
-            from media_stack.core.cli_common import kube_cmd
-            tokens = list(kube_cmd())
-        except Exception:  # noqa: BLE001
+            from kubernetes import client as k8s_client, config as k8s_config
+        except ImportError:
             return None
-        if not tokens or not shutil.which(tokens[0]):
-            return None
-        namespace = (os.environ.get("K8S_NAMESPACE", "") or "media-stack").strip()
         try:
-            proc = subprocess.run(
-                [*tokens, "-n", namespace, "get", "deploy/jellyfin",
-                 "-o", "json"],
-                check=False, capture_output=True, text=True, timeout=10,
+            k8s_config.load_incluster_config()
+        except Exception:  # noqa: BLE001 — KubeConfigException + transients
+            try:
+                k8s_config.load_kube_config()
+            except Exception:  # noqa: BLE001
+                return None
+        namespace = (
+            os.environ.get("K8S_NAMESPACE", "") or "media-stack"
+        ).strip()
+        try:
+            apps = k8s_client.AppsV1Api()
+            deployment = apps.read_namespaced_deployment(
+                name="jellyfin", namespace=namespace,
             )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        if proc.returncode != 0:
-            return None
-        try:
-            spec = json.loads(proc.stdout)
-        except (ValueError, TypeError):
+        except Exception:  # noqa: BLE001 — kubernetes.client.ApiException + transients
             return None
         evidence: dict[str, Any] = {"namespace": namespace}
         has_gpu = False
         try:
-            pod_spec = (
-                spec.get("spec", {}).get("template", {}).get("spec", {})
-            )
-            runtime_class = pod_spec.get("runtimeClassName") or ""
+            pod_spec = deployment.spec.template.spec
+            runtime_class = pod_spec.runtime_class_name or ""
             evidence["runtime_class"] = runtime_class
             if str(runtime_class).lower() == "nvidia":
                 has_gpu = True
-            for container in pod_spec.get("containers", []):
-                limits = (container.get("resources") or {}).get("limits") or {}
+            for container in (pod_spec.containers or []):
+                resources = container.resources
+                limits = (resources.limits or {}) if resources else {}
                 # ``nvidia.com/gpu`` is the canonical resource name
                 # advertised by the GPU operator's device-plugin.
                 # ``amd.com/gpu`` is the AMD ROCm equivalent — we
@@ -156,7 +158,7 @@ class JellyfinGpu:
                         if limits.get("nvidia.com/gpu")
                         else "amd"
                     )
-        except (TypeError, KeyError):
+        except (AttributeError, TypeError, KeyError):
             pass
         evidence["has_gpu"] = has_gpu
         return {"has_gpu": has_gpu, "evidence": evidence}
@@ -344,56 +346,92 @@ class JellyfinGpu:
             )
 
     def _restart_jellyfin_k8s(self) -> tuple[str, bool]:
-        import shutil
-        import subprocess
+        """Restart the Jellyfin Deployment via the kubernetes API.
+
+        Same Python-client path as ``_check_k8s_gpu`` (works from
+        inside the controller pod without kubectl). Triggers a
+        rolling restart by patching the Deployment with a
+        ``kubectl.kubernetes.io/restartedAt`` annotation on the pod
+        template — that's what ``kubectl rollout restart`` does under
+        the hood. Then polls the Deployment status until the new
+        ReplicaSet's ``readyReplicas`` matches ``replicas`` or 60s
+        elapses.
+        """
         try:
-            from media_stack.core.cli_common import kube_cmd
-            tokens = list(kube_cmd())
+            from kubernetes import client as k8s_client, config as k8s_config
+        except ImportError:
+            return (
+                "Restart Jellyfin manually (kubernetes library not installed).",
+                False,
+            )
+        try:
+            k8s_config.load_incluster_config()
         except Exception:  # noqa: BLE001
-            return (
-                "Restart Jellyfin manually (kubectl unreachable).",
-                False,
-            )
-        if not tokens or not shutil.which(tokens[0]):
-            return (
-                "Restart Jellyfin manually (kubectl not on PATH).",
-                False,
-            )
+            try:
+                k8s_config.load_kube_config()
+            except Exception:  # noqa: BLE001
+                return (
+                    "Restart Jellyfin manually (no k8s config).",
+                    False,
+                )
         namespace = (
             os.environ.get("K8S_NAMESPACE", "") or "media-stack"
         ).strip()
+        apps = k8s_client.AppsV1Api()
+        import datetime
+        restarted_at = (
+            datetime.datetime.now(datetime.timezone.utc)
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+        patch = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "kubectl.kubernetes.io/restartedAt": restarted_at,
+                        },
+                    },
+                },
+            },
+        }
         try:
-            restart_proc = subprocess.run(
-                [*tokens, "-n", namespace, "rollout", "restart",
-                 "deploy/jellyfin"],
-                check=False, capture_output=True, text=True, timeout=15,
+            apps.patch_namespaced_deployment(
+                name="jellyfin", namespace=namespace, body=patch,
             )
-        except (OSError, subprocess.SubprocessError):
+        except Exception as exc:  # noqa: BLE001 — ApiException + transients
             return (
-                "Restart Jellyfin manually (kubectl rollout failed).",
-                False,
-            )
-        if restart_proc.returncode != 0:
-            return (
-                f"kubectl rollout restart failed: "
-                f"{(restart_proc.stderr or '').strip()[:120]}",
+                f"k8s patch (restartedAt) failed: {exc}",
                 True,
             )
-        try:
-            status_proc = subprocess.run(
-                [*tokens, "-n", namespace, "rollout", "status",
-                 "deploy/jellyfin", "--timeout=60s"],
-                check=False, capture_output=True, text=True, timeout=70,
+        # Poll rollout — wait up to 60s for the new ReplicaSet's
+        # readyReplicas to catch up.
+        deadline = time.time() + 60
+        last_status = ""
+        while time.time() < deadline:
+            time.sleep(2)
+            try:
+                deployment = apps.read_namespaced_deployment(
+                    name="jellyfin", namespace=namespace,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            status = deployment.status
+            ready = int(status.ready_replicas or 0)
+            desired = int(deployment.spec.replicas or 1)
+            updated = int(status.updated_replicas or 0)
+            last_status = (
+                f"ready={ready}/{desired} updated={updated} "
+                f"observed_gen={status.observed_generation}"
             )
-        except (OSError, subprocess.SubprocessError):
-            return ("Jellyfin restart triggered (status pending).", False)
-        if status_proc.returncode != 0:
-            return (
-                f"Jellyfin failed to roll out: "
-                f"{(status_proc.stderr or status_proc.stdout or '').strip()[:120]}",
-                True,
-            )
-        return ("Jellyfin restarted via kubectl rollout.", False)
+            if ready == desired and updated == desired:
+                return (
+                    f"Jellyfin restarted via k8s rollout ({last_status}).",
+                    False,
+                )
+        return (
+            f"Jellyfin restart timed out (last status: {last_status}).",
+            True,
+        )
 
 
 _instance = JellyfinGpu()

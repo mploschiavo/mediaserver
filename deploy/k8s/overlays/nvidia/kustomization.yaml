@@ -51,8 +51,34 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# Apply on top of an already-applied profile (the base + apps + controller
-# manifests must exist first). This overlay is patches-only.
+# Two ways to apply this overlay:
+#
+# 1) ``kubectl patch`` directly (the simplest, recommended for ad-hoc):
+#
+#      kubectl patch -n media-stack deployment/jellyfin \\
+#        --type strategic \\
+#        --patch-file deploy/k8s/overlays/nvidia/jellyfin-gpu-patch.yaml
+#
+# 2) Fold the overlay into your profile permanently by adding this
+#    block to your profile's ``kustomization.yaml`` (e.g.
+#    ``deploy/k8s/profiles/standard/kustomization.yaml``):
+#
+#      patches:
+#        - target:
+#            kind: Deployment
+#            name: jellyfin
+#          path: ../../overlays/nvidia/jellyfin-gpu-patch.yaml
+#
+#    Then ``kubectl apply -k deploy/k8s/profiles/standard`` renders
+#    a full Jellyfin Deployment with the GPU resources merged in.
+#
+# We deliberately do NOT make this overlay a standalone
+# ``kubectl apply -k`` target because Kustomize's ``patches``
+# directive requires the patched resource to also appear under
+# ``resources:`` in the same build, and listing the base manifest
+# via a relative ``../..`` path is rejected by Kustomize's default
+# load restrictor for security. The two paths above are both
+# friction-light without disabling that protection.
 patches:
   - target:
       group: apps
