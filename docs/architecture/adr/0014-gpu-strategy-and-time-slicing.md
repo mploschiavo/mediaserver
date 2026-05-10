@@ -233,10 +233,56 @@ justify replacement (not all at once — each row is independent):
 |----------------------------------------------------------------------------|--------------------------|----------------------------------------------------------------------------------------------------------------|
 | Routinely >10 simultaneous transcoded streams                              | **Tesla T4** (16 GB)     | 2× VRAM, 7th-gen NVENC with better tone-mapping; same TDP envelope                                             |
 | HDR → SDR tone-mapping is sluggish (>3–4 streams)                          | T4 or A2                 | Turing's NVENC handles tone-map better than Pascal                                                             |
-| Need AV1 *encode* (re-encoding library to save space, AV1-preferred clients) | **L4** (24 GB)         | First Ada-Lovelace card with NVENC AV1 encode. Pricey ($2.5k+).                                                |
+| Need AV1 *encode* (re-encoding library to save space, AV1-preferred clients) | **L4** (24 GB) or RTX 4060 Ti 16 GB | First Ada-Lovelace cards with NVENC AV1 encode. L4 is ~$2.5k+; 4060 Ti is the consumer equivalent at ~$450 new with display outputs + active cooling. |
 | Adding 7B LLM alongside Jellyfin on 8 GB                                   | T4 (16 GB) or A2 (16 GB) | LLM needs ~5 GB, Jellyfin transcoding ~500 MB. 8 GB is too tight.                                              |
-| Adding 13B+ LLM                                                            | RTX A4000 or 4060 Ti 16  | Need 16+ GB and more CUDA cores than P4.                                                                       |
-| Multiple GPU consumers, want isolation                                     | Second card (any)        | True isolation only with separate hardware. Time-slicing isn't a substitute when VRAM contention is real.      |
+| Adding 13B+ LLM (sustained inference)                                      | **A10** (24 GB) or RTX A4000 (16 GB) or 4060 Ti 16 GB | A10 is the datacenter sweet spot for 13B/34B INT4 alongside transcoding — 24 GB + Ampere CUDA cores. A4000/4060 Ti are the consumer alternatives at ⅓ the price. **See A10 caveats below.** |
+| Adding heavy mixed AI workload (image gen + LLM + STT)                     | A10 or L4                | 24 GB on one card. A10 has more raw CUDA; L4 has Ada-gen NVENC (AV1) + half the TDP. |
+| Multiple GPU consumers, want HARDWARE isolation (not time-slice)           | A30 (Ampere, MIG-capable) or A100 | True per-workload VRAM/compute partitioning. Time-slicing isn't a substitute when VRAM contention is real.     |
+| Multiple GPU consumers, "good enough" isolation OK                         | Second card (any)        | Two separate cards = two separate failure domains, no shared-memory OOM risk.                                  |
+
+### A10 caveats — why it's not the default 24 GB pick
+
+The NVIDIA A10 (Ampere, 24 GB, ~$1500–2500 used) sits between the
+T4 / A2 tier and the L4 tier. The price gap from T4 → A10 is large
+(~$1000); the gap from A10 → L4 is moderate (~$500–1000). What you
+get for the A10 premium:
+
+* **Yes:** 24 GB VRAM (vs 16 GB on T4/A2), enough for a 13B INT4
+  LLM alongside Jellyfin.
+* **Yes:** ~2× CUDA core count → meaningfully faster inference
+  vs T4 for LLMs / Stable Diffusion / Whisper-large.
+* **No:** Same 7th-gen NVENC/NVDEC as T4 (Turing-gen encoder
+  silicon). **No AV1 encode** (Ampere predates AV1 NVENC).
+* **No:** No MIG (that's A30 / A100 only).
+
+What the A10 is *worse* at than the alternatives:
+
+* **150 W TDP, passive cooling.** Designed for datacenter chassis
+  with high-pressure forced air. In a typical home tower or a
+  2U/4U server with stock fans, it WILL thermal-throttle or
+  shut down. P4 is 75 W and forgiving; A10 is not. Plan for a
+  3D-printed shroud + ducted fan if you're not in a rack.
+* **No AV1 encode.** Paying ~$1500+ in 2026 and getting a
+  pre-AV1 encoder is a forward-proofing miss. L4 ($2500+) or
+  RTX 4060 Ti 16 GB ($450 new) close that gap.
+
+**A10 makes sense only if** (a) you're running 13B+ LLMs on the
+regular alongside transcoding, (b) you have datacenter-class
+airflow available, (c) you explicitly don't care about AV1
+encode, (d) used pricing is closer to $1500 than $2500. The
+"otherwise" picks for the same workload class are:
+
+* RTX 4060 Ti 16 GB ($450 new) — half the VRAM, AV1 encode, active
+  cooling. Best home-lab default if you can do without the 8 GB
+  delta and want display outputs.
+* RTX A4000 16 GB ($700 used) — workstation card, single-slot,
+  140 W active cooling. Best "datacenter-style without the
+  airflow requirement" pick.
+* NVIDIA L4 ($2500+) — Ada-gen NVENC (AV1 encode), 24 GB, 72 W
+  passive. Best "if I'm spending this much anyway" pick.
+
+The order-of-preference for 24 GB in a home lab is L4 (if budget) >
+A4000 (if quiet) > A10 (if you've got rack airflow and a deal).
 
 **Two P4s vs one T4:** two P4s cost ~$200 used, give you 2 × 8 GB
 isolated and ~30 concurrent transcodes worth of capacity. One T4
