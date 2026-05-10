@@ -40,14 +40,16 @@ import { RunGanttChart } from "./RunGanttChart";
  *   * Child-runs list — clickable to drill into sub-run records
  *   * Deep-link to the Logs page filtered to this run's window
  *
- * Polling is at 2s while the run is in flight, 30s after it
- * settles. The 2s tail keeps the running indicator + elapsed
- * counter feeling live without hammering the controller.
+ * Polling cadence is adaptive: 5s while a run is in-flight (the
+ * SSE ``job.completed`` event also invalidates this cache so the
+ * settled state appears within ~1s of the actual finish), 30s
+ * once settled. The previous unconditional 2s poll hammered the
+ * controller for every mounted instance of this panel.
  */
 export function LastRunPanel({ jobName }: { jobName: string }) {
-  const latest = useLatestRunForJob(jobName, {
-    refetchInterval: 2_000,
-  });
+  // Adaptive polling is now the hook's default (5s in-flight,
+  // 30s settled) — no override needed here.
+  const latest = useLatestRunForJob(jobName);
 
   if (latest.isLoading) {
     return (

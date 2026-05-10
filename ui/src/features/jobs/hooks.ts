@@ -150,7 +150,11 @@ export function useJobs(): UseQueryResult<JobsResponse> {
         count: typeof raw.count === "number" ? raw.count : undefined,
       };
     },
-    refetchInterval: 5_000,
+    // 5s was too aggressive — the SSE ``job.started`` /
+    // ``job.completed`` invalidates this cache anyway, so the poll
+    // is the fallback for when SSE is degraded. 15s keeps the
+    // Jobs page feeling live without 12 requests/minute per tab.
+    refetchInterval: 15_000,
   });
 }
 
@@ -233,7 +237,12 @@ export function useJobsRunning(): UseQueryResult<JobsRunningResponse> {
   return useQuery<JobsRunningResponse>({
     queryKey: ["jobs", "running"],
     queryFn: () => fetcher<JobsRunningResponse>("api/jobs/running"),
-    refetchInterval: 5_000,
+    // Adaptive — fast poll only when something IS running. Idle
+    // pages no longer hit ``/api/jobs/running`` every 5 seconds.
+    refetchInterval: (q) => {
+      const running = (q.state.data?.running ?? []) as readonly unknown[];
+      return running.length > 0 ? 5_000 : 30_000;
+    },
     staleTime: 1_000,
     retry: false,
   });
@@ -534,7 +543,15 @@ export function useLatestRunForJob(
       }
     },
     enabled: Boolean(jobName),
-    refetchInterval: opts?.refetchInterval ?? 5_000,
+    // Adaptive default: poll fast (5s) only while a run is
+    // in-flight, otherwise 30s. Callers can still override with an
+    // explicit number/false via opts. The previous unconditional
+    // 5s caused noticeable UI churn when many LastRunPanel
+    // instances mounted on the Jobs page.
+    refetchInterval: opts?.refetchInterval ?? ((q) => {
+      const status = q.state.data?.status;
+      return status === "running" || status === "queued" ? 5_000 : 30_000;
+    }),
     retry: false,
   });
 }

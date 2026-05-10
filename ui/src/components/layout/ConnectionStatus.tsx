@@ -43,8 +43,12 @@ export function ConnectionStatus(): JSX.Element {
   const query = useQuery({
     queryKey: ["healthz"],
     queryFn: pingHealthz,
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: true,
+    refetchInterval: 15_000,
+    // Don't burn cycles polling when the tab is hidden; the next
+    // foreground tick will refresh on its own. The previous
+    // ``refetchIntervalInBackground: true`` was contributing to
+    // browser-tab lag with many media-stack tabs open.
+    refetchIntervalInBackground: false,
     retry: false,
     staleTime: 0,
   });
@@ -53,12 +57,14 @@ export function ConnectionStatus(): JSX.Element {
     lastSuccessRef.current = query.data;
   }
 
-  // Tick once a second so age-based status (degraded/dead) updates
-  // even without a fresh poll. We only rerender for the tooltip to
-  // stay accurate; the dot color still derives from these tracks.
+  // Tick every 5s so the tooltip's age-based label stays roughly
+  // truthful between polls. The previous 1Hz ticker was the
+  // layout's most aggressive re-render trigger (every page hosts
+  // this header), contributing to perceptible UI lag with many
+  // panels mounted.
   const [, setTick] = useState(0);
   useEffect(() => {
-    const handle = window.setInterval(() => setTick((n) => n + 1), 1_000);
+    const handle = window.setInterval(() => setTick((n) => n + 1), 5_000);
     return () => window.clearInterval(handle);
   }, []);
 
