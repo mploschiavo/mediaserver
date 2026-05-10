@@ -11,6 +11,19 @@ metadata:
   name: jellyfin
   namespace: media-stack
 spec:
+  # Single-GPU clusters can't run both old + new pods during a
+  # RollingUpdate (the default maxSurge=1 schedules a second pod
+  # before killing the first, but ``nvidia.com/gpu: 1`` × two pods
+  # exceeds available GPU capacity → new pod stays Pending forever).
+  # Switch to Recreate so the old pod is killed first, the GPU
+  # frees up, then the new pod schedules. ~30s of Jellyfin downtime
+  # during rollouts — acceptable trade-off for a media server.
+  strategy:
+    type: Recreate
+    # Recreate strategy disallows rollingUpdate fields; explicitly
+    # null them so kustomize's strategic merge doesn't inherit the
+    # base's rolling defaults and trigger an API validation error.
+    rollingUpdate: null
   template:
     spec:
       # The GPU operator installs this RuntimeClass at install time. If
