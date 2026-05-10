@@ -11,7 +11,7 @@ If you don't already have a preference, start with [Compose](#docker-compose-dep
 
 ## Profiles
 
-Both platforms share the same set of profiles (manifests live in `k8s/profiles/*` for Kubernetes and `examples/bootstrap-profiles/` for both):
+Both platforms share the same set of profiles (manifests live in `deploy/k8s/profiles/*` for Kubernetes and `examples/bootstrap-profiles/` for both):
 
 | Profile | Includes |
 |---|---|
@@ -21,11 +21,15 @@ Both platforms share the same set of profiles (manifests live in `k8s/profiles/*
 | `public-demo` | Demo-safe defaults; reduced downloader automation |
 | `power-user` | Full + TLS + additional operational guardrails |
 
-The bootstrap profile (`contracts/media-stack.profile.yaml`) declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults. Validate with:
+The bootstrap profile (`contracts/media-stack.profile.yaml`) declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults. Validate with the cross-platform CLI (Windows / macOS / Linux):
 
 ```bash
-bash bin/validate-bootstrap-profile.sh
+.venv/bin/python -m media_stack.cli.commands.validate_controller_profile_main
 ```
+
+Linux convenience wrapper: `bash bin/utils/validate-bootstrap-profile.sh` (6-line wrapper around the Python module above).
+
+> **Cross-platform vs. Linux-only paths.** This guide leads with `docker compose`, `kubectl`, and `python -m media_stack.cli.commands.*` invocations — these work identically on Windows, macOS, and Linux. The `bash bin/<subdir>/*.sh` scripts are thin convenience wrappers (mostly just `exec` the Python module); they're handy on Linux but you don't need them. Where a bash script does something Linux-specific (MicroK8s, `/etc/hosts` mangling, host DNS rendering) the section calls it out explicitly.
 
 ## Controller service
 
@@ -44,7 +48,7 @@ It exposes an HTTP API on port 9100 with an interactive dashboard, action dispat
 
 Supported in the Compose target:
 
-- Deploy / update services from `docker/docker-compose.yml`.
+- Deploy / update services from `deploy/compose/docker-compose.yml`.
 - Wait for running / healthy containers.
 - Smoke-check container count + return a node IP hint.
 - Print final container status summary.
@@ -63,7 +67,7 @@ Not part of the Compose target:
   ```bash
   python3 -m pip install docker kubernetes pyyaml requests
   ```
-- Optional: `docker/.env` for local overrides (process env is used when absent).
+- Optional: `deploy/compose/.env` for local overrides (process env is used when absent).
 - Optional but recommended: `contracts/media-stack.profile.yaml` for deployment / purpose / install / exposure / auth defaults.
 
 ### One-command deploy
@@ -78,31 +82,36 @@ python deploy.py compose --delete
 **Plain Compose (any OS):**
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/compose/docker-compose.yml up -d
 # Wait for the controller to be healthy, then trigger:
 curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
 ```
 
-### Advanced deploy with the Stack Runner
+### Stack Runner workflow (cross-platform orchestration)
+
+When you want orchestrated deploy + health-check + profile resolution in one
+command, use the Python workflow CLI (works on Windows / macOS / Linux):
 
 ```bash
-bash bin/deploy-stack.sh \
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
-  --compose-file docker/docker-compose.yml \
-  --compose-env-file docker/.env
+  --compose-file deploy/compose/docker-compose.yml \
+  --compose-env-file deploy/compose/.env
 ```
 
 Optional profiles:
 
 ```bash
-bash bin/deploy-stack.sh \
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
   --compose-profiles optional,plex
 ```
+
+Linux convenience wrapper: `bash bin/install/deploy-stack.sh ...`.
 
 ### Compose runtime notes
 
@@ -140,7 +149,7 @@ Envoy is a first-class Compose edge provider:
 
 - A local cluster.
 - An ingress class named `public` is available (MicroK8s default).
-- PVC-backed storage via `k8s/storage-pvc.yaml`.
+- PVC-backed storage via `deploy/k8s/base/storage/storage-pvc.yaml`.
 
 ### Prerequisites — operator/user
 
@@ -176,20 +185,10 @@ python3 -m venv .venv && source .venv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install docker kubernetes pyyaml requests ruff black
 npx -y @mermaid-js/mermaid-cli@10.9.1 -h
-bash bin/test.sh
+.venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
 ```
 
-### One-command deploy
-
-**Linux / macOS:**
-
-```bash
-./deploy-k8s.sh                                              # default profile
-./deploy-k8s.sh examples/bootstrap-profiles/media-k8s-standard.yaml
-./deploy-k8s.sh my-profile.yaml --delete                     # teardown + redeploy
-```
-
-**Any OS:**
+### One-command deploy (any OS)
 
 ```bash
 python deploy.py k8s
@@ -197,26 +196,28 @@ python deploy.py k8s examples/bootstrap-profiles/media-k8s-standard.yaml
 python deploy.py k8s --delete
 ```
 
-### Manual kubectl
+Linux convenience wrapper: `./deploy-k8s.sh` (same args, calls `python deploy.py k8s` under the hood).
+
+### Manual kubectl (recommended — works everywhere kubectl works)
 
 ```bash
 # applies all manifests via kustomize
-kubectl apply -k k8s/profiles/standard
+kubectl apply -k deploy/k8s/profiles/standard
 
 # profile variants
-kubectl apply -k k8s/profiles/{minimal,full,public-demo,power-user}
+kubectl apply -k deploy/k8s/profiles/{minimal,full,public-demo,power-user}
 
-# core only (no optional services)
-kubectl apply -k k8s
+# the core base (no profile overlays)
+kubectl apply -k deploy/k8s/base
 ```
 
-If `kubectl apply -k k8s` errors with `evalsymlink failure ... /k8s/k8s`, you ran it from inside `k8s/`.
+If `kubectl apply -k ...` errors with `evalsymlink failure`, you're probably inside the `deploy/k8s/` tree — `cd` back to the repo root.
 
 ### Full manual deploy
 
 ```bash
 kubectl create namespace media-dev
-kubectl apply -k k8s/profiles/standard
+kubectl apply -k deploy/k8s/profiles/standard
 kubectl -n media-dev create configmap media-stack-controller-config \
   --from-file=adapter-hooks.yaml=contracts/adapter-hooks.k8s.yaml \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -227,75 +228,81 @@ kubectl -n media-dev port-forward svc/media-stack-controller 9100:9100 &
 curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
 ```
 
-### Advanced deploy scripts
+### Workflow CLIs (cross-platform orchestration)
+
+When you want orchestration beyond a single `kubectl apply -k`, the Python workflow
+CLIs run on Windows / macOS / Linux:
 
 ```bash
 # installer wizard with profile selection
-bash bin/install.sh --profile full --node-ip <NODE_IP>
-bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main --profile full --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 
 # deterministic rebuild + verification (recommended for DR confidence)
-bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+.venv/bin/python -m media_stack.cli.commands.deploy_verify_main <NODE_IP> [NAMESPACE] [PROFILE]
 
 # fully automatic rebuild + bootstrap + smoke test
-bash bin/deploy-stack.sh <NODE_IP>
-PROFILE=power-user bash bin/deploy-stack.sh <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
+PROFILE=power-user .venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
 ```
 
-`public-demo` intentionally skips bootstrap in `deploy-stack.sh` and scales downloader automation down.
+Linux convenience wrappers: `bash bin/install/install.sh`, `bash bin/test/deploy-verify.sh`, `bash bin/install/deploy-stack.sh`.
+
+`public-demo` intentionally skips bootstrap in `deploy_stack_main` and scales downloader automation down.
 
 Equivalent manual apply when you don't want kustomize:
 
 ```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/hardening.yaml
-kubectl apply -f k8s/secrets.example.yaml
-kubectl apply -f k8s/storage-pvc.yaml
-kubectl apply -f k8s/core.yaml
-kubectl apply -f k8s/ingress-traefik.yaml
-kubectl apply -f k8s/scale-policy.yaml
+kubectl apply -f deploy/k8s/base/namespace.yaml
+kubectl apply -f deploy/k8s/base/hardening.yaml
+kubectl apply -f deploy/k8s/base/secrets.example.yaml
+kubectl apply -f deploy/k8s/base/storage/storage-pvc.yaml
+kubectl apply -f deploy/k8s/base/apps/core.yaml
+kubectl apply -f deploy/k8s/base/edge/ingress-traefik.yaml
+kubectl apply -f deploy/k8s/base/scale-policy.yaml
 ```
 
 Apply optional apps after core is healthy:
 
 ```bash
-kubectl apply -f k8s/optional.yaml
+kubectl apply -f deploy/k8s/base/apps/optional.yaml
 ```
 
 Apply Unpackerr after Arr API keys are set:
 
 ```bash
-kubectl apply -f k8s/unpackerr.yaml
+kubectl apply -f deploy/k8s/base/apps/unpackerr.yaml
 kubectl -n media-stack scale deploy/unpackerr --replicas=1
 ```
 
 ### Configuration-as-code bootstrap
 
-Build / push the controller image first (used by the controller Deployment + CronJobs):
+Build / push the controller image (cross-platform — uses the Docker CLI under the hood):
 
 ```bash
-bash bin/build-controller-image.sh
+.venv/bin/python -m media_stack.cli.commands.build_controller_image_main
+.venv/bin/python -m media_stack.cli.commands.build_ui_image_main
 ```
 
-Run idempotent post-deploy wiring:
+Linux convenience wrappers: `bash bin/build/build-controller-image.sh`, `bash bin/build/build-ui-image.sh`.
+
+Run idempotent post-deploy wiring. **The controller does this automatically on startup** — the manual hooks below are for re-running or debugging individual phases:
 
 ```bash
-# one-command pipeline
-bash bin/bootstrap-all.sh
+# one-command pipeline (cross-platform):
+curl -X POST http://localhost:9100/actions/bootstrap
 
-# optional: create/update qB secret (defaults to STACK_ADMIN credentials)
-bash bin/set-qbit-secret.sh
+# full one-command flow from fresh namespace:
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
+```
 
-# optional: reconcile qB WebUI credentials to match secret
-bash bin/ensure-qbit-credentials.sh
-bash bin/run-bootstrap-job.sh
-bash bin/sync-unpackerr-keys.sh
+Linux-only debug helpers (under `bin/debug/`, used when an `ensure-*` job is misbehaving and you want to reconcile a single service from a shell):
 
-# optional: auto-test all Prowlarr templates/presets, add the ones that pass
-bash bin/run-prowlarr-auto-indexers.sh
-
-# full one-command flow from fresh namespace
-bash bin/deploy-stack.sh <NODE_IP>
+```bash
+bash bin/debug/set-qbit-secret.sh
+bash bin/debug/ensure-qbit-credentials.sh
+bash bin/debug/sync-unpackerr-keys.sh
+bash bin/debug/run-prowlarr-auto-indexers.sh
 ```
 
 What it configures:
@@ -315,41 +322,41 @@ Still manual:
 - Private provider/indexer credentials and quality preferences
 - Private indexer credentials / CAPTCHA providers
 
-Override the runner image without editing manifests:
+Override the runner image without editing manifests by setting the env var on the
+controller Deployment (`BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-controller:<tag>`)
+and bouncing the pod.
+
+Set stack admin credentials in `deploy/k8s/base/secrets.example.yaml` for fully automated download-client wiring. Defaults are `admin` / `<namespace>`, and qBittorrent uses those same values by default. `JELLYFIN_API_KEY` is optional; bootstrap can auto-discover or recover it from the Jellyfin DB and persist it in the secret.
+
+Cross-platform: edit the secret YAML directly. Linux-only convenience helpers for
+ad-hoc credential resets (all live under `bin/debug/` or `bin/utils/`):
 
 ```bash
-BOOTSTRAP_RUNNER_IMAGE=<registry>/<repo>/media-stack-controller:<tag> bash bin/bootstrap-all.sh
-```
-
-Set stack admin credentials in `k8s/secrets.example.yaml` for fully automated download-client wiring. Defaults are `admin` / `<namespace>`, and qBittorrent uses those same values by default. `JELLYFIN_API_KEY` is optional; bootstrap can auto-discover or recover it from the Jellyfin DB and persist it in the secret.
-
-```bash
-bash bin/generate-secrets.sh
-bash bin/set-qbit-secret.sh [USERNAME] [PASSWORD]
-bash bin/ensure-qbit-credentials.sh
-bash bin/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
+bash bin/utils/generate-secrets.sh
+bash bin/debug/set-qbit-secret.sh [USERNAME] [PASSWORD]
+bash bin/debug/ensure-qbit-credentials.sh
+bash bin/debug/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
 ```
 
 ### Multi-namespace and remote DNS
 
-```bash
-bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-bash bin/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
-```
-
-Render host entries for a specific namespace:
+Multi-namespace install (cross-platform):
 
 ```bash
-bash bin/render-hosts-example.sh <NODE_IP> media-stack-dev
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
 
-Render dnsmasq / AdGuard entries:
+Render host entries and dnsmasq/AdGuard snippets for a specific namespace (Linux-only — these helpers depend on `/etc/hosts` + dnsmasq path conventions):
 
 ```bash
-bash bin/render-dnsmasq-snippet.sh <NODE_IP> media-stack-dev
+bash bin/utils/render-hosts-example.sh <NODE_IP> media-stack-dev
+bash bin/utils/render-dnsmasq-snippet.sh <NODE_IP> media-stack-dev
 ```
 
-Clean up old test namespaces:
+Clean up old test namespaces (cross-platform):
 
 ```bash
 kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/media-stack$' | xargs -r kubectl delete --wait=false
@@ -357,51 +364,63 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 
 ### TLS and DNS
 
+Cross-platform:
+
 ```bash
-bash bin/setup-lan-tls.sh
-bash bin/render-dnsmasq-snippet.sh <NODE_IP> [NAMESPACE]
+.venv/bin/python -m media_stack.cli.commands.setup_lan_tls_main
 ```
+
+Linux convenience: `bash bin/utils/setup-lan-tls.sh`. The dnsmasq/hosts renderers are Linux-only (see Multi-namespace section above).
 
 ### Backup and restore
 
+Cross-platform (Windows / macOS / Linux):
+
 ```bash
-bash bin/backup-stack.sh
-bash bin/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+.venv/bin/python -m media_stack.cli.commands.backup_stack_main
+.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
+
+Linux convenience wrappers: `bash bin/utils/backup-stack.sh`, `bash bin/utils/restore-stack.sh`.
 
 ### Scale policy
 
+Cross-platform:
+
 ```bash
-bash bin/apply-scale-policy.sh
-SCALE_TO_ZERO=1 bash bin/apply-scale-policy.sh
+.venv/bin/python -m media_stack.cli.commands.apply_scale_policy_main
+SCALE_TO_ZERO=1 .venv/bin/python -m media_stack.cli.commands.apply_scale_policy_main
 ```
+
+Linux convenience: `bash bin/utils/apply-scale-policy.sh`.
 
 KEDA background-component examples:
 
 ```bash
-kubectl apply -f k8s/keda-workers.example.yaml
+kubectl apply -f deploy/k8s/keda-workers.example.yaml
 ```
 
 ### StorageClass profiles
 
 Deployments are PVC-based by default. Choose storage behavior without editing app Deployment YAML:
 
-1. **Default** — rely on the cluster default StorageClass (`k8s/storage-pvc.yaml` has no `storageClassName` by default).
+1. **Default** — rely on the cluster default StorageClass (`deploy/k8s/base/storage/storage-pvc.yaml` has no `storageClassName` by default).
 2. **Inject one class at deploy time:**
    ```bash
-   bash bin/install.sh --profile full --storage-mode dynamic-pvc --storage-class <NAME> --node-ip <NODE_IP>
+   .venv/bin/python -m media_stack.cli.commands.install_main \
+       --profile full --storage-mode dynamic-pvc --storage-class <NAME> --node-ip <NODE_IP>
    ```
-3. **Pin all claims to a class** — use `k8s/pvc-storage.example.yaml` as your template, or patch in place:
+3. **Pin all claims to a class** — use `deploy/k8s/pvc-storage.example.yaml` as your template, or patch in place:
    ```bash
-   bash bin/set-pvc-storage-class.sh <NAME>
+   .venv/bin/python -m media_stack.cli.commands.set_pvc_storage_class_main <NAME>
    ```
 4. **MicroK8s custom pvDir class:**
    ```bash
-   microk8s kubectl apply -f k8s/storageclass-microk8s.example.yaml
+   microk8s kubectl apply -f deploy/k8s/storageclass-microk8s.example.yaml
    ```
 5. **AKS Azure Files (RWX-friendly):**
    ```bash
-   kubectl apply -f k8s/storageclass-aks-azurefile.example.yaml
+   kubectl apply -f deploy/k8s/storageclass-aks-azurefile.example.yaml
    ```
 6. **Verify:**
    ```bash
@@ -415,23 +434,23 @@ kubectl -n media-stack get pods,svc,ingress
 kubectl -n media-stack logs deploy/jellyfin --tail=200
 ```
 
-### MicroK8s helpers
+### MicroK8s helpers (Linux-only — MicroK8s itself is Linux-only)
 
 ```bash
 # only needed if your ingress class is not "public"
-bash bin/microk8s-patch-ingress-class.sh nginx
-bash bin/microk8s-smoke-test.sh <NODE_IP>
-bash bin/microk8s-reconcile.sh --include-optional
+bash bin/k8s/microk8s-patch-ingress-class.sh nginx
+bash bin/test/microk8s-smoke-test.sh <NODE_IP>
+bash bin/k8s/microk8s-reconcile.sh --include-optional
 ```
 
-`microk8s-smoke-test.sh` skips ingress hosts when the backend service isn't installed (useful for core-only deployments).
+The smoke-test skips ingress hosts when the backend service isn't installed (useful for core-only deployments). The reconcile and smoke-test scripts are Python under the hood (`microk8s_reconcile_main`, `microk8s_smoke_test_main`) — you can call them as `.venv/bin/python -m media_stack.cli.commands.microk8s_reconcile_main ...` from any OS, but the cluster they target will still need to be MicroK8s.
 
 ### Common recovery
 
 If logs show `s6-applyuidgid` permission errors, or Deployments are stuck between old/new ReplicaSets:
 
 ```bash
-bash bin/microk8s-reconcile.sh --include-optional
+.venv/bin/python -m media_stack.cli.commands.microk8s_reconcile_main --include-optional
 ```
 
 If Arr apps fail to add root folders with `Folder '/media/' is not writable by user 'abc'`:
@@ -442,10 +461,12 @@ kubectl -n media-stack rollout restart \
   deploy/bazarr deploy/prowlarr deploy/qbittorrent
 ```
 
-For unclear bootstrap status, collect focused diagnostics:
+For unclear bootstrap status, collect focused diagnostics by re-running the bootstrap action with DEBUG logging on the controller pod:
 
 ```bash
-MEDIA_STACK_LOG_LEVEL=DEBUG bash bin/bootstrap-all.sh --no-resume
+kubectl -n media-stack set env deploy/media-stack-controller MEDIA_STACK_LOG_LEVEL=DEBUG
+kubectl -n media-stack rollout restart deploy/media-stack-controller
+curl -X POST http://localhost:9100/actions/bootstrap -H "Content-Type: application/json" -d '{"resume": false}'
 ```
 
 If PVCs stay `Pending`, inspect claim events and storage class:
@@ -462,7 +483,7 @@ kubectl get storageclass
 `dynamic-pvc` is required: StorageClass / PVC-driven, portable across clusters.
 
 ```bash
-bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 ```
 
 ## Namespace strategy
@@ -470,8 +491,10 @@ bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP
 Use namespace isolation for environment promotion and safe experimentation:
 
 ```bash
-bash bin/install.sh --profile full --namespace media-stack-dev  --ingress-domain dev.local  --node-ip <NODE_IP>
-bash bin/install.sh --profile full --namespace media-stack-prod --ingress-domain prod.local --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-dev  --ingress-domain dev.local  --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-prod --ingress-domain prod.local --node-ip <NODE_IP>
 ```
 
 ## Rebuild-first operations
@@ -483,16 +506,16 @@ The expected operating posture is rebuild-ready:
 - Bootstrap wiring is re-runnable.
 - Verification scripts validate outcomes.
 
-Full Kubernetes rebuild + verify in one command:
+Full Kubernetes rebuild + verify in one command (cross-platform):
 
 ```bash
-bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+.venv/bin/python -m media_stack.cli.commands.deploy_verify_main <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Compose rebuild:
 
 ```bash
-bash bin/deploy-stack.sh \
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev
@@ -501,8 +524,10 @@ bash bin/deploy-stack.sh \
 Compose rebuild with profile auto-defaults:
 
 ```bash
-bash bin/deploy-stack.sh --bootstrap-profile-file contracts/media-stack.profile.yaml
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main --bootstrap-profile-file contracts/media-stack.profile.yaml
 ```
+
+Linux convenience wrappers: `bash bin/test/deploy-verify.sh`, `bash bin/install/deploy-stack.sh`.
 
 ## Runtime reconciliation
 
@@ -523,6 +548,23 @@ Platform specifics:
 ## Multi-node / remote operator note
 
 Kubernetes mode is StorageClass / PVC-driven, so remote operators can apply manifests from any machine with cluster access.
+
+---
+
+## Last reviewed
+
+2026-05-10 — refreshed every `bin/*.sh` path to its new `bin/<subdir>/`
+location and demoted Linux-only bash invocations in favour of the
+cross-platform `python -m media_stack.cli.commands.<X>_main` form.
+The bash scripts under `bin/install/`, `bin/test/`, `bin/build/`,
+`bin/utils/`, `bin/k8s/` are 6-line `exec` wrappers around those
+Python modules; the Linux convenience callouts stay so Linux users
+can keep using them, but Windows and macOS operators don't need
+them at all. Also fixed: `docker/docker-compose.yml` →
+`deploy/compose/docker-compose.yml`, `k8s/profiles/*` →
+`deploy/k8s/profiles/*`, `k8s/storage-pvc.yaml` →
+`deploy/k8s/base/storage/storage-pvc.yaml`, and the rest of the
+post-ADR-0012 directory reorganisation.
 
 ---
 

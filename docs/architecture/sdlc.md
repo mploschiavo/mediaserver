@@ -16,13 +16,13 @@ main (always deployable)
 ### Development Loop
 
 1. **Branch** from `main`
-2. **Implement** changes in `services/apps/{service}/` for service-specific code
-3. **Test locally** with `python -m pytest tests/unit/ -q`
-4. **Verify architecture** with `python -m pytest tests/unit/test_no_hardcoded_services.py -v`
-5. **Build image** with `docker build -f docker/controller.Dockerfile -t media-stack-controller:latest .`
-6. **Deploy locally** with `docker compose up -d media-stack-controller`
-7. **Verify runtime** via controller dashboard at `http://localhost:9100/`
-8. **Push** and create PR
+2. **Implement** changes in `src/media_stack/services/apps/{service}/` for service-specific code, `src/media_stack/adapters/{service}/` for lifecycle adapters
+3. **Test locally** with `.venv/bin/python -m pytest tests/unit/ -q`
+4. **Verify architecture** with `.venv/bin/python -m pytest tests/unit/ratchets/ -v`
+5. **Build image** with `bin/build/build-controller-image.sh --no-push` (script uses `deploy/compose/controller.Dockerfile`)
+6. **Deploy locally** with `docker compose -f deploy/compose/docker-compose.yml up -d media-stack-controller` or `kubectl set image -n media-stack deployment/media-stack-controller controller=harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)`
+7. **Verify runtime** via controller dashboard at `http://localhost:9100/` (compose) or your ingress (k8s)
+8. **Push** and create PR — the version-pin ratchet (`tests/unit/architecture/test_version_pin_consistency.py`) requires `VERSION` / `VERSION-UI` / `deploy/compose/docker-compose.yml` / `deploy/k8s/profiles/*/kustomization.yaml` / `contracts/api/openapi.yaml` to stay in sync
 
 ## CI Pipeline
 
@@ -77,25 +77,36 @@ No platform code changes required:
 
 ## Release Process
 
-### Docker Image Build
+### Image build + push
 
 ```bash
-# Build locally
-docker build -f docker/controller.Dockerfile -t media-stack-controller:latest .
+# Controller (uses deploy/compose/controller.Dockerfile under the hood)
+bin/build/build-controller-image.sh --no-push
+docker tag harbor.iomio.io/library/media-stack-controller:latest \
+           harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)
+docker push harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)
+docker push harbor.iomio.io/library/media-stack-controller:latest
 
-# Build and push to registry
-docker build -f docker/controller.Dockerfile -t registry.example.com/media-stack-controller:latest .
-docker push registry.example.com/media-stack-controller:latest
+# UI (uses deploy/compose/ui.Dockerfile)
+bin/build/build-ui-image.sh --no-push
+docker push harbor.iomio.io/library/media-stack-ui:v$(cat VERSION-UI)
+docker push harbor.iomio.io/library/media-stack-ui:latest
 ```
+
+The build scripts tag `:latest` only; the explicit `:v<VERSION>` tag is what kustomize pins reference, so you must `docker tag` + `docker push` it before doing a `kubectl apply -k`.
 
 ### Deploy
 
 ```bash
 # Docker Compose
-cd docker && docker compose up -d media-stack-controller
+docker compose -f deploy/compose/docker-compose.yml up -d
 
-# Kubernetes
-kubectl apply -k k8s/all/
+# Kubernetes — pick a profile (standard / minimal / full / public-demo / power-user)
+kubectl apply -k deploy/k8s/profiles/standard
+
+# Hot-fix the controller without re-applying the whole tree:
+kubectl set image -n media-stack deployment/media-stack-controller \
+    controller=harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)
 ```
 
 ### Verify
@@ -110,8 +121,9 @@ curl http://localhost:9100/status
 # View all API keys
 curl http://localhost:9100/api/keys
 
-# Run API E2E
-bash bin/run-api-e2e.sh
+# Run API E2E (Linux dev convenience; cross-platform users can call pytest directly:
+# .venv/bin/python -m pytest tests/e2e/ -q)
+bash bin/test/run-api-e2e.sh
 ```
 
 ## Code Review Checklist

@@ -1,34 +1,65 @@
 # Upgrades
 
-Media Stack ships as a pinned controller image (`harbor.iomio.io/library/media-stack-controller:vX.Y.Z`) plus a separately versioned UI image (`harbor.iomio.io/library/media-stack-ui:vX.Y.Z` — currently `v1.1.0`, the React 19 rewrite). The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
+Media Stack ships as a pinned controller image (`harbor.iomio.io/library/media-stack-controller:vX.Y.Z`) plus a separately versioned UI image (`harbor.iomio.io/library/media-stack-ui:vX.Y.Z`). Current versions live in `VERSION` (controller) and `VERSION-UI` (UI) at the repo root. The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
 
 ## Routine upgrade
 
-The controller version pinned in `dist/docker-compose.yml` (and `dist/k8s-deploy.yaml`) is the source of truth for which controller you're running. To upgrade:
+The controller + UI versions are pinned in:
+
+* `deploy/compose/docker-compose.yml` + `deploy/dist/docker-compose.yml` (compose)
+* `deploy/k8s/kustomization.yaml` + per-profile `deploy/k8s/profiles/<name>/kustomization.yaml` (k8s)
+* `contracts/api/openapi.yaml` (controller version literal in the OpenAPI metadata)
+
+All four are kept in sync by the version-pin ratchet (`tests/unit/architecture/test_version_pin_consistency.py`) so they can't drift silently.
 
 ### Docker Compose
 
 ```bash
-git pull                                                # if you cloned the repo
-docker compose -f dist/docker-compose.yml pull          # pull new images
-docker compose -f dist/docker-compose.yml up -d         # recreate changed containers
+git pull                                                                  # pick up the new pins
+docker compose -f deploy/compose/docker-compose.yml pull                  # fetch new images
+docker compose -f deploy/compose/docker-compose.yml up -d                 # recreate changed containers
 ```
 
 ### Kubernetes
 
+Two paths depending on whether you want declarative-from-git (kustomize) or imperative-from-now (kubectl set image). Both are supported.
+
+**Declarative (kustomize, recommended):**
+
 ```bash
-git pull
-kubectl apply -k k8s/profiles/standard                  # or whichever profile you use
+git pull                                                                  # pick up the new image pins
+kubectl apply -k deploy/k8s/profiles/standard                             # or whichever profile you use
+kubectl rollout status -n media-stack deploy/media-stack-controller --timeout=120s
+kubectl rollout status -n media-stack deploy/media-stack-ui --timeout=120s
 ```
+
+**Imperative (kubectl set image, fast hot-fix):**
+
+```bash
+NEW_CTRL_VERSION="$(cat VERSION)"
+NEW_UI_VERSION="$(cat VERSION-UI)"
+kubectl set image -n media-stack deployment/media-stack-controller \
+    controller=harbor.iomio.io/library/media-stack-controller:v${NEW_CTRL_VERSION}
+kubectl set image -n media-stack deployment/media-stack-ui \
+    ui=harbor.iomio.io/library/media-stack-ui:v${NEW_UI_VERSION}
+kubectl rollout status -n media-stack deploy/media-stack-controller --timeout=120s
+```
+
+The imperative form is useful when you want to roll a single image without re-applying the whole kustomize tree (e.g. mid-development, or to avoid touching the GPU overlay's `kubectl patch` state).
 
 The controller's bootstrap re-runs idempotently after any restart, so any new promises shipped in the upgrade will be applied automatically.
 
 ## Verifying after upgrade
 
+Cross-platform (Windows / macOS / Linux):
+
 ```bash
-bash bin/verify-stack.sh                                # quick smoke test
-bash bin/verify-fresh-install.sh                        # full promises probe (slower)
+.venv/bin/python -m media_stack.cli.commands.verify_fresh_install          # full promises probe (slower)
 ```
+
+Linux convenience: `bash bin/test/verify-stack.sh` for a quick edge-only smoke
+test (envoy + DNS + TLS handshake — Linux-only because it pokes Docker via
+the daemon socket and resolves `/etc/hosts`).
 
 The dashboard's Routes tab is the fastest visual check — green across all rows means the gateway, auth, and per-service routing all survived the upgrade.
 
@@ -37,22 +68,35 @@ The dashboard's Routes tab is the fastest visual check — green across all rows
 For non-trivial upgrades (controller minor version bumps, app major version bumps, or anything labelled "breaking"):
 
 ```bash
-bash bin/backup-stack.sh                                # creates ./backups/media-stack-backup-<ts>.tar.gz
+# Cross-platform
+.venv/bin/python -m media_stack.cli.commands.backup_stack_main
+# Linux convenience: bash bin/utils/backup-stack.sh
 ```
 
 Restore if needed:
 
 ```bash
-bash bin/restore-stack.sh ./backups/media-stack-backup-<ts>.tar.gz
+.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-<ts>.tar.gz
+# Linux convenience: bash bin/utils/restore-stack.sh <path>
 ```
 
 ## Rolling back the controller
 
-If a new controller version misbehaves, pin the previous tag in `dist/docker-compose.yml` and `dist/k8s-deploy.yaml`:
+If a new controller version misbehaves, pin the previous tag in `VERSION` (and let the version-pin ratchet propagate it):
 
 ```bash
-sed -i 's|controller:vX.Y.Z|controller:vX.Y.<previous>|g' dist/docker-compose.yml dist/k8s-deploy.yaml
-docker compose -f dist/docker-compose.yml up -d
+echo "1.0.<previous>" > VERSION
+# Then bump the same in deploy/compose/docker-compose.yml,
+# deploy/k8s/profiles/*/kustomization.yaml, and contracts/api/openapi.yaml
+# (the test_version_pin_consistency ratchet enforces these stay in sync).
+docker compose -f deploy/compose/docker-compose.yml up -d
+```
+
+For k8s, the imperative form is faster for rollback:
+
+```bash
+kubectl set image -n media-stack deployment/media-stack-controller \
+    controller=harbor.iomio.io/library/media-stack-controller:v1.0.<previous>
 ```
 
 Bootstrap state is forward / backward compatible across patch versions in the same minor (`v1.0.X`). Major-minor downgrades may require a restore from backup if the controller wrote schema changes to `${CONFIG_ROOT}/.controller/`.
