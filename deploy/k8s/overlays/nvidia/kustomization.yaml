@@ -1,0 +1,63 @@
+# NVIDIA GPU overlay for media-stack on Kubernetes.
+#
+# Apply on top of any profile that already includes Jellyfin to add
+# hardware-accelerated transcoding via NVENC/NVDEC. Requires:
+#
+#   * NVIDIA GPU operator installed in the cluster (the
+#     ``nvidia-device-plugin-daemonset`` + ``nvidia-container-toolkit-
+#     daemonset`` pods running, typically in ``gpu-operator-resources``).
+#   * A node with a CUDA-capable GPU (Tesla P4 / T4 / RTX series / etc.).
+#     Jellyfin's NVENC quality bands depend on the card; consult
+#     https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new
+#     for the device's NVENC/NVDEC generation.
+#
+# Usage on top of the ``standard`` profile:
+#
+#   kubectl apply -k deploy/k8s/profiles/standard
+#   kubectl apply -k deploy/k8s/overlays/nvidia
+#
+# (Order matters: the base manifest must exist first, then this overlay
+#  patches the Jellyfin Deployment in place.)
+#
+# What this overlay does:
+#
+#   * Adds ``nvidia.com/gpu: 1`` to the Jellyfin Deployment's resource
+#     limits. Pods only schedule on nodes the device-plugin has
+#     advertised the resource on; on a non-GPU cluster the pod stays
+#     Pending (which is the right signal — applying this overlay
+#     deliberately requires GPU capacity).
+#   * Sets ``runtimeClassName: nvidia`` on the pod spec. The GPU
+#     operator installs this RuntimeClass; without it, the
+#     containerd-shim path doesn't get the nvidia runtime hooks and
+#     CUDA initialization fails inside the container.
+#   * Threads ``NVIDIA_VISIBLE_DEVICES=all`` and
+#     ``NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`` so Jellyfin's
+#     ffmpeg picks up NVENC/NVDEC at startup. The ``video`` capability
+#     is the required one for hardware-accelerated transcoding;
+#     ``utility`` enables ``nvidia-smi`` for diagnostics.
+#
+# What this overlay deliberately does NOT do:
+#
+#   * Touch ``system.xml`` to set ``HardwareAccelerationType=nvenc``.
+#     The controller's ``JellyfinGpu.enable_gpu_transcoding`` lifecycle
+#     does that on every reconcile tick once it sees the Jellyfin pod
+#     has GPU capacity — same code path the compose deploy uses, no
+#     bespoke kustomize patch for app-level config (per ADR-0013).
+#   * Pin a specific CUDA version. The GPU operator sets the kernel
+#     driver and userspace; Jellyfin's image carries its own ffmpeg
+#     compiled against the NVENC/NVDEC C API which is forward-compatible
+#     with all current driver releases.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply on top of an already-applied profile (the base + apps + controller
+# manifests must exist first). This overlay is patches-only.
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: jellyfin
+      namespace: media-stack
+    path: jellyfin-gpu-patch.yaml

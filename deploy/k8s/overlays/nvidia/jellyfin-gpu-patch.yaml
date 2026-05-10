@@ -1,0 +1,38 @@
+# NVIDIA GPU patch for the Jellyfin Deployment.
+#
+# Strategic-merge patch (Kustomize default). The fields below are merged
+# onto the base ``deploy/k8s/base/apps/core.yaml::jellyfin`` Deployment;
+# unspecified fields (resources.requests, livenessProbe, etc.) stay
+# inherited from the base.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  namespace: media-stack
+spec:
+  template:
+    spec:
+      # The GPU operator installs this RuntimeClass at install time. If
+      # this name is missing, the pod will fail to schedule and `kubectl
+      # describe` reports `RuntimeClass "nvidia" not found` — a clear
+      # signal that the operator isn't installed.
+      runtimeClassName: nvidia
+      containers:
+        - name: jellyfin
+          # Requests stay inherited from the base. Limits gain the GPU
+          # resource: the device-plugin advertises ``nvidia.com/gpu`` on
+          # GPU nodes; only those nodes can satisfy this limit. That
+          # gates scheduling — no need for explicit nodeSelectors.
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: all
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              # ``video`` enables NVENC/NVDEC, ``compute`` enables CUDA
+              # (used by Jellyfin's tone-mapping for HDR -> SDR), and
+              # ``utility`` provides ``nvidia-smi`` inside the container
+              # so operators can debug from `kubectl exec`.
+              value: compute,video,utility
