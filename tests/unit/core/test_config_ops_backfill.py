@@ -135,20 +135,27 @@ class TestDiffSnapshots(unittest.TestCase):
 
 
 class TestGetMountInfo(unittest.TestCase):
-    @patch("subprocess.run")
-    def test_parses_nfs(self, mock_run):
-        # mount output format: device on mountpoint type fstype (options)
-        mock_run.return_value = MagicMock(
-            stdout="nas:/vol on /media type nfs4 (rw,relatime)\n",
-            returncode=0,
-        )
-        result = ops_mod.get_mount_info()
+    # /proc/mounts format: device mountpoint fstype opts dump pass
+    # (changed from subprocess(mount) — mount binary's output isn't
+    # reliable inside minimal containers; /proc/mounts is.)
+
+    def _patched_open(self, content):
+        from io import StringIO
+        real_open = open
+        def fake_open(path, *args, **kwargs):
+            if str(path) == "/proc/mounts":
+                return StringIO(content)
+            return real_open(path, *args, **kwargs)
+        return patch("builtins.open", side_effect=fake_open)
+
+    def test_parses_nfs(self):
+        with self._patched_open("nas:/vol /media nfs4 rw,relatime 0 0\n"):
+            result = ops_mod.get_mount_info()
         self.assertTrue(result["nfs_available"])
 
-    @patch("subprocess.run")
-    def test_no_mounts(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", returncode=0)
-        result = ops_mod.get_mount_info()
+    def test_no_mounts(self):
+        with self._patched_open(""):
+            result = ops_mod.get_mount_info()
         self.assertEqual(result["mounts"], [])
         self.assertFalse(result["nfs_available"])
 

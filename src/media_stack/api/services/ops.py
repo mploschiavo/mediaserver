@@ -487,18 +487,53 @@ class OpsService:
             else:
                 result["note"] = "No containers have GPU devices mounted. To enable, update docker-compose.yml and redeploy."
 
-        # Check if the media server container has GPU passthrough (delegated to app layer)
+        # Check if the media server container has GPU passthrough
+        # (delegated to app layer). Pass a no-op docker client when
+        # the real one isn't reachable so the app-layer probe still
+        # runs its k8s fallback (which reads the Deployment via the
+        # kubernetes python client). Without this, k8s clusters with
+        # the nvidia overlay applied still saw "No GPU detected" in
+        # the UI because the outer ``except`` here swallowed the
+        # docker import failure before the k8s code path could run.
         try:
-            import docker
             import importlib
-            client = docker.from_env()
-            # Dynamically load GPU module from the media server's app layer
+            try:
+                import docker
+                client: Any = docker.from_env()
+            except Exception:  # noqa: BLE001 — docker missing in pod
+                class _NoDockerClient:
+                    class containers:
+                        @staticmethod
+                        def get(_name: str) -> Any:
+                            raise RuntimeError("docker unavailable")
+                client = _NoDockerClient()
             ms = next((s for s in _SERVICES if s.category == "media"), None)
             if ms:
                 gpu_mod = importlib.import_module(f"media_stack.services.apps.{ms.id}.gpu")
                 check_fn = getattr(gpu_mod, f"check_{ms.id}_gpu", None)
                 if check_fn:
-                    result.update(check_fn(client))
+                    ms_info = check_fn(client)
+                    result.update(ms_info)
+                    # If the media-server probe reports GPU via the
+                    # k8s evidence path (Deployment carries
+                    # ``nvidia.com/gpu`` or ``runtimeClassName:
+                    # nvidia``), promote that to the top-level
+                    # ``detected`` flag the UI reads. Without this,
+                    # k8s clusters still see "No GPU detected" even
+                    # though the workload pod has the GPU attached.
+                    if ms_info.get(f"{ms.id}_has_gpu"):
+                        result["detected"] = True
+                        ev = ms_info.get(f"{ms.id}_k8s_evidence") or {}
+                        vendor = (ev.get("gpu_vendor") or "nvidia").lower()
+                        result["gpus"].append({
+                            "type": vendor,
+                            "name": (
+                                f"{vendor.upper()} GPU via Kubernetes "
+                                f"(runtimeClass={ev.get('runtime_class') or 'n/a'}, "
+                                f"limit={ev.get('gpu_resource') or 'n/a'})"
+                            ),
+                            "k8s_namespace": ev.get("namespace") or "",
+                        })
         except Exception as exc:
             log_swallowed(exc)
 
@@ -628,20 +663,70 @@ class OpsService:
         return {"diffs": diffs, "file_a": file_a, "file_b": file_b, "total_changes": len(diffs)}
 
     def get_mount_info(self) -> dict[str, Any]:
-        """Detect NFS/CIFS/local mounts relevant to media storage."""
+        """Detect NFS/CIFS/local mounts relevant to media storage.
+
+        Reads ``/proc/mounts`` directly rather than shelling to
+        ``mount(1)``. The controller pod's image ships ``mount`` as a
+        broken symlink (no /etc/mtab inside the container), so the
+        legacy subprocess call returned empty output and the UI
+        showed "No mounts detected" even when the pod had every
+        service's config PVC mounted under ``/srv-config/<svc>``.
+        """
         mounts: list[dict[str, str]] = []
+        keywords = ("/media", "/data", "/config", "/srv", "/mnt", "/nas")
+
+        def _matches_keyword(mp: str) -> bool:
+            # Match keyword as a path-boundary, not a substring —
+            # otherwise ``/sys/kernel/config`` (the configfs synthetic
+            # fs) falsely matches the ``/config`` keyword.
+            for kw in keywords:
+                if mp == kw or mp.startswith(kw + "/"):
+                    return True
+                # Compose-style ``/srv-config``, ``/srv-data`` mounts
+                # use a ``-`` separator rather than a directory; allow
+                # those too.
+                if mp.startswith(kw + "-"):
+                    return True
+            return False
+
         try:
-            result = subprocess.run(["mount"], capture_output=True, text=True, timeout=5, check=False)
-            for line in result.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 5:
-                    device, _, mountpoint, _, fstype = parts[:5]
-                    if any(kw in mountpoint for kw in ("/media", "/data", "/config", "/srv", "/mnt", "/nas")):
-                        mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
-                    elif fstype.strip("()").startswith(("nfs", "cifs", "smb")):
-                        mounts.append({"device": device, "mountpoint": mountpoint, "fstype": fstype.strip("()")})
-        except Exception as exc:
-            log_swallowed(exc)
+            with open("/proc/mounts", encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except OSError:
+            lines = []
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            device, mountpoint, fstype = parts[0], parts[1], parts[2]
+            # Skip the synthetic filesystems pulled in by the
+            # container runtime — they're not "media-relevant"
+            # mounts the operator cares about. ``configfs`` /
+            # ``securityfs`` / ``debugfs`` / ``bpf`` / etc. are kernel
+            # interfaces, not storage. ``tmpfs`` is only kept when
+            # it's mounted under one of the media-relevant
+            # keyword paths (e.g. ``/srv-config/...``).
+            if fstype in {
+                "proc", "sysfs", "devpts", "mqueue", "cgroup",
+                "cgroup2", "overlay", "configfs", "securityfs",
+                "debugfs", "bpf", "fusectl", "pstore", "tracefs",
+                "hugetlbfs", "ramfs",
+            }:
+                continue
+            if fstype == "tmpfs" and not _matches_keyword(mountpoint):
+                continue
+            if _matches_keyword(mountpoint):
+                mounts.append({
+                    "device": device,
+                    "mountpoint": mountpoint,
+                    "fstype": fstype,
+                })
+            elif fstype.startswith(("nfs", "cifs", "smb")):
+                mounts.append({
+                    "device": device,
+                    "mountpoint": mountpoint,
+                    "fstype": fstype,
+                })
         return {
             "mounts": mounts,
             "nfs_available": any(m["fstype"].startswith("nfs") for m in mounts),

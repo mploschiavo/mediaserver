@@ -135,39 +135,44 @@ class TestCheckImageUpdatesCompose(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestGetMountInfo(unittest.TestCase):
-    @mock.patch("media_stack.api.services.ops.subprocess")
-    def test_detects_nfs_mount(self, mock_subprocess):
-        mock_result = mock.MagicMock()
-        mock_result.stdout = (
-            "nas:/volume1/media on /media type nfs4 (rw,relatime)\n"
-            "/dev/sda1 on / type ext4 (rw,relatime)\n"
+    # ``get_mount_info`` now reads ``/proc/mounts`` directly (legacy
+    # ``subprocess.run(['mount'])`` printed empty output inside the
+    # controller pod's minimal image). Mocks patch ``builtins.open``
+    # against ``/proc/mounts`` with the kernel format:
+    # ``device mountpoint fstype opts dump pass``.
+
+    def _patched_open(self, content):
+        from io import StringIO
+        real_open = open
+        def fake_open(path, *args, **kwargs):
+            if str(path) == "/proc/mounts":
+                return StringIO(content)
+            return real_open(path, *args, **kwargs)
+        return mock.patch("builtins.open", side_effect=fake_open)
+
+    def test_detects_nfs_mount(self):
+        content = (
+            "nas:/volume1/media /media nfs4 rw,relatime 0 0\n"
+            "/dev/sda1 / ext4 rw,relatime 0 0\n"
         )
-        mock_subprocess.run.return_value = mock_result
-
-        result = get_mount_info()
-
+        with self._patched_open(content):
+            result = get_mount_info()
         self.assertTrue(result["nfs_available"])
         self.assertFalse(result["cifs_available"])
         nfs_mounts = [m for m in result["mounts"] if m["fstype"].startswith("nfs")]
         self.assertGreaterEqual(len(nfs_mounts), 1)
 
-    @mock.patch("media_stack.api.services.ops.subprocess")
-    def test_detects_cifs_mount(self, mock_subprocess):
-        mock_result = mock.MagicMock()
-        mock_result.stdout = "//server/share on /mnt/nas type cifs (rw)\n"
-        mock_subprocess.run.return_value = mock_result
-
-        result = get_mount_info()
+    def test_detects_cifs_mount(self):
+        content = "//server/share /mnt/nas cifs rw 0 0\n"
+        with self._patched_open(content):
+            result = get_mount_info()
         self.assertTrue(result["cifs_available"])
         self.assertEqual(len(result["mounts"]), 1)
 
-    @mock.patch("media_stack.api.services.ops.subprocess")
-    def test_returns_empty_when_no_relevant_mounts(self, mock_subprocess):
-        mock_result = mock.MagicMock()
-        mock_result.stdout = "/dev/sda1 on / type ext4 (rw,relatime)\ntmpfs on /tmp type tmpfs (rw)\n"
-        mock_subprocess.run.return_value = mock_result
-
-        result = get_mount_info()
+    def test_returns_empty_when_no_relevant_mounts(self):
+        content = "/dev/sda1 / ext4 rw,relatime 0 0\ntmpfs /tmp tmpfs rw 0 0\n"
+        with self._patched_open(content):
+            result = get_mount_info()
         self.assertEqual(result["mounts"], [])
         self.assertFalse(result["nfs_available"])
         self.assertFalse(result["cifs_available"])

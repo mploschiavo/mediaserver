@@ -39,6 +39,13 @@ class WorkloadState:
     restart_count: int
     last_terminated_reason: str   # "OOMKilled", "Error", "Completed", ""
     last_terminated_exit_code: int  # -1 if unknown
+    # Unix timestamp when the CURRENT container started (i.e. since
+    # the last restart). ``None`` when unknown / not running. The
+    # crashloop classifier uses this to distinguish "currently
+    # crashlooping" (just restarted) from "had restarts earlier
+    # today but stable now" — the latter shouldn't fire critical
+    # health stories.
+    running_since: float | None = None
 
 
 class WorkloadInspector(Protocol):
@@ -134,12 +141,25 @@ class KubernetesWorkloadInspector:
         terminated = getattr(last, "terminated", None) if last else None
         reason = getattr(terminated, "reason", "") or ""
         exit_code = int(getattr(terminated, "exit_code", -1) or -1)
+        # Current-container start time. ``cs.state.running.started_at``
+        # is a ``datetime`` from the k8s client; convert to unix epoch
+        # so the classifier can compare against ``time.time()``.
+        running_since: float | None = None
+        state = getattr(cs, "state", None)
+        running_state = getattr(state, "running", None) if state else None
+        started_at = getattr(running_state, "started_at", None) if running_state else None
+        if started_at is not None:
+            try:
+                running_since = float(started_at.timestamp())
+            except (AttributeError, ValueError, TypeError):
+                running_since = None
         return WorkloadState(
             service_id=sid,
             running=bool(pod.status and pod.status.phase == "Running"),
             restart_count=int(getattr(cs, "restart_count", 0) or 0),
             last_terminated_reason=reason,
             last_terminated_exit_code=exit_code,
+            running_since=running_since,
         )
 
     def previous_logs(
@@ -284,12 +304,36 @@ class DockerWorkloadInspector:
                 state.get("Error") or
                 ("Error" if exit_code not in (-1, 0) else "")
             )
+            # Parse the StartedAt ISO timestamp into a unix epoch
+            # so the crashloop classifier can age the current
+            # container. ``StartedAt`` from docker-py is an ISO
+            # string like ``2026-05-10T20:59:07.123456789Z``.
+            running_since: float | None = None
+            started_at_raw = state.get("StartedAt") or ""
+            if started_at_raw and started_at_raw != "0001-01-01T00:00:00Z":
+                import datetime
+                try:
+                    ts = started_at_raw.replace("Z", "+00:00")
+                    # docker-py emits 9-digit nanoseconds; datetime
+                    # only takes microseconds → trim if needed.
+                    if "." in ts:
+                        head, frac_tz = ts.split(".", 1)
+                        if "+" in frac_tz:
+                            frac, tz = frac_tz.split("+", 1)
+                            ts = f"{head}.{frac[:6]}+{tz}"
+                        elif "-" in frac_tz:
+                            frac, tz = frac_tz.split("-", 1)
+                            ts = f"{head}.{frac[:6]}-{tz}"
+                    running_since = datetime.datetime.fromisoformat(ts).timestamp()
+                except (ValueError, TypeError):
+                    running_since = None
             return WorkloadState(
                 service_id=sid,
                 running=running,
                 restart_count=restart_count,
                 last_terminated_reason=str(reason or ""),
                 last_terminated_exit_code=exit_code,
+                running_since=running_since,
             )
         except Exception as exc:
             _log.debug("[DEBUG] inspect %s: state read failed: %s",

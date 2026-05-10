@@ -6,6 +6,7 @@ from media_stack.infrastructure.jellyfin.gpu import *  # noqa: F401,F403
 from media_stack.infrastructure.jellyfin.gpu import (  # noqa: F401
     JellyfinGpu,
     build_compose_snippet,
+    build_k8s_snippet,
     check_jellyfin_gpu,
     enable_gpu_transcoding,
 )

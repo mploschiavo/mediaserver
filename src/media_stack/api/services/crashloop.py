@@ -51,6 +51,15 @@ _log = logging.getLogger("controller_api")
 # ordinary boot/upgrade are normal.
 _RESTART_THRESHOLD = 3
 
+# How long the *current* container must have been Running before
+# we treat a previously-restart-heavy pod as recovered. Without
+# this gate, the classifier reports "crashlooping (unclassified)"
+# for any pod that accumulated a few restarts earlier in the day
+# even though it's been stable for hours. 300s = five minutes is
+# long enough to clear the readinessProbe + first heartbeat for
+# every service in the stack.
+_STABILITY_SECONDS = 300.0
+
 
 @dataclass(frozen=True)
 class Classification:
@@ -323,6 +332,34 @@ class CrashloopClassifier:
                 restart_count=state.restart_count,
                 cause="out_of_memory",
                 description="Process exceeded its memory limit (OOMKilled)",
+                healable=False,
+                sample_log_line="",
+                last_terminated_reason=state.last_terminated_reason,
+                checked_at=now,
+            )
+
+        # Recovery path: container had restarts earlier but has
+        # been Running stably for at least ``_STABILITY_SECONDS``.
+        # Treat as healthy — the historical restart_count says
+        # nothing about whether the pod is in trouble *right now*,
+        # and the false-positive "crashlooping (unclassified)"
+        # health stories obscure the real issues operators need to
+        # see.
+        if (
+            state.running
+            and state.running_since is not None
+            and (now - state.running_since) >= _STABILITY_SECONDS
+        ):
+            return Classification(
+                service_id=service_id,
+                restart_count=state.restart_count,
+                cause=_HEALTHY,
+                description=(
+                    f"current container has been running stably for "
+                    f"{int((now - state.running_since) / 60)}m "
+                    f"(historical restart_count={state.restart_count}, "
+                    f"threshold={self._threshold})"
+                ),
                 healable=False,
                 sample_log_line="",
                 last_terminated_reason=state.last_terminated_reason,
