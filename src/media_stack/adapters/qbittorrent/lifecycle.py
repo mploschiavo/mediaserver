@@ -27,8 +27,10 @@ bootstrap-phase ``compose_preflight`` / ``http_preflight`` paths.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -53,6 +55,14 @@ logger = logging.getLogger(__name__)
 _DEFAULT_HEALTH_PATH = "/api/v2/app/version"
 _DEFAULT_PROBE_TIMEOUT_SECONDS = 5
 _DEFAULT_API_KEY_ENV = "QBITTORRENT_PASSWORD"
+
+# qBittorrent prints ``temporary password ... : <token>`` on first
+# boot when no saved password is stored. ADR-0013 Phase 3 rotation
+# path tails the container logs for this line; the regex matches the
+# format the binary has used since v4.4.x.
+_TEMP_PASSWORD_RE = re.compile(
+    r"temporary password[^:]*:\s*(\S+)", re.IGNORECASE,
+)
 
 # Stateless module-level singleton — the wirer is per-call parameterized
 # by ``OrchestrationContext`` (host/port/credentials), so one instance
@@ -291,35 +301,222 @@ class QbittorrentLifecycle:
     def ensure_credentials(self, ctx: OrchestrationContext) -> Outcome[None]:
         """Ensure the stored stack-admin credentials authenticate.
 
-        On the framework path this is a verify-only ensurer: the
-        actual password rotation is done by
-        ``compose_preflight.ensure_compose_torrent_client_credentials``
-        because rotating requires container access (docker exec /
-        kubectl exec) which the lifecycle layer does not have.
+        Path A (verify): try the cheap HTTP-login probe. On success
+        the promise is satisfied — return immediately.
+
+        Path B (rotate): if the probe reports ``failed`` (cred
+        mismatch, NOT a network blip) AND ``ctx.extra`` carries a
+        ``ContainerAccess`` port, fall back to rotating qBittorrent's
+        stored password. The rotation reads the container's
+        temporary-password log line, logs into the WebUI from
+        localhost-loopback (which bypasses non-loopback auth rules),
+        and POSTs ``setPreferences`` to set the password to the
+        target stack-admin value. After rotation, re-probes to
+        confirm.
+
+        ADR-0013 Phase 3: fold the rotation that was previously
+        living in ``infrastructure.qbittorrent.compose_preflight``
+        onto the framework path. The compose preflight CLI now
+        delegates here.
 
         Outcomes:
-        * success — login OK; promise satisfied, orchestrator stops
-          ticking until the next reconcile cycle.
-        * failure(transient=True) — WebUI unreachable; orchestrator
-          retries with backoff.
-        * failure(transient=False) — credentials mismatched; the
-          operator must run the compose / k8s preflight to reset
-          qBittorrent's stored password. Phase 3+ of ADR-0013 will
-          fold the rotation into a sibling ensurer that takes a
-          container-access port from ``OrchestrationContext.extra``.
+        * success — login OK (either initially or after rotation);
+          promise satisfied, orchestrator stops ticking until the
+          next reconcile cycle.
+        * failure(transient=True) — WebUI unreachable, container
+          access transient error, or rotation failed mid-flight;
+          orchestrator retries with backoff.
+        * failure(transient=False) — credentials mismatched AND
+          rotation refused (no container access available in this
+          context, or qBittorrent rejected the new password). The
+          operator must intervene; the failure detail names what
+          went wrong.
         """
         probe = self.probe_credentials_synced(ctx)
         if probe.status == "ok":
             return Outcome.success(
                 evidence=dict(probe.evidence or {}),
             )
-        # Probe.unknown → transient (network issue), Probe.failed →
-        # permanent (cred mismatch). The probe encodes that already.
+        # Probe.unknown → transient (network issue). The orchestrator
+        # backs off; nothing for us to rotate against.
+        if probe.status == "unknown":
+            return Outcome.failure(
+                probe.detail or "qBittorrent WebUI unreachable",
+                transient=True,
+                evidence=dict(probe.evidence or {}),
+            )
+        # Probe.failed → cred mismatch. Try the rotation fallback.
+        container_access = ctx.extra.get("container_access")
+        if container_access is None:
+            return Outcome.failure(
+                "credentials mismatched and no container_access port "
+                "available — operator must rotate qBittorrent's "
+                "WebUI password to match STACK_ADMIN_PASSWORD manually",
+                transient=False,
+                evidence={
+                    **dict(probe.evidence or {}),
+                    "rotation_reason": "no_container_access",
+                },
+            )
+        return self._rotate_credentials(ctx, container_access)
+
+    def _rotate_credentials(
+        self, ctx: OrchestrationContext, container_access: Any,
+    ) -> Outcome[None]:
+        """Rotate qBittorrent's stored WebUI password to match STACK_ADMIN_*.
+
+        Reads the temporary password from container logs (qBittorrent
+        prints it on first start when the saved-config password isn't
+        set), logs in with that, then POSTs ``setPreferences`` with
+        the target ``web_ui_password``. All HTTP calls go through
+        ``container_access.exec_shell`` so they originate from
+        localhost-loopback inside the container — that's required
+        because qBittorrent's auth-bypass rule typically only trusts
+        ``127.0.0.1``.
+
+        On success the next reconcile probe reports ``ok`` and the
+        promise is satisfied. We re-probe inline here too so the
+        first tick that triggers rotation can return ``Outcome.
+        success`` directly rather than reporting transient and
+        forcing the orchestrator to wait for the next cycle.
+        """
+        username, password = self._stack_admin_creds(ctx)
+        if not password:
+            return Outcome.failure(
+                "no STACK_ADMIN_PASSWORD in env/secrets — cannot rotate",
+                transient=False,
+                evidence={"username_present": bool(username)},
+            )
+        try:
+            temp_password = self._read_temporary_password(container_access)
+        except Exception as exc:  # noqa: BLE001 — container-access raises ContainerAccessError
+            return Outcome.failure(
+                f"reading qBittorrent temp password failed: {exc}",
+                transient=True,
+                evidence={"phase": "read_temp_password"},
+            )
+        if not temp_password:
+            return Outcome.failure(
+                "qBittorrent temp password not found in container logs "
+                "— login is still on a non-temp password the controller "
+                "doesn't have. Operator must reset qBittorrent's auth "
+                "config (delete WebUI\\\\Password_PBKDF2 from "
+                "qBittorrent.conf) and let it regenerate.",
+                transient=False,
+                evidence={"phase": "read_temp_password"},
+            )
+        if not self._set_credentials_via_container(
+            container_access,
+            auth_user="admin",
+            auth_pass=temp_password,
+            target_user=username,
+            target_pass=password,
+        ):
+            return Outcome.failure(
+                "qBittorrent rejected the password rotation request — "
+                "see container logs for the WebUI auth-bypass rule",
+                transient=True,
+                evidence={"phase": "set_preferences"},
+            )
+        # Re-probe to confirm the rotation took effect.
+        re_probe = self.probe_credentials_synced(ctx)
+        if re_probe.status == "ok":
+            return Outcome.success(
+                evidence={
+                    **dict(re_probe.evidence or {}),
+                    "rotated": True,
+                },
+            )
         return Outcome.failure(
-            probe.detail or "credential verification failed",
-            transient=(probe.status == "unknown"),
-            evidence=dict(probe.evidence or {}),
+            f"rotation completed but re-probe still {re_probe.status}: "
+            f"{re_probe.detail}",
+            transient=(re_probe.status == "unknown"),
+            evidence={
+                **dict(re_probe.evidence or {}),
+                "phase": "post_rotate_probe",
+                "rotated": True,
+            },
         )
+
+    def _read_temporary_password(self, container_access: Any) -> str:
+        """Extract the qBittorrent temporary-password log line.
+
+        qBittorrent prints ``A temporary password is provided for
+        this session: <token>`` on first boot when no saved password
+        is stored. We tail the container's logs and pluck the latest
+        match (in case the container has been restarted multiple
+        times during rotation attempts).
+        """
+        log_text = container_access.read_logs(tail_lines=600)
+        matches = list(_TEMP_PASSWORD_RE.finditer(log_text))
+        if not matches:
+            return ""
+        return matches[-1].group(1).strip()
+
+    def _set_credentials_via_container(
+        self,
+        container_access: Any,
+        *,
+        auth_user: str,
+        auth_pass: str,
+        target_user: str,
+        target_pass: str,
+    ) -> bool:
+        """Login + setPreferences via ``container_access.exec_shell``.
+
+        Same shell script the legacy ``compose_preflight._set_credentials_with_container``
+        used, repointed at the ``ContainerAccess`` port. Login from
+        inside the container so we hit ``127.0.0.1`` (which qBit's
+        WebUI auth-bypass rule trusts even when external requests
+        from media-stack-controller are not yet on the bypass list).
+        """
+        prefs_json = json.dumps(
+            {
+                "web_ui_username": target_user,
+                "web_ui_password": target_pass,
+            },
+            separators=(",", ":"),
+        )
+        script = (
+            'tmp_login="/tmp/qb-login-body.$$"\n'
+            'tmp_pref="/tmp/qb-pref-body.$$"\n'
+            'cookie="/tmp/qb-cookie.$$"\n'
+            'code_login="$(curl -sS -o "$tmp_login" -w "%{http_code}" '
+            '-c "$cookie" '
+            '-H "Origin: http://127.0.0.1:8080" '
+            '-H "Referer: http://127.0.0.1:8080/" '
+            '-H "User-Agent: media-stack-controller/lifecycle" '
+            '--data-urlencode "username=$AUTH_USER" '
+            '--data-urlencode "password=$AUTH_PASS" '
+            '"http://127.0.0.1:8080/api/v2/auth/login" 2>/dev/null || true)"\n'
+            'body_login="$(cat "$tmp_login" 2>/dev/null || true)"\n'
+            'case "$code_login" in '
+            '2*) [ "$body_login" = "Ok." ] || [ "${body_login#Ok.}" != "$body_login" ] || exit 41 ;; '
+            '*) exit 42 ;; '
+            'esac\n'
+            'code_pref="$(curl -sS -o "$tmp_pref" -w "%{http_code}" '
+            '-b "$cookie" '
+            '-H "Origin: http://127.0.0.1:8080" '
+            '-H "Referer: http://127.0.0.1:8080/" '
+            '-H "User-Agent: media-stack-controller/lifecycle" '
+            '--data-urlencode "json=$PREFERENCES_JSON" '
+            '"http://127.0.0.1:8080/api/v2/app/setPreferences" 2>/dev/null || true)"\n'
+            'rm -f "$tmp_login" "$tmp_pref" "$cookie" >/dev/null 2>&1 || true\n'
+            'case "$code_pref" in 2*) true ;; *) false ;; esac\n'
+        )
+        try:
+            code, _output = container_access.exec_shell(
+                script,
+                env={
+                    "AUTH_USER": auth_user,
+                    "AUTH_PASS": auth_pass,
+                    "PREFERENCES_JSON": prefs_json,
+                },
+                timeout_seconds=30,
+            )
+        except Exception:  # noqa: BLE001 — ContainerAccessError + transients
+            return False
+        return code == 0
 
     def _stack_admin_creds(
         self, ctx: OrchestrationContext,

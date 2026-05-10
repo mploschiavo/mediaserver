@@ -7,6 +7,10 @@ Outcome, OrchestrationContext`` without reaching into the submodule.
 
 from __future__ import annotations
 
+from media_stack.domain.services.container_access import (
+    ContainerAccess,
+    ContainerAccessError,
+)
 from media_stack.domain.services.lifecycle import (
     OrchestrationContext,
     Outcome,
@@ -16,6 +20,8 @@ from media_stack.domain.services.lifecycle import (
 )
 
 __all__ = [
+    "ContainerAccess",
+    "ContainerAccessError",
     "OrchestrationContext",
     "Outcome",
     "ProbeResult",

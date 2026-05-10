@@ -180,7 +180,7 @@ class RegistryCountUnchanged(unittest.TestCase):
     increase = an accidental duplicate the loader didn't catch
     (which would be a separate bug)."""
 
-    _EXPECTED_TOTAL = 57  # +5 ADR-0005 Phase 5c.1 wide ``*-api-key-discoverable``
+    _EXPECTED_TOTAL = 58  # +5 ADR-0005 Phase 5c.1 wide ``*-api-key-discoverable``
 
     def test_total_count_unchanged_post_migration(self) -> None:
         result = _LoadedRegistry.get()

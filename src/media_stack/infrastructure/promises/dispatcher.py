@@ -143,12 +143,64 @@ class LifecycleResolver:
         now_fn: Any = None,
     ) -> OrchestrationContext:
         cfg = self.read_service_config(service_id)
+        extra: dict[str, Any] = {}
+        container_access = self._container_access_for(service_id)
+        if container_access is not None:
+            extra["container_access"] = container_access
         return OrchestrationContext(
             service_id=service_id,
             config=cfg,
             secrets=dict(secrets or {}),
             now=(now_fn or time.time),
+            extra=extra,
         )
+
+    def _container_access_for(self, service_id: str) -> Any | None:
+        """Build a per-platform ``ContainerAccess`` for ``service_id``.
+
+        Compose path: wrap a docker-py container handle. K8s path is
+        a Phase 3b follow-up; until then k8s ensurers that need
+        rotation get ``None`` and report transient (the legacy k8s
+        bootstrap CLI keeps doing rotation for now).
+
+        Returns ``None`` when the platform can't be determined or
+        the container handle isn't reachable — the lifecycle method
+        treats that as "no rotation possible, surface the error
+        honestly" rather than silently dropping work. ADR-0013 Phase
+        3 design principle 5 (no silent skips).
+        """
+        try:
+            container = self._compose_container_handle(service_id)
+        except Exception as exc:  # noqa: BLE001 — docker-py errors aren't typed
+            logger.debug(
+                "container_access compose lookup failed for %s: %s",
+                service_id, exc,
+            )
+            return None
+        if container is None:
+            return None
+        from media_stack.infrastructure.platforms.compose.container_access import (
+            ComposeContainerAccess,
+        )
+        return ComposeContainerAccess(container)
+
+    def _compose_container_handle(self, service_id: str) -> Any | None:
+        """Resolve a docker-py container handle for ``service_id``.
+
+        Uses the same lookup the existing ``compose_preflight`` code
+        does (``docker.from_env``). Returns ``None`` if docker is
+        unreachable or the container doesn't exist (compose isn't
+        the active platform).
+        """
+        try:
+            import docker as docker_py
+        except ImportError:
+            return None
+        try:
+            client = docker_py.from_env()
+            return client.containers.get(service_id)
+        except Exception:  # noqa: BLE001
+            return None
 
     def read_service_config(self, service_id: str) -> dict[str, Any]:
         """Read the ``service:`` block from the contract YAML.
