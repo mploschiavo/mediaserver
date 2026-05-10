@@ -1,85 +1,97 @@
-# Teardown and Cleanup
+# Teardown and cleanup
 
-How to completely remove the media stack and all its data. Choose the section that matches your deployment.
+How to remove the media stack and its data. Choose the section that matches your deployment.
 
-> **Warning**: These commands are destructive and irreversible. All service configurations, API keys, library metadata, download history, and media files will be permanently deleted. Export anything you need first.
+> **Warning**: These commands are destructive and mostly irreversible. Service configurations, API keys, library metadata, download history, and (optionally) media files are deleted. Export anything you want to keep first.
 
-## Before You Start
+> **Repo paths**: The compose file lives at `deploy/compose/docker-compose.yml`; k8s manifests live under `deploy/k8s/`. Older revisions of this guide referenced `docker/` and `k8s/` — those paths don't exist in this tree.
 
-### Export Keys and Config (Optional)
+## Before you start: export keys + config
 
-Save your API keys and credentials before tearing down:
+If the controller is still running, export keys and a full config snapshot first:
 
 ```bash
-# From the controller API (if still running)
+# Full config snapshot (recommended)
+curl -s http://localhost:9100/api/backup > media-stack-backup-$(date +%Y%m%d).json
+
+# Per-service API keys
 curl -s http://localhost:9100/api/keys > media-stack-keys-backup.json
-
-# Or from the dashboard: Security > Export Keys > Copy All
-
-# Download a full config backup
-curl -s http://localhost:9100/api/backup > media-stack-backup.json
 ```
+
+From the dashboard: **Security → Export keys → Copy all**.
 
 ---
 
 ## Docker Compose
 
-### Use the teardown script (recommended)
+### Use the teardown workflow (recommended)
 
-The repo ships a teardown helper at `media-stack-teardown`. It handles the cases the manual recipe gets wrong:
+The repo ships a teardown CLI at
+`python -m media_stack.cli.commands.teardown_stack_main`, also wired
+as `bin/media-stack-teardown` for shell convenience. It handles the
+cases the manual recipe gets wrong:
 
-* Preserves git-tracked `config/defaults/` (the controller reads bootstrap templates from it on first run — nuking it breaks fresh installs).
-* Kills stale `kubectl port-forward` processes that bind compose host ports — a common silent failure when toggling between k8s and compose.
-* Three scopes, the safest one is the default:
+* Preserves the git-tracked `config/defaults/` directory (the
+  controller reads bootstrap templates from there on first run; nuking
+  it breaks fresh installs).
+* Kills stale `kubectl port-forward` processes that bind compose host
+  ports — a silent failure when toggling between k8s and compose
+  setups on the same host.
+* Three scopes; the default is the safest one.
 
 ```bash
-# Default — wipes runtime config dirs only, keeps data/torrents and config/defaults/
-media-stack-teardown --dry-run
-media-stack-teardown --execute
+# Default — wipes service config dirs only; keeps data/torrents
+# and config/defaults/. `--dry-run` is the default, no harm done.
+python -m media_stack.cli.commands.teardown_stack_main \
+    --target compose --scope config --dry-run
 
-# Also wipe data/ (torrents, usenet, transcode)
-media-stack-teardown --scope data --dry-run
-media-stack-teardown --scope data --execute
+# Same plan, actually execute:
+python -m media_stack.cli.commands.teardown_stack_main \
+    --target compose --scope config --execute --yes
 
-# Wipe everything including media/ (asks for confirmation per dir)
-media-stack-teardown --scope everything --dry-run
-media-stack-teardown --scope everything --execute
+# Also wipe data/ (torrents, usenet, transcode):
+python -m media_stack.cli.commands.teardown_stack_main \
+    --target compose --scope data --execute --yes
 
-# Production execute mode requires an explicit namespace token
-media-stack-teardown --target k8s --environment prod --execute --confirm-token "TEARDOWN media-stack"
-
-# Show what would happen, take no action
-media-stack-teardown --dry-run
+# Wipe everything including media/ (asks for confirmation):
+python -m media_stack.cli.commands.teardown_stack_main \
+    --target compose --scope everything --execute --yes
 ```
 
-Dry-run previews the planned mutations. Verification is a separate step: inspect the running deployment after teardown or deploy and prove containers, pods, namespaces, and image refs match the expected state.
+Dry-run previews every action without touching disk. The 2026-05-09
+operator session ran the workflow successfully on a real cluster —
+all 19 service config directories cleaned, ~5 GiB freed, fresh
+`docker compose up -d` came up clean afterwards.
 
 After teardown, fresh-bootstrap with:
 
 ```bash
 docker compose -f deploy/compose/docker-compose.yml up -d
-docker compose -f deploy/compose/docker-compose.yml logs -f media-stack-controller
+docker compose -f deploy/compose/docker-compose.yml \
+    logs -f media-stack-controller
 ```
 
 ### Manual (Linux / macOS)
 
-```bash
-cd docker/
+If you can't run the workflow (Python not installed, or you're
+debugging it):
 
-# 1. Stop all containers and remove volumes
-docker compose down -v --remove-orphans
+```bash
+# 1. Stop all containers and remove the compose network + named volumes
+docker compose -f deploy/compose/docker-compose.yml down -v --remove-orphans
 
 # 2. Remove runtime config dirs (KEEP config/defaults/ — it's git-tracked)
-find config -mindepth 1 -maxdepth 1 -not -name defaults -exec rm -rf {} +
+find config -mindepth 1 -maxdepth 1 ! -name defaults -exec rm -rf {} +
 
-# 3. Remove download data (NOT /media — that's the library)
+# 3. Remove download/data dirs (NOT /media — that's the library)
 rm -rf data/
 
-# 4. (Optional) Remove media library
+# 4. (Optional) Remove the media library
 rm -rf media/
 
-# 5. (Optional) Remove the controller image
-docker rmi media-stack-controller:latest 2>/dev/null
+# 5. (Optional) Remove the controller + UI images
+docker rmi harbor.iomio.io/library/media-stack-controller:latest \
+           harbor.iomio.io/library/media-stack-ui:latest 2>/dev/null || true
 
 # 6. (Optional) Prune unused Docker resources
 docker system prune -af --volumes
@@ -88,7 +100,7 @@ docker system prune -af --volumes
 If you overrode paths with environment variables:
 
 ```bash
-# Check your overrides
+# Show your overrides
 echo "CONFIG_ROOT: ${CONFIG_ROOT:-./config}"
 echo "MEDIA_ROOT:  ${MEDIA_ROOT:-./media}"
 echo "DATA_ROOT:   ${DATA_ROOT:-./data}"
@@ -100,19 +112,17 @@ rm -rf "${CONFIG_ROOT:-./config}" "${MEDIA_ROOT:-./media}" "${DATA_ROOT:-./data}
 ### Windows (PowerShell)
 
 ```powershell
-cd docker\
-
 # 1. Stop all containers and remove volumes
-docker compose down -v --remove-orphans
+docker compose -f deploy\compose\docker-compose.yml down -v --remove-orphans
 
-# 2. Remove config data
-Remove-Item -Recurse -Force config\
+# 2. Remove config data (keep defaults\)
+Get-ChildItem config -Directory | Where-Object Name -ne 'defaults' | Remove-Item -Recurse -Force
 
 # 3. Remove media and download data
 Remove-Item -Recurse -Force media\, data\
 
-# 4. (Optional) Remove the controller image
-docker rmi media-stack-controller:latest 2>$null
+# 4. (Optional) Remove the controller + UI images
+docker rmi harbor.iomio.io/library/media-stack-controller:latest, harbor.iomio.io/library/media-stack-ui:latest 2>$null
 
 # 5. (Optional) Prune unused Docker resources
 docker system prune -af --volumes
@@ -120,7 +130,8 @@ docker system prune -af --volumes
 
 ### Windows (WSL2)
 
-If running inside WSL2, use the Linux commands above. If the data is on the Windows filesystem:
+If running inside WSL2, use the Linux commands above. If the data
+lives on the Windows filesystem:
 
 ```bash
 # WSL2 mounts Windows drives at /mnt/c, /mnt/d, etc.
@@ -133,25 +144,26 @@ rm -rf /mnt/c/Users/YourName/media-stack/data
 
 ## Kubernetes
 
-### Single Namespace (Standard)
+### Single namespace (standard)
 
 ```bash
 NAMESPACE=media-stack
 
-# 1. Delete all resources in the namespace
+# 1. Delete every resource in the namespace
 kubectl delete namespace "$NAMESPACE"
 
 # 2. Wait for namespace termination
 kubectl wait --for=delete namespace/"$NAMESPACE" --timeout=120s 2>/dev/null
 
-# 3. Verify clean
+# 3. Verify
 kubectl get all -n "$NAMESPACE" 2>&1
-# Should show: No resources found
+# Expected: No resources found
 ```
 
-### With Persistent Volumes
+### With PersistentVolumes (Retain reclaim policy)
 
-PersistentVolumes may survive namespace deletion if their reclaim policy is `Retain`:
+`PersistentVolumes` may survive namespace deletion if their reclaim
+policy is `Retain`:
 
 ```bash
 # List PVs that were bound to the media-stack namespace
@@ -160,47 +172,69 @@ kubectl get pv | grep media-stack
 # Delete them manually
 kubectl delete pv <pv-name>
 
-# Or delete all PVs with the media-stack label
+# Or, by label:
 kubectl delete pv -l app.kubernetes.io/part-of=media-stack
 ```
 
-### With Kustomize Overlays
+### With kustomize overlays
+
+If you deployed via kustomize, reverse the apply:
 
 ```bash
-# If you deployed with kustomize, reverse it:
-kubectl delete -k k8s/all/
-# Or for a specific overlay:
-kubectl delete -k k8s/all/
+# Standard profile teardown:
+kubectl delete -k deploy/k8s/profiles/standard
+
+# Or the "everything" overlay:
+kubectl delete -k deploy/k8s/all
 ```
 
-### MicroK8s Specific
+The `deploy/k8s/overlays/nvidia/` GPU overlay is patch-only — it
+doesn't introduce new resources, so there's nothing extra to delete
+on teardown. The patches disappear when the underlying Deployment
+is deleted.
+
+### MicroK8s
 
 ```bash
-# If using MicroK8s storage
+# Use microk8s' bundled kubectl
 microk8s kubectl delete namespace media-stack
 
-# Clean up local storage
+# Clean up local storage if you used the host-path provisioner
 sudo rm -rf /var/snap/microk8s/common/default-storage/media-stack-*
+```
+
+### Workflow CLI on k8s
+
+The same teardown CLI handles k8s too:
+
+```bash
+python -m media_stack.cli.commands.teardown_stack_main \
+    --target k8s --scope config --execute --yes
+
+# Production execute requires an explicit namespace confirm token:
+python -m media_stack.cli.commands.teardown_stack_main \
+    --target k8s --environment prod --execute \
+    --confirm-token "TEARDOWN media-stack"
 ```
 
 ---
 
-## Verify Clean State
+## Verify clean state
 
 ### Docker Compose
 
 ```bash
 # No media-stack containers
-docker ps -a --filter "label=com.docker.compose.project=media-stack" --format '{{.Names}}'
+docker ps -a --filter 'label=com.docker.compose.project=media-stack' --format '{{.Names}}'
 
 # No media-stack volumes
-docker volume ls --filter "label=com.docker.compose.project=media-stack"
+docker volume ls --filter 'label=com.docker.compose.project=media-stack'
 
 # No media-stack networks
-docker network ls --filter "label=com.docker.compose.project=media-stack"
+docker network ls --filter 'label=com.docker.compose.project=media-stack'
 
-# Config directory gone
-ls -la config/ 2>&1  # Should show "No such file or directory"
+# Service config dirs gone (only defaults/ remains)
+ls -la config/
 ```
 
 ### Kubernetes
@@ -208,61 +242,99 @@ ls -la config/ 2>&1  # Should show "No such file or directory"
 ```bash
 # Namespace gone
 kubectl get namespace media-stack 2>&1
-# Should show: namespaces "media-stack" not found
+# Expected: namespaces "media-stack" not found
 
 # No lingering PVs
 kubectl get pv | grep media-stack
-# Should show nothing
+# Expected: no output
 ```
 
 ---
 
-## Partial Cleanup
+## Partial cleanup
 
-### Reset Config Only (Keep Media)
+### Reset config only (keep media library)
 
 Useful for starting fresh without re-downloading content:
 
 ```bash
 # Docker Compose
-cd docker/
-docker compose down -v --remove-orphans
-rm -rf config/
+docker compose -f deploy/compose/docker-compose.yml down -v --remove-orphans
+find config -mindepth 1 -maxdepth 1 ! -name defaults -exec rm -rf {} +
 # Keep media/ and data/ intact
-docker compose up -d
+docker compose -f deploy/compose/docker-compose.yml up -d
 
 # Kubernetes
 kubectl delete configmap,secret,job -n media-stack --all
 kubectl rollout restart deployment -n media-stack
 ```
 
-### Remove a Single Service
+### Remove a single service
 
 ```bash
 # Docker Compose — stop and remove one service
-docker compose rm -sf sonarr
-rm -rf config/sonarr/
+docker compose -f deploy/compose/docker-compose.yml rm -sf sonarr
+rm -rf "${CONFIG_ROOT:-./config}/sonarr/"
 
-# Kubernetes — delete one deployment
+# Kubernetes — delete one deployment + its PVC
 kubectl delete deployment sonarr -n media-stack
-kubectl delete pvc sonarr-config -n media-stack
+kubectl delete pvc media-stack-config-sonarr -n media-stack
 ```
 
 ---
 
-## Re-deploying After Teardown
+## GPU-specific teardown notes
+
+If you applied the NVIDIA overlay (`deploy/k8s/overlays/nvidia/`):
+
+* **Standard namespace teardown removes everything** including the
+  GPU-patched Jellyfin Deployment. The GPU operator's daemonset
+  pods (in the `gpu-operator-resources` namespace) survive and
+  are unaffected — they're cluster-scoped infrastructure.
+* On a redeploy after teardown, you must **re-apply the GPU patch**
+  because it lives outside the base manifest:
+
+```bash
+kubectl patch -n media-stack deployment/jellyfin \
+    --type strategic \
+    --patch-file deploy/k8s/overlays/nvidia/jellyfin-gpu-patch.yaml
+```
+
+See [ADR-0014](../architecture/adr/0014-gpu-strategy-and-time-slicing.md)
+for the GPU strategy and overlay design.
+
+---
+
+## Re-deploying after teardown
 
 After a full teardown, redeploy from scratch:
 
 ```bash
 # Docker Compose
-cd docker/
-docker compose --profile standard up -d
+docker compose -f deploy/compose/docker-compose.yml up -d
 
-# Kubernetes
-kubectl apply -k k8s/all/
+# Kubernetes (one of the profiles)
+kubectl apply -k deploy/k8s/profiles/standard
+
+# If you have a GPU and the operator installed:
+kubectl patch -n media-stack deployment/jellyfin \
+    --type strategic \
+    --patch-file deploy/k8s/overlays/nvidia/jellyfin-gpu-patch.yaml
 ```
 
-The controller will run the full bootstrap pipeline automatically on first start — discovering API keys, configuring download clients, setting up indexers, and wiring all integrations.
+The controller runs the bootstrap pipeline on first start — discovering
+API keys, configuring download clients, setting up indexers, wiring
+integrations.
 
-See [GETTING-STARTED.md](../GETTING-STARTED.md) for the full setup guide.
+See the [deployment how-to](deployment.md) for the full setup
+sequence, including pre-bootstrap profile choice.
+
+---
+
+## Last reviewed
+
+2026-05-10 — refreshed paths (`deploy/compose/` + `deploy/k8s/`),
+image registry prefix (`harbor.iomio.io/library/`), `media-stack-
+teardown` CLI usage, and added the GPU overlay teardown section.
+Previous revision (2026-04-30) had `cd docker/` and `k8s/all/` which
+no longer exist in this tree.
