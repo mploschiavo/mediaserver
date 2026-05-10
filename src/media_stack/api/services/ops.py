@@ -507,33 +507,58 @@ class OpsService:
                         def get(_name: str) -> Any:
                             raise RuntimeError("docker unavailable")
                 client = _NoDockerClient()
-            ms = next((s for s in _SERVICES if s.category == "media"), None)
-            if ms:
-                gpu_mod = importlib.import_module(f"media_stack.services.apps.{ms.id}.gpu")
+            # The SERVICES registry exposes every supported media-
+            # server option (emby/jellyfin/mythtv/plex/jellyseerr).
+            # Only one is the active backend on any given deploy.
+            # Walk all of them; the first one whose probe reports
+            # ``<svc>_has_gpu = True`` (or the first one whose probe
+            # module is importable, as a fallback) wins.
+            media_services = [
+                s for s in _SERVICES
+                if s.category == "media" and s.id != "jellyseerr"
+            ]
+            picked_ms_id: str | None = None
+            picked_info: dict[str, Any] = {}
+            for ms in media_services:
+                try:
+                    gpu_mod = importlib.import_module(
+                        f"media_stack.services.apps.{ms.id}.gpu",
+                    )
+                except (ImportError, ModuleNotFoundError):
+                    continue
                 check_fn = getattr(gpu_mod, f"check_{ms.id}_gpu", None)
-                if check_fn:
-                    ms_info = check_fn(client)
-                    result.update(ms_info)
-                    # If the media-server probe reports GPU via the
-                    # k8s evidence path (Deployment carries
-                    # ``nvidia.com/gpu`` or ``runtimeClassName:
-                    # nvidia``), promote that to the top-level
-                    # ``detected`` flag the UI reads. Without this,
-                    # k8s clusters still see "No GPU detected" even
-                    # though the workload pod has the GPU attached.
-                    if ms_info.get(f"{ms.id}_has_gpu"):
-                        result["detected"] = True
-                        ev = ms_info.get(f"{ms.id}_k8s_evidence") or {}
-                        vendor = (ev.get("gpu_vendor") or "nvidia").lower()
-                        result["gpus"].append({
-                            "type": vendor,
-                            "name": (
-                                f"{vendor.upper()} GPU via Kubernetes "
-                                f"(runtimeClass={ev.get('runtime_class') or 'n/a'}, "
-                                f"limit={ev.get('gpu_resource') or 'n/a'})"
-                            ),
-                            "k8s_namespace": ev.get("namespace") or "",
-                        })
+                if not check_fn:
+                    continue
+                info = check_fn(client) or {}
+                if info.get(f"{ms.id}_has_gpu"):
+                    picked_ms_id = ms.id
+                    picked_info = info
+                    break
+                if picked_ms_id is None:
+                    picked_ms_id = ms.id
+                    picked_info = info
+            if picked_ms_id:
+                result.update(picked_info)
+                # If the picked media-server reports a GPU via the
+                # k8s evidence path (Deployment carries
+                # ``nvidia.com/gpu`` or ``runtimeClassName: nvidia``),
+                # promote it to the top-level ``detected`` flag the
+                # UI reads. Without this, k8s clusters still see
+                # "No GPU detected" even though the workload pod has
+                # the GPU attached.
+                if picked_info.get(f"{picked_ms_id}_has_gpu"):
+                    result["detected"] = True
+                    ev = picked_info.get(f"{picked_ms_id}_k8s_evidence") or {}
+                    vendor = (ev.get("gpu_vendor") or "nvidia").lower()
+                    result["gpus"].append({
+                        "type": vendor,
+                        "name": (
+                            f"{vendor.upper()} GPU via Kubernetes "
+                            f"(runtimeClass={ev.get('runtime_class') or 'n/a'}, "
+                            f"limit={ev.get('gpu_resource') or 'n/a'})"
+                        ),
+                        "k8s_namespace": ev.get("namespace") or "",
+                    })
         except Exception as exc:
             log_swallowed(exc)
 
