@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from media_stack.adapters.qbittorrent.categories_wiring import (
@@ -40,6 +41,9 @@ from media_stack.domain.services import (
     Outcome,
     ProbeResult,
     ServiceLifecycle,
+)
+from media_stack.domain.services.lifecycle_handler_adapter import (
+    LifecycleHandlerAdapter,
 )
 
 
@@ -195,6 +199,144 @@ class QbittorrentLifecycle:
                 evidence={"env_written": env_var, "error": str(exc)},
             )
 
+    # --- Credentials wiring (ADR-0013 Phase 2) ----------------------
+    #
+    # Verifies that the stored ``STACK_ADMIN_USERNAME`` /
+    # ``STACK_ADMIN_PASSWORD`` authenticate against qBittorrent's
+    # WebUI. Replaces the legacy ``runner.run`` path's inline login
+    # check (the one that produced today's compose error
+    # ``run-legacy-pipeline: qBittorrent login failed with secret
+    # credentials``). Lives on the framework now: orchestrator ticks
+    # the promise, the ensurer reports ok / transient / permanent,
+    # the cooldown machinery handles backoff.
+    #
+    # The probe and ensure share the same HTTP-login check; the
+    # ensurer adds no side effects (qBittorrent's password rotation
+    # itself stays in ``infrastructure.qbittorrent.compose_preflight``
+    # because resetting requires container access — docker exec /
+    # kubectl exec — which the lifecycle layer does not have. The
+    # ensurer's job is to *verify* and surface the failure honestly,
+    # so the legacy runner can short-circuit and the operator knows
+    # exactly why.
+
+    def probe_credentials_synced(self, ctx: OrchestrationContext) -> ProbeResult:
+        """Cheap HTTP check that stored stack-admin creds authenticate.
+
+        ``ok`` if ``POST /api/v2/auth/login`` returns ``Ok.``;
+        ``failed`` if the response is non-OK (credentials mismatched);
+        ``unknown`` if the WebUI is unreachable (transient).
+        """
+        host = (ctx.config.get("host") or "").strip()
+        port = ctx.config.get("port")
+        if not host or not port:
+            return ProbeResult.failed(
+                "no host/port in config — cannot probe",
+                evidence={"config_keys": sorted(ctx.config.keys())},
+                evaluated_at=ctx.now(),
+            )
+        username, password = self._stack_admin_creds(ctx)
+        if not password:
+            return ProbeResult.failed(
+                "no STACK_ADMIN_PASSWORD in env/secrets",
+                evidence={"username_present": bool(username)},
+                evaluated_at=ctx.now(),
+            )
+        scheme = (ctx.config.get("scheme") or "http").strip()
+        login_path = (ctx.config.get("login_path") or "/api/v2/auth/login").strip()
+        url = f"{scheme}://{host}:{port}{login_path}"
+        body = (
+            f"username={urllib.parse.quote(username, safe='')}"
+            f"&password={urllib.parse.quote(password, safe='')}"
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": f"{scheme}://{host}:{port}",
+                "Referer": f"{scheme}://{host}:{port}/",
+                "User-Agent": "media-stack-controller/lifecycle",
+            },
+        )
+        try:
+            with urllib.request.urlopen(
+                req, timeout=_DEFAULT_PROBE_TIMEOUT_SECONDS,
+            ) as resp:
+                payload = resp.read().decode("utf-8", errors="replace").strip()
+                if resp.status == 200 and payload.startswith("Ok."):
+                    return ProbeResult.ok(
+                        "stack-admin creds authenticate at qBittorrent",
+                        evidence={"url": url},
+                        evaluated_at=ctx.now(),
+                    )
+                return ProbeResult.failed(
+                    f"login returned http={resp.status} body={payload[:32]!r}",
+                    evidence={"url": url, "http_status": resp.status},
+                    evaluated_at=ctx.now(),
+                )
+        except urllib.error.HTTPError as exc:
+            return ProbeResult.failed(
+                f"login HTTP {exc.code} — credentials likely mismatched",
+                evidence={"url": url, "http_status": exc.code},
+                evaluated_at=ctx.now(),
+            )
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            return ProbeResult.unknown(
+                f"qBittorrent WebUI unreachable at {url}: {exc}",
+                evidence={"url": url, "error": str(exc)},
+                evaluated_at=ctx.now(),
+            )
+
+    def ensure_credentials(self, ctx: OrchestrationContext) -> Outcome[None]:
+        """Ensure the stored stack-admin credentials authenticate.
+
+        On the framework path this is a verify-only ensurer: the
+        actual password rotation is done by
+        ``compose_preflight.ensure_compose_torrent_client_credentials``
+        because rotating requires container access (docker exec /
+        kubectl exec) which the lifecycle layer does not have.
+
+        Outcomes:
+        * success — login OK; promise satisfied, orchestrator stops
+          ticking until the next reconcile cycle.
+        * failure(transient=True) — WebUI unreachable; orchestrator
+          retries with backoff.
+        * failure(transient=False) — credentials mismatched; the
+          operator must run the compose / k8s preflight to reset
+          qBittorrent's stored password. Phase 3+ of ADR-0013 will
+          fold the rotation into a sibling ensurer that takes a
+          container-access port from ``OrchestrationContext.extra``.
+        """
+        probe = self.probe_credentials_synced(ctx)
+        if probe.status == "ok":
+            return Outcome.success(
+                evidence=dict(probe.evidence or {}),
+            )
+        # Probe.unknown → transient (network issue), Probe.failed →
+        # permanent (cred mismatch). The probe encodes that already.
+        return Outcome.failure(
+            probe.detail or "credential verification failed",
+            transient=(probe.status == "unknown"),
+            evidence=dict(probe.evidence or {}),
+        )
+
+    def _stack_admin_creds(
+        self, ctx: OrchestrationContext,
+    ) -> tuple[str, str]:
+        """Resolve stack-admin username + password from env/secrets.
+
+        Order: ``ctx.secrets`` first (the orchestrator-injected secrets
+        bag), then ``os.environ`` as fallback. Defaults: ``admin`` for
+        username, empty password (probe will fail loudly if unset).
+        """
+        def _read(key: str) -> str:
+            return (
+                (ctx.secrets.get(key) or "").strip()
+                or os.environ.get(key, "").strip()
+            )
+        return (_read("STACK_ADMIN_USERNAME") or "admin", _read("STACK_ADMIN_PASSWORD"))
+
     # --- Categories wiring (ADR-0005 Phase 3) -----------------------
     #
     # Both methods delegate to ``CategoriesWirer`` (in
@@ -252,10 +394,21 @@ _INSTANCE = QbittorrentLifecycle()
 _api_key_env = _INSTANCE._api_key_env
 _classify_source = _INSTANCE._classify_source
 
+# ADR-0013 Phase 2 — module-level Job handler bound from the
+# ``ensure_credentials`` lifecycle method. The contract entry
+# ``"qbittorrent:ensure-credentials"`` in ``contracts/services/
+# qbittorrent.yaml`` references this name; the application-layer
+# ``_make_lifecycle_wrapper`` translates the Job framework's
+# ``JobContext`` into the ``OrchestrationContext`` shape this method
+# expects (same mechanism Bazarr / Sonarr / etc. lifecycles use).
+ensure_credentials = LifecycleHandlerAdapter.bind(
+    QbittorrentLifecycle, "ensure_credentials",
+)
+
 
 # Type-check at import.
 _check: ServiceLifecycle = _INSTANCE
 del _check
 
 
-__all__ = ["QbittorrentLifecycle"]
+__all__ = ["QbittorrentLifecycle", "ensure_credentials"]

@@ -42,6 +42,30 @@ plugin:
       label: "Ensure qBittorrent categories"
       satisfies: [qbittorrent-categories]
       requires: []
+
+    # ADR-0013 Phase 2 — verify the stored stack-admin credentials
+    # authenticate against qBittorrent's WebUI. Replaces the legacy
+    # ``runner.run`` path's inline login check that produced the
+    # 2026-05-10 compose error ``run-legacy-pipeline: qBittorrent
+    # login failed with secret credentials`` when the controller's
+    # stored secret no longer matched qBittorrent's password.
+    #
+    # On the framework path the orchestrator ticks this job until
+    # the promise ``qbittorrent-credentials-synced`` is satisfied;
+    # the cooldown machinery handles transient (WebUI unreachable)
+    # vs permanent (cred mismatched) failures honestly. The actual
+    # password rotation lives in
+    # ``infrastructure.qbittorrent.compose_preflight`` because
+    # rotating requires container access (docker exec / kubectl
+    # exec) which the lifecycle layer does not have; Phase 3+ of
+    # ADR-0013 will fold the rotation into a sibling ensurer that
+    # takes a container-access port from
+    # ``OrchestrationContext.extra``.
+    "qbittorrent:ensure-credentials":
+      handler: media_stack.adapters.qbittorrent.lifecycle:ensure_credentials
+      label: "Verify qBittorrent stack-admin credentials"
+      satisfies: [qbittorrent-credentials-synced]
+      requires: []
   event_handlers:
     ACQUIRE:
       torrent_client_login: media_stack.services.apps.qbittorrent.runtime_ops:torrent_client_login
@@ -106,3 +130,21 @@ plugin:
       ensured_by:
         type: job
         job_name: "qbittorrent:ensure-categories"
+
+    # ADR-0013 Phase 2 — credential verification promise. Mirrors the
+    # categories promise shape: a cheap HTTP login check on the
+    # probe side, the same call (via ensure_credentials) on the
+    # ensurer side. Marked ``bootstrap_blocking: true`` because every
+    # downstream qBit work (categories, *arr download-client wiring)
+    # depends on the controller being able to authenticate.
+    - id: qbittorrent-credentials-synced
+      description: Stored stack-admin creds authenticate against qBittorrent WebUI
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: lifecycle
+        service: qbittorrent
+        method: probe_credentials_synced
+      ensured_by:
+        type: job
+        job_name: "qbittorrent:ensure-credentials"
