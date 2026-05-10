@@ -1,9 +1,140 @@
 # ADR-0013 — Retire `run-legacy-pipeline`: one job framework, no bespoke paths
 
-**Status:** Proposed (2026-05-10). Closes the third leg of the
+**Status:** Phases 1–3b accepted (2026-05-10). Phase 4 (per-*arr
+adapter-hook migrations), Phase 5 (remaining apps), and Phase 6
+(retire + hard-gate) remain. Closes the third leg of the
 "single-framework" effort that ADR-0009 and ADR-0010 began.
 
 Authors: matthew
+
+## Status snapshot — 2026-05-10 (Phases 1–3b shipped)
+
+The qBittorrent leg of the migration is fully on the unified Job
+framework. The orchestrator's reconcile loop now drives credential
+sync + rotation end-to-end; the deploy-time `compose_preflight` is
+a thin shim that delegates to the same lifecycle method.
+
+**Commits in this session** (all pushed to `main`):
+
+| Commit     | Phase | Summary                                                                                  |
+|------------|-------|------------------------------------------------------------------------------------------|
+| `38d96718` | doc   | ADR-0013 created                                                                          |
+| `06259a44` | doc   | Clarification: relationship to ADR-0003 / ADR-0010 (no regression on lifecycle pattern)   |
+| `f2f7f963` | 2     | qBittorrent verify-only ensurer: `probe_credentials_synced` + `ensure_credentials` + contract entry + promise |
+| `1c1d74a5` | 3     | `ContainerAccess` Protocol in domain + `ComposeContainerAccess` in infra + `LifecycleResolver` wires `extra["container_access"]` + qBit `ensure_credentials` upgraded to verify+rotate |
+| `0d857a5a` | 3b    | `K8sContainerAccess` (kubectl-backed) + `LifecycleResolver` detects platform + `compose_preflight` body retired (now a 30-line shim that calls the lifecycle) |
+
+**One body, two entry points** (the end-state Phase 3b achieved):
+
+```
+deploy-time call:                       reconcile-tick call:
+  deploy_stack_main                       JobRunner.run("qbittorrent:ensure-credentials")
+    └── compose_preflight shim              └── _make_lifecycle_wrapper (Phase 2 bridge)
+          └─────────────────┐                   └────────────┐
+                            ▼                                ▼
+                   QbittorrentLifecycle.ensure_credentials(OrchestrationContext)
+                            │
+                            ▼
+                   probe → if .ok return success;
+                   if .unknown return transient;
+                   if .failed: pull ctx.extra["container_access"]
+                       (ComposeContainerAccess on compose, K8sContainerAccess on k8s)
+                       and rotate (read_logs → temp pw → exec_shell login + setPreferences)
+```
+
+The `[ERR] [ERR] run-legacy-pipeline: qBittorrent login failed
+with secret credentials` error class can no longer surface — every
+trigger reaches the same idempotent rotation body, and rotation
+failures emit structured `Outcome.failure(transient=…, evidence=
+{phase: …})` that lands in `/api/jobs.history` with cooldown.
+
+**Phase 4 backlog — per-*arr legacy adapter-hook actions.**
+`ServarrPipelineService._configure_single_app` runs six adapter
+phases per *arr app (`load → precheck → prepare → configure →
+ensure → status_check`). Each phase mutates real *arr config:
+mediamanagement, download-handling, quality-upgrade, discovery
+lists, root folder, etc. Some pieces have already been split off
+into per-promise contract jobs (the `radarr.yaml` / `sonarr.yaml`
+comments name them — `radarr-has-indexers`, `radarr-import-lists-
+auto`, `radarr-download-client`, `radarr-jellyfin-notifier`,
+`radarr-quality-profiles`, plus `radarr-api-key-discoverable`).
+The unmigrated tail per *arr:
+
+| Action (legacy `adapter.configure()` body) | Per-arr promise candidate          |
+|--------------------------------------------|------------------------------------|
+| mediamanagement settings (renames, hardlinks, recycle bin, etc.) | `<arr>-mediamanagement-policy`      |
+| download-handling settings (failed-import, redownload, etc.)     | `<arr>-download-handling-policy`    |
+| root-folder configuration                  | `<arr>-root-folder`                |
+| quality-profile + cutoff reconciliation    | (partly covered by `*-quality-profiles`) |
+| metadata-provider settings                 | `<arr>-metadata-provider`          |
+| custom-format application                  | `<arr>-custom-formats`             |
+| naming-convention application              | `<arr>-naming-convention`          |
+
+Each row times four *arrs (radarr, sonarr, lidarr, readarr) gives
+~28 contract jobs. Each is a small migration following the Phase
+2 recipe: add a lifecycle method on `ServarrLifecycle` (or its
+per-arr subclass) returning `Outcome`, bind it via
+`LifecycleHandlerAdapter.bind`, add the promise + job entry. The
+existing `arr_media_management_cfg` / `arr_download_handling_cfg`
+/ `arr_quality_upgrade_cfg` config blocks already feed these
+actions; the lifecycle method reads them from `ctx.config`.
+
+**Phase 5 backlog — remaining apps**:
+
+| App         | What's left in legacy runner                         |
+|-------------|------------------------------------------------------|
+| sabnzbd     | api-key handling already on lifecycle; remote-path mapping for usenet still legacy |
+| jellyseerr  | most actions migrated; arr-server linking still legacy |
+| maintainerr | rules-linked-to-arr is migrated; rule-translation still legacy |
+| jellyfin    | libraries / livetv / prewarm already on jobs framework; sidecar config still legacy |
+| homepage    | service URL templating still inside `runner.run` adapter hook |
+| authelia    | initial seed step is migrated; group-mapping reconciliation still legacy |
+
+Each app's checklist is what's referenced in its
+`contracts/services/<app>.yaml` adapter_classes / event_handlers
+blocks but has no `satisfies:` promise yet.
+
+**Phase 6 — retire** (no commits yet):
+
+* `services/apps/core/job_adapters.py::run_legacy_pipeline` deleted
+* `contracts/services/core.yaml::run-legacy-pipeline` entry deleted
+* `application/jobs/controller_runner.py::_build_runner` deleted
+* `services/controller_service.py::_run_servarr_pipeline`,
+  `_run_full_prechecks`, `_prepare_download_clients`,
+  `_run_servarr_pipeline` deleted (and the `ControllerService`
+  class shrinks to its remaining responsibilities or is itself
+  retired)
+* New hard-gate ratchet: `LegacyRunnerForbidden` — any reference
+  to `run_legacy_pipeline` or `_build_runner` outside the migration
+  shim fails CI immediately. (The shim itself goes away in this
+  same commit, so the ratchet just enforces "no resurrection.")
+
+**Discipline rules (apply to every Phase 4-5 commit)** — same as
+the original ADR-0013 scope; restated here so each commit audits
+itself:
+
+1. Single framework — every migrated action becomes a
+   `LifecycleHandlerAdapter.bind(...)` Job handler.
+2. `OrchestrationContext` only — no `JobContext` reads inside
+   lifecycle methods; the framework's `_make_lifecycle_wrapper`
+   handles the bridge.
+3. Idempotent ensurers — safe to invoke when the promise is
+   already satisfied.
+4. Transient-vs-permanent — auth/DNS/5xx → transient; schema /
+   4xx / config-missing → permanent.
+5. No new lazy imports inside method bodies in `domain/` —
+   ADR-0011 leaf invariant. Lazy imports inside
+   `application/` / `infrastructure/` lifecycle methods are
+   allowed when justified by a real circular-import (Phase 3b
+   added one inside `LifecycleResolver._k8s_container_access` to
+   defer `kube_cmd` resolution until we know k8s is the active
+   platform).
+6. Contract-test coverage per migration — each commit adds tests
+   that exercise the new ensurer end-to-end against a stub
+   `OrchestrationContext`.
+7. Per-service-split `_EXPECTED_TOTAL` ratchets get bumped in the
+   same commit as the new promise is added (Phase 2/3 commits
+   demonstrated this; Phase 4/5 follow the same rule).
 
 ## Relationship to ADR-0003 / ADR-0010 (read first if you're worried we're regressing)
 
