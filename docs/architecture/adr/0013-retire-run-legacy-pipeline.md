@@ -5,6 +5,32 @@
 
 Authors: matthew
 
+## Relationship to ADR-0003 / ADR-0010 (read first if you're worried we're regressing)
+
+The lifecycle-class pattern (e.g. `BazarrLifecycle`) is *not* what
+this ADR retires. Three different dispatch paths have existed:
+
+| Path                              | Status              | Retired by |
+|-----------------------------------|---------------------|------------|
+| `dispatch_ensurer(svc, method)`   | retired             | ADR-0010   |
+| `JobRunner.run(name)` (framework) | the surviving path  | n/a        |
+| `runner.run(runtime_state)` (legacy adapter-hooks pipeline) | active | this ADR |
+
+ADR-0003 introduced lifecycle classes + promises. ADR-0010 noted the
+"two mechanisms" problem (ensurer-dispatch vs Job-dispatch) and
+retired the former — but explicitly kept lifecycle *classes* as the
+per-service Python implementation, registered as Job handlers via
+`LifecycleHandlerAdapter.bind(...)`. ADR-0013 reuses that exact
+recipe. We are not introducing a fourth path, not reviving
+`dispatch_ensurer`, and not regressing on ADR-0010. We are retiring
+the *third* dispatch path — the v1.x adapter-hooks monolith
+(`runner.run(runtime_state)`) — which pre-dates ADR-0003 and
+neither ADR-0009 nor ADR-0010 touched.
+
+After this ADR ships, exactly one dispatch path remains
+(`JobRunner.run`) and lifecycle classes remain its per-service
+implementation shape — exactly the end-state ADR-0010 described.
+
 ## Context
 
 The controller still has a third dispatch path running alongside
