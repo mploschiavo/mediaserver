@@ -27,8 +27,7 @@ From the dashboard: **Security → Export keys → Copy all**.
 ### Use the teardown workflow (recommended)
 
 The repo ships a teardown CLI at
-`python -m media_stack.cli.commands.teardown_stack_main`, also wired
-as `bin/media-stack-teardown` for shell convenience. It handles the
+`media_stack.cli.commands.teardown_stack_main`. It handles the
 cases the manual recipe gets wrong:
 
 * Preserves the git-tracked `config/defaults/` directory (the
@@ -39,29 +38,42 @@ cases the manual recipe gets wrong:
   setups on the same host.
 * Three scopes; the default is the safest one.
 
+**Required:** run from the repo root (`media-automation-stack/`,
+where this file lives — NOT its parent) and use the venv's Python so
+the `media_stack` package resolves. Plain `python3` from outside the
+venv won't find it.
+
 ```bash
+cd /path/to/media-automation-stack
+
 # Default — wipes service config dirs only; keeps data/torrents
 # and config/defaults/. `--dry-run` is the default, no harm done.
-python -m media_stack.cli.commands.teardown_stack_main \
+.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target compose --scope config --dry-run
 
-# Same plan, actually execute:
-python -m media_stack.cli.commands.teardown_stack_main \
+# Same plan, actually execute (still preserves media/ and data/):
+.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target compose --scope config --execute --yes
 
 # Also wipe data/ (torrents, usenet, transcode):
-python -m media_stack.cli.commands.teardown_stack_main \
+.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target compose --scope data --execute --yes
 
-# Wipe everything including media/ (asks for confirmation):
-python -m media_stack.cli.commands.teardown_stack_main \
+# Wipe EVERYTHING including media/ (your library!) — destructive:
+.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target compose --scope everything --execute --yes
 ```
 
-Dry-run previews every action without touching disk. The 2026-05-09
-operator session ran the workflow successfully on a real cluster —
-all 19 service config directories cleaned, ~5 GiB freed, fresh
-`docker compose up -d` came up clean afterwards.
+> **Scope reminder:** `--scope everything` deletes `media/` too —
+> your entire library. If you want to redeploy with the same media
+> intact, use `--scope config` (or `--scope data` if you also want
+> to drop in-flight downloads / transcode cache).
+
+Dry-run previews every action without touching disk, including
+per-path size estimates. The 2026-05-09 operator session ran the
+workflow successfully on a real cluster — all 19 service config
+directories cleaned, ~5 GiB freed, fresh `docker compose up -d` came
+up clean afterwards.
 
 After teardown, fresh-bootstrap with:
 
@@ -205,14 +217,18 @@ sudo rm -rf /var/snap/microk8s/common/default-storage/media-stack-*
 
 ### Workflow CLI on k8s
 
-The same teardown CLI handles k8s too:
+The same teardown CLI handles k8s too. Run from the repo root with
+the venv's Python (same module-resolution gotcha as the compose
+section above):
 
 ```bash
-python -m media_stack.cli.commands.teardown_stack_main \
+cd /path/to/media-automation-stack
+
+.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target k8s --scope config --execute --yes
 
 # Production execute requires an explicit namespace confirm token:
-python -m media_stack.cli.commands.teardown_stack_main \
+.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target k8s --environment prod --execute \
     --confirm-token "TEARDOWN media-stack"
 ```
@@ -333,8 +349,15 @@ sequence, including pre-bootstrap profile choice.
 
 ## Last reviewed
 
-2026-05-10 — refreshed paths (`deploy/compose/` + `deploy/k8s/`),
-image registry prefix (`harbor.iomio.io/library/`), `media-stack-
-teardown` CLI usage, and added the GPU overlay teardown section.
-Previous revision (2026-04-30) had `cd docker/` and `k8s/all/` which
-no longer exist in this tree.
+2026-05-10 (second pass) — fixed the workflow CLI invocation:
+must be run from the repo root with `.venv/bin/python` so the
+`media_stack` package resolves. Earlier same-day revision claimed
+a `bin/media-stack-teardown` shell wrapper existed; it does not
+in this repo. Removed that reference and made the venv-python
+prefix explicit on every invocation example.
+
+Prior 2026-05-10 (first pass) — refreshed paths (`deploy/compose/`
++ `deploy/k8s/`), image registry prefix (`harbor.iomio.io/library/`),
+added the GPU overlay teardown section. Previous revision
+(2026-04-30) had `cd docker/` and `k8s/all/` which no longer exist
+in this tree.
