@@ -591,7 +591,7 @@ commit body.
 | Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | **landed** (2026-05-11) | `ecf7a9ec` |
 | Phase 5 — `maintenance.py` migration | **landed** (2026-05-11) | `7b5cefda` |
 | Phase 6 — Boundary ratchet + cleanup | **landed** (2026-05-11) | `4e478e30` |
-| Phase 7a — `Microk8sReconcileRunner` migration | **landed** (2026-05-11) | _pending_ |
+| Phase 7a — `Microk8sReconcileRunner` migration | **landed** (2026-05-11) | `51581dc8` |
 | Phase 7b — `ValidateControllerConfigCommand` migration | proposed | — |
 | Phase 7c — `RunBootstrapJobRunner` migration | proposed | — |
 | Phase 7d — `ControllerAllRunner` migration | proposed | — |
