@@ -41,7 +41,7 @@ bash bin/utils/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 
 Cross-platform:
 ```bash
-.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> <NAMESPACE>
+media-stack-microk8s-smoke <NODE_IP> <NAMESPACE>
 ```
 
 Linux convenience: `bash bin/test/microk8s-smoke-test.sh ...`.

@@ -21,15 +21,98 @@ Both platforms share the same set of profiles (manifests live in `deploy/k8s/pro
 | `public-demo` | Demo-safe defaults; reduced downloader automation |
 | `power-user` | Full + TLS + additional operational guardrails |
 
-The bootstrap profile (`contracts/media-stack.profile.yaml`) declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults. Validate with the cross-platform CLI (Windows / macOS / Linux):
+The bootstrap profile (`contracts/media-stack.profile.yaml`) declares target, purpose, stack name, install toggles, exposure intent, route strategy, and auth provider defaults. Validate with the cross-platform CLI:
 
 ```bash
+# After 'pip install -e .' — see First-time setup below:
+media-stack-validate-profile
+
+# Equivalent without the console-script:
 .venv/bin/python -m media_stack.cli.commands.validate_controller_profile_main
+
+# Linux convenience wrapper:
+bash bin/utils/validate-bootstrap-profile.sh
 ```
 
-Linux convenience wrapper: `bash bin/utils/validate-bootstrap-profile.sh` (6-line wrapper around the Python module above).
+## First-time setup
 
-> **Cross-platform vs. Linux-only paths.** This guide leads with `docker compose`, `kubectl`, and `python -m media_stack.cli.commands.*` invocations — these work identically on Windows, macOS, and Linux. The `bash bin/<subdir>/*.sh` scripts are thin convenience wrappers (mostly just `exec` the Python module); they're handy on Linux but you don't need them. Where a bash script does something Linux-specific (MicroK8s, `/etc/hosts` mangling, host DNS rendering) the section calls it out explicitly.
+`git clone` doesn't create `.venv/` or install Python deps — you have to
+do that once per machine. After this step, all three forms shown
+throughout this guide (`media-stack-*` console-scripts,
+`.venv/bin/python -m media_stack.cli.commands.*`, and the Linux `bash bin/...`
+wrappers) all work.
+
+**Linux / macOS:**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"          # add ,docs] if you also want the mkdocs deps
+```
+
+**Windows (PowerShell):**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+```
+
+`pip install -e .` is editable install — it puts `media_stack` on
+`sys.path` pointing at the cloned tree and registers every console-script
+declared in `pyproject.toml` (`media-stack-deploy`, `media-stack-backup`,
+`media-stack-teardown`, etc.) under `.venv/bin/` (or `.venv/Scripts\` on
+Windows). Activating the venv puts those on your PATH.
+
+Verify:
+
+```bash
+media-stack-validate-profile --help        # console-script, after activate
+.venv/bin/python -m media_stack.version    # module form
+```
+
+> **Cross-platform vs. Linux-only paths.** This guide shows three
+> forms for each CLI: the `media-stack-*` console-script (cleanest,
+> works on Windows / macOS / Linux), the equivalent
+> `.venv/bin/python -m media_stack.cli.commands.<X>_main` module
+> invocation (same thing under the hood), and the `bash bin/<subdir>/*.sh`
+> Linux convenience wrapper. Pick whichever you prefer. The Docker /
+> kubectl recipes work everywhere with no setup. Anything genuinely
+> Linux-only (MicroK8s, `/etc/hosts` mangling, host DNS rendering) is
+> called out explicitly.
+
+### Console-scripts cheatsheet
+
+After `pip install -e .` these names are on PATH and replace the longer
+`.venv/bin/python -m media_stack.cli.commands.<X>_main` invocation:
+
+| Console-script | Module form |
+|---|---|
+| `media-stack-deploy` | `deploy_stack_main` |
+| `media-stack-deploy-verify` | `deploy_verify_main` |
+| `media-stack-backup` | `backup_stack_main` |
+| `media-stack-restore` | `restore_stack_main` |
+| `media-stack-teardown` | `teardown_stack_main` |
+| `media-stack-verify` | `verify_fresh_install` |
+| `media-stack-build-controller` | `build_controller_image_main` |
+| `media-stack-build-ui` | `build_ui_image_main` |
+| `media-stack-install` | `services.apps.stack.cli.install_main` |
+| `media-stack-bootstrap-all` | `controller_all_main` |
+| `media-stack-watch-install` | `watch_install_main` |
+| `media-stack-microk8s-reconcile` | `microk8s_reconcile_main` |
+| `media-stack-microk8s-smoke` | `microk8s_smoke_test_main` |
+| `media-stack-reset-admin` | `reset_admin_main` |
+| `media-stack-setup-lan-tls` | `setup_lan_tls_main` |
+| `media-stack-set-pvc-storage-class` | `set_pvc_storage_class_main` |
+| `media-stack-validate-config` | `validate_controller_config_main` |
+| `media-stack-validate-profile` | `validate_controller_profile_main` |
+| `media-stack-apply-scale-policy` | `apply_scale_policy_main` |
+| `media-stack-run-unit-tests` | `run_unit_tests_main` |
+| `media-stack-release` | `release_pipeline_main` |
+
+A few modules don't have console-script entry points yet (e.g.
+`generate_secrets_main`, `verify_flow_main`, `run_playwright_screenshots_main`,
+`microk8s_reconcile_main`'s alias) — use the module form for those.
 
 ## Controller service
 
@@ -93,7 +176,7 @@ When you want orchestrated deploy + health-check + profile resolution in one
 command, use the Python workflow CLI (works on Windows / macOS / Linux):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
+media-stack-deploy \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
@@ -104,7 +187,7 @@ command, use the Python workflow CLI (works on Windows / macOS / Linux):
 Optional profiles:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
+media-stack-deploy \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev \
@@ -185,7 +268,7 @@ python3 -m venv .venv && source .venv/bin/activate
 python3 -m pip install --upgrade pip
 python3 -m pip install docker kubernetes pyyaml requests ruff black
 npx -y @mermaid-js/mermaid-cli@10.9.1 -h
-.venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
+media-stack-run-unit-tests
 ```
 
 ### One-command deploy (any OS)
@@ -235,15 +318,15 @@ CLIs run on Windows / macOS / Linux:
 
 ```bash
 # installer wizard with profile selection
-.venv/bin/python -m media_stack.cli.commands.install_main --profile full --node-ip <NODE_IP>
-.venv/bin/python -m media_stack.cli.commands.install_main --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+media-stack-install --profile full --node-ip <NODE_IP>
+media-stack-install --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 
 # deterministic rebuild + verification (recommended for DR confidence)
-.venv/bin/python -m media_stack.cli.commands.deploy_verify_main <NODE_IP> [NAMESPACE] [PROFILE]
+media-stack-deploy-verify <NODE_IP> [NAMESPACE] [PROFILE]
 
 # fully automatic rebuild + bootstrap + smoke test
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
-PROFILE=power-user .venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
+media-stack-deploy <NODE_IP>
+PROFILE=power-user media-stack-deploy <NODE_IP>
 ```
 
 Linux convenience wrappers: `bash bin/install/install.sh`, `bash bin/test/deploy-verify.sh`, `bash bin/install/deploy-stack.sh`.
@@ -280,8 +363,8 @@ kubectl -n media-stack scale deploy/unpackerr --replicas=1
 Build / push the controller image (cross-platform — uses the Docker CLI under the hood):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.build_controller_image_main
-.venv/bin/python -m media_stack.cli.commands.build_ui_image_main
+media-stack-build-controller
+media-stack-build-ui
 ```
 
 Linux convenience wrappers: `bash bin/build/build-controller-image.sh`, `bash bin/build/build-ui-image.sh`.
@@ -293,7 +376,7 @@ Run idempotent post-deploy wiring. **The controller does this automatically on s
 curl -X POST http://localhost:9100/actions/bootstrap
 
 # full one-command flow from fresh namespace:
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
+media-stack-deploy <NODE_IP>
 ```
 
 Linux-only debug helpers (under `bin/debug/`, used when an `ensure-*` job is misbehaving and you want to reconcile a single service from a shell):
@@ -343,9 +426,9 @@ bash bin/debug/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
 Multi-namespace install (cross-platform):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
 
@@ -367,7 +450,7 @@ kubectl get ns -o name | grep '^namespace/media-stack-' | grep -v '^namespace/me
 Cross-platform:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.setup_lan_tls_main
+media-stack-setup-lan-tls
 ```
 
 Linux convenience: `bash bin/utils/setup-lan-tls.sh`. The dnsmasq/hosts renderers are Linux-only (see Multi-namespace section above).
@@ -377,8 +460,8 @@ Linux convenience: `bash bin/utils/setup-lan-tls.sh`. The dnsmasq/hosts renderer
 Cross-platform (Windows / macOS / Linux):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.backup_stack_main
-.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+media-stack-backup
+media-stack-restore ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 Linux convenience wrappers: `bash bin/utils/backup-stack.sh`, `bash bin/utils/restore-stack.sh`.
@@ -388,8 +471,8 @@ Linux convenience wrappers: `bash bin/utils/backup-stack.sh`, `bash bin/utils/re
 Cross-platform:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.apply_scale_policy_main
-SCALE_TO_ZERO=1 .venv/bin/python -m media_stack.cli.commands.apply_scale_policy_main
+media-stack-apply-scale-policy
+SCALE_TO_ZERO=1 media-stack-apply-scale-policy
 ```
 
 Linux convenience: `bash bin/utils/apply-scale-policy.sh`.
@@ -407,12 +490,12 @@ Deployments are PVC-based by default. Choose storage behavior without editing ap
 1. **Default** — rely on the cluster default StorageClass (`deploy/k8s/base/storage/storage-pvc.yaml` has no `storageClassName` by default).
 2. **Inject one class at deploy time:**
    ```bash
-   .venv/bin/python -m media_stack.cli.commands.install_main \
+   media-stack-install \
        --profile full --storage-mode dynamic-pvc --storage-class <NAME> --node-ip <NODE_IP>
    ```
 3. **Pin all claims to a class** — use `deploy/k8s/pvc-storage.example.yaml` as your template, or patch in place:
    ```bash
-   .venv/bin/python -m media_stack.cli.commands.set_pvc_storage_class_main <NAME>
+   media-stack-set-pvc-storage-class <NAME>
    ```
 4. **MicroK8s custom pvDir class:**
    ```bash
@@ -443,14 +526,14 @@ bash bin/test/microk8s-smoke-test.sh <NODE_IP>
 bash bin/k8s/microk8s-reconcile.sh --include-optional
 ```
 
-The smoke-test skips ingress hosts when the backend service isn't installed (useful for core-only deployments). The reconcile and smoke-test scripts are Python under the hood (`microk8s_reconcile_main`, `microk8s_smoke_test_main`) — you can call them as `.venv/bin/python -m media_stack.cli.commands.microk8s_reconcile_main ...` from any OS, but the cluster they target will still need to be MicroK8s.
+The smoke-test skips ingress hosts when the backend service isn't installed (useful for core-only deployments). The reconcile and smoke-test scripts are Python under the hood (`microk8s_reconcile_main`, `microk8s_smoke_test_main`) — you can call them as `media-stack-microk8s-reconcile ...` from any OS, but the cluster they target will still need to be MicroK8s.
 
 ### Common recovery
 
 If logs show `s6-applyuidgid` permission errors, or Deployments are stuck between old/new ReplicaSets:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.microk8s_reconcile_main --include-optional
+media-stack-microk8s-reconcile --include-optional
 ```
 
 If Arr apps fail to add root folders with `Folder '/media/' is not writable by user 'abc'`:
@@ -483,7 +566,7 @@ kubectl get storageclass
 `dynamic-pvc` is required: StorageClass / PVC-driven, portable across clusters.
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+media-stack-install --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 ```
 
 ## Namespace strategy
@@ -491,9 +574,9 @@ kubectl get storageclass
 Use namespace isolation for environment promotion and safe experimentation:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-dev  --ingress-domain dev.local  --node-ip <NODE_IP>
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-prod --ingress-domain prod.local --node-ip <NODE_IP>
 ```
 
@@ -509,13 +592,13 @@ The expected operating posture is rebuild-ready:
 Full Kubernetes rebuild + verify in one command (cross-platform):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.deploy_verify_main <NODE_IP> [NAMESPACE] [PROFILE]
+media-stack-deploy-verify <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Compose rebuild:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
+media-stack-deploy \
   --platform-target compose \
   --namespace media-dev \
   --compose-project-name media-dev
@@ -524,7 +607,7 @@ Compose rebuild:
 Compose rebuild with profile auto-defaults:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main --bootstrap-profile-file contracts/media-stack.profile.yaml
+media-stack-deploy --bootstrap-profile-file contracts/media-stack.profile.yaml
 ```
 
 Linux convenience wrappers: `bash bin/test/deploy-verify.sh`, `bash bin/install/deploy-stack.sh`.

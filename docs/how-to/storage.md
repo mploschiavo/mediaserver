@@ -1,5 +1,10 @@
 # Storage Model
 
+> CLI invocations below use the `media-stack-*` console-script form
+> available after [First-time setup](deployment.md#first-time-setup).
+> The `.venv/bin/python -m media_stack.cli.commands.X_main` module
+> form also works for any of them.
+
 ## Default Strategy (Recommended)
 
 The stack is now PVC-first.
@@ -46,14 +51,14 @@ Recommended options:
 - Set an appropriate default StorageClass in your cluster.
 - Pass a deploy-time override (no file edits, cross-platform):
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
 ```
 - Or pin claims to a class by editing `deploy/k8s/base/storage/storage-pvc.yaml`.
 - Or use `deploy/k8s/pvc-storage.example.yaml` as a class-pinned template.
 - Or run the helper CLI (cross-platform):
 ```bash
-.venv/bin/python -m media_stack.cli.commands.set_pvc_storage_class_main <STORAGE_CLASS_NAME>
+media-stack-set-pvc-storage-class <STORAGE_CLASS_NAME>
 ```
 Linux convenience wrapper: `bash bin/utils/set-pvc-storage-class.sh ...`.
 
@@ -110,8 +115,8 @@ PVCs + StorageClass and is portable across clusters.
 Cross-platform (Windows / macOS / Linux):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.backup_stack_main
-.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+media-stack-backup
+media-stack-restore ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 Linux convenience wrappers: `bash bin/utils/backup-stack.sh`, `bash bin/utils/restore-stack.sh`.

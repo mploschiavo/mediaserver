@@ -3,25 +3,27 @@
 ![Operating loop](../diagrams/operating-loop.png)
 
 > **Cross-platform note.** Every workflow CLI below works identically on
-> Windows, macOS, and Linux — they're Python modules, not shell scripts.
-> The `bash bin/<subdir>/*.sh` forms shown alongside are Linux convenience
-> wrappers (6-line `exec` shims). Where a script is genuinely Linux-only
-> (POSIX shell tricks, `/etc/hosts` rendering, MicroK8s integration) the
+> Windows, macOS, and Linux. The `media-stack-*` console-scripts are
+> the cleanest form (available after [First-time setup](deployment.md#first-time-setup));
+> the equivalent `.venv/bin/python -m media_stack.cli.commands.X_main`
+> module form also works. The `bash bin/<subdir>/*.sh` wrappers are
+> Linux conveniences. Where a script is genuinely Linux-only (POSIX
+> shell tricks, `/etc/hosts` rendering, MicroK8s integration) the
 > section calls it out explicitly.
 
 ## Day 0: Install
 
 Cross-platform:
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main --profile full --node-ip <NODE_IP>
-.venv/bin/python -m media_stack.cli.commands.install_main --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+media-stack-install --profile full --node-ip <NODE_IP>
+media-stack-install --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 ```
 
 Namespace-isolated environment:
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-dev --storage-mode dynamic-pvc --ingress-domain dev.local --node-ip <NODE_IP>
 ```
 
@@ -31,7 +33,7 @@ Linux convenience: `bash bin/install/install.sh ...`.
 
 Use this regularly to prove recoverability:
 ```bash
-.venv/bin/python -m media_stack.cli.commands.deploy_verify_main <NODE_IP> [NAMESPACE] [PROFILE]
+media-stack-deploy-verify <NODE_IP> [NAMESPACE] [PROFILE]
 ```
 
 Linux convenience: `bash bin/test/deploy-verify.sh ...`.
@@ -159,11 +161,11 @@ qB queue and category-budget guardrails are configured under
 
 Cross-platform (Python module CLIs):
 ```bash
-.venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
-RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> .venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
-RUN_API_E2E=1 NAMESPACE=<NAMESPACE> .venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
-.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> [NAMESPACE]
-.venv/bin/python -m media_stack.cli.commands.validate_controller_config_main
+media-stack-run-unit-tests
+RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> media-stack-run-unit-tests
+RUN_API_E2E=1 NAMESPACE=<NAMESPACE> media-stack-run-unit-tests
+media-stack-microk8s-smoke <NODE_IP> [NAMESPACE]
+media-stack-validate-config
 .venv/bin/python -m media_stack.cli.commands.run_playwright_screenshots_main <NODE_IP> [NAMESPACE]
 ```
 
@@ -173,8 +175,8 @@ Linux convenience wrappers: `bash bin/test/{test,run-api-e2e,microk8s-smoke-test
 
 Cross-platform:
 ```bash
-.venv/bin/python -m media_stack.cli.commands.backup_stack_main
-.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+media-stack-backup
+media-stack-restore ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 Linux convenience: `bash bin/utils/{backup-stack,restore-stack}.sh`.
@@ -188,7 +190,7 @@ cross-platform; the stack-status helper is a small shell script that wraps
 
 ```bash
 # Cross-platform watch-install:
-.venv/bin/python -m media_stack.cli.commands.watch_install_main
+media-stack-watch-install
 
 # DEBUG bootstrap rerun (Linux-only — bootstrap-all.sh is shell-based;
 # Windows / macOS: re-trigger via curl -X POST .../actions/bootstrap

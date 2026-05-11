@@ -3,14 +3,19 @@
 ## Command
 
 ```bash
-bash bin/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-k8s-standard.yaml
+# Cross-platform (Windows / macOS / Linux):
+media-stack-deploy \
+    --bootstrap-profile-file examples/bootstrap-profiles/media-k8s-standard.yaml
+
+# Linux convenience:
+bash bin/install/deploy-stack.sh --bootstrap-profile-file examples/bootstrap-profiles/media-k8s-standard.yaml
 ```
 
 ## Pipeline Overview
 
 ```
-deploy-stack.sh
-  └─ deploy_stack_main.py
+bin/install/deploy-stack.sh (Linux convenience)
+  └─ media_stack.cli.commands.deploy_stack_main
        │
        ├─ Phase 1:  Resolve profile defaults (from YAML)
        ├─ Phase 2:  Validate bootstrap config JSON
@@ -45,7 +50,7 @@ deploy-stack.sh
 4. Delete any existing Jobs (immutable — must be recreated)
 5. `kubectl apply -f -` with conflict fallback (replace → create)
 
-**Resources applied** (from `k8s/profiles/standard/kustomization.yaml`):
+**Resources applied** (from `deploy/k8s/profiles/standard/kustomization.yaml`):
 
 | File | Resources |
 |------|-----------|

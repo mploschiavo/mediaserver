@@ -1,5 +1,9 @@
 # Networking Model
 
+> CLI invocations below assume `media-stack-*` is on PATH after the
+> [First-time setup](deployment.md#first-time-setup). The
+> `.venv/bin/python -m media_stack.cli.commands.X_main` form also works.
+
 ## Routing Model
 
 Every app in the stack is reachable through **three consistent route patterns** via Envoy:
@@ -30,9 +34,9 @@ For parallel environments, use unique namespace + domain suffix pairs.
 
 Example (cross-platform — Windows / macOS / Linux):
 ```bash
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-.venv/bin/python -m media_stack.cli.commands.install_main \
+media-stack-install \
     --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
 
@@ -51,8 +55,8 @@ Sourcing the env vars from the file is operating-system specific:
 ```bash
 # Linux / macOS (POSIX shell):
 set -a; source <ENV_FILE>; set +a
-.venv/bin/python -m media_stack.cli.commands.install_main ...
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main ...
+media-stack-install ...
+media-stack-deploy ...
 
 # Windows PowerShell:
 Get-Content <ENV_FILE> | ForEach-Object {
@@ -83,7 +87,7 @@ on Windows, `/etc/hosts` on macOS) — the renderer just prints the lines you'd 
 
 Cross-platform:
 ```bash
-.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> [NAMESPACE]
+media-stack-microk8s-smoke <NODE_IP> [NAMESPACE]
 ```
 
 Linux convenience: `bash bin/test/microk8s-smoke-test.sh ...`. The underlying cluster still has to be MicroK8s.
@@ -107,7 +111,7 @@ See [Authentication](auth.md) for Authelia/Authentik SSO setup, OIDC configurati
 
 Optional LAN TLS helper (cross-platform):
 ```bash
-.venv/bin/python -m media_stack.cli.commands.setup_lan_tls_main
+media-stack-setup-lan-tls
 ```
 
 Linux convenience: `bash bin/utils/setup-lan-tls.sh`.

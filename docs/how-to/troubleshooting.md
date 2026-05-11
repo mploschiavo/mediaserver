@@ -74,7 +74,7 @@ If name resolution works but UI still fails:
 - test from private/incognito window
 - run smoke test (cross-platform):
 ```bash
-.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> <NAMESPACE>
+media-stack-microk8s-smoke <NODE_IP> <NAMESPACE>
 ```
 
 ## 1) Controller Service Fails
@@ -214,7 +214,7 @@ kubectl -n <NAMESPACE> get ingress
 # MicroK8s ingress-class repatch is Linux-only (microk8s itself is Linux-only):
 bash bin/k8s/microk8s-patch-ingress-class.sh <INGRESS_CLASS>
 # Smoke-test (cross-platform):
-.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> <NAMESPACE>
+media-stack-microk8s-smoke <NODE_IP> <NAMESPACE>
 ```
 
 ## 8) Kustomize Profile Apply Fails With Load Restrictions
@@ -223,7 +223,7 @@ If your kubectl enforces strict load restrictions, use installer/rebuild scripts
 
 ```bash
 # Cross-platform:
-.venv/bin/python -m media_stack.cli.commands.deploy_stack_main <NODE_IP>
+media-stack-deploy <NODE_IP>
 # Linux convenience: bash bin/install/deploy-stack.sh <NODE_IP>
 ```
 

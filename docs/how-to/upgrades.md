@@ -2,6 +2,11 @@
 
 Media Stack ships as a pinned controller image (`harbor.iomio.io/library/media-stack-controller:vX.Y.Z`) plus a separately versioned UI image (`harbor.iomio.io/library/media-stack-ui:vX.Y.Z`). Current versions live in `VERSION` (controller) and `VERSION-UI` (UI) at the repo root. The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
 
+> The CLI invocations below assume `media-stack-*` is on PATH. If you're
+> running on a fresh checkout, do the [First-time setup](deployment.md#first-time-setup)
+> first (`python -m venv .venv` + `pip install -e .`). The module form
+> `.venv/bin/python -m media_stack.cli.commands.X_main` also works.
+
 ## Routine upgrade
 
 The controller + UI versions are pinned in:
@@ -54,7 +59,7 @@ The controller's bootstrap re-runs idempotently after any restart, so any new pr
 Cross-platform (Windows / macOS / Linux):
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.verify_fresh_install          # full promises probe (slower)
+media-stack-verify          # full promises probe (slower)
 ```
 
 Linux convenience: `bash bin/test/verify-stack.sh` for a quick edge-only smoke
@@ -69,14 +74,14 @@ For non-trivial upgrades (controller minor version bumps, app major version bump
 
 ```bash
 # Cross-platform
-.venv/bin/python -m media_stack.cli.commands.backup_stack_main
+media-stack-backup
 # Linux convenience: bash bin/utils/backup-stack.sh
 ```
 
 Restore if needed:
 
 ```bash
-.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-<ts>.tar.gz
+media-stack-restore ./backups/media-stack-backup-<ts>.tar.gz
 # Linux convenience: bash bin/utils/restore-stack.sh <path>
 ```
 

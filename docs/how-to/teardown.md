@@ -38,30 +38,37 @@ cases the manual recipe gets wrong:
   setups on the same host.
 * Three scopes; the default is the safest one.
 
-**Required:** run from the repo root (`media-automation-stack/`,
-where this file lives — NOT its parent) and use the venv's Python so
-the `media_stack` package resolves. Plain `python3` from outside the
-venv won't find it.
+**Required:** the `media-stack-teardown` console-script needs to be
+on your PATH. That happens automatically after the [first-time
+setup](deployment.md#first-time-setup) (`python -m venv .venv` +
+`pip install -e .` + activating the venv) — and works on Windows,
+macOS, and Linux equally. The wipe operates on paths configured
+in your bootstrap profile, not the current working directory, so
+you can run it from anywhere once the venv is active.
+
+```bash
+# Default — wipes service config dirs only; keeps data/torrents
+# and config/defaults/. `--dry-run` is the default, no harm done.
+media-stack-teardown --target compose --scope config --dry-run
+
+# Same plan, actually execute (still preserves media/ and data/):
+media-stack-teardown --target compose --scope config --execute --yes
+
+# Also wipe data/ (torrents, usenet, transcode):
+media-stack-teardown --target compose --scope data --execute --yes
+
+# Wipe EVERYTHING including media/ (your library!) — destructive:
+media-stack-teardown --target compose --scope everything --execute --yes
+```
+
+If you haven't done `pip install -e .` and don't want to,
+the module form works as a fallback (requires you `cd` to the
+repo root so the import path resolves):
 
 ```bash
 cd /path/to/media-automation-stack
-
-# Default — wipes service config dirs only; keeps data/torrents
-# and config/defaults/. `--dry-run` is the default, no harm done.
-.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
-    --target compose --scope config --dry-run
-
-# Same plan, actually execute (still preserves media/ and data/):
 .venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
     --target compose --scope config --execute --yes
-
-# Also wipe data/ (torrents, usenet, transcode):
-.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
-    --target compose --scope data --execute --yes
-
-# Wipe EVERYTHING including media/ (your library!) — destructive:
-.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
-    --target compose --scope everything --execute --yes
 ```
 
 > **Scope reminder:** `--scope everything` deletes `media/` too —
@@ -217,21 +224,20 @@ sudo rm -rf /var/snap/microk8s/common/default-storage/media-stack-*
 
 ### Workflow CLI on k8s
 
-The same teardown CLI handles k8s too. Run from the repo root with
-the venv's Python (same module-resolution gotcha as the compose
-section above):
+The same teardown CLI handles k8s too — same console-script, just
+`--target k8s` instead of `--target compose`:
 
 ```bash
-cd /path/to/media-automation-stack
-
-.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
-    --target k8s --scope config --execute --yes
+media-stack-teardown --target k8s --scope config --execute --yes
 
 # Production execute requires an explicit namespace confirm token:
-.venv/bin/python -m media_stack.cli.commands.teardown_stack_main \
-    --target k8s --environment prod --execute \
+media-stack-teardown --target k8s --environment prod --execute \
     --confirm-token "TEARDOWN media-stack"
 ```
+
+(Same `cd /path/to/media-automation-stack` + `.venv/bin/python -m ...`
+fallback applies as in the compose section if you haven't done
+`pip install -e .`.)
 
 ---
 
@@ -348,6 +354,17 @@ sequence, including pre-bootstrap profile choice.
 ---
 
 ## Last reviewed
+
+2026-05-10 (third pass) — swapped the canonical invocation to the
+`media-stack-teardown` console-script entry point (declared in
+`pyproject.toml`'s `[project.scripts]`). After `pip install -e .`
+this name is on PATH on Windows, macOS, and Linux equally, and
+no `cd` to the repo root is needed because the entry-point resolves
+through Python's installed package metadata, not relative imports.
+The `cd repo-root + .venv/bin/python -m media_stack.cli.commands.teardown_stack_main`
+form is kept as a fallback when the editable-install hasn't been
+run. See [First-time setup](deployment.md#first-time-setup) for the
+one-time `pip install -e .` step.
 
 2026-05-10 (second pass) — fixed the workflow CLI invocation:
 must be run from the repo root with `.venv/bin/python` so the
