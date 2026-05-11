@@ -22,6 +22,14 @@ plugin:
   # Eliminates the silent-error-as-ok shape that the legacy
   # ensure-bazarr-language-profile job exhibited.
   lifecycle_class: media_stack.adapters.bazarr.lifecycle:BazarrLifecycle
+  # Compose deploy resolver reads this field. Bazarr is a Python /
+  # Flask app — config lives in ``general.base_url`` of
+  # ``/config/config/config.yaml`` (vs. the .NET arrs' ``<UrlBase>``
+  # in ``config.xml``), so it gets its own dedicated preflight rather
+  # than sharing the servarr family handler. Same operational role
+  # though: align the served base URL with envoy's ``/app/bazarr``
+  # path prefix so static asset URLs resolve under the gateway.
+  compose_preflight_handler: media_stack.services.apps.bazarr.compose_preflight:ensure_compose_bazarr_url_base
   technology: bazarr
   aliases:
   - barr

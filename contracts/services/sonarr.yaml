@@ -37,6 +37,16 @@ plugin:
     name: sonarr
     handler: media_stack.services.apps.servarr.http_preflight:run_preflight
     optional: true
+  # Compose deploy resolver reads this field (vs. ``preflight_handler``
+  # above which is the k8s ``container_preflight_handlers`` entry).
+  # Same shared servarr handler iterates the .NET arr family
+  # internally — sets ``<UrlBase>/app/sonarr</UrlBase>`` +
+  # ``AuthenticationMethod=Forms`` + ``AuthenticationRequired=DisabledForLocalAddresses``
+  # in ``config.xml`` and reconciles the value via the host-config API
+  # so the path-prefix route ``apps.<domain>/app/sonarr/`` actually
+  # serves the UI. Declared per-service so a fresh checkout's audit
+  # shows each arr wiring its compose preflight explicitly.
+  compose_preflight_handler: media_stack.services.apps.servarr.http_preflight:run_preflight
   technology: sonarr
   aliases:
   - sarr

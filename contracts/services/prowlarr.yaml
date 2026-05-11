@@ -33,6 +33,8 @@ plugin:
     name: prowlarr
     handler: media_stack.services.apps.servarr.http_preflight:run_preflight
     optional: true
+  # See sonarr.yaml for the per-service rationale. Same shared handler.
+  compose_preflight_handler: media_stack.services.apps.servarr.http_preflight:run_preflight
   technology: prowlarr
   aliases:
   - prow
