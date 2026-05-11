@@ -590,7 +590,7 @@ commit body.
 | Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | **landed** (2026-05-11) | `7f064f3e` |
 | Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | **landed** (2026-05-11) | `ecf7a9ec` |
 | Phase 5 — `maintenance.py` migration | **landed** (2026-05-11) | `7b5cefda` |
-| Phase 6 — Boundary ratchet + cleanup | **landed** (2026-05-11) | _pending_ |
+| Phase 6 — Boundary ratchet + cleanup | **landed** (2026-05-11) | `4e478e30` |
 | Phase 7a — `Microk8sReconcileRunner` migration | proposed | — |
 | Phase 7b — `ValidateControllerConfigCommand` migration | proposed | — |
 | Phase 7c — `RunBootstrapJobRunner` migration | proposed | — |
