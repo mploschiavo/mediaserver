@@ -28,11 +28,15 @@ The subdomain base is derived from the gateway host. For example:
 
 For parallel environments, use unique namespace + domain suffix pairs.
 
-Example:
+Example (cross-platform — Windows / macOS / Linux):
 ```bash
-bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-bash bin/install.sh --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-e2e --ingress-domain e2e.local --node-ip <NODE_IP>
 ```
+
+Linux convenience wrapper: `bash bin/install/install.sh ...`.
 
 ### Safe Env-File Workflow
 
@@ -42,33 +46,47 @@ Templates:
 - `examples/environments/media-dev.env.example`
 - `examples/environments/media-stack.env.example`
 
-Run with env file:
+Sourcing the env vars from the file is operating-system specific:
+
 ```bash
-bash bin/with-env.sh <ENV_FILE> bash bin/install.sh
-bash bin/with-env.sh <ENV_FILE> bash bin/deploy-stack.sh
+# Linux / macOS (POSIX shell):
+set -a; source <ENV_FILE>; set +a
+.venv/bin/python -m media_stack.cli.commands.install_main ...
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main ...
+
+# Windows PowerShell:
+Get-Content <ENV_FILE> | ForEach-Object {
+  if ($_ -match '^([^#=]+)=(.*)$') { Set-Item -Path "env:$($Matches[1])" -Value $Matches[2] }
+}
+.venv\Scripts\python -m media_stack.cli.commands.install_main ...
 ```
 
-`bin/with-env.sh` applies `DELETE_NAMESPACE=0` when unset, so destructive rebuilds stay opt-in.
-To allow teardown, set both `DELETE_NAMESPACE=1` and
-`DELETE_NAMESPACE_CONFIRM=<namespace-or-compose-project>` (or `I_UNDERSTAND`).
+Linux convenience: `bash bin/with-env.sh <ENV_FILE> bash bin/install/install.sh`
+(applies `DELETE_NAMESPACE=0` when unset so destructive rebuilds stay opt-in;
+to allow teardown set both `DELETE_NAMESPACE=1` and
+`DELETE_NAMESPACE_CONFIRM=<namespace-or-compose-project>`).
 
 ## DNS/Hosts Automation
 
-Render local hosts entries:
+The host-file and dnsmasq renderers are Linux-only — they depend on shell
+text-processing and `/etc/hosts` / dnsmasq path conventions:
+
 ```bash
-bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/utils/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/utils/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
 
-Render dnsmasq/AdGuard snippets:
-```bash
-bash bin/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
-```
+For Windows / macOS, edit your host file directly (`C:\Windows\System32\drivers\etc\hosts`
+on Windows, `/etc/hosts` on macOS) — the renderer just prints the lines you'd add.
 
 ## Smoke Validation
 
+Cross-platform:
 ```bash
-bash bin/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
+.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> [NAMESPACE]
 ```
+
+Linux convenience: `bash bin/test/microk8s-smoke-test.sh ...`. The underlying cluster still has to be MicroK8s.
 
 ## Internal vs External Boundaries
 
@@ -87,10 +105,12 @@ See [Authentication](auth.md) for Authelia/Authentik SSO setup, OIDC configurati
 
 ## TLS
 
-Optional LAN TLS helper:
+Optional LAN TLS helper (cross-platform):
 ```bash
-bash bin/setup-lan-tls.sh
+.venv/bin/python -m media_stack.cli.commands.setup_lan_tls_main
 ```
+
+Linux convenience: `bash bin/utils/setup-lan-tls.sh`.
 
 ---
 

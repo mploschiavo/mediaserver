@@ -29,17 +29,22 @@ TCL model behavior depends on OS family:
 
 ## DNS and Access from Other Devices
 
-Use namespace-aware host mapping:
+Use namespace-aware host mapping. The renderers are Linux-only (POSIX shell), but
+you can copy their output into any host file:
+
 ```bash
-bash bin/render-hosts-example.sh <NODE_IP> <NAMESPACE>
-bash bin/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
+bash bin/utils/render-hosts-example.sh <NODE_IP> <NAMESPACE>
+bash bin/utils/render-dnsmasq-snippet.sh <NODE_IP> <NAMESPACE>
 ```
 
 ## Validate Reachability
 
+Cross-platform:
 ```bash
-bash bin/microk8s-smoke-test.sh <NODE_IP> <NAMESPACE>
+.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> <NAMESPACE>
 ```
+
+Linux convenience: `bash bin/test/microk8s-smoke-test.sh ...`.
 
 ---
 

@@ -2,38 +2,54 @@
 
 ![Operating loop](../diagrams/operating-loop.png)
 
+> **Cross-platform note.** Every workflow CLI below works identically on
+> Windows, macOS, and Linux — they're Python modules, not shell scripts.
+> The `bash bin/<subdir>/*.sh` forms shown alongside are Linux convenience
+> wrappers (6-line `exec` shims). Where a script is genuinely Linux-only
+> (POSIX shell tricks, `/etc/hosts` rendering, MicroK8s integration) the
+> section calls it out explicitly.
+
 ## Day 0: Install
 
+Cross-platform:
 ```bash
-bash bin/install.sh --profile full --node-ip <NODE_IP>
-bash bin/install.sh --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main --profile full --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main --profile full --storage-mode dynamic-pvc --node-ip <NODE_IP>
 ```
 
 Namespace-isolated environment:
 ```bash
-bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
-bash bin/install.sh --profile full --namespace media-stack-dev --storage-mode dynamic-pvc --ingress-domain dev.local --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --namespace media-stack-dev --storage-mode dynamic-pvc --ingress-domain dev.local --node-ip <NODE_IP>
 ```
+
+Linux convenience: `bash bin/install/install.sh ...`.
 
 ## Day 0/1: Rebuild Drill
 
 Use this regularly to prove recoverability:
 ```bash
-bash bin/deploy-verify.sh <NODE_IP> [NAMESPACE] [PROFILE]
+.venv/bin/python -m media_stack.cli.commands.deploy_verify_main <NODE_IP> [NAMESPACE] [PROFILE]
 ```
+
+Linux convenience: `bash bin/test/deploy-verify.sh ...`.
 
 ## Secrets Lifecycle
 
-Generate or rotate:
+Cross-platform (Windows / macOS / Linux):
 ```bash
-bash bin/generate-secrets.sh
-ROTATE_EXISTING=1 bash bin/generate-secrets.sh
+.venv/bin/python -m media_stack.cli.commands.generate_secrets_main
+ROTATE_EXISTING=1 .venv/bin/python -m media_stack.cli.commands.generate_secrets_main
 ```
 
-Credential reconcile helpers:
+Linux convenience: `bash bin/utils/generate-secrets.sh`.
+
+Credential reconcile helpers (Linux-only debug scripts under `bin/debug/`):
 ```bash
-bash bin/ensure-qbit-credentials.sh
-bash bin/set-qbit-secret.sh <USERNAME> <PASSWORD>
+bash bin/debug/ensure-qbit-credentials.sh
+bash bin/debug/set-qbit-secret.sh <USERNAME> <PASSWORD>
 ```
 
 ## Bootstrap and Reconcile
@@ -84,15 +100,19 @@ open http://localhost:9100/
 
 ### Script-based bootstrap (alternative)
 
+The bootstrap-all entry point is currently only available as a Linux shell wrapper:
+
 ```bash
 bash bin/bootstrap-all.sh
 bash bin/run-bootstrap-job.sh
-bash bin/verify-flow.sh [NAMESPACE]
+bash bin/test/verify-flow.sh [NAMESPACE]
 ```
+
+On Windows / macOS, use the HTTP-API form (above) instead — `curl -X POST http://localhost:9100/actions/bootstrap` runs the same pipeline.
 
 ![Bootstrap runtime model](../diagrams/bootstrap-runtime-model.png)
 
-Checkpoint/resume controls:
+Checkpoint/resume controls (Linux only — bootstrap-all.sh is still a shell script):
 ```bash
 # default resume enabled
 bash bin/bootstrap-all.sh
@@ -137,30 +157,43 @@ qB queue and category-budget guardrails are configured under
 
 ## Validation and Tests
 
+Cross-platform (Python module CLIs):
 ```bash
-bash bin/test.sh
-RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash bin/test.sh
-RUN_API_E2E=1 NAMESPACE=<NAMESPACE> bash bin/test.sh
-bash bin/run-api-e2e.sh <NAMESPACE>
-bash bin/microk8s-smoke-test.sh <NODE_IP> [NAMESPACE]
-bash bin/validate-bootstrap-config.sh
-bash bin/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
-bash bin/capture-k8s-snapshots.sh [NAMESPACE]
+.venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
+RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> .venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
+RUN_API_E2E=1 NAMESPACE=<NAMESPACE> .venv/bin/python -m media_stack.cli.commands.run_unit_tests_main
+.venv/bin/python -m media_stack.cli.commands.microk8s_smoke_test_main <NODE_IP> [NAMESPACE]
+.venv/bin/python -m media_stack.cli.commands.validate_controller_config_main
+.venv/bin/python -m media_stack.cli.commands.run_playwright_screenshots_main <NODE_IP> [NAMESPACE]
 ```
+
+Linux convenience wrappers: `bash bin/test/{test,run-api-e2e,microk8s-smoke-test,run-playwright-screenshots}.sh`, `bash bin/utils/validate-bootstrap-config.sh`, `bash bin/debug/capture-k8s-snapshots.sh`.
 
 ## Backup and Restore
 
+Cross-platform:
 ```bash
-bash bin/backup-stack.sh
-bash bin/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+.venv/bin/python -m media_stack.cli.commands.backup_stack_main
+.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
+
+Linux convenience: `bash bin/utils/{backup-stack,restore-stack}.sh`.
 
 ## Observability
 
+`bash bin/utils/stack-status.sh` and `bash bin/test/watch-install.sh` are Linux
+convenience wrappers (the underlying `watch_install_main` Python module is
+cross-platform; the stack-status helper is a small shell script that wraps
+`docker ps` + `kubectl get pods` for terminal-friendly output).
+
 ```bash
-bash bin/stack-status.sh
+# Cross-platform watch-install:
+.venv/bin/python -m media_stack.cli.commands.watch_install_main
+
+# DEBUG bootstrap rerun (Linux-only — bootstrap-all.sh is shell-based;
+# Windows / macOS: re-trigger via curl -X POST .../actions/bootstrap
+# after temporarily setting MEDIA_STACK_LOG_LEVEL=DEBUG on the controller pod):
 MEDIA_STACK_LOG_LEVEL=DEBUG bash bin/bootstrap-all.sh --no-resume
-bash bin/watch-install.sh
 ```
 
 ## Namespace Hygiene

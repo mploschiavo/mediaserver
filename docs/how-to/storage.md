@@ -6,7 +6,7 @@ The stack is now PVC-first.
 Application deployments no longer hardcode host paths for storage.
 
 Source-of-truth storage manifest:
-- `k8s/storage-pvc.yaml`
+- `deploy/k8s/base/storage/storage-pvc.yaml`
 
 This keeps deployments portable across:
 - MicroK8s
@@ -40,20 +40,22 @@ Shared content claims:
 
 ## StorageClass Selection
 
-By default, `k8s/storage-pvc.yaml` omits `storageClassName`, so PVCs use the cluster default StorageClass.
+By default, `deploy/k8s/base/storage/storage-pvc.yaml` omits `storageClassName`, so PVCs use the cluster default StorageClass.
 
 Recommended options:
 - Set an appropriate default StorageClass in your cluster.
-- Pass a deploy-time override (no file edits):
+- Pass a deploy-time override (no file edits, cross-platform):
 ```bash
-bash bin/install.sh --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
+.venv/bin/python -m media_stack.cli.commands.install_main \
+    --profile full --storage-mode dynamic-pvc --storage-class <STORAGE_CLASS_NAME> --node-ip <NODE_IP>
 ```
-- Or pin claims to a class by editing `k8s/storage-pvc.yaml`.
-- Or use `k8s/pvc-storage.example.yaml` as a class-pinned template.
-- Or use helper script:
+- Or pin claims to a class by editing `deploy/k8s/base/storage/storage-pvc.yaml`.
+- Or use `deploy/k8s/pvc-storage.example.yaml` as a class-pinned template.
+- Or run the helper CLI (cross-platform):
 ```bash
-bash bin/set-pvc-storage-class.sh <STORAGE_CLASS_NAME>
+.venv/bin/python -m media_stack.cli.commands.set_pvc_storage_class_main <STORAGE_CLASS_NAME>
 ```
+Linux convenience wrapper: `bash bin/utils/set-pvc-storage-class.sh ...`.
 
 ## MicroK8s Custom pvDir (SSD Path)
 
@@ -61,13 +63,13 @@ MicroK8s supports custom hostpath `pvDir` classes.
 
 Use the provided example:
 ```bash
-microk8s kubectl apply -f k8s/storageclass-microk8s.example.yaml
+microk8s kubectl apply -f deploy/k8s/storageclass-microk8s.example.yaml
 microk8s kubectl get storageclass media-stack-hostpath
 ```
 
 Then either:
 1. Make that class default, or
-2. Set `storageClassName: media-stack-hostpath` in `k8s/storage-pvc.yaml`.
+2. Set `storageClassName: media-stack-hostpath` in `deploy/k8s/base/storage/storage-pvc.yaml`.
 
 ## AKS Example
 
@@ -75,12 +77,12 @@ Use Azure Files CSI (RWX-friendly) when you want shared volumes across pods/node
 
 Example class:
 ```bash
-kubectl apply -f k8s/storageclass-aks-azurefile.example.yaml
+kubectl apply -f deploy/k8s/storageclass-aks-azurefile.example.yaml
 ```
 
 Then either:
 1. Make it the default class, or
-2. Set `storageClassName: media-stack-azurefile` in `k8s/storage-pvc.yaml`.
+2. Set `storageClassName: media-stack-azurefile` in `deploy/k8s/base/storage/storage-pvc.yaml`.
 
 Why RWX matters on multi-node clusters:
 - contracts/reconcile jobs may mount multiple app config PVCs at once
@@ -105,10 +107,14 @@ PVCs + StorageClass and is portable across clusters.
 
 ## Backup/Restore
 
+Cross-platform (Windows / macOS / Linux):
+
 ```bash
-bash bin/backup-stack.sh
-bash bin/restore-stack.sh ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+.venv/bin/python -m media_stack.cli.commands.backup_stack_main
+.venv/bin/python -m media_stack.cli.commands.restore_stack_main ./backups/media-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
+
+Linux convenience wrappers: `bash bin/utils/backup-stack.sh`, `bash bin/utils/restore-stack.sh`.
 
 ---
 

@@ -158,15 +158,17 @@ Add a static host mapping for `media-stack.local` pointing to your Docker host I
 
 ### Generate DNS Entries Automatically
 
-The stack includes helper scripts:
+The stack includes helper scripts (Linux-only — they print POSIX-shell-friendly snippets for `/etc/hosts` and dnsmasq):
 
 ```bash
 # /etc/hosts format
-bash bin/render-hosts-example.sh 192.168.1.100 media-stack
+bash bin/utils/render-hosts-example.sh 192.168.1.100 media-stack
 
 # dnsmasq snippet
-bash bin/render-dnsmasq-snippet.sh 192.168.1.100 media-stack
+bash bin/utils/render-dnsmasq-snippet.sh 192.168.1.100 media-stack
 ```
+
+On Windows / macOS, copy the host lines manually into your platform's host file (`C:\Windows\System32\drivers\etc\hosts` on Windows, `/etc/hosts` on macOS).
 
 ## URL Reference
 
