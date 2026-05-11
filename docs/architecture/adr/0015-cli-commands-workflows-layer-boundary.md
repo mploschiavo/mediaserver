@@ -594,7 +594,7 @@ commit body.
 | Phase 7a — `Microk8sReconcileRunner` migration | **landed** (2026-05-11) | `51581dc8` |
 | Phase 7b — `ValidateControllerConfigCommand` migration | **landed** (2026-05-11) | `9bfa7c74` |
 | Phase 7c — `RunBootstrapJobRunner` migration | **landed** (2026-05-11) | `ef2359d7` |
-| Phase 7d — `ControllerAllRunner` migration | proposed | — |
+| Phase 7d — `ControllerAllRunner` migration | **landed** (2026-05-11) | _pending_ |
 | Phase 7e — `controller_serve.py` audit + extract | proposed | — |
 
 ---

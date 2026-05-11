@@ -1,20 +1,41 @@
+"""ControllerCorePhasesService — bootstrap_job pipeline dispatch loop.
+
+ADR-0015 Phase 7d. Pre-Phase-7d this class held its own copies of
+``_render_template_value`` / ``_phase_script`` / ``_skip_phase``
++ inline closures for component resolution, phase context,
+``_phase_enabled``, and args/env rendering — all duplicated
+verbatim with the legacy ``ControllerAllRunner`` god class.
+
+Phase 7d collapses those onto the shared sub-package
+:mod:`cli.workflows.controller_phase_planning` so both pipelines
+share one source of truth for the planning helpers.
+
+:class:`PhaseNameFormatter` stays here because the module-level
+``format_phase_name`` alias is imported by name from external
+callers; the formatter is now also reachable through
+:class:`ControllerTemplateRenderer.format_phase_name`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from media_stack.cli.workflows.controller_phase_planning import (
+    ArgsEnvResolver,
+    ComponentTechnologyResolver,
+    ControllerPlanLoader,
+    ControllerTemplateRenderer,
+    PhaseContextBuilder,
+    PhaseEnabledPredicate,
+)
 from media_stack.core.exceptions import ConfigError
-
 from media_stack.services.controller_component_resolver import (
     ControllerComponentPlan,
     ControllerPhasePlanStep,
-    evaluate_phase_condition,
-    normalize_flag_token,
-    resolve_bootstrap_component_plan,
     resolve_pipeline_components,
     resolve_pipeline_phase_plan,
-    resolve_runner_phase_script,
 )
 
 
@@ -29,7 +50,7 @@ class ControllerCorePhasesConfig:
 class PhaseNameFormatter:
     """Render ``{component_key}``/``{component}``/``{component|unbound}``
     tokens in a phase-name template. Shared helper so the two callers
-    (``ControllerCorePhasesService`` and ``ControllerAllRunner``) can't
+    (``ControllerCorePhasesService`` and ``ControllerAllPipeline``) can't
     drift on the substitution rules."""
 
     def format_phase_name(
@@ -50,29 +71,39 @@ class PhaseNameFormatter:
 
 _PHASE_NAME_FORMATTER = PhaseNameFormatter()
 # Public module-level alias bound to the singleton's instance method,
-# preserving the import API for external callers (controller_all_main).
+# preserving the import API for external callers
+# (controller_phase_planning.template_renderer + the shared module
+# imports this by name).
 format_phase_name = _PHASE_NAME_FORMATTER.format_phase_name
 
 
 class ControllerCorePhasesService:
+    """Composition Root + Template Method for the bootstrap_job pipeline."""
+
     def __init__(self, cfg: ControllerCorePhasesConfig) -> None:
         self.cfg = cfg
-        self.plan: ControllerComponentPlan = resolve_bootstrap_component_plan(self.cfg.config_file)
-        self._phase_name_formatter = _PHASE_NAME_FORMATTER
+        self._plan_loader = ControllerPlanLoader(
+            cfg.config_file, phase_skip_flags=cfg.phase_skip_flags,
+        )
+        # Eagerly resolve to preserve the pre-Phase-7d behaviour where
+        # ``ControllerCorePhasesService.__init__`` would surface a
+        # malformed config file as a constructor-time error.
+        self.plan: ControllerComponentPlan = self._plan_loader.plan()
+        self._renderer = ControllerTemplateRenderer(
+            namespace=cfg.namespace,
+            prepare_host_root=cfg.prepare_host_root,
+            config_file=cfg.config_file,
+        )
+        self._component_resolver = ComponentTechnologyResolver()
+        self._args_env_resolver = ArgsEnvResolver(self._renderer)
+
+    # -- backward-compat shims (kept for in-tree callers) ---------------
 
     def _phase_script(self, phase_key: str, technology: str) -> str:
-        return resolve_runner_phase_script(
-            self.plan.config,
-            phase_key=phase_key,
-            technology=technology,
-            aliases=self.plan.aliases,
-        )
+        return self._plan_loader.phase_script(phase_key, technology)
 
     def _skip_phase(self, flag_key: str) -> bool:
-        token = normalize_flag_token(flag_key)
-        if not token:
-            return False
-        return bool(self.cfg.phase_skip_flags.get(token, False))
+        return self._plan_loader.skip_phase(flag_key)
 
     def _render_template_value(
         self,
@@ -81,17 +112,11 @@ class ControllerCorePhasesService:
         component_key: str = "",
         component_technology: str = "",
     ) -> str:
-        text = str(value or "")
-        tokens = {
-            "$namespace": self.cfg.namespace,
-            "$prepare_host_root": self.cfg.prepare_host_root,
-            "$config_file": str(self.cfg.config_file),
-            "$component_key": component_key,
-            "$component": component_technology,
-        }
-        for token, token_value in tokens.items():
-            text = text.replace(token, str(token_value))
-        return text
+        return self._renderer.render(
+            value,
+            component_key=component_key,
+            component_technology=component_technology,
+        )
 
     def _format_phase_name(
         self,
@@ -100,11 +125,13 @@ class ControllerCorePhasesService:
         component_key: str = "",
         component_technology: str = "",
     ) -> str:
-        return self._phase_name_formatter.format_phase_name(
+        return _PHASE_NAME_FORMATTER.format_phase_name(
             template,
             component_key=component_key,
             component_technology=component_technology,
         )
+
+    # -- run dispatch loop ----------------------------------------------
 
     def run(
         self,
@@ -114,20 +141,9 @@ class ControllerCorePhasesService:
         operation_handlers: dict[str, Callable[[], None]],
     ) -> None:
         phase_plan = resolve_pipeline_phase_plan(
-            self.plan.config,
-            pipeline="bootstrap_job",
+            self.plan.config, pipeline="bootstrap_job",
         )
-        adapter_hooks = self.plan.config.get("adapter_hooks")
-        runner_phase_scripts = (
-            (adapter_hooks or {}).get("runner_phase_scripts")
-            if isinstance(adapter_hooks, dict)
-            else {}
-        )
-        configured_phase_keys = (
-            tuple(str(key) for key in runner_phase_scripts.keys())
-            if isinstance(runner_phase_scripts, dict)
-            else ()
-        )
+        configured_phase_keys = self._configured_phase_keys()
 
         components: dict[str, str] = resolve_pipeline_components(
             self.plan.config,
@@ -135,186 +151,190 @@ class ControllerCorePhasesService:
             aliases=self.plan.aliases,
             role_bindings=self.plan.role_bindings,
         )
+        self._seed_components_from_plan(phase_plan, components)
 
-        def _resolve_component_technology(step: ControllerPhasePlanStep) -> tuple[str, str]:
-            params = dict(step.params or {})
-            component_key = str(params.get("component") or "").strip()
-            if component_key:
-                token = str(components.get(component_key) or "").strip()
-                if token:
-                    return component_key, token
+        context_builder = PhaseContextBuilder(self._plan_loader)
+        component_context = context_builder.component_context(
+            components, configured_phase_keys, self.plan,
+        )
+        phase_context = context_builder.phase_context(self.plan, component_context)
+        phase_enabled = PhaseEnabledPredicate(self._plan_loader, phase_context)
 
-            binding_key = str(params.get("binding") or "").strip()
-            if binding_key:
-                token = str(self.plan.role_bindings.get(binding_key) or "").strip()
-                if token:
-                    return component_key or binding_key, token
+        for step in phase_plan:
+            self._dispatch_step(
+                step, components, phase_enabled, run_phase, run_script,
+                operation_handlers,
+            )
 
-            technology = str(params.get("technology") or "").strip()
-            if technology:
-                return component_key or technology, technology
+    def _configured_phase_keys(self) -> tuple[str, ...]:
+        adapter_hooks = self.plan.config.get("adapter_hooks")
+        runner_phase_scripts = (
+            (adapter_hooks or {}).get("runner_phase_scripts")
+            if isinstance(adapter_hooks, dict)
+            else {}
+        )
+        if isinstance(runner_phase_scripts, dict):
+            return tuple(str(key) for key in runner_phase_scripts.keys())
+        return ()
 
-            return component_key, ""
-
+    def _seed_components_from_plan(
+        self, phase_plan, components: dict[str, str],
+    ) -> None:
         for step in phase_plan:
             if step.operation != "run_component_script":
                 continue
-            key, technology = _resolve_component_technology(step)
+            key, technology = self._component_resolver.resolve(
+                step, self.plan, components,
+            )
             if key and key not in components:
                 components[key] = technology
 
-        component_context: dict[str, dict[str, object]] = {}
-        for component_key, technology in components.items():
-            script_map: dict[str, str] = {}
-            for phase_key in configured_phase_keys:
-                script_map[phase_key] = self._phase_script(phase_key, technology)
-            selected_client = self.plan.technology_settings.get(technology)
-            component_context[component_key] = {
-                "technology": str(technology or "").strip(),
-                "scripts": script_map,
-                "selected": dict(selected_client) if isinstance(selected_client, dict) else {},
-            }
-
-        phase_context: dict[str, object] = {
-            "config": self.plan.config,
-            "bindings": dict(self.plan.role_bindings),
-            "components": component_context,
-        }
-
-        def _phase_enabled(step: ControllerPhasePlanStep) -> bool:
-            enabled = bool(step.enabled) and evaluate_phase_condition(
-                step.when, context=phase_context
+    def _dispatch_step(
+        self,
+        step: ControllerPhasePlanStep,
+        components: dict[str, str],
+        phase_enabled: PhaseEnabledPredicate,
+        run_phase: Callable[..., None],
+        run_script: Callable[..., None],
+        operation_handlers: dict[str, Callable[[], None]],
+    ) -> None:
+        operation = step.operation
+        if operation == "run_component_script":
+            self._dispatch_run_component_script(
+                step, components, phase_enabled, run_phase, run_script,
             )
-            if enabled and step.skip_flag and self._skip_phase(step.skip_flag):
-                enabled = False
-            return enabled
-
-        for step in phase_plan:
-            operation = step.operation
-
-            if operation == "run_component_script":
-                params = dict(step.params or {})
-                component_key, component_technology = _resolve_component_technology(step)
-                enabled = _phase_enabled(step)
-                if enabled and not component_key:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' requires "
-                        "params.component, params.binding, or params.technology."
-                    )
-                if enabled and not component_technology:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' could not resolve "
-                        f"technology for component '{component_key}'. Check "
-                        "adapter_hooks.bootstrap_job.components and technology_bindings."
-                    )
-                script_phase = str(params.get("script_phase") or "").strip()
-                if not script_phase:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' requires "
-                        "params.script_phase."
-                    )
-
-                script_name = self._phase_script(script_phase, component_technology)
-                if enabled and not script_name:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' could not resolve "
-                        f"script for component '{component_key or component_technology}' "
-                        f"(technology='{component_technology or 'unbound'}', "
-                        f"script_phase='{script_phase}'). "
-                        "Declare adapter_hooks.runner_phase_scripts.<script_phase> mapping "
-                        "for the bound technology."
-                    )
-
-                env: dict[str, str] = {}
-                raw_env = params.get("env")
-                if raw_env is not None and not isinstance(raw_env, dict):
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' params.env "
-                        "must be an object/map when provided."
-                    )
-                if isinstance(raw_env, dict):
-                    for key, value in raw_env.items():
-                        env_key = str(key or "").strip()
-                        if not env_key:
-                            continue
-                        env[env_key] = self._render_template_value(
-                            value,
-                            component_key=component_key,
-                            component_technology=component_technology,
-                        )
-
-                args: list[str] = []
-                raw_args = params.get("args")
-                if raw_args is not None and not isinstance(raw_args, list):
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' params.args "
-                        "must be an array when provided."
-                    )
-                if isinstance(raw_args, list):
-                    for value in raw_args:
-                        args.append(
-                            self._render_template_value(
-                                value,
-                                component_key=component_key,
-                                component_technology=component_technology,
-                            )
-                        )
-
-                phase_name = self._format_phase_name(
-                    step.phase_name,
-                    component_key=component_key,
-                    component_technology=component_technology,
-                )
-                if not phase_name:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'run_component_script' requires "
-                        "non-empty phase_name."
-                    )
-                run_phase(
-                    phase_name,
-                    lambda script=script_name, script_args=tuple(args), script_env=dict(
-                        env
-                    ): run_script(
-                        script,
-                        *script_args,
-                        env=script_env,
-                    ),
-                    enabled=enabled,
-                )
-                continue
-
-            if operation == "call_handler":
-                params = dict(step.params or {})
-                handler_key = str(params.get("handler") or "").strip()
-                if not handler_key:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'call_handler' requires params.handler."
-                    )
-                handler = operation_handlers.get(handler_key)
-                if not callable(handler):
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'call_handler' references unknown handler "
-                        f"'{handler_key}'."
-                    )
-                component_key, component_technology = _resolve_component_technology(step)
-                phase_name = self._format_phase_name(
-                    step.phase_name,
-                    component_key=component_key,
-                    component_technology=component_technology,
-                )
-                if not phase_name:
-                    raise ConfigError(
-                        "bootstrap_job phase operation 'call_handler' requires "
-                        "non-empty phase_name."
-                    )
-                run_phase(
-                    phase_name,
-                    handler,
-                    enabled=_phase_enabled(step),
-                )
-                continue
-
-            raise ValueError(
-                "Unknown bootstrap-job phase operation "
-                f"'{operation}' in adapter_hooks.bootstrap_job.phase_plan."
+            return
+        if operation == "call_handler":
+            self._dispatch_call_handler(
+                step, components, phase_enabled, run_phase, operation_handlers,
             )
+            return
+        raise ValueError(
+            "Unknown bootstrap-job phase operation "
+            f"'{operation}' in adapter_hooks.bootstrap_job.phase_plan."
+        )
+
+    def _dispatch_run_component_script(
+        self,
+        step: ControllerPhasePlanStep,
+        components: dict[str, str],
+        phase_enabled: PhaseEnabledPredicate,
+        run_phase: Callable[..., None],
+        run_script: Callable[..., None],
+    ) -> None:
+        params = dict(step.params or {})
+        component_key, component_technology = self._component_resolver.resolve(
+            step, self.plan, components,
+        )
+        enabled = phase_enabled.is_enabled(step)
+        script_name = self._validate_run_component_script(
+            step, params, component_key, component_technology, enabled,
+        )
+        env = self._args_env_resolver.resolve_env(
+            params.get("env"),
+            component_key=component_key,
+            component_technology=component_technology,
+        )
+        args = self._args_env_resolver.resolve_args(
+            params.get("args"),
+            component_key=component_key,
+            component_technology=component_technology,
+        )
+        phase_name = _PHASE_NAME_FORMATTER.format_phase_name(
+            step.phase_name,
+            component_key=component_key,
+            component_technology=component_technology,
+        )
+        if not phase_name:
+            raise ConfigError(
+                "bootstrap_job phase operation 'run_component_script' requires "
+                "non-empty phase_name."
+            )
+        run_phase(
+            phase_name,
+            lambda script=script_name, script_args=tuple(args), script_env=dict(env): run_script(
+                script, *script_args, env=script_env,
+            ),
+            enabled=enabled,
+        )
+
+    def _validate_run_component_script(
+        self,
+        step: ControllerPhasePlanStep,
+        params: dict,
+        component_key: str,
+        component_technology: str,
+        enabled: bool,
+    ) -> str:
+        """Validate the run_component_script step + return the resolved script."""
+        if enabled and not component_key:
+            raise ConfigError(
+                "bootstrap_job phase operation 'run_component_script' requires "
+                "params.component, params.binding, or params.technology."
+            )
+        if enabled and not component_technology:
+            raise ConfigError(
+                "bootstrap_job phase operation 'run_component_script' could not resolve "
+                f"technology for component '{component_key}'. Check "
+                "adapter_hooks.bootstrap_job.components and technology_bindings."
+            )
+        script_phase = str(params.get("script_phase") or "").strip()
+        if not script_phase:
+            raise ConfigError(
+                "bootstrap_job phase operation 'run_component_script' requires "
+                "params.script_phase."
+            )
+        script_name = self._plan_loader.phase_script(script_phase, component_technology)
+        if enabled and not script_name:
+            raise ConfigError(
+                "bootstrap_job phase operation 'run_component_script' could not resolve "
+                f"script for component '{component_key or component_technology}' "
+                f"(technology='{component_technology or 'unbound'}', "
+                f"script_phase='{script_phase}'). "
+                "Declare adapter_hooks.runner_phase_scripts.<script_phase> mapping "
+                "for the bound technology."
+            )
+        return script_name
+
+    def _dispatch_call_handler(
+        self,
+        step: ControllerPhasePlanStep,
+        components: dict[str, str],
+        phase_enabled: PhaseEnabledPredicate,
+        run_phase: Callable[..., None],
+        operation_handlers: dict[str, Callable[[], None]],
+    ) -> None:
+        params = dict(step.params or {})
+        handler_key = str(params.get("handler") or "").strip()
+        if not handler_key:
+            raise ConfigError(
+                "bootstrap_job phase operation 'call_handler' requires params.handler."
+            )
+        handler = operation_handlers.get(handler_key)
+        if not callable(handler):
+            raise ConfigError(
+                "bootstrap_job phase operation 'call_handler' references unknown handler "
+                f"'{handler_key}'."
+            )
+        component_key, component_technology = self._component_resolver.resolve(
+            step, self.plan, components,
+        )
+        phase_name = _PHASE_NAME_FORMATTER.format_phase_name(
+            step.phase_name,
+            component_key=component_key,
+            component_technology=component_technology,
+        )
+        if not phase_name:
+            raise ConfigError(
+                "bootstrap_job phase operation 'call_handler' requires "
+                "non-empty phase_name."
+            )
+        run_phase(phase_name, handler, enabled=phase_enabled.is_enabled(step))
+
+
+__all__ = [
+    "ControllerCorePhasesConfig",
+    "ControllerCorePhasesService",
+    "PhaseNameFormatter",
+    "format_phase_name",
+]
