@@ -22,62 +22,77 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 # ===================================================================
-# deploy_config_resolver tests
+# DeployHookConfigResolverService tests
+#
+# Replaces the pre-2026-05-11 ``deploy_config_resolver`` tests
+# (ADR-0015 Phase 3 deleted that wrapper module). The wrapper
+# implemented its own legacy semantics for ``edge.provider`` +
+# ``EDGE_ROUTER_PROVIDER`` env fallback that were already
+# duplicated by ``parse_deploy_stack_config`` in
+# ``workflows/deploy_cli_config_service.py:392-394`` reading
+# ``EDGE_ROUTER_PROVIDER`` into ``DeployStackConfig.edge_router_provider``.
+# The tests below cover the canonical workflows-tier resolver
+# instead. The ``DeployConfigService.edge_router_provider()`` path
+# is exercised end-to-end via ``test_deploy_stack_main.py``.
 # ===================================================================
 
-from media_stack.cli.commands.deploy_config_resolver import (
-    resolve_edge_router_provider,
-    resolve_ingress_class_priority,
+from media_stack.cli.workflows.deploy_hook_config_resolver import (
+    DeployHookConfigResolverService,
 )
 
 
-class TestResolveEdgeRouterProvider(unittest.TestCase):
-    """Tests for deploy_config_resolver.resolve_edge_router_provider."""
+class TestWorkflowsEdgeRouterProvider(unittest.TestCase):
+    """Direct tests for the workflows-tier hook resolver."""
 
-    def test_returns_provider_from_hooks(self):
-        hooks = {"edge": {"provider": "traefik"}}
-        self.assertEqual(resolve_edge_router_provider(hooks), "traefik")
+    def setUp(self) -> None:
+        self._resolver = DeployHookConfigResolverService()
 
-    def test_strips_and_lowercases_provider(self):
-        hooks = {"edge": {"provider": "  Envoy  "}}
-        self.assertEqual(resolve_edge_router_provider(hooks), "envoy")
+    def test_returns_router_provider_from_edge_cfg(self) -> None:
+        # Note: the workflows resolver takes the unwrapped ``edge``
+        # subtree (not the outer adapter_hooks dict) and reads
+        # ``router_provider`` (canonical key name post-ADR-0001).
+        edge_cfg = {"router_provider": "traefik"}
+        self.assertEqual(
+            self._resolver.edge_router_provider(edge_cfg), "traefik",
+        )
 
-    def test_falls_back_to_env_var(self):
-        hooks = {"edge": {}}
-        with patch.dict(os.environ, {"EDGE_ROUTER_PROVIDER": "nginx"}):
-            self.assertEqual(resolve_edge_router_provider(hooks), "nginx")
+    def test_strips_and_lowercases(self) -> None:
+        self.assertEqual(
+            self._resolver.edge_router_provider({"router_provider": "  Envoy  "}),
+            "envoy",
+        )
 
-    def test_defaults_to_envoy_when_no_config_or_env(self):
-        hooks = {}
-        with patch.dict(os.environ, {}, clear=True):
-            # Default is "envoy" from os.environ.get fallback
-            result = resolve_edge_router_provider(hooks)
-            self.assertEqual(result, "envoy")
-
-    def test_non_dict_edge_falls_back(self):
-        hooks = {"edge": "not-a-dict"}
-        with patch.dict(os.environ, {"EDGE_ROUTER_PROVIDER": "caddy"}):
-            self.assertEqual(resolve_edge_router_provider(hooks), "caddy")
+    def test_returns_empty_when_missing(self) -> None:
+        # The workflows resolver intentionally returns "" on missing
+        # config — DeployConfigService.edge_router_provider() layers
+        # the cfg-overlay + EDGE_ROUTER_PROVIDER env fallback on top.
+        self.assertEqual(self._resolver.edge_router_provider({}), "")
 
 
-class TestResolveIngressClassPriority(unittest.TestCase):
-    """Tests for deploy_config_resolver.resolve_ingress_class_priority."""
+class TestWorkflowsIngressClassPriority(unittest.TestCase):
+    """Direct tests for the workflows-tier hook resolver."""
 
-    def test_returns_list_from_hooks(self):
-        hooks = {"edge": {"ingress_class_priority": ["traefik", "nginx"]}}
-        self.assertEqual(resolve_ingress_class_priority(hooks), ("traefik", "nginx"))
+    def setUp(self) -> None:
+        self._resolver = DeployHookConfigResolverService()
 
-    def test_returns_default_when_missing(self):
-        hooks = {}
-        self.assertEqual(resolve_ingress_class_priority(hooks), ("nginx", "public", "traefik"))
+    def test_returns_tuple_from_edge_cfg(self) -> None:
+        edge_cfg = {"ingress_class_priority": ["traefik", "nginx"]}
+        self.assertEqual(
+            self._resolver.ingress_class_priority(edge_cfg),
+            ("traefik", "nginx"),
+        )
 
-    def test_filters_empty_strings(self):
-        hooks = {"edge": {"ingress_class_priority": ["nginx", "", "  ", "traefik"]}}
-        self.assertEqual(resolve_ingress_class_priority(hooks), ("nginx", "traefik"))
+    def test_returns_empty_tuple_when_missing(self) -> None:
+        # Defaults live in the catalog YAML / DeployStackConfig, not
+        # the hook resolver. ADR-0015 Phase 3 separated these.
+        self.assertEqual(self._resolver.ingress_class_priority({}), ())
 
-    def test_non_dict_edge_returns_default(self):
-        hooks = {"edge": "bad"}
-        self.assertEqual(resolve_ingress_class_priority(hooks), ("nginx", "public", "traefik"))
+    def test_filters_empty_strings(self) -> None:
+        edge_cfg = {"ingress_class_priority": ["nginx", "", "  ", "traefik"]}
+        self.assertEqual(
+            self._resolver.ingress_class_priority(edge_cfg),
+            ("nginx", "traefik"),
+        )
 
 
 # ===================================================================

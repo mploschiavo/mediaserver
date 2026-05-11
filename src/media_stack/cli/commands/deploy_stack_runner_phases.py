@@ -229,16 +229,16 @@ class RunnerPhasesMixin:
                 "Unknown PROFILE "
                 f"'{self.cfg.profile}'. Supported: minimal, standard, full, public-demo, power-user."
             )
-        valid_route_strategies = set(self._valid_route_strategies())
+        valid_route_strategies = set(self.config_service.valid_route_strategies())
         if self.cfg.route_strategy not in valid_route_strategies:
             allowed = ", ".join(sorted(valid_route_strategies))
             raise DeployError(f"ROUTE_STRATEGY must be one of: {allowed}.")
-        valid_auth_providers = set(self._valid_auth_providers())
+        valid_auth_providers = set(self.config_service.valid_auth_providers())
         if self.cfg.auth_provider not in valid_auth_providers:
             allowed = ", ".join(sorted(valid_auth_providers))
             raise DeployError(f"AUTH_PROVIDER must be one of: {allowed}.")
-        edge_router_provider = self._edge_router_provider()
-        valid_edge_router_providers = set(self._valid_edge_router_providers())
+        edge_router_provider = self.config_service.edge_router_provider()
+        valid_edge_router_providers = set(self.config_service.valid_edge_router_providers())
         if edge_router_provider and edge_router_provider not in valid_edge_router_providers:
             allowed = ", ".join(sorted(valid_edge_router_providers))
             raise DeployError(
@@ -251,7 +251,7 @@ class RunnerPhasesMixin:
             and edge_router_provider != "none"
         ):
             provider_spec = dict(
-                self._edge_compose_provider_specs().get(edge_router_provider) or {}
+                self.config_service.edge_compose_provider_specs().get(edge_router_provider) or {}
             )
             builtin_provider_keys = set(router_service_names_by_provider().keys())
             if not provider_spec and edge_router_provider not in builtin_provider_keys:
@@ -262,7 +262,7 @@ class RunnerPhasesMixin:
                     "install a provider module under src/media_stack/core/edge/providers/<provider>/."
                 )
         if platform_plugin.requires_runtime_config_policy_handler and self.cfg.run_bootstrap == "1":
-            if not self._runtime_config_policy_handler_spec():
+            if not self.config_service.runtime_config_policy_handler_spec():
                 raise DeployError(
                     "Compose bootstrap requires "
                     "adapter_hooks.bootstrap_job.runtime_config_policy_handler "

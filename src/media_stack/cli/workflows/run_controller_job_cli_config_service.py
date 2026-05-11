@@ -73,10 +73,19 @@ class RunBootstrapJobConfig:
 
 
 class RunControllerJobCliConfigService:
-    """CLI argument parsing + env-bool helpers for the controller bootstrap job."""
+    """CLI argument parsing + env-bool helpers for the controller bootstrap job.
+
+    Env reads funnel through self._env (sampled from
+    os.environ at construction or injected by tests) so method
+    paths stay off the module-level mapping — the ADR-0012 /
+    OS_ENVIRON_IN_METHODS_RATCHET pattern.
+    """
+
+    def __init__(self, env: dict[str, str] | None = None) -> None:
+        self._env = dict(env) if env is not None else dict(os.environ)
 
     def env_bool(self, name: str, default: bool = False) -> bool:
-        raw = os.environ.get(name)
+        raw = self._env.get(name)
         if raw is None:
             return default
         return str(raw).strip().lower() in ("1", "true", "yes", "on")
@@ -86,7 +95,7 @@ class RunControllerJobCliConfigService:
             token = str(name).strip()
             if not token:
                 continue
-            if token in os.environ:
+            if token in self._env:
                 return self.env_bool(token, default)
         return default
 
@@ -112,34 +121,34 @@ class RunControllerJobCliConfigService:
         )
         parser.add_argument(
             "--namespace",
-            default=os.environ.get("NAMESPACE", "media-stack"),
+            default=self._env.get("NAMESPACE", "media-stack"),
             help="Kubernetes namespace (env: NAMESPACE).",
         )
         parser.add_argument(
             "--timeout",
-            default=os.environ.get("TIMEOUT", "10m"),
+            default=self._env.get("TIMEOUT", "10m"),
             help="Wait timeout, e.g. 600s, 10m, 1h (env: TIMEOUT).",
         )
         parser.add_argument(
             "--heartbeat-interval",
             type=int,
-            default=max(1, int(os.environ.get("HEARTBEAT_INTERVAL", "15"))),
+            default=max(1, int(self._env.get("HEARTBEAT_INTERVAL", "15"))),
             help="Heartbeat seconds while waiting for job completion.",
         )
         parser.add_argument(
             "--job-log-tail-lines",
             type=int,
-            default=max(1, int(os.environ.get("JOB_LOG_TAIL_LINES", "120"))),
+            default=max(1, int(self._env.get("JOB_LOG_TAIL_LINES", "120"))),
             help="Tail lines to print from bootstrap job logs.",
         )
         parser.add_argument(
             "--prepare-host-root",
-            default=os.environ.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
+            default=self._env.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
             help="Host root used in manifest overrides.",
         )
         parser.add_argument(
             "--ingress-name",
-            default=os.environ.get("INGRESS_NAME", "media-stack-ingress"),
+            default=self._env.get("INGRESS_NAME", "media-stack-ingress"),
             help="Ingress to read hosts from.",
         )
         parser.add_argument(
@@ -149,7 +158,7 @@ class RunControllerJobCliConfigService:
         )
         parser.add_argument(
             "--alert-webhook-url",
-            default=os.environ.get("ALERT_WEBHOOK_URL", ""),
+            default=self._env.get("ALERT_WEBHOOK_URL", ""),
             help="Optional webhook for status notifications.",
         )
         for spec in skip_specs:
@@ -183,7 +192,7 @@ class RunControllerJobCliConfigService:
         phase_skip_flags = {
             spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
         }
-        for env_name in os.environ:
+        for env_name in self._env:
             if not str(env_name).upper().startswith("SKIP_"):
                 continue
             key = normalize_flag_token(env_name)
@@ -204,20 +213,20 @@ class RunControllerJobCliConfigService:
             or default_controller_image(),
             root_dir=root_dir,
             config_file=Path(str(args.config_file)),
-            selected_apps=str(os.environ.get("SELECTED_APPS", "")).strip(),
+            selected_apps=str(self._env.get("SELECTED_APPS", "")).strip(),
             internet_exposed=self.env_bool_candidates(("INTERNET_EXPOSED",), False),
-            route_strategy=str(os.environ.get("ROUTE_STRATEGY", "subdomain")).strip().lower()
+            route_strategy=str(self._env.get("ROUTE_STRATEGY", "subdomain")).strip().lower()
             or "subdomain",
-            ingress_domain=str(os.environ.get("INGRESS_DOMAIN", "local")).strip().lower() or "local",
-            app_gateway_host=str(os.environ.get("APP_GATEWAY_HOST", "")).strip(),
-            app_path_prefix=str(os.environ.get("APP_PATH_PREFIX", "/app")).strip() or "/app",
-            media_server_direct_host=str(os.environ.get("MEDIA_SERVER_DIRECT_HOST", "")).strip(),
+            ingress_domain=str(self._env.get("INGRESS_DOMAIN", "local")).strip().lower() or "local",
+            app_gateway_host=str(self._env.get("APP_GATEWAY_HOST", "")).strip(),
+            app_path_prefix=str(self._env.get("APP_PATH_PREFIX", "/app")).strip() or "/app",
+            media_server_direct_host=str(self._env.get("MEDIA_SERVER_DIRECT_HOST", "")).strip(),
             preconfigure_api_keys=self.env_bool_candidates(("PRECONFIGURE_API_KEYS",), True),
             apply_initial_preferences=self.env_bool_candidates(
                 ("APPLY_INITIAL_PREFERENCES", "FULLY_PRECONFIGURED"), True
             ),
             auto_download_content=self.env_bool_candidates(("AUTO_DOWNLOAD_CONTENT",), False),
-            bootstrap_profile_file=str(os.environ.get("BOOTSTRAP_PROFILE_FILE", "")).strip(),
+            bootstrap_profile_file=str(self._env.get("BOOTSTRAP_PROFILE_FILE", "")).strip(),
             phase_skip_flags=phase_skip_flags,
         )
 

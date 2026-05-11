@@ -89,8 +89,24 @@ class DeployStackConfig:
 
 
 class DeployCliConfigService:
+    """Parses deploy-stack CLI args + env + profile defaults into
+    :class:`DeployStackConfig`.
+
+    Env reads are funneled through the constructor-injected ``env``
+    dict (defaulting to ``os.environ`` sampled at construction).
+    Test fixtures inject a fake mapping rather than monkey-patching
+    ``os.environ`` — the ADR-0012 / OS_ENVIRON_IN_METHODS_RATCHET
+    pattern for cli/workflows services.
+    """
+
+    def __init__(self, env: dict[str, str] | None = None) -> None:
+        # Sample os.environ once at construction; method paths read
+        # from self._env so they don't re-touch the module-level
+        # mapping (which the ratchet counts).
+        self._env = dict(env) if env is not None else dict(os.environ)
+
     def _env_value(self, name: str) -> str | None:
-        value = os.environ.get(name)
+        value = self._env.get(name)
         if value is None:
             return None
         token = str(value).strip()

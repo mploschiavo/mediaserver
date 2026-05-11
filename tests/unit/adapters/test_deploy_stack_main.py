@@ -110,8 +110,8 @@ class TestDeployStackMain(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _make_config(Path(tmp), adapter_hooks={"edge": {}})
             runner = _runner(cfg)
-            result1 = runner._resolved_bootstrap_config()
-            result2 = runner._resolved_bootstrap_config()
+            result1 = runner.config_service.resolved_bootstrap_config()
+            result2 = runner.config_service.resolved_bootstrap_config()
             self.assertIs(result1, result2)
             self.assertIn("adapter_hooks", result1)
 
@@ -125,7 +125,7 @@ class TestDeployStackMain(unittest.TestCase):
             cfg.config_file = config_file
             runner = _runner(cfg)
             with self.assertRaises(DeployError) as ctx:
-                runner._resolved_bootstrap_config()
+                runner.config_service.resolved_bootstrap_config()
             self.assertIn("Expected JSON object", str(ctx.exception))
 
     # 5
@@ -175,7 +175,7 @@ class TestDeployStackMain(unittest.TestCase):
                 edge_router_provider="envoy",
             )
             runner = _runner(cfg)
-            self.assertEqual(runner._edge_router_provider(), "envoy")
+            self.assertEqual(runner.config_service.edge_router_provider(), "envoy")
 
     # 10
     def test_edge_router_provider_falls_back_to_hook(self):
@@ -185,7 +185,7 @@ class TestDeployStackMain(unittest.TestCase):
                 adapter_hooks={"edge": {"router_provider": "traefik"}},
             )
             runner = _runner(cfg)
-            self.assertEqual(runner._edge_router_provider(), "traefik")
+            self.assertEqual(runner.config_service.edge_router_provider(), "traefik")
 
     # 11
     def test_bootstrap_job_hooks_present_and_missing(self):
@@ -193,22 +193,22 @@ class TestDeployStackMain(unittest.TestCase):
             hooks = {"runtime_config_policy_handler": "mod:Handler"}
             cfg = _make_config(Path(tmp), adapter_hooks={"bootstrap_job": hooks})
             runner = _runner(cfg)
-            self.assertEqual(runner._bootstrap_job_hooks(), hooks)
+            self.assertEqual(runner.config_service.bootstrap_job_hooks(), hooks)
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _make_config(Path(tmp))
             runner = _runner(cfg)
-            self.assertEqual(runner._bootstrap_job_hooks(), {})
+            self.assertEqual(runner.config_service.bootstrap_job_hooks(), {})
 
     # 12
     def test_edge_hooks_present_and_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _make_config(Path(tmp), adapter_hooks={"edge": {"router_provider": "envoy"}})
             runner = _runner(cfg)
-            self.assertEqual(runner._edge_hooks()["router_provider"], "envoy")
+            self.assertEqual(runner.config_service.edge_hooks()["router_provider"], "envoy")
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _make_config(Path(tmp), adapter_hooks={"bootstrap_job": {}})
             runner = _runner(cfg)
-            self.assertEqual(runner._edge_hooks(), {})
+            self.assertEqual(runner.config_service.edge_hooks(), {})
 
     # 13
     def test_ingress_class_priority_deduplicates(self):
@@ -218,13 +218,13 @@ class TestDeployStackMain(unittest.TestCase):
                 adapter_hooks={"edge": {"ingress_class_priority": ["nginx", "traefik", "nginx"]}},
             )
             runner = _runner(cfg)
-            self.assertEqual(runner._ingress_class_priority(), ("nginx", "traefik"))
+            self.assertEqual(runner.config_service.ingress_class_priority(), ("nginx", "traefik"))
 
     # 14
     def test_compose_passthrough_env_vars_always_includes_admin_creds(self):
         with tempfile.TemporaryDirectory() as tmp:
             runner = _runner(_make_config(Path(tmp)))
-            result = runner._compose_passthrough_env_vars()
+            result = runner.config_service.compose_passthrough_env_vars()
             self.assertIn("STACK_ADMIN_USERNAME", result)
             self.assertIn("STACK_ADMIN_PASSWORD", result)
 
@@ -242,7 +242,7 @@ class TestDeployStackMain(unittest.TestCase):
                 },
             )
             runner = _runner(cfg)
-            self.assertIn("JELLYFIN_API_KEY", runner._compose_passthrough_env_vars())
+            self.assertIn("JELLYFIN_API_KEY", runner.config_service.compose_passthrough_env_vars())
 
     # 16
     def test_policy_handler_spec_valid_and_rejects_without_colon(self):
@@ -252,7 +252,7 @@ class TestDeployStackMain(unittest.TestCase):
                 adapter_hooks={"bootstrap_job": {"runtime_config_policy_handler": "mod:Handler"}},
             )
             runner = _runner(cfg)
-            self.assertEqual(runner._runtime_config_policy_handler_spec(), "mod:Handler")
+            self.assertEqual(runner.config_service.runtime_config_policy_handler_spec(), "mod:Handler")
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _make_config(
                 Path(tmp),
@@ -260,7 +260,7 @@ class TestDeployStackMain(unittest.TestCase):
             )
             runner = _runner(cfg)
             with self.assertRaises(DeployError):
-                runner._runtime_config_policy_handler_spec()
+                runner.config_service.runtime_config_policy_handler_spec()
 
     # 17
     def test_validate_rejects_missing_config_file(self):

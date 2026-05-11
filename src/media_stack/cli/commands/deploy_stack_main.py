@@ -2,11 +2,18 @@
 """Python CLI for deploy-stack orchestration.
 
 This is the entry point module. The DeployStackRunner class is composed from
-three mixin modules extracted for maintainability:
+the workflows-tier DeployConfigService plus two mixin modules:
 
-- deploy_stack_config_resolution — config/hook resolution methods
-- deploy_stack_runner_services  — service factories, artifacts, utilities
-- deploy_stack_runner_phases    — run() orchestration, validation, phase actions
+- ``workflows.deploy_config_service.DeployConfigService`` — config / hook
+  resolution (the single resolver established by ADR-0015 Phase 3;
+  pre-Phase-3 this was a ConfigResolutionMixin co-located with
+  the runner here in commands/, which duplicated logic with the
+  parallel ``workflows.deploy_hook_config_resolver`` and caused the
+  2026-05-11 deploy-CLI bug chain to keep surfacing new bugs).
+- ``deploy_stack_runner_services``  — service factories, artifacts,
+  utilities (kept as mixin under ADR-0015 Phase 4 scope).
+- ``deploy_stack_runner_phases``    — ``run()`` orchestration,
+  validation, phase actions (kept as mixin under ADR-0015 Phase 4).
 
 Per ADR-0012, the module-level ``main`` entry point is bound to a
 singleton :class:`DeployStackMainEntryPoint`. Tests
@@ -33,9 +40,6 @@ from media_stack.cli.commands.deploy_stack_errors import (
     SkipPhase,
     _MIN_STACK_DISK_ALLOCATION_GB,
 )
-from media_stack.cli.commands.deploy_stack_config_resolution import (
-    ConfigResolutionMixin,
-)
 from media_stack.cli.commands.deploy_stack_runner_services import (
     RunnerServicesMixin,
 )
@@ -47,16 +51,19 @@ from media_stack.cli.workflows.deploy_cli_config_service import (
     DeployStackConfig,
     parse_deploy_stack_config,
 )
+from media_stack.cli.workflows.deploy_config_service import (
+    DeployConfigService,
+)
 
 
 @dataclass
-class DeployStackRunner(ConfigResolutionMixin, RunnerServicesMixin, RunnerPhasesMixin):
+class DeployStackRunner(RunnerServicesMixin, RunnerPhasesMixin):
     cfg: DeployStackConfig
     kube: Any | None = None
     tracker: PhaseTracker = field(default_factory=lambda: PhaseTracker(info=info, warn=warn))
     backup_secret_values: dict[str, str] = field(default_factory=dict)
     info_fn: Callable[[str], None] = info
-    _resolved_config_cache: dict[str, object] | None = field(default=None, init=False, repr=False)
+    config_service: DeployConfigService = field(init=False, repr=False)
     _platform_adapter_cache: RebuildPlatformAdapter | None = field(
         default=None, init=False, repr=False
     )
@@ -65,6 +72,14 @@ class DeployStackRunner(ConfigResolutionMixin, RunnerServicesMixin, RunnerPhases
     runtime_artifacts_root: Path | None = field(default=None, init=False, repr=False)
     _k8s_manifest_capture_counter: int = field(default=0, init=False, repr=False)
     _delete_environment_enabled_cache: bool | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        # Composition: DeployConfigService is the workflows-tier
+        # resolver for every "what should this deploy actually do?"
+        # question. The runner used to inherit a ConfigResolutionMixin
+        # for this; ADR-0015 Phase 3 collapsed the mixin into this
+        # service to eliminate the parallel-resolver bug class.
+        self.config_service = DeployConfigService(self.cfg)
 
 
 class DeployStackMainEntryPoint:
