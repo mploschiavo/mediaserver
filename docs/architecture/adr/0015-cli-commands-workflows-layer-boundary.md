@@ -598,7 +598,7 @@ commit body.
 | Phase 7e — `controller_serve.py` audit + extract | **landed** (2026-05-11) | `e9b5d967` |
 | Phase 7f — `release_pipeline_main.py` split | **landed** (2026-05-11) | `5dd9e0b3` |
 | Phase 7g — `dup_burndown_main.py` + `set_pvc_storage_class_main.py` | **landed** (2026-05-11) | `5c92c307` |
-| Phase 7h — `watch_install_main.py` + `orchestrator_eval_main.py` + `microk8s_smoke_test_main.py` | proposed | — |
+| Phase 7h — `watch_install_main.py` + `orchestrator_eval_main.py` + `microk8s_smoke_test_main.py` | **landed** (2026-05-11) | `dd60bd48` |
 | Phase 7i — `reset_admin_main.py` + `apply_scale_policy_main.py` + `deploy_verify_main.py` | proposed | — |
 
 ---
