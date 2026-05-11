@@ -1,128 +1,75 @@
-"""Maintenance utilities: config snapshots, stale file pruning.
+"""Re-export shim for the controller's maintenance background timer.
 
-Extracted from controller_main.py for maintainability.
+ADR-0015 Phase 5 split the original ``MaintenanceService`` god
+class into two SRP workflows-tier services
+(:class:`ConfigSnapshotService`, :class:`StaleFilePruner`) under
+:mod:`media_stack.cli.workflows.maintenance_service`.
+
+This module survives as the call-site surface that
+:func:`controller_serve._snapshot_timer` and the unit-test suite
+(:mod:`test_cli_commands_extended`) already import:
+
+* :func:`take_config_snapshot(args)` — convert an
+  :class:`argparse.Namespace` into a :class:`ConfigSnapshotService`
+  call. The ``args.config_root`` field is sampled here so the
+  workflows service can take a concrete :class:`Path` constructor
+  arg (no ``os.environ`` reads in workflows methods).
+* :func:`prune_stale_files(args, log)` — same shape for
+  :class:`StaleFilePruner`.
+
+Per ADR-0012, the module-level callables are bound to a singleton
+:class:`MaintenanceShim` so this file holds no top-level
+functions and trips no class-structure ratchets. Removal of
+the shim is queued for Phase 6's cleanup pass.
 """
 
 from __future__ import annotations
 
-
-from media_stack.core.logging_utils import log_swallowed
 import argparse
 import os
-import re
-import time
 from pathlib import Path
-from typing import Any
+from typing import Callable
 
-from media_stack.core.service_registry.registry import SERVICES
-import logging
+from media_stack.cli.workflows.maintenance_service import (
+    ConfigSnapshotService,
+    StaleFilePruner,
+)
 
 
+class MaintenanceShim:
+    """Adapter: bridge :class:`argparse.Namespace` to the workflows services.
 
+    Workflows-tier classes take concrete :class:`Path` constructor
+    args. The CLI entry-point hands us a :class:`Namespace` plus
+    its ambient ``CONFIG_ROOT`` env-var fallback. This adapter is
+    the single place that conversion happens; the workflows
+    services never see ``os.environ``.
+    """
 
-class MaintenanceService:
-    """Wraps maintenance utility functions."""
+    def resolve_config_root(self, args: argparse.Namespace) -> Path:
+        return Path(
+            getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config"))
+        )
 
     def take_config_snapshot(self, args: argparse.Namespace) -> None:
-        """Save a timestamped snapshot of all service config files."""
-        import json as _json
+        ConfigSnapshotService(config_root=self.resolve_config_root(args)).snapshot()
 
-        config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
-        snapshot_dir = config_root / ".snapshots"
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-        snapshot: dict[str, str] = {}
-        patterns = _snapshot_config_paths()
-        for app, rel in patterns:
-            path = config_root / app / rel
-            if path.is_file():
-                try:
-                    text = path.read_text(encoding="utf-8", errors="replace")
-                    text = re.sub(r"<ApiKey>[^<]+</ApiKey>", "<ApiKey>***</ApiKey>", text)
-                    text = re.sub(r"api_key\s*=\s*\S+", "api_key = ***", text)
-                    text = re.sub(r'"apiKey"\s*:\s*"[^"]+"', '"apiKey": "***"', text)
-                    snapshot[f"{app}/{rel}"] = text
-                except Exception as exc:
-                    log_swallowed(exc)
-
-        ts = time.strftime("%Y%m%dT%H%M%S")
-        out = snapshot_dir / f"snapshot-{ts}.json"
-        out.write_text(_json.dumps(snapshot, indent=2), encoding="utf-8")
-
-        existing = sorted(snapshot_dir.glob("snapshot-*.json"), reverse=True)
-        for old in existing[24:]:
-            old.unlink(missing_ok=True)
-
-    def prune_stale_files(self, args: argparse.Namespace, log: Any) -> None:
-        """Clean up files that grow without bounds: XMLTV guides, old logs, temp files."""
-        config_root = Path(getattr(args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config")))
-        pruned = 0
-
-        # Media server XMLTV guide directories — derived from registry (category=media).
-        media_server_ids = [s.id for s in SERVICES if s.category == "media" and s.host]
-        xmltv_dirs = [
-            config_root.parent / "data" / "transcode" / "xmltv",
-            Path("/srv-stack/data/transcode/xmltv"),
-            Path("/cache/xmltv"),
-        ]
-        for ms_id in media_server_ids:
-            xmltv_dirs.append(config_root / ms_id / "data" / "xmltv")
-        for xmltv_dir in xmltv_dirs:
-            if xmltv_dir.is_dir():
-                xmls = sorted(xmltv_dir.glob("*.xml"), key=lambda f: f.stat().st_mtime, reverse=True)
-                for old in xmls[2:]:
-                    try:
-                        sz = old.stat().st_size
-                        old.unlink()
-                        pruned += 1
-                        log(f"[INFO] Pruned stale XMLTV guide: {old.name} ({sz // 1048576}MB)")
-                    except Exception as exc:
-                        log_swallowed(exc)
-
-        # Media server log directories.
-        for ms_id in media_server_ids:
-            ms_log_dir = config_root / ms_id / "log"
-            if ms_log_dir.is_dir():
-                logs = sorted(ms_log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
-                for old in logs[5:]:
-                    try:
-                        old.unlink()
-                        pruned += 1
-                    except Exception as exc:
-                        log_swallowed(exc)
-
-        # Arr services (XML config format) store logs in <id>/logs/.
-        arr_ids = tuple(s.id for s in SERVICES if s.api_key_format == "xml")
-        for app in arr_ids:
-            log_dir = config_root / app / "logs"
-            if log_dir.is_dir():
-                app_logs = sorted(log_dir.glob("*.txt"), key=lambda f: f.stat().st_mtime, reverse=True)
-                app_logs += sorted(log_dir.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)
-                for old in app_logs[5:]:
-                    try:
-                        old.unlink()
-                        pruned += 1
-                    except Exception as exc:
-                        log_swallowed(exc)
-
-        if pruned:
-            log(f"[INFO] Stale file cleanup: pruned {pruned} files")
+    def prune_stale_files(
+        self,
+        args: argparse.Namespace,
+        log: Callable[[str], None],
+    ) -> None:
+        StaleFilePruner(
+            config_root=self.resolve_config_root(args), log=log,
+        ).prune()
 
 
-    @staticmethod
-    def _snapshot_config_paths() -> list[tuple[str, str]]:
-        """Build (app_id, relative_config_path) pairs from the service registry.
-    
-        Only includes text-based config files (not binary formats like sqlite).
-        """
-        return [
-            (s.id, s.api_key_config.split("/", 1)[1])
-            for s in SERVICES
-            if s.api_key_config and s.api_key_format != "sqlite"
-        ]
+# Singleton + module-level aliases for the historical import surface
+# (controller_serve._snapshot_timer + test_cli_commands_extended).
+# ADR-0012 rule 10.
+_INSTANCE = MaintenanceShim()
+take_config_snapshot = _INSTANCE.take_config_snapshot
+prune_stale_files = _INSTANCE.prune_stale_files
 
 
-_instance = MaintenanceService()
-take_config_snapshot = _instance.take_config_snapshot
-prune_stale_files = _instance.prune_stale_files
-_snapshot_config_paths = _instance._snapshot_config_paths
+__all__ = ["MaintenanceShim", "prune_stale_files", "take_config_snapshot"]
