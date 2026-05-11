@@ -156,6 +156,9 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             self.assertTrue(runner._delete_environment_enabled())
 
     def test_delete_namespace_optional_passes_safe_flag_when_confirmation_missing(self):
+        # ADR-0015 Phase 4 moved the phase action onto
+        # ``manifest_phase`` (Command pattern) and the platform-adapter
+        # accessor onto ``platform_factory.adapter`` (Factory).
         with tempfile.TemporaryDirectory() as tmp:
             root_dir = Path(tmp)
             cfg = self._cfg(root_dir, router_provider="envoy")
@@ -164,9 +167,9 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             runner = DeployStackRunner(cfg=cfg)
             adapter = mock.Mock()
             adapter.delete_environment_optional.return_value = False
-            runner._platform_adapter = mock.Mock(return_value=adapter)  # type: ignore[method-assign]
+            runner.platform_factory.adapter = mock.Mock(return_value=adapter)  # type: ignore[method-assign]
             with self.assertRaises(SkipPhase):
-                runner.delete_namespace_optional()
+                runner.manifest_phase.delete_namespace_optional()
             adapter.delete_environment_optional.assert_called_once_with("0")
 
 

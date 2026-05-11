@@ -8,8 +8,8 @@ two services had identical bodies modulo one env-var injection;
 keeping both forks was the audit's Phase 2 finding.
 
 This shim preserves the legacy import surface so existing callers
-(``cli/commands/deploy_stack_runner_services.py``) and tests
-(``tests/unit/adapters/test_rebuild_script_runner_service.py``)
+(``cli/workflows/deploy_orchestration/deploy_service_factories.py``)
+and tests (``tests/unit/adapters/test_rebuild_script_runner_service.py``)
 continue to work:
 
 * :class:`DeployScriptRunnerConfig` keeps its ``root_dir`` +

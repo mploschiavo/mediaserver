@@ -147,7 +147,7 @@ class TestDeployStackMain(unittest.TestCase):
 
     # 7
     @patch(
-        "media_stack.cli.commands.deploy_stack_runner_services.compose_service_names_by_provider",
+        "media_stack.cli.workflows.deploy_orchestration.runtime_options.compose_service_names_by_provider",
         return_value={"authelia": ("authelia",)},
     )
     def test_selected_apps_injects_auth_provider_services(self, _mock):
@@ -409,9 +409,14 @@ class TestDeployStackMain(unittest.TestCase):
 
     # 34
     def test_is_k8s_apply_with_stdin(self):
-        self.assertTrue(DeployStackRunner._is_k8s_apply_with_stdin(["apply", "-f", "-"]))
-        self.assertFalse(DeployStackRunner._is_k8s_apply_with_stdin(["get", "-f", "-"]))
-        self.assertFalse(DeployStackRunner._is_k8s_apply_with_stdin(["apply", "-"]))
+        # ADR-0015 Phase 4 dropped the @staticmethod (STATIC_METHOD_RATCHET);
+        # the recogniser is now an instance method on K8sManifestCapturer,
+        # surfaced via the runner's compat shim.
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = _runner(_make_config(Path(tmp)))
+            self.assertTrue(runner._is_k8s_apply_with_stdin(["apply", "-f", "-"]))
+            self.assertFalse(runner._is_k8s_apply_with_stdin(["get", "-f", "-"]))
+            self.assertFalse(runner._is_k8s_apply_with_stdin(["apply", "-"]))
 
     # 35
     def test_run_kubectl_raises_without_kube_client(self):
@@ -422,7 +427,10 @@ class TestDeployStackMain(unittest.TestCase):
                 runner._run_kubectl(["get", "pods"])
 
     # 36
-    @patch("media_stack.cli.commands.deploy_stack_runner_services.resolve_platform_plugin", return_value=None)
+    @patch(
+        "media_stack.cli.workflows.deploy_orchestration.platform_adapter_factory.resolve_platform_plugin",
+        return_value=None,
+    )
     def test_platform_plugin_raises_when_not_found(self, _mock):
         with tempfile.TemporaryDirectory() as tmp:
             runner = _runner(_make_config(Path(tmp)))
@@ -430,7 +438,7 @@ class TestDeployStackMain(unittest.TestCase):
                 runner._platform_plugin()
 
     # 37
-    @patch("media_stack.cli.commands.deploy_stack_runner_services.resolve_platform_plugin")
+    @patch("media_stack.cli.workflows.deploy_orchestration.platform_adapter_factory.resolve_platform_plugin")
     def test_platform_plugin_caches(self, mock_resolve):
         mock_resolve.return_value = MagicMock()
         with tempfile.TemporaryDirectory() as tmp:

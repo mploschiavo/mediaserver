@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from media_stack.cli.commands.deploy_stack_errors import DeployError
+from media_stack.cli.workflows.deploy_errors import DeployError
 from media_stack.cli.workflows.deploy_hook_config_resolver import (
     DeployHookConfigResolverService,
 )

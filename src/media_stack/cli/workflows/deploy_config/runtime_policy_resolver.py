@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from media_stack.cli.commands.deploy_stack_errors import DeployError
+from media_stack.cli.workflows.deploy_errors import DeployError
 from media_stack.cli.workflows.deploy_config.bootstrap_config_loader import (
     BootstrapConfigLoader,
 )
