@@ -1,44 +1,39 @@
 #!/usr/bin/env python3
-"""LAN smoke test for media-stack ingress routing."""
+"""Entry-point shim for ``bin/microk8s-smoke-test.sh``.
+
+ADR-0015 Phase 7h. Pre-Phase-7h this module held a 234-LoC
+``Microk8sSmokeTestCommand`` with 6 instance methods doing the
+LAN smoke test work + argparse glue. Phase 7h moved the smoke-
+test logic onto :class:`Microk8sSmokeTestRunner` under workflows/;
+what remains is argparse + main + module-level back-compat
+aliases.
+"""
 
 from __future__ import annotations
 
-
-from media_stack.core.logging_utils import log_swallowed
 import argparse
 import os
-import socket
 import sys
-import urllib.error
-import urllib.request
-from dataclasses import dataclass
 
+from media_stack.cli.workflows.microk8s_smoke_test_runner import (
+    Microk8sSmokeTestConfig,
+    Microk8sSmokeTestRunner,
+)
 from media_stack.core.exceptions import ConfigError, MediaStackError
 
-from media_stack.core.cli_common import kube_cmd, run_command
-import logging
 
+class Microk8sSmokeTestEntryPoint:
+    """Per-ADR-0012 entry-point: argparse → runner.run."""
 
-@dataclass(frozen=True)
-class Microk8sSmokeTestConfig:
-    node_ip: str
-    namespace: str
-    ingress_name: str
+    def __init__(self) -> None:
+        self._runner = Microk8sSmokeTestRunner()
 
-
-class Microk8sSmokeTestCommand:
-    def first_host_ip(self) -> str:
-        try:
-            name = socket.gethostname()
-            values = socket.gethostbyname_ex(name)[2]
-            for value in values:
-                if value and not value.startswith("127."):
-                    return value
-        except Exception as exc:
-            log_swallowed(exc)
-        return ""
+    @property
+    def runner(self) -> Microk8sSmokeTestRunner:
+        return self._runner
 
     def parse_config(self, argv: list[str] | None = None) -> Microk8sSmokeTestConfig:
+        module = sys.modules[__name__]
         parser = argparse.ArgumentParser(
             prog="bin/microk8s-smoke-test.sh",
             description="Quick LAN smoke test for media-stack ingress routing.",
@@ -56,178 +51,47 @@ class Microk8sSmokeTestCommand:
             os.environ.get("INGRESS_NAME", "media-stack-ingress").strip()
             or "media-stack-ingress"
         )
-        node_ip = str(args.node_ip or "").strip() or sys.modules[__name__].first_host_ip()
+        node_ip = str(args.node_ip or "").strip() or module.first_host_ip()
         if not node_ip:
             raise ConfigError(
-                "Unable to detect node IP. Pass it explicitly: bin/microk8s-smoke-test.sh <NODE_IP>"
+                "Unable to detect node IP. Pass it explicitly: "
+                "bin/microk8s-smoke-test.sh <NODE_IP>"
             )
         return Microk8sSmokeTestConfig(
-            node_ip=node_ip, namespace=namespace, ingress_name=ingress_name
+            node_ip=node_ip, namespace=namespace, ingress_name=ingress_name,
         )
-
-    def http_code_with_host(self, node_ip: str, host: str) -> int:
-        req = urllib.request.Request(
-            f"http://{node_ip}/", method="GET", headers={"Host": host}
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                return int(getattr(resp, "status", 200))
-        except urllib.error.HTTPError as exc:
-            return int(exc.code)
-        except Exception:
-            return 0
-
-    def ingress_rules(
-        self, kubectl: list[str], namespace: str, ingress_name: str
-    ) -> list[tuple[str, str]]:
-        proc = run_command(
-            [
-                *kubectl,
-                "-n",
-                namespace,
-                "get",
-                "ingress",
-                ingress_name,
-                "-o",
-                "jsonpath={range .spec.rules[*]}{.host}{'|'}{.http.paths[0].backend.service.name}{'\\n'}{end}",
-            ],
-            check=False,
-        )
-        if proc.returncode != 0:
-            return []
-        pairs: list[tuple[str, str]] = []
-        for line in (proc.stdout or "").splitlines():
-            raw = line.strip()
-            if not raw:
-                continue
-            if "|" in raw:
-                host, svc = raw.split("|", 1)
-            else:
-                host, svc = raw, ""
-            pairs.append((host.strip(), svc.strip()))
-        return pairs
-
-    def run(self, cfg: Microk8sSmokeTestConfig) -> int:
-        kubectl = kube_cmd()
-
-        print(f"Using kubectl command: {' '.join(kubectl)}")
-        print(f"Namespace: {cfg.namespace}")
-        print(f"Ingress: {cfg.ingress_name}")
-        print(f"Node IP: {cfg.node_ip}\n")
-
-        for cmd in (
-            [*kubectl, "-n", cfg.namespace, "get", "pods"],
-            [*kubectl, "-n", cfg.namespace, "get", "svc,ingress"],
-            [*kubectl, "get", "ingressclass"],
-        ):
-            proc = run_command(cmd, check=False)
-            sys.stdout.write(proc.stdout or "")
-            sys.stderr.write(proc.stderr or "")
-
-        ingress_class_proc = run_command(
-            [
-                *kubectl,
-                "-n",
-                cfg.namespace,
-                "get",
-                "ingress",
-                cfg.ingress_name,
-                "-o",
-                "jsonpath={.spec.ingressClassName}",
-            ],
-            check=False,
-        )
-        ingress_class = (ingress_class_proc.stdout or "").strip()
-        classes_proc = run_command(
-            [
-                *kubectl,
-                "get",
-                "ingressclass",
-                "-o",
-                "jsonpath={range .items[*]}{.metadata.name}{'\\n'}{end}",
-            ],
-            check=False,
-        )
-        classes = [
-            line.strip() for line in (classes_proc.stdout or "").splitlines() if line.strip()
-        ]
-        class_valid = True
-        if ingress_class:
-            if ingress_class in classes:
-                print(f"[OK] Ingress class on {cfg.ingress_name}: {ingress_class}")
-            else:
-                class_valid = False
-                print(
-                    f"[WARN] Ingress class on {cfg.ingress_name} is '{ingress_class}', available classes: {' '.join(classes) or '(none)'}",
-                    file=sys.stderr,
-                )
-                print(
-                    "[WARN] Patch example: bash bin/microk8s-patch-ingress-class.sh public",
-                    file=sys.stderr,
-                )
-        else:
-            class_valid = False
-            print(f"[WARN] Ingress class is empty on {cfg.ingress_name}", file=sys.stderr)
-
-        rules = sys.modules[__name__].ingress_rules(kubectl, cfg.namespace, cfg.ingress_name)
-        if not rules:
-            raise MediaStackError(f"No ingress hosts found on {cfg.ingress_name}")
-
-        print(
-            f"\nTesting ingress routes from this node (Host header -> http://{cfg.node_ip}/)"
-        )
-        failures = 0
-        for host, svc in rules:
-            if not host:
-                continue
-            if svc:
-                svc_probe = run_command(
-                    [*kubectl, "-n", cfg.namespace, "get", "svc", svc],
-                    check=False,
-                )
-                if svc_probe.returncode != 0:
-                    print(
-                        f"[WARN] {host} -> skipped (backend service '{svc}' not installed)",
-                        file=sys.stderr,
-                    )
-                    continue
-            code = sys.modules[__name__].http_code_with_host(cfg.node_ip, host)
-            if code in {200, 301, 302, 303, 307, 308, 401, 403}:
-                print(f"[OK] {host} -> HTTP {code}")
-            else:
-                print(f"[WARN] {host} -> HTTP {code or 0:03d}", file=sys.stderr)
-                failures += 1
-
-        host_list = [h for h, _svc in rules if h]
-        if host_list:
-            print("\nHosts file helper:")
-            print(f"{cfg.node_ip} {' '.join(host_list)}")
-
-        if failures:
-            if not class_valid:
-                raise MediaStackError(
-                    "Smoke test failed and ingress class appears invalid/missing."
-                )
-            raise MediaStackError(f"Smoke test completed with {failures} failing route(s).")
-
-        print("[OK] Smoke test passed for all ingress hosts.")
-        return 0
 
     def main(self, argv: list[str] | None = None) -> int:
         try:
-            return sys.modules[__name__].run(sys.modules[__name__].parse_config(argv))
+            cfg = self.parse_config(argv)
+            return self._runner.run(cfg)
         except (ConfigError, MediaStackError, OSError, ValueError) as exc:
             print(f"[ERR] {exc}", file=sys.stderr)
             return 1
 
 
-_INSTANCE = Microk8sSmokeTestCommand()
-first_host_ip = _INSTANCE.first_host_ip
+# Module-level singleton + aliases for the historical surface.
+_INSTANCE = Microk8sSmokeTestEntryPoint()
+_RUNNER = _INSTANCE.runner
+
+first_host_ip = _RUNNER.first_host_ip
 parse_config = _INSTANCE.parse_config
-http_code_with_host = _INSTANCE.http_code_with_host
-ingress_rules = _INSTANCE.ingress_rules
-run = _INSTANCE.run
+http_code_with_host = _RUNNER.http_code_with_host
+ingress_rules = _RUNNER.ingress_rules
+run = _RUNNER.run
 main = _INSTANCE.main
+
+
+__all__ = [
+    "Microk8sSmokeTestConfig",
+    "Microk8sSmokeTestEntryPoint",
+    "first_host_ip",
+    "http_code_with_host",
+    "ingress_rules",
+    "main",
+    "parse_config",
+    "run",
+]
 
 
 if __name__ == "__main__":

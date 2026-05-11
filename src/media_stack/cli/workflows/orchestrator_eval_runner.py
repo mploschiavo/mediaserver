@@ -1,0 +1,174 @@
+"""OrchestratorEvalRunner — one-tick orchestrator evaluation CLI workflow.
+
+ADR-0015 Phase 7h. Pre-Phase-7h this class lived in
+``cli/commands/orchestrator_eval_main.py`` as ``OrchestratorEvalCommand``.
+The class was already SRP-clean (constructor-injected output
+streams + tick callable; 12 unit tests against the construction
+shape). Phase 7h moves it to workflows/ for consistency with the
+ADR boundary; the commands-tier shim keeps the legacy
+``OrchestratorEvalCommand`` name as an alias so the tests don't
+churn.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+from typing import Any, Sequence, TextIO
+
+from media_stack.application.services.orchestrator import (
+    PromiseOrchestrator,
+    satisfy_promises,
+)
+from media_stack.domain.services.promises import TickSummary
+
+
+_DEFAULT_WORKERS = 8
+
+
+class OrchestratorEvalRunner:
+    """One-tick orchestrator CLI workflow.
+
+    Constructed with an output stream + a tick callable; the default
+    callable invokes :func:`satisfy_promises` (the module-level shim
+    around :class:`PromiseOrchestrator`). Tests inject a fake
+    callable + a ``StringIO`` stream so behaviour is exercised
+    without touching the real orchestrator or ``stdout``.
+    """
+
+    _PROG = "bin/ops/orchestrator-eval.sh"
+    _DESCRIPTION = "Run one orchestrator tick and print results."
+
+    def __init__(
+        self,
+        *,
+        out: TextIO | None = None,
+        err: TextIO | None = None,
+        tick_callable: Any = None,
+        configure_logging: bool = True,
+    ) -> None:
+        self._out: TextIO = out if out is not None else sys.stdout
+        self._err: TextIO = err if err is not None else sys.stderr
+        self._tick_callable = (
+            tick_callable if tick_callable is not None else satisfy_promises
+        )
+        self._configure_logging = configure_logging
+
+    def run(self, argv: Sequence[str] | None = None) -> int:
+        args = self._parse_args(argv)
+        if self._configure_logging:
+            self._setup_logging(verbose=args.verbose)
+
+        summary: TickSummary = self._tick_callable(
+            platform=args.platform,
+            dry_run=not args.apply,
+            workers=args.workers,
+        )
+
+        if args.json_out:
+            self._print_json(summary)
+        else:
+            self._print_table(summary)
+
+        return 0 if not summary.has_failures else 1
+
+    def main(self, argv: Sequence[str] | None = None) -> int:
+        """Module-level entry point. Constructs a fresh
+        :class:`OrchestratorEvalRunner` against the real stdout/stderr
+        and delegates so each invocation gets a clean I/O surface."""
+        return OrchestratorEvalRunner().run(argv)
+
+    def _parse_args(self, argv: Sequence[str] | None) -> argparse.Namespace:
+        parser = argparse.ArgumentParser(
+            prog=self._PROG, description=self._DESCRIPTION,
+        )
+        parser.add_argument(
+            "--platform", default="compose", choices=("compose", "k8s"),
+            help="Filter promises by platform (default: compose)",
+        )
+        parser.add_argument(
+            "--apply", action="store_true",
+            help="Actually run ensurers when probes fail. Default is dry-run.",
+        )
+        parser.add_argument(
+            "--json", dest="json_out", action="store_true",
+            help="Print one JSON object per promise + a summary line. "
+                 "Default is a human-readable table.",
+        )
+        parser.add_argument(
+            "--workers", type=int, default=_DEFAULT_WORKERS,
+            help=f"ThreadPoolExecutor size for parallel probes "
+                 f"(default: {_DEFAULT_WORKERS})",
+        )
+        parser.add_argument(
+            "--verbose", "-v", action="store_true",
+            help="Set log level to DEBUG (default: INFO)",
+        )
+        return parser.parse_args(argv)
+
+    def _setup_logging(self, *, verbose: bool) -> None:
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format="%(levelname)s %(name)s: %(message)s",
+            stream=self._err,
+        )
+
+    def _print_json(self, summary: TickSummary) -> None:
+        for attempt in summary.attempts:
+            self._out.write(json.dumps(attempt.to_dict()) + "\n")
+        self._out.write(
+            json.dumps({"summary": self._summary_dict(summary)}) + "\n",
+        )
+
+    def _print_table(self, summary: TickSummary) -> None:
+        name_width = max(
+            (len(a.promise_id) for a in summary.attempts), default=20,
+        )
+        name_width = min(max(name_width, 20), 50)
+        status_width = 18
+        elapsed_width = 8
+        header = (
+            f"{'PROMISE':<{name_width}}  "
+            f"{'STATUS':<{status_width}}  "
+            f"{'ELAPSED':>{elapsed_width}}  "
+            "DETAIL"
+        )
+        self._out.write(header + "\n")
+        self._out.write(
+            "-" * (name_width + status_width + elapsed_width + 30) + "\n",
+        )
+        for a in sorted(
+            summary.attempts, key=lambda x: (x.status != "ok", x.promise_id),
+        ):
+            elapsed_str = f"{int(a.elapsed_seconds * 1000)}ms"
+            detail = (a.detail or "")[:80]
+            row = (
+                f"{a.promise_id:<{name_width}}  "
+                f"{a.status:<{status_width}}  "
+                f"{elapsed_str:>{elapsed_width}}  "
+                f"{detail}"
+            )
+            self._out.write(row + "\n")
+        self._out.write("\n")
+        self._out.write(
+            f"summary: {summary.summary_line()} "
+            f"({summary.elapsed_seconds:.2f}s wall)\n",
+        )
+
+    def _summary_dict(self, summary: TickSummary) -> dict[str, Any]:
+        return {
+            "total": summary.total,
+            "ok": summary.ok,
+            "failed_transient": summary.failed_transient,
+            "failed_permanent": summary.failed_permanent,
+            "dep_failed": summary.dep_failed,
+            "skipped_cooldown": summary.skipped_cooldown,
+            "skipped_platform": summary.skipped_platform,
+            "unknown": summary.unknown,
+            "elapsed_seconds": summary.elapsed_seconds,
+        }
+
+
+__all__ = ["OrchestratorEvalRunner", "PromiseOrchestrator"]
