@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from media_stack.cli.commands.build_ui_image_main import default_ui_image
+from media_stack.cli.workflows.build_ui_image_service import default_ui_image
 from media_stack.cli.workflows.release_pipeline_models import ReleaseImageRefs
 from media_stack.core.defaults import default_controller_image
 

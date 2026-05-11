@@ -411,6 +411,53 @@ Three sub-tasks:
 **Value: medium.** Locks in the architectural decision; future
 regressions become test failures, not silent drift.
 
+#### Phase 7 — Shrink remaining orchestrator classes in `commands/`
+
+Phase 6 landed the boundary ratchet (workflows MUST NOT import
+commands). The ratchet enforces *direction*, but not *content*:
+the audit at Phase 6 landing time surfaced ~1,800 LoC of
+orchestrator-shaped classes that still live in `commands/` even
+though they look exactly like the `DeployStackRunner` god class
+that Phase 4 retired.
+
+The four offenders, in ascending risk order:
+
+| commands/ file | Class | LoC | Verdict |
+|---|---|---|---|
+| `microk8s_reconcile_main.py` | `Microk8sReconcileRunner` | ~165 | Reconcile orchestration (phase steps + conditional manifests + handler dispatch). Smallest — same shape as `DeployPipelineRunner.run()`. |
+| `validate_controller_config_main.py` | `ValidateControllerConfigCommand` | ~350 | Validation cascade — bootstrap config + adapter hooks + profile catalog. Should land in workflows alongside the existing `DeployPhaseValidator`. |
+| `run_controller_job_main.py` | `RunBootstrapJobRunner` | ~485 | The K8s mirror of pre-Phase-4 `DeployStackRunner`: 30+ methods, owns the bootstrap-job pipeline. Direct Phase 4 template applies (Composition Root + SRP split into `workflows/run_controller_job_orchestration/`). |
+| `controller_all_main.py` | `ControllerAllRunner` | ~480 | Script discovery + dispatch for the controller "all-in-one" command. |
+| `controller_serve.py` | `ControllerServeCommand` | ~800 | ADR explicitly allows "controller HTTP server glue" to stay in commands/. Audit only — split out anything that's NOT HTTP-server-glue (e.g. the background-timer scaffolding around `take_config_snapshot`). |
+
+Each sub-phase follows the Phase 4 template:
+
+* Create `workflows/<area>_orchestration/` sub-package with N
+  SRP classes, each with a named GoF pattern in its docstring.
+* `*_main.py` shrinks to argparse → config → service.run() with
+  the entry-point class + singleton+aliases for test-patch surface.
+* Tighten any ratchets the move improves.
+
+**Risk: medium.** Same risk profile as Phase 4, applied to the
+controller side. Each sub-phase ships in its own image bake so
+the rollback radius stays contained.
+
+**Value: high.** Brings the controller domain in line with the
+deploy domain's post-Phase-4 shape. Once Phase 7 lands, the
+entry-point-tier `commands/` directory is genuinely the "thin
+shim" surface the ADR promised — not a graveyard for
+orchestration that's been there since before Phase 12.
+
+Sub-phases:
+
+* **Phase 7a** — `Microk8sReconcileRunner` migration (smallest,
+  validates the Phase 4 template against a controller-domain class).
+* **Phase 7b** — `ValidateControllerConfigCommand` migration.
+* **Phase 7c** — `RunBootstrapJobRunner` migration.
+* **Phase 7d** — `ControllerAllRunner` migration.
+* **Phase 7e** — `controller_serve.py` audit + extraction of any
+  non-HTTP-server-glue logic into workflows.
+
 ## Why this order
 
 * **Phase 1** is "free" — no behaviour change, no breaking refactor,
@@ -543,7 +590,12 @@ commit body.
 | Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | **landed** (2026-05-11) | `7f064f3e` |
 | Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | **landed** (2026-05-11) | `ecf7a9ec` |
 | Phase 5 — `maintenance.py` migration | **landed** (2026-05-11) | `7b5cefda` |
-| Phase 6 — Boundary ratchet + cleanup | proposed | — |
+| Phase 6 — Boundary ratchet + cleanup | **landed** (2026-05-11) | _pending_ |
+| Phase 7a — `Microk8sReconcileRunner` migration | proposed | — |
+| Phase 7b — `ValidateControllerConfigCommand` migration | proposed | — |
+| Phase 7c — `RunBootstrapJobRunner` migration | proposed | — |
+| Phase 7d — `ControllerAllRunner` migration | proposed | — |
+| Phase 7e — `controller_serve.py` audit + extract | proposed | — |
 
 ---
 

@@ -32,8 +32,7 @@ class ControllerSecretPrimingService:
     info: LogFn
     warn: LogFn
 
-    @staticmethod
-    def _clean(value: str | None) -> str:
+    def _clean(self, value: str | None) -> str:
         return (value or "").replace("\r", "").replace("\n", "").strip()
 
     def _secret_exists(self) -> bool:
@@ -91,15 +90,13 @@ class ControllerSecretPrimingService:
         if result.returncode != 0:
             raise KubernetesError(result.stderr or result.stdout)
 
-    @staticmethod
-    def _normalize_deploy_token(value: str | None) -> str:
+    def _normalize_deploy_token(self, value: str | None) -> str:
         token = str(value or "").strip().lower()
         token = re.sub(r"[^a-z0-9-]+", "-", token)
         token = token.strip("-")
         return token
 
-    @staticmethod
-    def _api_key_env_name(app: str) -> str:
+    def _api_key_env_name(self, app: str) -> str:
         token = re.sub(r"[^A-Za-z0-9]+", "_", str(app or ""))
         token = token.strip("_").upper()
         if not token:

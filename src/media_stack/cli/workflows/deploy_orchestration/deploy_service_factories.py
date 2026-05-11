@@ -28,9 +28,9 @@ from media_stack.cli.workflows.deploy_pipeline_service import (
 from media_stack.cli.workflows.deploy_profile_defaults_service import (
     DeployProfileDefaultsService,
 )
-from media_stack.cli.workflows.deploy_script_runner_service import (
-    DeployScriptRunnerConfig,
-    DeployScriptRunnerService,
+from media_stack.cli.workflows.script_runner_service import (
+    ScriptRunnerConfig,
+    ScriptRunnerService,
 )
 from media_stack.core.cli_common import info
 
@@ -75,11 +75,11 @@ class DeployServiceFactoryBundle:
             )
         )
 
-    def script_runner_service(self) -> DeployScriptRunnerService:
-        return DeployScriptRunnerService(
-            cfg=DeployScriptRunnerConfig(
+    def script_runner_service(self) -> ScriptRunnerService:
+        return ScriptRunnerService(
+            cfg=ScriptRunnerConfig(
                 root_dir=self._cfg.root_dir,
-                namespace=self._cfg.namespace,
+                extra_env={"NAMESPACE": self._cfg.namespace},
             )
         )
 

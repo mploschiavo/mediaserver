@@ -20,12 +20,12 @@ a Python module via ``-m`` or a shell script under ``bin/``).
 callers pass ``extra_env={"NAMESPACE": ns}``; the controller-side
 callers pass ``extra_env=None``. One body, two consumers, no fork.
 
-The two original modules (:mod:`deploy_script_runner_service`,
-:mod:`controller_script_runner_service`) survive as backwards-
-compatible shims — their classes subclass the unified
-:class:`ScriptRunnerService` and adapt their config dataclasses
-into the unified one. Existing tests + callers don't change.
-Removal of the shims is queued for Phase 6's cleanup pass.
+The pre-Phase-2 modules (``deploy_script_runner_service``,
+``controller_script_runner_service``) lived as backwards-
+compatible shims for one release cycle and were deleted in
+ADR-0015 Phase 6. All callers now construct
+:class:`ScriptRunnerService` directly — deploy-side passes
+``extra_env={"NAMESPACE": ns}``, controller-side passes nothing.
 """
 
 from __future__ import annotations

@@ -14,6 +14,7 @@ from unittest import mock
 import pytest
 
 from media_stack.cli.commands import build_ui_image_main as ui_build
+from media_stack.cli.workflows import build_ui_image_service as ui_build_service
 from media_stack.core.exceptions import ConfigError
 
 
@@ -242,7 +243,7 @@ def test_run_invokes_build_only_when_no_push(tmp_path: Path) -> None:
         dockerfile=tmp_path / "ui.Dockerfile",
         root_dir=tmp_path,
     )
-    with mock.patch.object(ui_build, "run_command", _fake_run_command):
+    with mock.patch.object(ui_build_service, "run_command", _fake_run_command):
         rc = ui_build.run(cfg)
     assert rc == 0
     assert len(calls) == 1
@@ -266,7 +267,7 @@ def test_run_invokes_build_then_push(tmp_path: Path) -> None:
         dockerfile=tmp_path / "ui.Dockerfile",
         root_dir=tmp_path,
     )
-    with mock.patch.object(ui_build, "run_command", _fake_run_command):
+    with mock.patch.object(ui_build_service, "run_command", _fake_run_command):
         rc = ui_build.run(cfg)
     assert rc == 0
     assert len(calls) == 2
@@ -289,7 +290,7 @@ def test_run_fails_when_pnpm_lockfile_missing(tmp_path: Path, capsys) -> None:
         dockerfile=tmp_path / "ui.Dockerfile",
         root_dir=tmp_path,
     )
-    with mock.patch.object(ui_build, "run_command", _fake_run_command):
+    with mock.patch.object(ui_build_service, "run_command", _fake_run_command):
         rc = ui_build.run(cfg)
     assert rc == 1
     assert calls == []
@@ -310,7 +311,7 @@ def test_main_returns_zero_on_success(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "deploy" / "compose").mkdir(parents=True, exist_ok=True)
     (tmp_path / "deploy" / "compose" / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
     _make_lockfile(tmp_path)
-    monkeypatch.setattr(ui_build, "run_command", lambda args: None)
+    monkeypatch.setattr(ui_build_service, "run_command", lambda args: None)
     rc = ui_build.main(["--no-push"])
     assert rc == 0
 

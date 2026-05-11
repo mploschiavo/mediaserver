@@ -76,7 +76,7 @@ class ControllerAllRunner:
             label = script_name
         else:
             # Legacy shell script fallback
-            from media_stack.cli.workflows.controller_script_runner_service import _find_script
+            from media_stack.cli.workflows.script_runner_service import _find_script
             script_path = _find_script(self.cfg.root_dir / "bin", script_name)
             cmd = ["bash", str(script_path), *list(args)]
             label = script_name

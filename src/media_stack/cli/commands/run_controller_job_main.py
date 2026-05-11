@@ -45,9 +45,9 @@ from media_stack.cli.workflows.controller_post_job_actions_service import (
     ControllerPostJobAction,
     ControllerPostJobActionsService,
 )
-from media_stack.cli.workflows.controller_script_runner_service import (
-    ControllerScriptRunnerConfig,
-    ControllerScriptRunnerService,
+from media_stack.cli.workflows.script_runner_service import (
+    ScriptRunnerConfig,
+    ScriptRunnerService,
 )
 from media_stack.cli.workflows.controller_secret_priming_service import (
     ControllerSecretPrimingConfig,
@@ -126,9 +126,9 @@ class RunBootstrapJobRunner(_RunBootstrapJobPrimingMixin):
             )
         )
 
-    def _script_runner_service(self) -> ControllerScriptRunnerService:
-        return ControllerScriptRunnerService(
-            cfg=ControllerScriptRunnerConfig(root_dir=self.cfg.root_dir),
+    def _script_runner_service(self) -> ScriptRunnerService:
+        return ScriptRunnerService(
+            cfg=ScriptRunnerConfig(root_dir=self.cfg.root_dir),
         )
 
     def _deployment_ops_service(self) -> ControllerDeploymentOpsService:
