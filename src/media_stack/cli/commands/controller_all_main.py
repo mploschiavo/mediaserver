@@ -679,7 +679,21 @@ class ControllerAllCommand:
         self,
         argv: list[str] | None = None,
     ) -> tuple[argparse.Namespace, tuple[PhaseSkipFlagSpec, ...]]:
-        root_dir = Path(__file__).resolve().parents[2]
+        # parents[4] = repo root (this file at src/media_stack/cli/commands/...).
+
+        # Pre-ADR-0001-Phase-12 the CLI lived at scripts/cli/ where parents[2] was
+
+        # repo-root; after the move to src/media_stack/cli/commands/ the value was
+
+        # never updated, landing at src/media_stack/ and silently breaking every
+
+        # root_dir / "contracts" / … lookup. Matches the parents[4] used by
+
+        # teardown_stack_main, release_pipeline_main, apply_scale_policy_main,
+
+        # dup_burndown_main, run_unit_tests_main.
+
+        root_dir = Path(__file__).resolve().parents[4]
         default_config = str(root_dir / "contracts" / "media-stack.config.json")
 
         pre_parser = argparse.ArgumentParser(add_help=False)
@@ -750,7 +764,8 @@ class ControllerAllCommand:
 
     def main(self, argv: list[str] | None = None) -> int:
         args, skip_specs = self.parse_args(argv)
-        root_dir = Path(__file__).resolve().parents[2]
+        # See parse_args() above for the parents[4] rationale.
+        root_dir = Path(__file__).resolve().parents[4]
         config_file = Path(str(args.config_file)).resolve()
         state_file = (
             Path(args.state_file).resolve()

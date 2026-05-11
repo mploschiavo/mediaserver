@@ -62,7 +62,28 @@ class DeployVerifyCommand:
                 f"Unsupported profile '{profile}'. Use minimal|full|public-demo|power-user."
             )
 
-        root_dir = Path(__file__).resolve().parents[2]
+        # parents[4] = repo root (this file at src/media_stack/cli/commands/...).
+
+
+        # Pre-ADR-0001-Phase-12 the CLI lived at scripts/cli/ where parents[2] was
+
+
+        # repo-root; after the move to src/media_stack/cli/commands/ the value was
+
+
+        # never updated, landing at src/media_stack/ and silently breaking every
+
+
+        # root_dir / "contracts" / … lookup. Matches the parents[4] used by
+
+
+        # teardown_stack_main, release_pipeline_main, apply_scale_policy_main,
+
+
+        # dup_burndown_main, run_unit_tests_main.
+
+
+        root_dir = Path(__file__).resolve().parents[4]
         scripts_dir = root_dir / "bin"
 
         info("Starting deploy and verification")
