@@ -8,15 +8,31 @@ deployments but breaks path-prefix routing — the browser receives
 absolute ``/UI/<asset>`` references that envoy then 404s, producing
 the symptom of a blank page on ``/app/bazarr/``.
 
-Mirrors the shape of :mod:`media_stack.infrastructure.sabnzbd.compose_preflight`
-and :mod:`media_stack.infrastructure.qbittorrent.compose_preflight`:
-class-based, exec into the running container, idempotent
-write-on-drift, restart only when the value actually changed, wait
-for readiness before returning. The reconcile is intentionally
-scoped to the single ``general.base_url`` line — it does NOT touch
-the per-arr ``base_url`` entries under ``sonarr`` / ``radarr`` /
-``lidarr`` / ``readarr`` (which are upstream URLs Bazarr uses to
-TALK to the arrs, not its own served base).
+Design — Strategy + Adapter:
+
+* :class:`BazarrBaseUrlReconciler` is the Strategy that knows the
+  Bazarr-specific YAML edit (awk-rewrite the first ``base_url:`` line
+  inside the ``general:`` block). It reads/writes through the
+  injected :class:`ContainerAccess` Adapter (compose-side
+  :class:`ComposeContainerAccess`), which is the same Protocol the
+  lifecycle layer uses for credentials rotation — no duplicate
+  exec/restart machinery, no parallel static helper namespace.
+* :class:`BazarrReadinessProbe` polls the in-container HTTP listener
+  through the same ``ContainerAccess`` port; constructor-injected
+  ``time_provider`` + ``sleep_fn`` so unit tests don't have to
+  monkeypatch :mod:`time`.
+* :class:`BazarrComposePreflight` is the entry-point class: bound to
+  the contract YAML via the module-level
+  ``ensure_compose_bazarr_url_base`` shim, it takes the
+  resolver-supplied ``docker`` adapter, builds a
+  ``ComposeContainerAccess`` for the bazarr container, hands it to
+  the reconciler + probe, restarts only on drift.
+
+The reconcile is intentionally scoped to the single
+``general.base_url`` line — it does NOT touch the per-arr ``base_url``
+entries under ``sonarr`` / ``radarr`` / ``lidarr`` / ``readarr``
+(which are upstream URLs Bazarr uses to TALK to the arrs, not its
+own served base).
 """
 
 from __future__ import annotations
@@ -24,239 +40,280 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from media_stack.domain.services.container_access import (
+    ContainerAccess,
+    ContainerAccessError,
+)
+from media_stack.infrastructure.platforms.compose.container_access import (
+    ComposeContainerAccess,
+)
+
 InfoFn = Callable[[str], None]
+TimeProvider = Callable[[], float]
+SleepFn = Callable[[float], None]
 
 _BAZARR_CONFIG_PATH = "/config/config/config.yaml"
 _BAZARR_PORT = 6767
 _READY_TIMEOUT_SEC = 75
 _RESTART_TIMEOUT_SEC = 10
+_READY_POLL_INTERVAL_SEC = 2
+
+_RECONCILE_SCRIPT = """
+set -eu
+conf="${BAZARR_CONFIG}"
+desired="${BAZARR_DESIRED_BASE_URL}"
+[ -f "$conf" ] || { echo "__ERR__=missing_config"; exit 21; }
+
+# awk: in general: block only, rewrite the first base_url line.
+# Quotes (single) match how Bazarr serializes empty values:
+# ``base_url: ''``. We emit the same quoting style for non-empty
+# values so the YAML stays canonical.
+tmp="${conf}.preflight.$$"
+awk -v desired="$desired" '
+  BEGIN { in_general=0; replaced=0 }
+  /^general:/ { in_general=1; print; next }
+  in_general && /^[a-z][a-z_]*:/ && !/^general:/ {
+    in_general=0
+  }
+  in_general && !replaced && /^[[:space:]]+base_url:/ {
+    printf "  base_url: %c%s%c\\n", 39, desired, 39
+    replaced=1
+    next
+  }
+  { print }
+' "$conf" > "$tmp"
+
+if cmp -s "$conf" "$tmp"; then
+  rm -f "$tmp"
+  echo "__CHANGED__=0"
+  exit 0
+fi
+
+mv "$tmp" "$conf"
+echo "__CHANGED__=1"
+"""
+
+
+class BazarrBaseUrlReconciler:
+    """Strategy: write ``general.base_url`` if drifted.
+
+    Talks to the running Bazarr container through an injected
+    :class:`ContainerAccess`, so the same code path works for any
+    platform that ships a ``ContainerAccess`` impl (today: compose;
+    later: k8s when bazarr's served-base setting is needed there too).
+    """
+
+    def __init__(
+        self,
+        *,
+        container_access: ContainerAccess,
+        config_path: str = _BAZARR_CONFIG_PATH,
+    ) -> None:
+        self._container_access = container_access
+        self._config_path = config_path
+
+    def desired_for(self, service_id: str) -> str:
+        """Path-prefix Bazarr should serve from when fronted by Envoy.
+
+        Lifted to instance method so subclasses can override the
+        ``/app/<id>`` convention (e.g. a deployment that mounts Bazarr
+        at a non-default prefix). The reconciler stays unaware of
+        the convention's source — it just writes the value it's told.
+        """
+        return f"/app/{service_id}"
+
+    def apply(self, desired_base_url: str) -> bool:
+        """Return ``True`` when the on-disk value actually changed."""
+        env = {
+            "BAZARR_CONFIG": self._config_path,
+            "BAZARR_DESIRED_BASE_URL": desired_base_url,
+        }
+        try:
+            code, output = self._container_access.exec_shell(
+                _RECONCILE_SCRIPT, env=env,
+            )
+        except ContainerAccessError as exc:
+            raise RuntimeError(
+                f"Compose Bazarr preflight failed to reconcile "
+                f"{self._config_path}: {exc}",
+            ) from exc
+        if code != 0:
+            raise RuntimeError(
+                f"Compose Bazarr preflight failed to reconcile "
+                f"{self._config_path}. Output: {output.strip()}",
+            )
+        return "__CHANGED__=1" in output
+
+
+class BazarrReadinessProbe:
+    """Poll the in-container HTTP listener until it answers.
+
+    Bazarr serves the UI from ``general.base_url`` after restart;
+    the base URL changes the served path, but the readiness probe
+    only needs the listener to bind. Probing ``/`` and accepting any
+    2xx / 3xx / 401 / 403 / 404 is sufficient — the prefix-stripped
+    root returns 404 once base_url is set, which IS proof the
+    listener is up.
+    """
+
+    def __init__(
+        self,
+        *,
+        container_access: ContainerAccess,
+        port: int = _BAZARR_PORT,
+        timeout_seconds: int = _READY_TIMEOUT_SEC,
+        poll_interval_seconds: int = _READY_POLL_INTERVAL_SEC,
+        time_provider: TimeProvider = time.time,
+        sleep_fn: SleepFn = time.sleep,
+    ) -> None:
+        self._container_access = container_access
+        self._port = port
+        self._timeout_seconds = timeout_seconds
+        self._poll_interval_seconds = poll_interval_seconds
+        self._time = time_provider
+        self._sleep = sleep_fn
+
+    def wait_until_ready(self) -> bool:
+        script = self._build_probe_script()
+        deadline = self._time() + max(1, int(self._timeout_seconds))
+        while self._time() < deadline:
+            try:
+                code, _ = self._container_access.exec_shell(script)
+            except ContainerAccessError:
+                code = 1
+            if code == 0:
+                return True
+            self._sleep(self._poll_interval_seconds)
+        return False
+
+    def _build_probe_script(self) -> str:
+        return (
+            'tmp_body="/tmp/bazarr-ready.$$"\n'
+            f'code="$(curl -sS -o "$tmp_body" -w "%{{http_code}}" '
+            f'"http://127.0.0.1:{self._port}/" 2>/dev/null || true)"\n'
+            'rm -f "$tmp_body" >/dev/null 2>&1 || true\n'
+            'case "$code" in 2*|3*|401|403|404) true ;; *) false ;; esac\n'
+        )
 
 
 class BazarrComposePreflight:
-    """Set Bazarr's served base URL to match the envoy path prefix."""
+    """Entry-point class for the contract's ``compose_preflight_handler``.
 
-    @staticmethod
-    def _text(value: Any) -> str:
-        return str(value or "").strip()
-
-    @staticmethod
-    def _decode_logs(raw: Any) -> str:
-        if isinstance(raw, bytes):
-            return raw.decode("utf-8", errors="replace")
-        return str(raw or "")
-
-    @staticmethod
-    def _exec_shell(
-        container: Any,
-        script: str,
-        env: dict[str, str] | None = None,
-    ) -> tuple[int, str]:
-        result = container.exec_run(
-            cmd=["sh", "-lc", script],
-            environment=dict(env or {}),
-            stdout=True,
-            stderr=True,
-        )
-        raw_code = getattr(result, "exit_code", 1)
-        code = int(raw_code if raw_code is not None else 1)
-        output = _decode_logs(getattr(result, "output", b""))
-        return code, output
-
-    @staticmethod
-    def _desired_base_url(service_id: str) -> str:
-        return f"/app/{service_id}"
-
-    @staticmethod
-    def _reconcile_base_url(
-        container: Any,
-        *,
-        desired_base_url: str,
-        config_path: str,
-    ) -> tuple[bool, str]:
-        """Write ``general.base_url: <desired>`` to config.yaml.
-
-        Uses awk to rewrite only the FIRST ``base_url:`` line after the
-        ``general:`` header — the per-arr ``base_url`` entries under
-        ``sonarr`` / ``radarr`` / etc. (which are upstream URLs Bazarr
-        uses to talk TO each arr) come later and must stay ``/``.
-
-        Returns ``(changed, output)``.
-        """
-        script = """
-    set -eu
-    conf="${BAZARR_CONFIG}"
-    desired="${BAZARR_DESIRED_BASE_URL}"
-    [ -f "$conf" ] || { echo "__ERR__=missing_config"; exit 21; }
-
-    # awk: in general: block only, rewrite the first base_url line.
-    # Quotes (single) match how Bazarr serializes empty values:
-    # ``base_url: ''``. We emit the same quoting style for non-empty
-    # values so the YAML stays canonical.
-    tmp="${conf}.preflight.$$"
-    awk -v desired="$desired" '
-      BEGIN { in_general=0; replaced=0 }
-      /^general:/ { in_general=1; print; next }
-      in_general && /^[a-z][a-z_]*:/ && !/^general:/ {
-        in_general=0
-      }
-      in_general && !replaced && /^[[:space:]]+base_url:/ {
-        printf "  base_url: %c%s%c\\n", 39, desired, 39
-        replaced=1
-        next
-      }
-      { print }
-    ' "$conf" > "$tmp"
-
-    if cmp -s "$conf" "$tmp"; then
-      rm -f "$tmp"
-      echo "__CHANGED__=0"
-      exit 0
-    fi
-
-    mv "$tmp" "$conf"
-    echo "__CHANGED__=1"
+    Wired in ``contracts/services/bazarr.yaml::plugin.compose_preflight_handler``
+    via the module-level shim ``ensure_compose_bazarr_url_base`` below.
+    The resolver passes a ``docker`` adapter; this class adapts it
+    into the platform-shared :class:`ComposeContainerAccess` and
+    drives the reconcile-then-restart flow through composed
+    strategies (no static helpers).
     """
-        code, output = _exec_shell(
-            container,
-            script,
-            {
-                "BAZARR_CONFIG": config_path,
-                "BAZARR_DESIRED_BASE_URL": desired_base_url,
-            },
-        )
-        if code != 0:
-            raise RuntimeError(
-                "Compose Bazarr preflight failed to reconcile "
-                f"{config_path}. Output: {output.strip()}"
-            )
-        return "__CHANGED__=1" in output, output
 
-    @staticmethod
-    def _restart_container(container: Any) -> bool:
-        try:
-            container.restart(timeout=_RESTART_TIMEOUT_SEC)
-        except Exception:
-            return False
-        return True
-
-    @staticmethod
-    def _wait_for_ready(
-        container: Any,
+    def __init__(
+        self,
         *,
-        timeout_seconds: int = _READY_TIMEOUT_SEC,
+        service_id: str = "bazarr",
+        config_path: str = _BAZARR_CONFIG_PATH,
         port: int = _BAZARR_PORT,
-    ) -> bool:
-        """Poll the in-container HTTP listener until it answers.
-
-        Bazarr serves the UI from ``general.base_url`` after restart;
-        the base URL changes the served path, but the readiness probe
-        only needs the listener to bind. Probing ``http://127.0.0.1:<port>/``
-        and accepting any 2xx / 3xx / 401 / 403 is sufficient — the
-        prefix-stripped root returns 404 once base_url is set, which
-        IS proof the listener is up.
-        """
-        deadline = time.time() + max(1, int(timeout_seconds))
-        script = f"""
-    tmp_body="/tmp/bazarr-ready.$$"
-    code="$(curl -sS -o "$tmp_body" -w "%{{http_code}}" \
-      "http://127.0.0.1:{port}/" 2>/dev/null || true)"
-    rm -f "$tmp_body" >/dev/null 2>&1 || true
-    case "$code" in
-      2*|3*|401|403|404) true ;;
-      *) false ;;
-    esac
-    """
-        while time.time() < deadline:
-            code, _ = _exec_shell(container, script)
-            if code == 0:
-                return True
-            time.sleep(2)
-        return False
+        ready_timeout_seconds: int = _READY_TIMEOUT_SEC,
+        restart_timeout_seconds: int = _RESTART_TIMEOUT_SEC,
+        time_provider: TimeProvider = time.time,
+        sleep_fn: SleepFn = time.sleep,
+    ) -> None:
+        self._service_id = service_id
+        self._config_path = config_path
+        self._port = port
+        self._ready_timeout_seconds = ready_timeout_seconds
+        self._restart_timeout_seconds = restart_timeout_seconds
+        self._time = time_provider
+        self._sleep = sleep_fn
 
     def ensure_compose_bazarr_url_base(
         self,
         *,
-        compose_env: dict[str, str],
-        namespace: str,
         docker: Any,
         info: InfoFn,
         **_: object,
     ) -> dict[str, str]:
         """Compose preflight entry point.
 
-        Signature matches the other ``ensure_compose_*`` handlers so the
-        compose-deploy hook resolver dispatches it uniformly.
+        Signature matches the other ``ensure_compose_*`` handlers so
+        the compose-deploy hook resolver dispatches it uniformly.
+        ``compose_env``/``namespace``/etc. arrive via ``**_`` — Bazarr's
+        base URL doesn't depend on them (envoy path prefix is always
+        ``/app/bazarr`` regardless of namespace), so we don't bind
+        them.
         """
-        # ``namespace`` and ``compose_env`` are part of the contract
-        # signature but Bazarr's base URL doesn't depend on either
-        # — the envoy path prefix is always ``/app/bazarr`` regardless
-        # of namespace. Touching them here just keeps the signature
-        # parity for the resolver.
-        _ = compose_env
-        _ = namespace
-
-        container = docker.get_container("bazarr")
+        container = docker.get_container(self._service_id)
         if container is None:
             info(
-                "Compose Bazarr preflight: container 'bazarr' not found; "
-                "skipping (not deployed on this profile)."
+                f"Compose Bazarr preflight: container '{self._service_id}' "
+                "not found; skipping (not deployed on this profile).",
             )
             return {}
 
-        desired = _desired_base_url("bazarr")
+        container_access = ComposeContainerAccess(container)
+        reconciler = BazarrBaseUrlReconciler(
+            container_access=container_access,
+            config_path=self._config_path,
+        )
+        desired = reconciler.desired_for(self._service_id)
+
         try:
-            changed, _ = _reconcile_base_url(
-                container,
-                desired_base_url=desired,
-                config_path=_BAZARR_CONFIG_PATH,
-            )
+            changed = reconciler.apply(desired)
         except RuntimeError as exc:
-            # Common case: config.yaml not yet generated on first boot.
-            # Bazarr writes it during first init; the next bootstrap
-            # tick will pick it up.
+            # Common case: config.yaml not yet generated on first
+            # boot. Bazarr writes it during first init; the next
+            # bootstrap tick picks it up.
             info(
                 f"Compose Bazarr preflight: skipped — {exc}. Will retry "
-                "on next bootstrap once Bazarr writes its initial config."
+                "on next bootstrap once Bazarr writes its initial config.",
             )
             return {}
 
         if not changed:
             info(
                 "Compose Bazarr preflight: general.base_url already aligned "
-                f"({desired})."
+                f"({desired}).",
             )
             return {}
 
-        if not _restart_container(container):
+        if not container_access.restart(
+            timeout_seconds=self._restart_timeout_seconds,
+        ):
             raise RuntimeError(
                 "Compose Bazarr preflight updated general.base_url but "
-                "could not restart container."
+                "could not restart container.",
             )
-        if not _wait_for_ready(container):
+        probe = BazarrReadinessProbe(
+            container_access=container_access,
+            port=self._port,
+            timeout_seconds=self._ready_timeout_seconds,
+            time_provider=self._time,
+            sleep_fn=self._sleep,
+        )
+        if not probe.wait_until_ready():
             raise RuntimeError(
                 "Compose Bazarr preflight restarted container but readiness "
-                f"probe failed within {_READY_TIMEOUT_SEC}s."
+                f"probe failed within {self._ready_timeout_seconds}s.",
             )
 
         info(
             "Compose Bazarr preflight: reconciled general.base_url to "
-            f"{desired} and restarted container."
+            f"{desired} and restarted container.",
         )
         return {}
 
 
+# Module-level singleton + handler shim — the contract YAML's
+# ``plugin.compose_preflight_handler`` reference resolves to this
+# callable. Constructing the singleton at import keeps the resolver
+# fast (no class instantiation per dispatch) while leaving the class
+# itself testable in isolation.
 _instance = BazarrComposePreflight()
 ensure_compose_bazarr_url_base = _instance.ensure_compose_bazarr_url_base
 
-
 __all__ = [
+    "BazarrBaseUrlReconciler",
     "BazarrComposePreflight",
+    "BazarrReadinessProbe",
     "ensure_compose_bazarr_url_base",
 ]
-_decode_logs = _instance._decode_logs
-_desired_base_url = _instance._desired_base_url
-_exec_shell = _instance._exec_shell
-_reconcile_base_url = _instance._reconcile_base_url
-_restart_container = _instance._restart_container
-_text = _instance._text
-_wait_for_ready = _instance._wait_for_ready

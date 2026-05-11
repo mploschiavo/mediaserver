@@ -58,7 +58,10 @@ metadata:
   language: en
   name: media-stack
   platform: compose
-  purpose: standard
+  # purpose = environment tier (catalog: dev/test/prod), NOT the
+  # feature-set profile (file name is "standard"; the install:
+  # toggles drive feature breadth). Local compose = dev.
+  purpose: dev
 resources:
   disk_space_gb: 50
   network_cidr: 192.168.1.0/24

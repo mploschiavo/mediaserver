@@ -1,235 +1,113 @@
-"""Compose preflight hooks for qBittorrent credential reconciliation."""
+"""Compose preflight hook for qBittorrent.
+
+Post-ADR-0013 Phase 3b cutover this is a thin deploy-time shim:
+the actual WebUI credential rotation + reverse-proxy trust settings
+(:data:`QBITTORRENT_REVERSE_PROXY_TRUST_PREFS`) live in
+:meth:`QbittorrentLifecycle.ensure_credentials`, so the orchestrator
+ticking the lifecycle on a reconcile loop and the compose-deploy
+preflight ticking it once at install both run the same body — no
+duplicate "log-in via exec, run setPreferences" machinery.
+
+What this shim still owns:
+
+* Resolving STACK_ADMIN_* defaults from ``compose_env`` and persisting
+  them into the compose ``.env`` file (:class:`ComposeEnvFileWriter`).
+  The lifecycle reads the credentials from ``ctx.secrets``; this is
+  what populates them on first deploy.
+* Adapting the resolver-supplied ``docker`` handle into a
+  :class:`ComposeContainerAccess` so the lifecycle's
+  ``container_access`` extra is the same Protocol on every code
+  path (deploy preflight + orchestrator reconcile).
+* Translating the lifecycle's typed ``Outcome`` failure back into a
+  ``RuntimeError`` with the legacy phase-tag shape callers of
+  ``ensure_compose_torrent_client_credentials`` still expect.
+"""
 
 from __future__ import annotations
 
-import json
-import re
-import time
 from pathlib import Path
 from typing import Any, Callable
 
-_TEMP_PASSWORD_RE = re.compile(r"temporary password[^:]*:\s*(\S+)", re.IGNORECASE)
+from media_stack.adapters.qbittorrent.lifecycle import QbittorrentLifecycle
+from media_stack.domain.services import OrchestrationContext
+from media_stack.infrastructure.platforms.compose.container_access import (
+    ComposeContainerAccess,
+)
 
 InfoFn = Callable[[str], None]
 
+_DEFAULT_NAMESPACE = "media-stack"
+_DEFAULT_STACK_USERNAME = "admin"
 
-class QbittorrentComposePreflight:
 
-    @staticmethod
-    def _text(value: Any) -> str:
-        return str(value or "").strip()
+class ComposeEnvFileWriter:
+    """Upserts ``KEY=VALUE`` rows in a compose ``.env`` file.
 
-    @staticmethod
-    def _decode_logs(raw: Any) -> str:
-        if isinstance(raw, bytes):
-            return raw.decode("utf-8", errors="replace")
-        return str(raw or "")
-
-    @staticmethod
-    def _extract_temporary_password(log_text: str) -> str:
-        matches = list(_TEMP_PASSWORD_RE.finditer(str(log_text or "")))
-        if not matches:
-            return ""
-        return _text(matches[-1].group(1))
-
-    @staticmethod
-    def _exec_shell(container: Any, script: str, env: dict[str, str] | None = None) -> tuple[int, str]:
-        result = container.exec_run(
-            cmd=["sh", "-lc", script],
-            environment=dict(env or {}),
-            stdout=True,
-            stderr=True,
-        )
-        raw_code = getattr(result, "exit_code", 1)
-        code = int(raw_code if raw_code is not None else 1)
-        output = _decode_logs(getattr(result, "output", b""))
-        return code, output
-
-    @staticmethod
-    def _login_with_container(container: Any, username: str, password: str) -> bool:
-        script = """
-    tmp_body="/tmp/qb-login-body.$$"
-    code="$(curl -sS -o "$tmp_body" -w "%{http_code}" \
-      -H "Origin: http://127.0.0.1:8080" \
-      -H "Referer: http://127.0.0.1:8080/" \
-      -H "User-Agent: media-stack-controller/1.0" \
-      --data-urlencode "username=$QB_USER" \
-      --data-urlencode "password=$QB_PASS" \
-      "http://127.0.0.1:8080/api/v2/auth/login" 2>/dev/null || true)"
-    body="$(cat "$tmp_body" 2>/dev/null || true)"
-    rm -f "$tmp_body" >/dev/null 2>&1 || true
-    case "$code" in
-      2*) [ "$body" = "Ok." ] || [ "${body#Ok.}" != "$body" ] ;;
-      *) false ;;
-    esac
+    Kept separate from the preflight class because the operation is
+    purely about file I/O — it has no knowledge of qBittorrent. Could
+    be lifted to a shared helper if another compose preflight needs
+    the same shape (today only qB does, so it lives here).
     """
-        code, _ = _exec_shell(
-            container,
-            script,
-            {
-                "QB_USER": username,
-                "QB_PASS": password,
-            },
-        )
-        return code == 0
 
-    @staticmethod
-    def _set_credentials_with_container(
-        container: Any,
-        *,
-        auth_user: str,
-        auth_pass: str,
-        target_user: str,
-        target_pass: str,
-    ) -> bool:
-        prefs_json = json.dumps(
-            {
-                "web_ui_username": target_user,
-                "web_ui_password": target_pass,
-            },
-            separators=(",", ":"),
-        )
-        script = """
-    tmp_login="/tmp/qb-login-body.$$"
-    tmp_pref="/tmp/qb-pref-body.$$"
-    cookie="/tmp/qb-cookie.$$"
-    code_login="$(curl -sS -o "$tmp_login" -w "%{http_code}" \
-      -c "$cookie" \
-      -H "Origin: http://127.0.0.1:8080" \
-      -H "Referer: http://127.0.0.1:8080/" \
-      -H "User-Agent: media-stack-controller/1.0" \
-      --data-urlencode "username=$AUTH_USER" \
-      --data-urlencode "password=$AUTH_PASS" \
-      "http://127.0.0.1:8080/api/v2/auth/login" 2>/dev/null || true)"
-    body_login="$(cat "$tmp_login" 2>/dev/null || true)"
-    case "$code_login" in
-      2*) [ "$body_login" = "Ok." ] || [ "${body_login#Ok.}" != "$body_login" ] || exit 41 ;;
-      *) exit 42 ;;
-    esac
-    code_pref="$(curl -sS -o "$tmp_pref" -w "%{http_code}" \
-      -b "$cookie" \
-      -H "Origin: http://127.0.0.1:8080" \
-      -H "Referer: http://127.0.0.1:8080/" \
-      -H "User-Agent: media-stack-controller/1.0" \
-      --data-urlencode "json=$PREFERENCES_JSON" \
-      "http://127.0.0.1:8080/api/v2/app/setPreferences" 2>/dev/null || true)"
-    rm -f "$tmp_login" "$tmp_pref" "$cookie" >/dev/null 2>&1 || true
-    case "$code_pref" in
-      2*) true ;;
-      *) false ;;
-    esac
-    """
-        code, _ = _exec_shell(
-            container,
-            script,
-            {
-                "AUTH_USER": auth_user,
-                "AUTH_PASS": auth_pass,
-                "PREFERENCES_JSON": prefs_json,
-            },
-        )
-        return code == 0
+    def __init__(self, path: Path) -> None:
+        self._path = Path(path)
 
-    @staticmethod
-    def _reset_auth_config_in_container(container: Any) -> bool:
-        script = """
-    set -e
-    found=0
-    for f in $(find /config -maxdepth 6 -name qBittorrent.conf 2>/dev/null); do
-      found=1
-      cp "$f" "${f}.bak.$(date +%s)" || true
-      sed -i \
-        -e '/^WebUI\\\\Username=/d' \
-        -e '/^WebUI\\\\Password_PBKDF2=/d' \
-        -e '/^WebUI\\\\Password_ha1=/d' \
-        -e '/^WebUI\\\\LocalHostAuth=/d' \
-        -e '/^WebUI\\\\MaxAuthenticationFailCount=/d' \
-        -e '/^WebUI\\\\BanDuration=/d' \
-        "$f"
-    done
-    [ "$found" -eq 1 ] || exit 21
-    """
-        code, _ = _exec_shell(container, script)
-        return code == 0
-
-    @staticmethod
-    def _restart_container(container: Any) -> bool:
-        try:
-            container.restart(timeout=10)
-        except Exception:
-            return False
-        return True
-
-    @staticmethod
-    def _wait_for_webui_ready(container: Any, *, timeout_seconds: int = 60) -> bool:
-        deadline = time.time() + max(1, int(timeout_seconds))
-        probe = """
-    tmp_body="/tmp/qb-ready-body.$$"
-    code="$(curl -sS -o "$tmp_body" -w "%{http_code}" \
-      "http://127.0.0.1:8080/api/v2/app/version" 2>/dev/null || true)"
-    rm -f "$tmp_body" >/dev/null 2>&1 || true
-    case "$code" in
-      2*|401|403) true ;;
-      *) false ;;
-    esac
-    """
-        while time.time() < deadline:
-            code, _ = _exec_shell(container, probe)
-            if code == 0:
-                return True
-            time.sleep(2)
-        return False
-
-    @staticmethod
-    def _wait_for_login(
-        container: Any, username: str, password: str, *, timeout_seconds: int = 90
-    ) -> bool:
-        timeout_value = max(1, int(timeout_seconds))
-        if not _wait_for_webui_ready(container, timeout_seconds=min(timeout_value, 45)):
-            return False
-        attempts = 2 if timeout_value >= 20 else 1
-        for _ in range(attempts):
-            if _login_with_container(container, username, password):
-                return True
-            time.sleep(2)
-        return False
-
-    @staticmethod
-    def _read_temporary_password(container: Any, *, timeout_seconds: int = 45) -> str:
-        deadline = time.time() + max(1, int(timeout_seconds))
-        while time.time() < deadline:
-            logs = _decode_logs(container.logs(stdout=True, stderr=True, tail=600))
-            token = _extract_temporary_password(logs)
-            if token:
-                return token
-            time.sleep(2)
-        return ""
-
-    @staticmethod
-    def _upsert_env_file(path: Path, updates: dict[str, str]) -> None:
+    def upsert(self, updates: dict[str, str]) -> None:
         if not updates:
             return
-        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-        updated_lines = list(lines)
-        key_to_index: dict[str, int] = {}
-        for idx, raw_line in enumerate(updated_lines):
+        lines = (
+            self._path.read_text(encoding="utf-8").splitlines()
+            if self._path.exists()
+            else []
+        )
+        key_to_index = self._index_by_key(lines)
+        for key, value in updates.items():
+            row = f"{key}={value}"
+            if key in key_to_index:
+                lines[key_to_index[key]] = row
+            else:
+                lines.append(row)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = "\n".join(lines).rstrip() + "\n"
+        self._path.write_text(payload, encoding="utf-8")
+
+    def _index_by_key(self, lines: list[str]) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for idx, raw_line in enumerate(lines):
             line = str(raw_line or "").strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
-            key, _, _ = line.partition("=")
-            token = _text(key)
-            if token:
-                key_to_index[token] = idx
-        for key, value in updates.items():
-            if key in key_to_index:
-                updated_lines[key_to_index[key]] = f"{key}={value}"
-                continue
-            updated_lines.append(f"{key}={value}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = "\n".join(updated_lines).rstrip() + "\n"
-        path.write_text(payload, encoding="utf-8")
+            key = line.partition("=")[0].strip()
+            if key:
+                out[key] = idx
+        return out
 
-    def ensure_compose_torrent_client_credentials(self,
+
+class QbittorrentComposePreflight:
+    """Compose-deploy preflight for qBittorrent.
+
+    Resolves stack-admin credentials, writes them to the compose env
+    file, then dispatches to
+    :meth:`QbittorrentLifecycle.ensure_credentials` for the actual
+    WebUI work (credential rotation + reverse-proxy trust preferences).
+    The dispatch goes through the same ``OrchestrationContext`` shape
+    the orchestrator's reconcile loop uses, so deploy-time and
+    runtime-tick code paths share one rotation body.
+    """
+
+    def __init__(
+        self,
+        *,
+        lifecycle: QbittorrentLifecycle | None = None,
+        default_namespace: str = _DEFAULT_NAMESPACE,
+        default_username: str = _DEFAULT_STACK_USERNAME,
+    ) -> None:
+        self._lifecycle = lifecycle or QbittorrentLifecycle()
+        self._default_namespace = default_namespace
+        self._default_username = default_username
+
+    def ensure_compose_torrent_client_credentials(
+        self,
         *,
         compose_env: dict[str, str],
         compose_env_file: Path | None,
@@ -238,122 +116,128 @@ class QbittorrentComposePreflight:
         info: InfoFn,
         **_: object,
     ) -> dict[str, str]:
-        """Compose-deploy preflight shim — delegates to the lifecycle.
-
-        ADR-0013 Phase 3b: the rotation body that used to live here
-        moved to ``adapters.qbittorrent.lifecycle.QbittorrentLifecycle.
-        ensure_credentials`` so the orchestrator's reconcile loop can
-        run it idempotently. This method now does only the deploy-time
-        bookkeeping (writing STACK_ADMIN_* defaults into the compose
-        env file) and dispatches the actual rotation through the
-        lifecycle path with a real ``OrchestrationContext``.
-
-        Phase 3 made the rotation work; Phase 3b makes the deploy
-        path stop bypassing the framework. The legacy callers
-        (``deploy_stack_main``'s preflight loop) keep working without
-        change — they call this function, this function calls the
-        lifecycle, and the orchestrator's later reconcile ticks reuse
-        the same code path. One body, two entry points.
-        """
-        resolved_namespace = _text(namespace) or "media-stack"
-        stack_username = _text(compose_env.get("STACK_ADMIN_USERNAME")) or "admin"
-        stack_password = _text(compose_env.get("STACK_ADMIN_PASSWORD")) or resolved_namespace
-        compose_env["STACK_ADMIN_USERNAME"] = stack_username
-        compose_env["STACK_ADMIN_PASSWORD"] = stack_password
+        username, password = self._resolve_stack_admin(compose_env, namespace)
+        compose_env["STACK_ADMIN_USERNAME"] = username
+        compose_env["STACK_ADMIN_PASSWORD"] = password
 
         if compose_env_file is not None:
-            updates: dict[str, str] = {}
-            if _text(compose_env.get("STACK_ADMIN_USERNAME")):
-                updates["STACK_ADMIN_USERNAME"] = stack_username
-            if _text(compose_env.get("STACK_ADMIN_PASSWORD")):
-                updates["STACK_ADMIN_PASSWORD"] = stack_password
-            _upsert_env_file(Path(compose_env_file), updates)
+            ComposeEnvFileWriter(compose_env_file).upsert({
+                "STACK_ADMIN_USERNAME": username,
+                "STACK_ADMIN_PASSWORD": password,
+            })
 
-        # Resolve the qBittorrent compose container and wrap it as a
-        # ContainerAccess so the lifecycle method can do its rotation.
-        # If the container isn't running yet (compose ``up`` hasn't
-        # progressed past it), skip — the orchestrator will pick the
-        # work up on its first post-up reconcile tick.
         container = docker.get_container("qbittorrent")
         if container is None:
+            # ``compose up`` hasn't reached the qB service yet —
+            # the orchestrator's first post-up reconcile tick
+            # picks it up via the contract Job
+            # ``qbittorrent:ensure-credentials``.
             info(
-                "Compose torrent-client preflight: container 'qbittorrent' not found; "
-                "skipping credential sync (orchestrator will run the contract job "
-                "qbittorrent:ensure-credentials once compose `up` completes)."
+                "Compose torrent-client preflight: container 'qbittorrent' "
+                "not found; skipping credential sync (orchestrator will "
+                "run qbittorrent:ensure-credentials once compose `up` "
+                "completes).",
             )
             return {
-                "STACK_ADMIN_USERNAME": stack_username,
-                "STACK_ADMIN_PASSWORD": stack_password,
+                "STACK_ADMIN_USERNAME": username,
+                "STACK_ADMIN_PASSWORD": password,
             }
 
-        from media_stack.adapters.qbittorrent.lifecycle import (
-            QbittorrentLifecycle,
-        )
-        from media_stack.domain.services import OrchestrationContext
-        from media_stack.infrastructure.platforms.compose.container_access import (
-            ComposeContainerAccess,
-        )
-
-        lifecycle = QbittorrentLifecycle()
-        outcome = lifecycle.ensure_credentials(
-            OrchestrationContext(
-                service_id="qbittorrent",
-                config={
-                    "host": "qbittorrent",
-                    "port": 8080,
-                    "scheme": "http",
-                    "login_path": "/api/v2/auth/login",
-                },
-                secrets={
-                    "STACK_ADMIN_USERNAME": stack_username,
-                    "STACK_ADMIN_PASSWORD": stack_password,
-                },
-                extra={
-                    "container_access": ComposeContainerAccess(container),
-                },
+        outcome = self._lifecycle.ensure_credentials(
+            self._build_context(
+                username=username,
+                password=password,
+                container=container,
             ),
         )
         if outcome.ok:
-            if (outcome.evidence or {}).get("rotated"):
-                info(
-                    "Compose torrent-client preflight: rotated qBittorrent WebUI "
-                    "credentials to stack-admin (via lifecycle)."
-                )
-            else:
-                info(
-                    "Compose torrent-client preflight: stack-admin credentials "
-                    "already valid for qBittorrent."
-                )
+            self._log_success(outcome, info)
             return {
-                "STACK_ADMIN_USERNAME": stack_username,
-                "STACK_ADMIN_PASSWORD": stack_password,
+                "STACK_ADMIN_USERNAME": username,
+                "STACK_ADMIN_PASSWORD": password,
             }
-        # Lifecycle returned failure. Translate to the legacy
-        # RuntimeError shape so existing deploy callers see the same
-        # error contract; embed the lifecycle's evidence so operators
-        # can trace which rotation phase failed.
+
+        # Translate typed-Outcome failure into the legacy RuntimeError
+        # shape with a phase-tag so existing deploy callers see the
+        # same error contract.
         evidence = dict(outcome.evidence or {})
-        phase = evidence.get("phase") or evidence.get("rotation_reason") or "verify"
+        phase = (
+            evidence.get("phase")
+            or evidence.get("rotation_reason")
+            or "verify"
+        )
         raise RuntimeError(
             f"Compose torrent-client preflight failed at {phase}: "
-            f"{outcome.error or 'unknown error'}"
+            f"{outcome.error or 'unknown error'}",
         )
 
+    def _resolve_stack_admin(
+        self,
+        compose_env: dict[str, str],
+        namespace: str,
+    ) -> tuple[str, str]:
+        ns = str(namespace or "").strip() or self._default_namespace
+        username = (
+            str(compose_env.get("STACK_ADMIN_USERNAME") or "").strip()
+            or self._default_username
+        )
+        password = (
+            str(compose_env.get("STACK_ADMIN_PASSWORD") or "").strip()
+            or ns
+        )
+        return username, password
 
+    def _build_context(
+        self,
+        *,
+        username: str,
+        password: str,
+        container: Any,
+    ) -> OrchestrationContext:
+        return OrchestrationContext(
+            service_id="qbittorrent",
+            config={
+                "host": "qbittorrent",
+                "port": 8080,
+                "scheme": "http",
+                "login_path": "/api/v2/auth/login",
+            },
+            secrets={
+                "STACK_ADMIN_USERNAME": username,
+                "STACK_ADMIN_PASSWORD": password,
+            },
+            extra={
+                "container_access": ComposeContainerAccess(container),
+            },
+        )
+
+    def _log_success(self, outcome: Any, info: InfoFn) -> None:
+        evidence = outcome.evidence or {}
+        if evidence.get("rotated"):
+            info(
+                "Compose torrent-client preflight: rotated qBittorrent "
+                "WebUI credentials + applied reverse-proxy trust prefs "
+                "(via lifecycle).",
+            )
+        else:
+            info(
+                "Compose torrent-client preflight: stack-admin credentials "
+                "+ trust prefs already valid for qBittorrent.",
+            )
+
+
+# Module-level singleton + handler shim — the contract YAML's
+# ``plugin.compose_preflight_handler`` reference resolves to this
+# callable. Constructing the singleton at import keeps the resolver
+# fast (no class instantiation per dispatch) while leaving the
+# classes themselves testable in isolation.
 _instance = QbittorrentComposePreflight()
-ensure_compose_torrent_client_credentials = _instance.ensure_compose_torrent_client_credentials
+ensure_compose_torrent_client_credentials = (
+    _instance.ensure_compose_torrent_client_credentials
+)
 
-
-__all__ = ["ensure_compose_torrent_client_credentials"]
-_decode_logs = _instance._decode_logs
-_exec_shell = _instance._exec_shell
-_extract_temporary_password = _instance._extract_temporary_password
-_login_with_container = _instance._login_with_container
-_read_temporary_password = _instance._read_temporary_password
-_reset_auth_config_in_container = _instance._reset_auth_config_in_container
-_restart_container = _instance._restart_container
-_set_credentials_with_container = _instance._set_credentials_with_container
-_text = _instance._text
-_upsert_env_file = _instance._upsert_env_file
-_wait_for_login = _instance._wait_for_login
-_wait_for_webui_ready = _instance._wait_for_webui_ready
+__all__ = [
+    "ComposeEnvFileWriter",
+    "QbittorrentComposePreflight",
+    "ensure_compose_torrent_client_credentials",
+]

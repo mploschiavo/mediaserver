@@ -35,6 +35,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from media_stack.infrastructure.qbittorrent import (
+    QBITTORRENT_REVERSE_PROXY_TRUST_PREFS,
+)
 from media_stack.adapters.qbittorrent.categories_wiring import (
     CategoriesWirer,
 )
@@ -470,13 +473,18 @@ class QbittorrentLifecycle:
         WebUI auth-bypass rule trusts even when external requests
         from media-stack-controller are not yet on the bypass list).
         """
-        prefs_json = json.dumps(
-            {
-                "web_ui_username": target_user,
-                "web_ui_password": target_pass,
-            },
-            separators=(",", ":"),
-        )
+        # Combine credential set with the reverse-proxy trust prefs
+        # (subnet whitelist + CSRF/HostHeader disable) so a single
+        # setPreferences call leaves qB ready for SSO traffic from
+        # Envoy. Without these, post-Authelia browser requests hit
+        # qB's own WebUI login a second time — see
+        # ``QBITTORRENT_REVERSE_PROXY_TRUST_PREFS`` for rationale.
+        prefs_payload: dict[str, object] = {
+            "web_ui_username": target_user,
+            "web_ui_password": target_pass,
+        }
+        prefs_payload.update(QBITTORRENT_REVERSE_PROXY_TRUST_PREFS)
+        prefs_json = json.dumps(prefs_payload, separators=(",", ":"))
         script = (
             'tmp_login="/tmp/qb-login-body.$$"\n'
             'tmp_pref="/tmp/qb-pref-body.$$"\n'

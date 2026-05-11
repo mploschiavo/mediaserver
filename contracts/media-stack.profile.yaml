@@ -3,7 +3,13 @@ kind: media_stack_profile
 metadata:
   name: media-stack
   platform: compose
-  purpose: standard
+  # ``purpose`` is the environment tier (catalog: dev/test/prod),
+  # not the feature-set profile (minimal/standard/full — that lives
+  # in the file name + the ``install:`` toggles below). The canonical
+  # local compose stack is ``dev``: single host, developer hardware,
+  # no high-availability expectations. Override to ``prod`` if this
+  # YAML is repurposed for a fleet-managed deployment.
+  purpose: dev
   description: Standard local stack profile for Docker Compose
   language: en
   country: US

@@ -23,6 +23,7 @@ from media_stack.core.service_registry.registry import service_internal_url
 from media_stack.infrastructure.qbittorrent import (
     QBITTORRENT_FACTORY_DEFAULT_PASSWORD,
     QBITTORRENT_FACTORY_DEFAULT_USERNAME,
+    QBITTORRENT_REVERSE_PROXY_TRUST_PREFS,
 )
 
 
@@ -328,15 +329,26 @@ class QbittorrentHttpPreflight:
         if sid is None:
             raise RuntimeError("qBittorrent: unable to authenticate with any known credentials")
 
-        # Set stack admin credentials.
-        success = _set_preferences(qbit_url, sid, {
+        # Set stack admin credentials + reverse-proxy trust settings
+        # in the same setPreferences call. Credentials let the
+        # bootstrap pipeline authenticate as the operator; trust
+        # settings let post-Authelia browser traffic reach qB
+        # without a second login. See
+        # ``QBITTORRENT_REVERSE_PROXY_TRUST_PREFS`` for the rationale
+        # and which qBittorrent.conf keys this maps to.
+        prefs: dict[str, object] = {
             "web_ui_username": admin_username,
             "web_ui_password": admin_password,
-        })
+        }
+        prefs.update(QBITTORRENT_REVERSE_PROXY_TRUST_PREFS)
+        success = _set_preferences(qbit_url, sid, prefs)
         if not success:
             raise RuntimeError("qBittorrent: failed to update credentials via API")
 
-        info(f"qBittorrent: credentials synced to stack admin ({admin_username})")
+        info(
+            f"qBittorrent: credentials synced to stack admin ({admin_username}) "
+            "+ reverse-proxy trust settings applied"
+        )
         return {}
 
 
