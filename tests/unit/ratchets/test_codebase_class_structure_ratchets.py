@@ -71,7 +71,7 @@ DEEPLY_NESTED_4PLUS_RATCHET = 186  # 187 → 186 — ADR-0015 Phase 7e: the 683-
 # the orthogonal concerns; further splitting would scatter the
 # tick choreography across files and obscure the read order.
 GOD_CLASSES_OVER_500_LINES_RATCHET = 16  # 15 → 14 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed one god class >500 lines.
-CLASSES_OVER_15_METHODS_RATCHET = 48  # 45 → 44 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed one class with >15 methods. Tightened to new floor.
+CLASSES_OVER_15_METHODS_RATCHET = 47  # 48 → 47 — ADR-0015 Phase 7f: ``ReleasePipelineCommand`` had 19 methods (10 argparse helpers + 7 ``run_*`` + ``main`` + ``print_json``). The Phase 7f split moves the 7 ``run_*`` orchestration methods onto :class:`ReleasePipelineRunner` under workflows/, and groups the 10 argparse helpers onto a separate :class:`ReleasePipelineArgParserBuilder` Builder class co-located in the commands shim. ``ReleasePipelineCommand`` drops to 3 methods. Tightened to the new floor.  # 45 → 44 — ADR-0007 Phase E cleanup: deleted handlers_get/post.py removed one class with >15 methods. Tightened to new floor.
 # CIRCULAR_IMPORT_RISK bumped 270→271: the new
 # ``_DefaultHistoryEmit.__call__`` keeps the same late-import shape
 # the prior ``_default_history_emit`` function used (run_history is
