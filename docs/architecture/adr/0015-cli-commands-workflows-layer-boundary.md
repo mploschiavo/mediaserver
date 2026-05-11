@@ -542,7 +542,7 @@ commit body.
 | Phase 3b — SRP split + Facade for `DeployConfigService` | **landed** (2026-05-11) | `9477cb92` |
 | Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | **landed** (2026-05-11) | `7f064f3e` |
 | Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | **landed** (2026-05-11) | `ecf7a9ec` |
-| Phase 5 — `maintenance.py` migration | proposed | — |
+| Phase 5 — `maintenance.py` migration | **landed** (2026-05-11) | `7b5cefda` |
 | Phase 6 — Boundary ratchet + cleanup | proposed | — |
 
 ---
