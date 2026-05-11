@@ -1,7 +1,31 @@
+"""RunControllerJobCliConfigService — Facade composing the bootstrap-job CLI parser.
+
+Phase 3c refactor (ADR-0015). Pre-Phase-3c this class was a god
+service that owned argparse construction (~70 lines of
+``build_parser``), env-bool helpers, and the top-level
+``parse_run_bootstrap_job_config`` orchestration on one 240-line
+class. Phase 3c split the concerns:
+
+* :class:`CliEnvReader` (Repository) — sampled env mapping + typed
+  reads. Shared with :class:`DeployCliConfigService`.
+* :class:`BootstrapJobArgParserBuilder` (Builder) — the 70-line
+  argparse setup with env-defaulted flags and dynamic skip-flag
+  injection.
+* :class:`RunControllerJobCliConfigService` (this class, Facade)
+  — composes the two above and exposes
+  :meth:`parse_run_bootstrap_job_config` as the CLI entry point.
+
+The Facade owns no parser-construction logic; it delegates to the
+Builder. Its remaining responsibility is the "parse the args +
+assemble the typed RunBootstrapJobConfig dataclass" step that
+binds env reads to typed config fields, plus the SKIP_* env-var
+sweep that fills in phase-skip flags the operator named via env
+instead of CLI.
+"""
+
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -20,6 +44,10 @@ from media_stack.services.controller_component_resolver import (  # noqa: E402
     resolve_bootstrap_component_plan,
     resolve_phase_skip_flag_specs,
 )
+from media_stack.cli.workflows.bootstrap_job_arg_parser_builder import (  # noqa: E402
+    BootstrapJobArgParserBuilder,
+)
+from media_stack.cli.workflows.cli_env_reader import CliEnvReader  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -73,31 +101,44 @@ class RunBootstrapJobConfig:
 
 
 class RunControllerJobCliConfigService:
-    """CLI argument parsing + env-bool helpers for the controller bootstrap job.
+    """Facade: parses the bootstrap-job CLI into :class:`RunBootstrapJobConfig`.
 
-    Env reads funnel through self._env (sampled from
-    os.environ at construction or injected by tests) so method
-    paths stay off the module-level mapping — the ADR-0012 /
-    OS_ENVIRON_IN_METHODS_RATCHET pattern.
+    Composes :class:`CliEnvReader` (env reads) and
+    :class:`BootstrapJobArgParserBuilder` (argparse construction);
+    owns the post-parse step that builds the typed config dataclass
+    from CLI args + env values.
+
+    Backward-compat: the legacy ``env_bool`` / ``env_bool_candidates``
+    methods are kept as one-line delegations to the env reader so
+    existing module-level aliases (``env_bool``,
+    ``env_bool_candidates``) continue to work.
     """
 
-    def __init__(self, env: dict[str, str] | None = None) -> None:
-        self._env = dict(env) if env is not None else dict(os.environ)
+    def __init__(
+        self,
+        env: dict[str, str] | None = None,
+        *,
+        env_reader: CliEnvReader | None = None,
+        parser_builder: BootstrapJobArgParserBuilder | None = None,
+    ) -> None:
+        # Two construction modes:
+        #   1. Default (production): pass env_reader=None and we
+        #      build a CliEnvReader from os.environ. Tests can also
+        #      pass env={...} as a shorthand.
+        #   2. Test fixture: pass a pre-built env_reader (and
+        #      optionally parser_builder) for full isolation.
+        self._env = env_reader or CliEnvReader(env=env)
+        self._parser_builder = parser_builder or BootstrapJobArgParserBuilder(self._env)
+
+    # -- legacy thin-shim env helpers (delegate to CliEnvReader) ----------
 
     def env_bool(self, name: str, default: bool = False) -> bool:
-        raw = self._env.get(name)
-        if raw is None:
-            return default
-        return str(raw).strip().lower() in ("1", "true", "yes", "on")
+        return self._env.boolean(name, default)
 
     def env_bool_candidates(self, names: tuple[str, ...], default: bool = False) -> bool:
-        for name in names:
-            token = str(name).strip()
-            if not token:
-                continue
-            if token in self._env:
-                return self.env_bool(token, default)
-        return default
+        return self._env.boolean_candidates(names, default)
+
+    # -- argparse construction (delegates to Builder) ---------------------
 
     def build_parser(
         self,
@@ -105,75 +146,31 @@ class RunControllerJobCliConfigService:
         *,
         skip_specs: tuple[PhaseSkipFlagSpec, ...] = (),
     ) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser(
-            description=(
-                "Run media-stack bootstrap job.\n\n"
-                "Usage:\n"
-                "  bin/run-bootstrap-job.sh [CONFIG_FILE]"
-            ),
-            formatter_class=argparse.RawTextHelpFormatter,
-        )
-        parser.add_argument(
-            "config_file",
-            nargs="?",
-            default=str(root_dir / "contracts" / "media-stack.config.json"),
-            help="Bootstrap JSON file path.",
-        )
-        parser.add_argument(
-            "--namespace",
-            default=self._env.get("NAMESPACE", "media-stack"),
-            help="Kubernetes namespace (env: NAMESPACE).",
-        )
-        parser.add_argument(
-            "--timeout",
-            default=self._env.get("TIMEOUT", "10m"),
-            help="Wait timeout, e.g. 600s, 10m, 1h (env: TIMEOUT).",
-        )
-        parser.add_argument(
-            "--heartbeat-interval",
-            type=int,
-            default=max(1, int(self._env.get("HEARTBEAT_INTERVAL", "15"))),
-            help="Heartbeat seconds while waiting for job completion.",
-        )
-        parser.add_argument(
-            "--job-log-tail-lines",
-            type=int,
-            default=max(1, int(self._env.get("JOB_LOG_TAIL_LINES", "120"))),
-            help="Tail lines to print from bootstrap job logs.",
-        )
-        parser.add_argument(
-            "--prepare-host-root",
-            default=self._env.get("PREPARE_HOST_ROOT", "/srv/media-stack"),
-            help="Host root used in manifest overrides.",
-        )
-        parser.add_argument(
-            "--ingress-name",
-            default=self._env.get("INGRESS_NAME", "media-stack-ingress"),
-            help="Ingress to read hosts from.",
-        )
-        parser.add_argument(
-            "--bootstrap-runner-image",
-            default=default_controller_image(),
-            help="Bootstrap runner container image.",
-        )
-        parser.add_argument(
-            "--alert-webhook-url",
-            default=self._env.get("ALERT_WEBHOOK_URL", ""),
-            help="Optional webhook for status notifications.",
-        )
-        for spec in skip_specs:
-            parser.add_argument(
-                *spec.option_strings,
-                dest=f"phase_skip_{spec.key}",
-                action="store_true",
-                default=self.env_bool_candidates(spec.env_vars, False),
-                help=spec.help,
-            )
-        return parser
+        return self._parser_builder.build(root_dir, skip_specs=skip_specs)
+
+    # -- top-level entry point: parse args + assemble typed config --------
 
     def parse_run_bootstrap_job_config(
         self, argv: list[str] | None, *, root_dir: Path
     ) -> RunBootstrapJobConfig:
+        skip_specs = self._discover_skip_specs(argv, root_dir=root_dir)
+        parser = self._parser_builder.build(root_dir, skip_specs=skip_specs)
+        args = parser.parse_args(argv)
+        phase_skip_flags = self._collect_phase_skip_flags(args, skip_specs)
+        return self._build_config(args, root_dir=root_dir, phase_skip_flags=phase_skip_flags)
+
+    # -- private helpers (one concern each, all instance methods) ---------
+
+    def _discover_skip_specs(
+        self,
+        argv: list[str] | None,
+        *,
+        root_dir: Path,
+    ) -> tuple[PhaseSkipFlagSpec, ...]:
+        """Pre-parse just enough of argv to find the config file, then
+        ask the controller component resolver which phase-skip flags
+        that config supports. Two-stage parsing because the skip-flag
+        set is data-driven from the config we haven't loaded yet."""
         default_config = str(root_dir / "contracts" / "media-stack.config.json")
         pre_parser = argparse.ArgumentParser(add_help=False)
         pre_parser.add_argument("config_file", nargs="?", default=default_config)
@@ -185,22 +182,45 @@ class RunControllerJobCliConfigService:
                 loaded_cfg = resolve_bootstrap_component_plan(config_file).config
             except ConfigError:
                 loaded_cfg = {}
-        skip_specs = resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_job")
+        return resolve_phase_skip_flag_specs(loaded_cfg, pipeline="bootstrap_job")
 
-        parser = self.build_parser(root_dir, skip_specs=skip_specs)
-        args = parser.parse_args(argv)
-        phase_skip_flags = {
-            spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False)) for spec in skip_specs
+    def _collect_phase_skip_flags(
+        self,
+        args: argparse.Namespace,
+        skip_specs: tuple[PhaseSkipFlagSpec, ...],
+    ) -> dict[str, bool]:
+        """Build the phase_skip_flags dict from CLI args + SKIP_* env sweep.
+
+        Two sources OR'd together: any --skip-<phase> CLI flag, plus
+        any ``SKIP_*`` env var the operator set that names a
+        recognised phase via :func:`normalize_flag_token`.
+        """
+        flags = {
+            spec.key: bool(getattr(args, f"phase_skip_{spec.key}", False))
+            for spec in skip_specs
         }
-        for env_name in self._env:
+        for env_name in self._env.keys():
             if not str(env_name).upper().startswith("SKIP_"):
                 continue
             key = normalize_flag_token(env_name)
             if not key:
                 continue
-            phase_skip_flags[key] = bool(
-                phase_skip_flags.get(key, False) or self.env_bool(env_name, False)
+            flags[key] = bool(
+                flags.get(key, False) or self._env.boolean(env_name, False),
             )
+        return flags
+
+    def _build_config(
+        self,
+        args: argparse.Namespace,
+        *,
+        root_dir: Path,
+        phase_skip_flags: dict[str, bool],
+    ) -> RunBootstrapJobConfig:
+        """Assemble the frozen RunBootstrapJobConfig from parsed args +
+        env values. The string ``or`` fallbacks preserve behaviour for
+        the case where argparse received an empty string from an env-
+        defaulted flag (the env value was '' rather than absent)."""
         return RunBootstrapJobConfig(
             namespace=str(args.namespace).strip() or "media-stack",
             timeout_raw=str(args.timeout).strip() or "10m",
@@ -213,22 +233,31 @@ class RunControllerJobCliConfigService:
             or default_controller_image(),
             root_dir=root_dir,
             config_file=Path(str(args.config_file)),
-            selected_apps=str(self._env.get("SELECTED_APPS", "")).strip(),
-            internet_exposed=self.env_bool_candidates(("INTERNET_EXPOSED",), False),
-            route_strategy=str(self._env.get("ROUTE_STRATEGY", "subdomain")).strip().lower()
+            selected_apps=self._env_str("SELECTED_APPS"),
+            internet_exposed=self._env.boolean_candidates(("INTERNET_EXPOSED",), False),
+            route_strategy=self._env_str("ROUTE_STRATEGY", default="subdomain").lower()
             or "subdomain",
-            ingress_domain=str(self._env.get("INGRESS_DOMAIN", "local")).strip().lower() or "local",
-            app_gateway_host=str(self._env.get("APP_GATEWAY_HOST", "")).strip(),
-            app_path_prefix=str(self._env.get("APP_PATH_PREFIX", "/app")).strip() or "/app",
-            media_server_direct_host=str(self._env.get("MEDIA_SERVER_DIRECT_HOST", "")).strip(),
-            preconfigure_api_keys=self.env_bool_candidates(("PRECONFIGURE_API_KEYS",), True),
-            apply_initial_preferences=self.env_bool_candidates(
-                ("APPLY_INITIAL_PREFERENCES", "FULLY_PRECONFIGURED"), True
+            ingress_domain=self._env_str("INGRESS_DOMAIN", default="local").lower() or "local",
+            app_gateway_host=self._env_str("APP_GATEWAY_HOST"),
+            app_path_prefix=self._env_str("APP_PATH_PREFIX", default="/app") or "/app",
+            media_server_direct_host=self._env_str("MEDIA_SERVER_DIRECT_HOST"),
+            preconfigure_api_keys=self._env.boolean_candidates(
+                ("PRECONFIGURE_API_KEYS",), True,
             ),
-            auto_download_content=self.env_bool_candidates(("AUTO_DOWNLOAD_CONTENT",), False),
-            bootstrap_profile_file=str(self._env.get("BOOTSTRAP_PROFILE_FILE", "")).strip(),
+            apply_initial_preferences=self._env.boolean_candidates(
+                ("APPLY_INITIAL_PREFERENCES", "FULLY_PRECONFIGURED"), True,
+            ),
+            auto_download_content=self._env.boolean_candidates(
+                ("AUTO_DOWNLOAD_CONTENT",), False,
+            ),
+            bootstrap_profile_file=self._env_str("BOOTSTRAP_PROFILE_FILE"),
             phase_skip_flags=phase_skip_flags,
         )
+
+    def _env_str(self, name: str, *, default: str = "") -> str:
+        """Stripped string view of env[name], default when absent."""
+        value = self._env.value(name)
+        return value if value is not None else default
 
 
 _INSTANCE = RunControllerJobCliConfigService()

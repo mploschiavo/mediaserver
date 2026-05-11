@@ -1,7 +1,28 @@
+"""DeployCliConfigService — Facade composing the deploy-stack CLI parser.
+
+Phase 3c refactor (ADR-0015). Pre-Phase-3c this class was a god
+service mixing env reads, profile-path resolution, path-prefix
+normalisation, profile-to-defaults translation, and the top-level
+parse-and-assemble orchestration. Phase 3c split the concerns:
+
+* :class:`CliEnvReader` (Repository) — sampled env mapping + typed
+  reads. Shared with :class:`RunControllerJobCliConfigService`.
+* :class:`DeployProfileDefaultsExtractor` (Strategy) — the 30-line
+  ControllerProfileConfig → env-shape dict translation.
+* :class:`DeployCliConfigService` (this class, Facade) — composes
+  the two above with the existing :class:`DeployProfileDefaultsService`
+  + path helpers, exposes :meth:`parse_deploy_stack_config` as the
+  CLI entry point.
+
+The path-prefix helpers (:meth:`_normalize_path_prefix`,
+:meth:`_resolve_profile_path`) stay on this Facade — they're small
+and used only by the Facade's orchestration step; extracting them
+into their own class would over-fragment.
+"""
+
 from __future__ import annotations
 
 import argparse
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +48,11 @@ except ModuleNotFoundError:  # pragma: no cover
     from media_stack.core.platform_plugin_registry import normalize_platform_target
     from media_stack.core.defaults import default_controller_image
     from media_stack.core.platforms.compose.deploy_cli_options import resolve_compose_file_paths
+
+from media_stack.cli.workflows.cli_env_reader import CliEnvReader
+from media_stack.cli.workflows.deploy_profile_defaults_extractor import (
+    DeployProfileDefaultsExtractor,
+)
 
 DEFAULT_PREPARE_HOST_ROOT = Path("/", "srv", "media-stack").as_posix()
 
@@ -89,34 +115,45 @@ class DeployStackConfig:
 
 
 class DeployCliConfigService:
-    """Parses deploy-stack CLI args + env + profile defaults into
-    :class:`DeployStackConfig`.
+    """Facade: parses the deploy-stack CLI into :class:`DeployStackConfig`.
 
-    Env reads are funneled through the constructor-injected ``env``
-    dict (defaulting to ``os.environ`` sampled at construction).
-    Test fixtures inject a fake mapping rather than monkey-patching
-    ``os.environ`` — the ADR-0012 / OS_ENVIRON_IN_METHODS_RATCHET
-    pattern for cli/workflows services.
+    Composes :class:`CliEnvReader` (env reads) and
+    :class:`DeployProfileDefaultsExtractor` (profile→dict translation);
+    owns the small path-resolution helpers + the
+    :meth:`parse_deploy_stack_config` orchestration step.
     """
 
-    def __init__(self, env: dict[str, str] | None = None) -> None:
-        # Sample os.environ once at construction; method paths read
-        # from self._env so they don't re-touch the module-level
-        # mapping (which the ratchet counts).
-        self._env = dict(env) if env is not None else dict(os.environ)
+    def __init__(
+        self,
+        env: dict[str, str] | None = None,
+        *,
+        env_reader: CliEnvReader | None = None,
+        defaults_extractor: DeployProfileDefaultsExtractor | None = None,
+    ) -> None:
+        # Two construction modes (mirrors the bootstrap-job facade):
+        #   1. Default: pass env_reader=None, we build one from
+        #      os.environ. ``env={...}`` is a shorthand for the
+        #      common test case.
+        #   2. Fixture: pass a pre-built env_reader / extractor for
+        #      full isolation.
+        self._env = env_reader or CliEnvReader(env=env)
+        self._defaults_extractor = (
+            defaults_extractor or DeployProfileDefaultsExtractor()
+        )
+
+    # -- env helpers (thin delegations to CliEnvReader) -------------------
+    #
+    # Kept as instance methods for source compatibility — internal callers
+    # in this Facade still say ``self._env_value(...)`` / ``self._pick(...)``.
+    # External callers should use the env_reader / extractor directly.
 
     def _env_value(self, name: str) -> str | None:
-        value = self._env.get(name)
-        if value is None:
-            return None
-        token = str(value).strip()
-        return token if token else None
+        return self._env.value(name)
 
     def _pick(self, *values: str | None, default: str = "") -> str:
-        for value in values:
-            if value is not None and str(value) != "":
-                return str(value)
-        return default
+        return self._env.pick(*values, default=default)
+
+    # -- path resolution helpers -----------------------------------------
 
     def _resolve_profile_path(
         self,
@@ -143,41 +180,13 @@ class DeployCliConfigService:
         token = token.rstrip("/")
         return token or "/app"
 
+    # -- profile defaults extraction (delegates to Strategy) -------------
+
     def _resolve_profile_defaults(
         self,
         profile: ControllerProfileConfig | None,
     ) -> dict[str, str]:
-        if profile is None:
-            return {}
-        ingress_domain = profile.exposure.ingress_domain
-        return {
-            "platform_target": profile.deployment_target,
-            "namespace": profile.stack_name,
-            "compose_project_name": profile.stack_name,
-            "run_bootstrap": "1" if profile.preconfigure_apps else "0",
-            "preconfigure_api_keys": "1" if profile.preconfigure_api_keys else "0",
-            "apply_initial_preferences": "1" if profile.apply_initial_preferences else "0",
-            "auto_download_content": "1" if profile.auto_download_content else "0",
-            "selected_apps": profile.selected_apps_csv,
-            "purpose": profile.purpose,
-            "profile": str(profile.install_profile or "").strip().lower(),
-            "disk_allocation_gb": str(profile.disk_allocation_gb),
-            "network_cidr": profile.network_cidr,
-            "internet_exposed": "1" if profile.exposure.internet_exposed else "0",
-            "route_strategy": profile.exposure.route_strategy,
-            "app_gateway_host": profile.exposure.gateway_host,
-            "app_gateway_port": profile.exposure.gateway_port,
-            "app_path_prefix": profile.exposure.normalized_app_path_prefix,
-            "media_server_direct_host": profile.exposure.media_server_direct_host,
-            "auth_provider": profile.exposure.auth_provider,
-            "auth_middleware": profile.exposure.auth_middleware,
-            "edge_router_provider": profile.exposure.edge_router_provider,
-            "chaos_enabled": "1" if profile.chaos.enabled else "0",
-            "chaos_duration_minutes": str(profile.chaos.duration_minutes),
-            "chaos_interval_seconds": str(profile.chaos.interval_seconds),
-            "chaos_actions": ",".join(profile.chaos.actions),
-            "ingress_domain": ingress_domain,
-        }
+        return self._defaults_extractor.extract(profile)
 
     def parse_deploy_stack_config(
         self, argv: list[str], *, root_dir: Path
