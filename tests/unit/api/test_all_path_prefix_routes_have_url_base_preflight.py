@@ -41,6 +41,11 @@ _URL_BASE_SETTING_HANDLERS = frozenset({
     "media_stack.services.apps.servarr.http_preflight:run_preflight",
     # sabnzbd — sets url_base=/app/sabnzbd in sabnzbd.ini
     "media_stack.services.apps.sabnzbd.http_preflight:run_preflight",
+    # bazarr — sets general.base_url=/app/bazarr in config.yaml
+    # (the 2026-05-11 regression fix; bazarr's <base href> tag in
+    # index.html IS rendered from this value, despite the asset
+    # links being relative)
+    "media_stack.services.apps.bazarr.compose_preflight:ensure_compose_bazarr_url_base",
 })
 
 # Services with preserve_path_prefix=True that legitimately need
@@ -48,6 +53,15 @@ _URL_BASE_SETTING_HANDLERS = frozenset({
 # relative URLs (Jellyseerr, Homepage, etc.) — their HTML works
 # under any prefix without an explicit UrlBase setting. Keep this
 # list tight; when in doubt, add a preflight instead.
+#
+# 2026-05-11: bazarr was REMOVED from this list. The earlier
+# comment claiming "asset URLs are relative" was wrong — bazarr's
+# index.html has ``<base href="{{baseUrl}}" />`` which the Flask
+# layer renders from ``general.base_url``. With base_url empty,
+# the served value is ``<base href="/" />`` and the browser
+# resolves the relative ``./assets/...`` against ``/``, 404'ing
+# every asset on the path-prefix route. The new
+# ``bazarr.compose_preflight`` handler sets the value.
 _RELATIVE_URL_APPS = frozenset({
     "jellyseerr",   # builds asset URLs from window.location.origin
     "homepage",     # static site, asset URLs are relative
@@ -57,9 +71,6 @@ _RELATIVE_URL_APPS = frozenset({
     "mythtv",       # not served via /app/
     "tautulli",     # relative asset URLs (verify if adding new)
     "unpackerr",    # no HTTP UI
-    "bazarr",       # Python/Flask app, asset URLs are relative
-                    # (verified live: /app/bazarr/ returns 200 with
-                    # working assets even with no url_base set)
 })
 
 
@@ -90,16 +101,29 @@ class PathPrefixRoutesHaveUrlBasePreflightTests(unittest.TestCase):
             slug = str(svc.get("id", ""))
             if slug in _RELATIVE_URL_APPS:
                 continue
-            # preflight_handler lives under the ``plugin:`` section
-            # per the established contract shape (see jellyfin.yaml,
-            # sabnzbd.yaml). Fall back to ``service:`` for contracts
-            # that put it there — but the check is the same.
+            # Two contract shapes recognised:
+            #   plugin.preflight_handler         — legacy k8s / shared shape
+            #                                      (``{handler, name, optional}`` dict)
+            #   plugin.compose_preflight_handler — compose-deploy resolver shape
+            #                                      (``"module.path:Symbol"`` string)
+            # ADR-0005 Phase 5c.1 split these into two fields for
+            # platform-specific dispatch. For this audit, EITHER
+            # field registering a recognised handler counts —
+            # whichever the service declares, that handler will
+            # configure the served base URL at deploy time.
             plugin = data.get("plugin") or {}
+            handlers_declared: set[str] = set()
             pf = plugin.get("preflight_handler") or svc.get("preflight_handler")
-            handler = ""
             if isinstance(pf, dict):
-                handler = str(pf.get("handler", "")).strip()
-            if handler not in _URL_BASE_SETTING_HANDLERS:
+                h = str(pf.get("handler", "")).strip()
+                if h:
+                    handlers_declared.add(h)
+            compose_pf = str(plugin.get("compose_preflight_handler") or "").strip()
+            if compose_pf:
+                handlers_declared.add(compose_pf)
+            matching = handlers_declared & _URL_BASE_SETTING_HANDLERS
+            if not matching:
+                handler = next(iter(handlers_declared), "")
                 offenders.append(
                     f"{slug} (contract={path.name}): "
                     f"preserve_path_prefix=True but no recognised "
