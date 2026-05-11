@@ -120,7 +120,10 @@ class NoForkBasedActionSubprocesses(unittest.TestCase):
 class TimeoutActuallyEnforced(unittest.TestCase):
 
     def test_watchdog_requests_cancel_at_timeout(self) -> None:
-        path = ROOT / "src/media_stack/cli/commands/controller_serve.py"
+        # ADR-0015 Phase 7e moved the watchdog onto
+        # :class:`ActionWatchdog` in workflows/. The anti-regression grep
+        # follows the symbols to their new home.
+        path = ROOT / "src/media_stack/cli/workflows/controller_action_dispatcher.py"
         text = path.read_text(encoding="utf-8")
         # The in-process equivalent of subprocess termination:
         # the watchdog thread sets ``timed_out`` and calls
@@ -134,7 +137,7 @@ class TimeoutActuallyEnforced(unittest.TestCase):
         )
         self.assertRegex(
             text,
-            r"if elapsed >= timeout_seconds",
+            r"if elapsed >= self\._timeout_seconds",
             "Timeout-enforcement check missing — bootstrap can "
             "spin past the configured limit.",
         )
@@ -148,7 +151,9 @@ class TimeoutActuallyEnforced(unittest.TestCase):
 class HeartbeatAndPerJobLogs(unittest.TestCase):
 
     def test_action_heartbeat_every_60s(self) -> None:
-        path = ROOT / "src/media_stack/cli/commands/controller_serve.py"
+        # ADR-0015 Phase 7e: heartbeat logic moved onto
+        # :class:`ActionWatchdog`. Anti-regression grep follows.
+        path = ROOT / "src/media_stack/cli/workflows/controller_action_dispatcher.py"
         text = path.read_text(encoding="utf-8")
         # The in-process watchdog emits "still running" every 60s;
         # the variable name changed from ``t_last_heartbeat`` (legacy

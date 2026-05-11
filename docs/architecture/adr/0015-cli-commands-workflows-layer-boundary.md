@@ -595,7 +595,7 @@ commit body.
 | Phase 7b — `ValidateControllerConfigCommand` migration | **landed** (2026-05-11) | `9bfa7c74` |
 | Phase 7c — `RunBootstrapJobRunner` migration | **landed** (2026-05-11) | `ef2359d7` |
 | Phase 7d — `ControllerAllRunner` migration | **landed** (2026-05-11) | `94e881a5` |
-| Phase 7e — `controller_serve.py` audit + extract | proposed | — |
+| Phase 7e — `controller_serve.py` audit + extract | **landed** (2026-05-11) | _pending_ |
 
 ---
 
