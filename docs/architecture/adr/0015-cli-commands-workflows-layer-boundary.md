@@ -537,7 +537,7 @@ commit body.
 | Phase | Status | Landed commit |
 |---|---|---|
 | Phase 1 — Narrow exceptions | **landed** (2026-05-11) | `fddcfe12` |
-| Phase 2 — Unify script runners | proposed | — |
+| Phase 2 — Unify script runners | **landed** (2026-05-11) | `376734ef` |
 | Phase 3 — Deploy config consolidation | **landed** (2026-05-11) | `ac75320e` |
 | Phase 3b — SRP split + Facade for `DeployConfigService` | **landed** (2026-05-11) | `9477cb92` |
 | Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | **landed** (2026-05-11) | `7f064f3e` |
