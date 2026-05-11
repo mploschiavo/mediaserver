@@ -210,9 +210,20 @@ class DeployHookConfigResolverService:
                         if spec and ":" in spec and spec not in seen:
                             handlers.append(spec)
                             seen.add(spec)
-                    except Exception as exc:
+                    except (yaml.YAMLError, OSError, UnicodeDecodeError) as exc:
+                        # YAMLError: malformed contract YAML.
+                        # OSError: read failure on the contract
+                        # file. UnicodeDecodeError: contract isn't
+                        # UTF-8. Skip the file; another contract
+                        # may still register a handler.
                         log_swallowed(exc)
-        except Exception as exc:
+        except (ImportError, OSError) as exc:
+            # ImportError: yaml or service_registry not available
+            # (test contexts that don't ship them). OSError:
+            # services dir vanished mid-scan. Either way, fall
+            # through to the ``compose_preflight_handlers`` cfg
+            # list below — the inline operator overrides are still
+            # honoured.
             log_swallowed(exc)
         raw = bootstrap_job_cfg.get("compose_preflight_handlers")
         if isinstance(raw, list):

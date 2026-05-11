@@ -60,5 +60,10 @@ class ControllerJobLogsService:
             return False
         try:
             return marker in self.cfg.log_file.read_text(encoding="utf-8")
-        except Exception:
+        except (OSError, UnicodeDecodeError):
+            # OSError: read failure (file deleted mid-check,
+            # permissions). UnicodeDecodeError: log isn't UTF-8
+            # (binary contamination, log rotation race). Treat
+            # both as "marker not found" — the caller is polling
+            # and will retry on the next tick.
             return False

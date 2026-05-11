@@ -37,5 +37,8 @@ class ControllerJobArtifactsService:
         for file_path in (artifacts.job_log_file, artifacts.job_config_file):
             try:
                 file_path.unlink(missing_ok=True)
-            except Exception as exc:
+            except OSError as exc:
+                # Read-only mount, permission denied, parent dir
+                # gone, etc. Best-effort cleanup — swallow and move
+                # on (the next job run uses a different tmp name).
                 log_swallowed(exc)

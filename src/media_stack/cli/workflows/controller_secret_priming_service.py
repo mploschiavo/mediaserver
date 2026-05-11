@@ -129,7 +129,11 @@ class ControllerSecretPrimingService:
                             apps.append(app)
                     if apps:
                         return apps
-            except Exception as exc:
+            except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+                # JSONDecodeError: malformed config file. OSError:
+                # read failure (permissions, mid-write). UnicodeDecodeError:
+                # config file isn't UTF-8. All three fall through to
+                # the registry fallback below.
                 log_swallowed(exc)
 
         # 2. Derive from per-service YAML registry (category=automation)
@@ -138,7 +142,9 @@ class ControllerSecretPrimingService:
             apps = [s.id for s in SERVICES if s.category == "automation"]
             if apps:
                 return apps
-        except Exception as exc:
+        except ImportError as exc:
+            # Service registry unavailable (test contexts that don't
+            # ship the contracts tree). Falls through to ConfigError.
             log_swallowed(exc)
 
         raise ConfigError(
@@ -152,7 +158,11 @@ class ControllerSecretPrimingService:
             return {}
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception as exc:
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+            # Same three classes as in _resolve_api_key_apps above;
+            # here we surface them as ConfigError because callers
+            # need a fail-loud signal that the secret priming list
+            # couldn't be loaded.
             raise ConfigError(f"Could not parse bootstrap config at {path}: {exc}") from exc
 
         adapter_hooks = payload.get("adapter_hooks")

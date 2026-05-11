@@ -6,6 +6,7 @@ import shutil
 
 from media_stack.cli.workflows.teardown_models import TeardownAction, TeardownRequest
 from media_stack.cli.workflows.workflow_interfaces import CommandRunner
+from media_stack.core.exceptions import MediaStackError
 from media_stack.core.logging_utils import log_swallowed
 
 
@@ -51,7 +52,12 @@ class TeardownComposeStrategy:
             try:
                 self.command_runner.run_text(["docker", "compose", "version"])
                 return ("docker", "compose")
-            except Exception as exc:
+            except (MediaStackError, OSError) as exc:
+                # MediaStackError: ``docker compose`` plugin not
+                # installed (newer docker), so v1 is the fallback.
+                # OSError: docker binary moved between
+                # ``has_docker()`` and now (unlikely but cheap to
+                # guard).
                 log_swallowed(exc, "docker-compose-v2-probe")
         if shutil.which("docker-compose") is not None:
             return ("docker-compose",)

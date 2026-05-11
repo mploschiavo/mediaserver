@@ -102,6 +102,10 @@ class ReleaseComposeDeployService:
             try:
                 self.command_runner.run_text(["curl", "-fsS", url])
                 return
-            except Exception:
+            except (MediaStackError, OSError):
+                # MediaStackError: curl exited non-zero (service
+                # not yet listening, returned 4xx/5xx). OSError:
+                # curl binary missing on operator host. Both are
+                # expected during the poll loop; sleep and retry.
                 time.sleep(3)
         raise MediaStackError(f"Timed out waiting for {url}")

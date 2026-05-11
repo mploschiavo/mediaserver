@@ -53,7 +53,14 @@ class TeardownExecutorService:
                 continue
             try:
                 self.run_action(action)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
+                # Executor-level catch is intentionally broad:
+                # ``run_action`` dispatches to pluggable strategies
+                # (compose teardown, k8s teardown, filesystem
+                # rm-rf) whose exception types are not a stable
+                # contract. Per-action failures are translated to
+                # a counted result so the operator gets a summary
+                # instead of an opaque crash on the first error.
                 self.notifier.error(f"{action.describe()}: {exc}")
                 failures += 1
         if failures:
