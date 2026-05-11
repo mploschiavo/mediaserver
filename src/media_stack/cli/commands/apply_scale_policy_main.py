@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Apply Kubernetes deployment scale policy guardrails."""
+"""Entry-point shim for ``bin/apply-scale-policy.sh``.
+
+ADR-0015 Phase 7i. Pre-Phase-7i this module held the full
+``ApplyScalePolicyCommand`` (177 LoC, 5 ``@staticmethod`` violators).
+Phase 7i moved the workflow onto :class:`ApplyScalePolicyRunner`
+under workflows/ with proper instance methods (no ``@staticmethod``);
+what remains here is argparse + main + back-compat aliases.
+"""
 
 from __future__ import annotations
 
@@ -8,170 +15,88 @@ import os
 import sys
 from pathlib import Path
 
-from media_stack.services.controller_component_resolver import resolve_bootstrap_component_plan
-from media_stack.core.cli_common import kube_cmd, run_command
-
-from media_stack.core.exceptions import MediaStackError
-
+from media_stack.cli.workflows.apply_scale_policy_runner import (
+    ApplyScalePolicyRunner,
+)
 
 
-class ApplyScalePolicyCommand:
-    @staticmethod
-    def _env_truthy(value: str | None) -> bool:
-        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+class ApplyScalePolicyEntryPoint:
+    """Per-ADR-0012 entry-point: argparse → runner.run."""
 
+    def __init__(self) -> None:
+        self._runner = ApplyScalePolicyRunner()
 
-    @staticmethod
-    def _deployment_exists(kubectl: list[str], namespace: str, name: str) -> bool:
-        proc = run_command(
-            [*kubectl, "-n", namespace, "get", "deploy", name],
-            check=False,
-        )
-        return proc.returncode == 0
-
-
-    @staticmethod
-    def _current_replicas(kubectl: list[str], namespace: str, name: str) -> int:
-        proc = run_command(
-            [
-                *kubectl,
-                "-n",
-                namespace,
-                "get",
-                "deploy",
-                name,
-                "-o",
-                "jsonpath={.spec.replicas}",
-            ],
-            check=False,
-        )
-        text = str(proc.stdout or "").strip()
-        try:
-            return int(text)
-        except Exception:
-            return 1
-
-
-    @staticmethod
-    def _scale_deployment(
-        kubectl: list[str],
-        *,
-        namespace: str,
-        name: str,
-        replicas: int,
-        dry_run: bool,
-    ) -> None:
-        if not _deployment_exists(kubectl, namespace, name):
-            return
-        if dry_run:
-            print(f"[DRY] scale deploy/{name} -> {replicas}")
-            return
-        run_command(
-            [
-                *kubectl,
-                "-n",
-                namespace,
-                "scale",
-                "deploy",
-                name,
-                f"--replicas={int(replicas)}",
-            ],
-            check=True,
-        )
-        print(f"[OK] scale deploy/{name} -> {replicas}")
-
-
-    @staticmethod
-    def _default_config_file() -> Path:
-        env_path = str(os.environ.get("CONFIG_FILE", "")).strip()
-        if env_path:
-            return Path(env_path)
-        root_dir = Path(__file__).resolve().parents[4]
-        return root_dir / "contracts" / "media-stack.config.json"
-
+    @property
+    def runner(self) -> ApplyScalePolicyRunner:
+        return self._runner
 
     def build_arg_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
             prog="bin/apply-scale-policy.sh",
             description=(
-                "Enforce scale policy: keep managed apps at replicas>=1 and optionally "
-                "scale configured apps to 0."
+                "Enforce scale policy: keep managed apps at replicas>=1 "
+                "and optionally scale configured apps to 0."
             ),
         )
         parser.add_argument(
             "config_file",
             nargs="?",
-            default=str(_default_config_file()),
+            default=str(self._runner.default_config_file()),
             help="Bootstrap config JSON path",
         )
-        parser.add_argument("--namespace", default=os.environ.get("NAMESPACE", "media-stack"))
+        parser.add_argument(
+            "--namespace", default=os.environ.get("NAMESPACE", "media-stack"),
+        )
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument(
             "--scale-to-zero",
             dest="scale_to_zero",
             action="store_true",
-            default=_env_truthy(os.environ.get("SCALE_TO_ZERO")),
-            help="Scale apps listed in adapter_hooks.scale_policy.scale_to_zero_apps to 0 replicas.",
+            default=self._runner.env_truthy(os.environ.get("SCALE_TO_ZERO")),
+            help=(
+                "Scale apps listed in adapter_hooks.scale_policy.scale_to_zero_apps "
+                "to 0 replicas."
+            ),
         )
         return parser
 
-
     def main(self, argv: list[str] | None = None) -> int:
-        args = build_arg_parser().parse_args(argv)
-        config_file = Path(str(args.config_file)).resolve()
-        namespace = str(args.namespace or "").strip()
-        if not namespace:
-            raise MediaStackError("NAMESPACE must be non-empty")
-
-        plan = resolve_bootstrap_component_plan(config_file)
-        managed_apps = tuple(plan.managed_apps)
-        scale_to_zero_apps = tuple(app for app in plan.scale_to_zero_apps if app in managed_apps)
-
-        kubectl = kube_cmd()
-
-        if managed_apps:
-            print(f"[INFO] Managed apps from config: {', '.join(managed_apps)}")
-        for app in managed_apps:
-            if not _deployment_exists(kubectl, namespace, app):
-                continue
-            replicas = _current_replicas(kubectl, namespace, app)
-            if replicas <= 0:
-                _scale_deployment(
-                    kubectl,
-                    namespace=namespace,
-                    name=app,
-                    replicas=1,
-                    dry_run=bool(args.dry_run),
-                )
-
-        if bool(args.scale_to_zero):
-            if scale_to_zero_apps:
-                print(f"[INFO] Scale-to-zero apps from config: {', '.join(scale_to_zero_apps)}")
-            for app in scale_to_zero_apps:
-                _scale_deployment(
-                    kubectl,
-                    namespace=namespace,
-                    name=app,
-                    replicas=0,
-                    dry_run=bool(args.dry_run),
-                )
-
-        print("[OK] Scale policy applied.")
-        return 0
+        args = self.build_arg_parser().parse_args(argv)
+        return self._runner.run(
+            config_file=Path(str(args.config_file)).resolve(),
+            namespace=str(args.namespace or "").strip(),
+            dry_run=bool(args.dry_run),
+            scale_to_zero=bool(args.scale_to_zero),
+        )
 
 
-_instance = ApplyScalePolicyCommand()
-build_arg_parser = _instance.build_arg_parser
-main = _instance.main
-_current_replicas = _instance._current_replicas
-_default_config_file = _instance._default_config_file
-_deployment_exists = _instance._deployment_exists
-_env_truthy = _instance._env_truthy
-_scale_deployment = _instance._scale_deployment
+# Module-level singleton + back-compat aliases.
+_INSTANCE = ApplyScalePolicyEntryPoint()
+_RUNNER = _INSTANCE.runner
+build_arg_parser = _INSTANCE.build_arg_parser
+main = _INSTANCE.main
+_current_replicas = _RUNNER.current_replicas
+_default_config_file = _RUNNER.default_config_file
+_deployment_exists = _RUNNER.deployment_exists
+_env_truthy = _RUNNER.env_truthy
+_scale_deployment = _RUNNER.scale_deployment
+
+
+__all__ = [
+    "ApplyScalePolicyEntryPoint",
+    "_current_replicas",
+    "_default_config_file",
+    "_deployment_exists",
+    "_env_truthy",
+    "_scale_deployment",
+    "build_arg_parser",
+    "main",
+]
+
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — top-level CLI catch
         print(f"[ERR] {exc}", file=sys.stderr)
         sys.exit(1)
