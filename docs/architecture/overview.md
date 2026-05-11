@@ -81,14 +81,14 @@ The platform follows a strict desired-state hierarchy. ![Source-of-truth flow](.
 ### Canonical sources
 
 1. **Git-tracked manifests and configs**
-   - `k8s/*.yaml`, `k8s/profiles/*`
-   - `docker/docker-compose.yml`, `docker/.env.example`
+   - `deploy/k8s/base/*.yaml`, `deploy/k8s/profiles/*`, `deploy/k8s/overlays/*`
+   - `deploy/compose/docker-compose.yml`
    - `contracts/defaults/*.yaml`, `contracts/services/*.yaml`
    - `contracts/media-stack.profile.yaml`, `contracts/media-stack.profile.schema.json`
    - `contracts/promises/promises.yaml` — post-install promises registry
    - `src/media_stack/contracts/runner_operation_plans.json`
    - `src/media_stack/contracts/media_server_operation_plans.json`
-   - scripts under `bin/`
+   - scripts under `bin/` (Linux conveniences); cross-platform CLI entry points declared in `pyproject.toml` `[project.scripts]`
 
 2. **Cluster secrets generated/reconciled from code**
    - `media-stack-secrets` (Kubernetes Secret)
@@ -119,16 +119,17 @@ Runtime state is not authoritative if it conflicts with declarative config.
 1. Make declarative change in Git.
 2. Validate in non-prod namespace.
 3. Promote the same change to primary namespace.
-4. Run verification scripts (`bin/verify-fresh-install.sh`, `bin/verify-stack.sh`).
+4. Run verification (`media-stack-verify` cross-platform; `bash bin/test/verify-stack.sh` for the Linux-only edge smoke test).
 
 See [GitOps](gitops.md) for the long-form workflow.
 
 ## Diagrams
 
-Rendered diagram artifacts live in `docs/diagrams/`. Regenerate all of them:
+Rendered diagram artifacts live in `docs/diagrams/`. Regenerate all of them (cross-platform):
 
 ```bash
-bash bin/render-architecture-diagrams.sh
+media-stack-render-arch-diagrams
+# Linux convenience: bash bin/docs/render-architecture-diagrams.sh
 ```
 
 ### Core diagrams

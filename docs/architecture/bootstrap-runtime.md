@@ -164,14 +164,18 @@ These profile defaults match the Jellyfin per-service YAML defaults (`contracts/
 The deploy runners auto-load `contracts/media-stack.profile.yaml` when present. Override path:
 
 ```bash
-bash bin/deploy-stack.sh --bootstrap-profile-file /path/to/profile.yaml
+# Cross-platform:
+media-stack-deploy --bootstrap-profile-file /path/to/profile.yaml
+# Linux convenience: bash bin/install/deploy-stack.sh --bootstrap-profile-file ...
 ```
 
 Quick validation:
 
 ```bash
-bash bin/utils/validate-bootstrap-profile.sh
-bash bin/utils/validate-bootstrap-profile.sh --config examples/bootstrap-profiles/media-k8s-full.yaml
+# Cross-platform:
+media-stack-validate-profile
+media-stack-validate-profile --config examples/bootstrap-profiles/media-k8s-full.yaml
+# Linux convenience: bash bin/utils/validate-bootstrap-profile.sh
 ```
 
 ---
@@ -181,31 +185,41 @@ bash bin/utils/validate-bootstrap-profile.sh --config examples/bootstrap-profile
 ### Fastest path
 
 ```bash
-bash bin/fast-first-run.sh <NODE_IP>
+# Linux convenience (no cross-platform equivalent yet):
+bash bin/test/fast-first-run.sh <NODE_IP>
 ```
 
 ### Full zero-to-usable
 
 ```bash
-bash bin/deploy-stack.sh <NODE_IP>
-bash bin/install.sh --profile full --node-ip <NODE_IP>
+# Cross-platform:
+media-stack-deploy <NODE_IP>
+media-stack-install --profile full --node-ip <NODE_IP>
+# Linux convenience: bash bin/install/{deploy-stack,install}.sh ...
 ```
 
 ### Step-by-step (for debugging)
 
+The debug `ensure-*` helpers under `bin/debug/` are Linux-only — they
+talk to each service's HTTP API from the shell. Cross-platform users
+get the same effect via the controller HTTP API (`curl -X POST
+http://localhost:9100/actions/<job-name>` — see Bootstrap API in the
+[Operations how-to](../how-to/operations.md#bootstrap-api-port-9100)
+for the full action list).
+
 ```bash
-bash bin/set-qbit-secret.sh
-bash bin/ensure-qbit-credentials.sh
-bash bin/ensure-sabnzbd-api-access.sh
+bash bin/debug/set-qbit-secret.sh
+bash bin/debug/ensure-qbit-credentials.sh
+bash bin/debug/ensure-sabnzbd-api-access.sh
 # optional override; otherwise auto-discovered from Jellyfin DB
-bash bin/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
+bash bin/debug/set-jellyfin-api-key.sh <JELLYFIN_API_KEY>
 bash bin/run-bootstrap-job.sh
-bash bin/sync-unpackerr-keys.sh
-bash bin/run-prowlarr-auto-indexers.sh
+bash bin/debug/sync-unpackerr-keys.sh
+bash bin/debug/run-prowlarr-auto-indexers.sh
 bash bin/bootstrap-all.sh
 ```
 
-Indexers are configured via Prowlarr auto-discovery (`bin/run-prowlarr-auto-indexers.sh`) or the controller dashboard at `http://localhost:9100/`.
+Indexers are configured via Prowlarr auto-discovery (`bin/debug/run-prowlarr-auto-indexers.sh` on Linux, `curl -X POST .../actions/auto-indexers` anywhere) or the controller dashboard at `http://localhost:9100/`.
 
 ### What bootstrap configures
 
@@ -287,18 +301,29 @@ Jellyfin Auto Collections is deployed OTB with a safe default config; add list s
 If bootstrap appears stuck or partially applied:
 
 ```bash
+# Linux (the convenience wrappers; bootstrap-all.sh has no Python equivalent yet):
 MEDIA_STACK_LOG_LEVEL=DEBUG bash bin/bootstrap-all.sh --no-resume
-bash bin/stack-status.sh
-bash bin/verify-flow.sh
+bash bin/utils/stack-status.sh
+.venv/bin/python -m media_stack.cli.commands.verify_flow_main
+
+# Cross-platform: re-trigger the bootstrap action with DEBUG by editing the
+# controller pod env and bouncing it:
+kubectl -n media-stack set env deploy/media-stack-controller MEDIA_STACK_LOG_LEVEL=DEBUG
+kubectl -n media-stack rollout restart deploy/media-stack-controller
+curl -X POST http://localhost:9100/actions/bootstrap
 ```
 
-`bin/verify-flow.sh` includes writable-path checks to catch permission / path mismatches early.
+`verify_flow_main` includes writable-path checks to catch permission / path mismatches early.
 
 If `jellyfin.local` still opens `/web/#/wizard/start`:
 
 ```bash
-bash bin/ensure-jellyfin-bootstrap.sh
+# Linux:
+bash bin/debug/ensure-jellyfin-bootstrap.sh
 bash bin/bootstrap-all.sh
+# Any OS:
+curl -X POST http://localhost:9100/actions/ensure-jellyfin-bootstrap
+curl -X POST http://localhost:9100/actions/bootstrap
 ```
 
 Then retry in a private/incognito browser session to avoid stale local UI state.

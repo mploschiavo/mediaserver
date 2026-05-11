@@ -45,8 +45,13 @@ Notes:
 ## Refresh/Repair Sequence
 
 ```bash
+# Linux:
 bash bin/bootstrap-all.sh
-bash bin/verify-flow.sh <NAMESPACE>
+.venv/bin/python -m media_stack.cli.commands.verify_flow_main <NAMESPACE>
+
+# Any OS:
+curl -X POST http://localhost:9100/actions/bootstrap
+.venv/bin/python -m media_stack.cli.commands.verify_flow_main <NAMESPACE>
 ```
 
 Then in Jellyfin:

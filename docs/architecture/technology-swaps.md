@@ -158,6 +158,10 @@ python3 -m unittest tests.unit.test_technology_swap_matrix_e2e
 6. Reconcile:
 
 ```bash
+# Cross-platform via the controller HTTP API:
+curl -X POST http://localhost:9100/actions/bootstrap
+
+# Linux convenience (shell script):
 bash bin/bootstrap-all.sh
 ```
 

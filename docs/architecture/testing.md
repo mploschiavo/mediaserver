@@ -26,20 +26,20 @@ python -m pytest tests/unit/test_bootstrap_profile.py -v
 # Architecture enforcement only
 python -m pytest tests/unit/test_no_hardcoded_services.py -v
 
-# Full test suite with all layers
-bash bin/test.sh
+# Full test suite with all layers (cross-platform; Linux convenience: bash bin/test/test.sh)
+media-stack-run-unit-tests
 
-# Browser smoke tests (requires running stack)
-bash bin/run-playwright-smoke.sh
+# Browser smoke tests (Linux-only — Playwright shell wrapper)
+bash bin/test/run-playwright-smoke.sh
 
-# API E2E (requires running stack)
-bash bin/run-api-e2e.sh
+# API E2E (Linux-only shell wrapper)
+bash bin/test/run-api-e2e.sh
 
-# App UI screenshots (requires running stack)
-bash bin/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
+# App UI screenshots (cross-platform module; Linux convenience: bash bin/test/run-playwright-screenshots.sh)
+.venv/bin/python -m media_stack.cli.commands.run_playwright_screenshots_main <NODE_IP> [NAMESPACE]
 
-# Kubernetes cluster snapshots
-bash bin/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
+# Kubernetes cluster snapshots (Linux-only debug script)
+bash bin/debug/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
 ```
 
 ## Architecture Enforcement

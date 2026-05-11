@@ -173,7 +173,7 @@ run_bootstrap_job_main.py
 
 ### What the Controller Deployment Does
 
-**Manifest:** `k8s/controller.yaml`
+**Manifest:** `deploy/k8s/base/controller.yaml`
 **Entrypoint:** `controller_main.py --serve --auto-run`
 **Port:** 9100 (HTTP API)
 
@@ -296,15 +296,15 @@ because both use namespace `media-dev`. Resume mode (default) skips completed ph
 ### Manifests
 | File | Included in kustomization? |
 |------|---------------------------|
-| `k8s/namespace.yaml` | Yes |
-| `k8s/hardening.yaml` | Yes |
-| `k8s/secrets.example.yaml` | Yes |
-| `k8s/storage-pvc.yaml` | Yes (19 PVCs) |
-| `k8s/core.yaml` | Yes (9 apps) |
-| `k8s/optional.yaml` | Yes (7 apps + 3 CronJobs) |
-| `k8s/envoy.yaml` | Yes (ConfigMap, PVC, init Job, Deployment, Service) |
-| `k8s/ingress-traefik.yaml` | Yes |
-| `k8s/unpackerr.yaml` | Yes (replicas: 0) |
-| `k8s/scale-policy.yaml` | Yes (9 PDBs) |
-| `k8s/controller.yaml` | **No** — applied by bootstrap Phase 4, Step 8 |
+| `deploy/k8s/base/namespace.yaml` | Yes |
+| `deploy/k8s/base/hardening.yaml` | Yes |
+| `deploy/k8s/base/secrets.example.yaml` | Yes |
+| `deploy/k8s/base/storage/storage-pvc.yaml` | Yes (19 PVCs) |
+| `deploy/k8s/base/apps/core.yaml` | Yes (9 apps) |
+| `deploy/k8s/base/apps/optional.yaml` | Yes (7 apps + 3 CronJobs) |
+| `deploy/k8s/base/edge/envoy.yaml` | Yes (ConfigMap, PVC, init Job, Deployment, Service) |
+| `deploy/k8s/base/edge/ingress-traefik.yaml` | Yes |
+| `deploy/k8s/base/apps/unpackerr.yaml` | Yes (replicas: 0) |
+| `deploy/k8s/base/scale-policy.yaml` | Yes (9 PDBs) |
+| `deploy/k8s/base/controller.yaml` | **No** — applied by bootstrap Phase 4, Step 8 |
 | Auto-indexers | **No** — triggered via controller API `POST /actions/auto-indexers` |

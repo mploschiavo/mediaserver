@@ -11,19 +11,22 @@ This stack is GitOps-friendly even if you operate it with imperative scripts tod
 ## Suggested Flow
 
 1. Branch from main.
-2. Update declarative config (`k8s/`, `contracts/`, `bin/` as needed).
-3. Run local tests:
+2. Update declarative config (`deploy/k8s/`, `deploy/compose/`, `contracts/`, `src/` as needed).
+3. Run local tests (cross-platform; see [First-time setup](../how-to/deployment.md#first-time-setup)):
 ```bash
-bash bin/test.sh
+media-stack-run-unit-tests
+# Linux convenience: bash bin/test/test.sh
 ```
 4. Deploy to isolated namespace:
 ```bash
-bash bin/install.sh --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+media-stack-install --profile full --namespace media-stack-dev --ingress-domain dev.local --node-ip <NODE_IP>
+# Linux convenience: bash bin/install/install.sh ...
 ```
 5. Verify integration and routes:
 ```bash
-bash bin/verify-flow.sh media-stack-dev
-bash bin/microk8s-smoke-test.sh <NODE_IP> media-stack-dev
+.venv/bin/python -m media_stack.cli.commands.verify_flow_main media-stack-dev
+# (verify_flow_main has no console-script entry yet)
+media-stack-microk8s-smoke <NODE_IP> media-stack-dev
 ```
 6. Promote same commit to primary namespace.
 

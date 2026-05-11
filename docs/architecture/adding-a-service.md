@@ -72,8 +72,8 @@ If the new service ships a guarantee (e.g. "MyService has its API key configured
 
 Both Compose and Kubernetes pick up the contract automatically — but you still need to add the service to the runtime spec:
 
-- **Compose**: add a service block in `docker/docker-compose.yml`. Mount `${CONFIG_ROOT}/myservice:/config` and any data volumes.
-- **Kubernetes**: add a Deployment + Service manifest in `k8s/optional.yaml` (or as its own file in `k8s/profiles/<profile>/`).
+- **Compose**: add a service block in `deploy/compose/docker-compose.yml`. Mount `${CONFIG_ROOT}/myservice:/config` and any data volumes.
+- **Kubernetes**: add a Deployment + Service manifest in `deploy/k8s/base/apps/optional.yaml` (or as its own file in `deploy/k8s/profiles/<profile>/`).
 
 ### 5. Wire the dashboard (optional)
 
@@ -82,14 +82,14 @@ The dashboard discovers services via `/api/services`, which reads the registry. 
 ### 6. Test it
 
 ```bash
-# unit tests
-bash bin/test.sh
+# unit tests (cross-platform; Linux convenience: bash bin/test/test.sh)
+media-stack-run-unit-tests
 
 # meta-ratchet — confirms the contract + handler resolve
 python3 -m pytest tests/unit/test_promises_registry.py -v
 
-# fresh-install verifier
-bash bin/verify-fresh-install.sh
+# fresh-install verifier (cross-platform; Linux convenience: bash bin/test/verify-fresh-install.sh)
+media-stack-verify
 ```
 
 ## What you must NOT do
