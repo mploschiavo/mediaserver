@@ -18,6 +18,15 @@ python deploy.py compose       # or: python deploy.py k8s
 
 Bootstrap takes 3-5 minutes the first time. Open the controller dashboard at <http://localhost:9100> to watch progress, then point a browser at Jellyseerr to request your first show.
 
+> **First-time setup for the operator CLIs.** If you also want the
+> `media-stack-deploy` / `media-stack-backup` / `media-stack-teardown`
+> console-scripts on PATH (handy for upgrades, backups, teardowns,
+> and re-running the deploy pipeline with flags), do this once:
+> `python -m venv .venv && source .venv/bin/activate && pip install -e .`
+> (Linux/macOS) or `python -m venv .venv && .venv\Scripts\Activate.ps1 && pip install -e .`
+> (Windows PowerShell). See [First-time setup](docs/how-to/deployment.md#first-time-setup)
+> for details.
+
 ## Where to read next
 
 | You want to... | Go to |
