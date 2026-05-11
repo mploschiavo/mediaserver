@@ -1,8 +1,12 @@
 # ADR-0015 — CLI layer boundary: commands as entry-points, workflows as services
 
-**Status:** Proposed (2026-05-11). Pre-existing duplication confirmed
-by audit; phased consolidation plan accepted; Phase 1 (narrow
-exceptions, no behaviour change) safe to land immediately.
+**Status:** In progress (2026-05-11). Phase 3 (deploy config
+consolidation) landed at commit `ac75320e` — single resolver, zero
+duplicate files, the four-bug parade collapsed to one isolated bug.
+Phase 3b (SRP split + named patterns for the new
+`DeployConfigService`) added on the same day after the operator
+caught that Phase 3 met its consolidation goal but reproduced the
+god-class smell the original audit had flagged.
 
 Authors: matthew
 
@@ -102,10 +106,81 @@ the god-class ratchet's 500-line cap).
   `find_script` + `run_script` body parameterised by different
   config dataclasses.
 
+### What Phase 3 taught us
+
+Phase 3 landed at `ac75320e` and **achieved its stated goal** —
+the four bugs collapsed to one isolated bug, the two parallel
+resolvers became one. But the operator caught a problem the
+original audit had named that the Phase 3 commit reproduced
+verbatim:
+
+> **`DeployConfigService` is a god class.** 22 methods covering
+> 6 distinct responsibilities (JSON load+cache, edge routing,
+> auth provider validation, profile catalog validation, runtime
+> policy, compose-specific resolution) on a single class with
+> no named design pattern.
+
+The audit had flagged this exact shape in the OLD code:
+`ConfigResolutionMixin` was a 395-line god mixin. Phase 3 as
+initially scoped just moved that mixin's methods to a class in
+workflows/ — same code under a different file path, same anti-
+pattern. The release / teardown / controller workflows didn't
+have this problem (the audit called them out as "exemplary,
+single-responsibility, dependency-injected"); the deploy domain
+needed the same shape.
+
+That lesson generalises beyond Phase 3. **Every phase in this ADR
+that moves code from commands/ → workflows/ must split SRP-
+violating classes during the move, not after.** "Same methods,
+new directory" is not the deliverable; "methods organised by
+responsibility, named design pattern, single-purpose classes" is.
+
 ## Decision
 
 **Establish the layer boundary as documented intent + enforce by
-relocation, in 6 phases ordered by risk-vs-value:**
+relocation, in 6 phases ordered by risk-vs-value, with an OO-
+quality contract that every phase honours.**
+
+### The OO-quality contract (every phase must honour)
+
+The audit was specific about why release/teardown look right and
+the deploy domain doesn't. Phase 3's landing made the gap visible:
+namespace-classes with 22+ methods are not the target shape, even
+when they're in the right directory. Every consolidation phase in
+this ADR holds to:
+
+* **SRP — single class, single responsibility.** Rule of thumb:
+  if a class's method names cluster into more than one noun-phrase
+  ("loads + caches X", "resolves Y routing", "validates Z auth")
+  it's two-plus classes. Split during the move, not after.
+* **Named design patterns.** Every consolidated class docstring
+  names the pattern it implements (Strategy, Factory, Repository,
+  Adapter, Facade, Template Method, Registry, etc.). "Service"
+  is not a pattern; it's a category. If you can't name the pattern,
+  the class is probably a namespace, not an object.
+* **Constructor injection for every external dep.** `env`, time,
+  sleep, fs, http_request, kube — all passed in. The
+  `OS_ENVIRON_IN_METHODS_RATCHET` enforces this for env reads;
+  the same principle applies to every IO dep.
+* **No `@staticmethod`.** Existing rule under ADR-0012 / the
+  `STATIC_METHOD_RATCHET`. If a method doesn't touch instance
+  state, the class is the wrong unit — split or fold the helper.
+* **Composition over inheritance** for cross-cutting concerns.
+  Inheritance only when "is-a" holds (e.g. `OrchestratorShadowJobHandler`
+  IS-A `OrchestratorJobHandler`). Mixins for "shared methods I
+  want to share" are an anti-pattern this ADR is specifically
+  retiring (`ConfigResolutionMixin` was the canonical example).
+* **Facade where the call site needs one object.** When migrating
+  a god class, the typical shape is N small SRP classes + 1 thin
+  Facade that composes them and exposes the original call-site
+  surface. The Facade owns no logic — it delegates. Pre-Phase-3
+  `ConfigResolutionMixin` mistook itself for the facade AND
+  every individual resolver. Post-Phase-3b (below) `DeployConfigService`
+  is correctly the Facade alone.
+
+The phase deliverables below name the named pattern each new
+class implements, so the OO contract is checkable against the
+ADR text directly.
 
 ### The boundary contract
 
@@ -205,6 +280,66 @@ through this session — there's one resolver, so there's one place
 new hook fields can be missed. The four open deploy-CLI bugs likely
 collapse into one focused fix once the duplication is removed.
 
+**Phase 3 status (2026-05-11):** Landed at commit `ac75320e`. Goal
+met (one resolver, one source of truth, the bug parade collapsed
+to one isolated bug in `bootstrap_config_generator.py`). But —
+the consolidation reproduced the god-class smell the audit had
+flagged in the OLD code; `DeployConfigService` shipped with 22
+methods spanning 6 responsibilities. Phase 3b below corrects that.
+
+#### Phase 3b — SRP split + Facade for `DeployConfigService`
+
+Phase 3 landed the consolidation goal but reproduced the original
+audit's god-class observation: `DeployConfigService` has 22
+methods covering 6 distinct responsibilities. The OO-quality
+contract above says split-during-move, but Phase 3 was scoped
+to consolidation only; Phase 3b corrects the OO mistake.
+
+Split into 6 single-responsibility classes + a Facade, all under
+a new sub-package `workflows/deploy_config/`:
+
+| New class | Pattern | Owns | Methods migrated from `DeployConfigService` |
+|---|---|---|---|
+| `BootstrapConfigLoader` | Repository | JSON load + parse + cache + adapter_hook_subkey traversal | `resolved_bootstrap_config`, `adapter_hook_subkey`, `bootstrap_job_hooks`, `edge_hooks` |
+| `EdgeRoutingResolver` | Strategy | Everything about how Envoy/Traefik routes the stack — router selection, service names, path-prefix policy, compose-provider specs | `edge_router_provider`, `edge_router_service_names`, `edge_path_prefix_redirect_service_names`, `edge_path_prefix_preserve_service_names`, `edge_compose_provider_specs`, `ingress_class_priority`, `media_server_service_names` + private `_edge_provider_hook_values` |
+| `AuthProviderResolver` | Strategy | Auth-provider middleware defaults + the validated provider set | `auth_provider_middleware_defaults`, `valid_auth_providers` |
+| `ProfileCatalogValidator` | Validator | Catalog-driven allow-lists for route strategies + edge router providers | `valid_route_strategies`, `valid_edge_router_providers` |
+| `RuntimePolicyResolver` | Strategy | The `runtime_config_policy_handler` spec + the params dict it consumes | `runtime_config_policy_handler_spec`, `runtime_config_policy_params` |
+| `ComposeDeployResolver` | Strategy | Compose-platform-specific resolution (passthrough env vars, preflight handlers) | `compose_passthrough_env_vars`, `compose_preflight_handlers`, `rebuild_profile_actions` |
+| `DeployConfigService` | **Facade** | Composes the 6 resolvers; exposes the same call-site surface `DeployStackRunner` already uses | — (delegates to the 6 above; owns no logic) |
+
+Each resolver:
+* Constructor-injects its dependencies (the loader for any that
+  need JSON access, the cfg for any that need operator overrides).
+* Docstring names its pattern.
+* Has ≤ 7 public methods, all single-responsibility.
+* Goes through one round of "could this be split further?" before
+  landing.
+
+The Facade keeps `DeployStackRunner.config_service.xxx()` working
+as the call-site surface — no churn in `deploy_stack_runner_phases.py`
+or `deploy_stack_runner_services.py` from Phase 3b.
+
+**Risk: medium.** The composition is mechanical (extract each
+group of methods into its own class, wire the Facade with
+constructor injection). The 8 call sites already go through the
+Facade; they don't change.
+
+**Value: medium-high.** Brings the deploy domain in line with the
+release/teardown shape the audit called "exemplary." Locks in the
+"split during the move" rule on the most god-class-prone file in
+the repo. Establishes the named-pattern + SRP precedent for
+Phase 4's larger orchestration migration.
+
+**Same-phase code-quality cleanup** (already done in Phase 3
+post-commit; documented here for Phase 4 onwards to follow):
+the two adjacent god classes I touched, `DeployCliConfigService`
+and `RunControllerJobCliConfigService`, had constructor injection
+added for their env reads but still have multiple responsibilities
+each. Phase 3b leaves their SRP split as a follow-up filed in
+the Phase tracking table — they're load-bearing for parsing but
+not on Phase 3's critical path.
+
 #### Phase 4 — Move deploy pipeline orchestration
 
 Migrate `commands/deploy_stack_runner_phases.py` (445 LoC) →
@@ -224,6 +359,28 @@ imports and class composition shift). The phase classes (`Phase`,
 
 **Value: high.** Brings the deploy domain to parity with
 release/teardown (where workflows already owns the orchestration).
+
+**OO contract (Phase 3b precedent applies):** the two files being
+migrated are mixins composing `DeployStackRunner` — the same anti-
+pattern Phase 3b retired for config resolution. Split during the
+move, same as 3b:
+
+* `RunnerPhasesMixin` (445 LoC, ~15 phase methods) → split by
+  phase-of-deploy responsibility into `DeployPhaseValidator`,
+  `DeployManifestPhase`, `DeployBootstrapPhase`,
+  `DeployVerifyPhase`, then a Template-Method base or a Pipeline
+  Facade that runs them in order.
+* `RunnerServicesMixin` (370 LoC, ~10 factory methods) → split
+  into `PlatformAdapterFactory`, `RuntimeArtifactWriter`,
+  `K8sManifestCapturer`, each Factory-pattern or Repository-
+  pattern as appropriate.
+* `DeployStackRunner` becomes a thin orchestrator that wires the
+  above (Composition Root pattern).
+
+Phase 4 deliverable = the split, not just the relocation. Use
+Phase 3b's `workflows/deploy_config/` sub-package shape as the
+template (`workflows/deploy_orchestration/`,
+`workflows/deploy_services/`).
 
 #### Phase 5 — Migrate `maintenance.py`
 
@@ -266,18 +423,35 @@ regressions become test failures, not silent drift.
 * **Phase 3** is the highest-value but riskiest. It's last among the
   "behaviour-affecting" phases so Phase 1's narrower exceptions catch
   any regressions cleanly, and Phase 2 has already proved the
-  shim-then-delete pattern works.
+  shim-then-delete pattern works. **Phase 3 landed first in
+  practice** (commit `ac75320e`, ahead of Phases 1 + 2) because the
+  bug parade was actively blocking work; the trade-off was deliberate
+  but the OO-quality smell that surfaced is the reason Phase 3b exists.
+* **Phase 3b** is the immediate follow-up. The Facade-with-6-resolvers
+  split should land within one or two image bakes after Phase 3 so
+  the precedent is fresh — operators reading Phase 4's split-by-
+  responsibility instructions can point at Phase 3b's
+  `workflows/deploy_config/` shape as the template.
+* **Phase 3c** is parallel to 3b but lower priority. The two adjacent
+  CLI services (`DeployCliConfigService`, `RunControllerJobCliConfigService`)
+  got constructor-injected env reads under Phase 3's
+  "leave-it-better-than-found" rule, but their SRP split is its own
+  refactor. Land before Phase 4 starts if convenient, otherwise it
+  can ride alongside.
 * **Phase 4** rides on Phase 3 — once the config is single-sourced,
   moving the orchestration code into workflows is a mechanical move
   (the orchestrator no longer needs to consult two config resolvers).
+  Phase 3b's precedent makes the split-during-move expectation
+  explicit before Phase 4 starts.
 * **Phase 5** is cheap and unblocked.
 * **Phase 6** enforces what the previous phases established.
 
 A reasonable shipping cadence is one phase per controller image
 bake (the same VERSION-bump cadence the version-pin ratchet
 enforces). Phase 1 + 2 together could ship in one bake; Phase 3 +
-4 should ship in separate bakes so the rollback radius is
-contained.
+3b should ship in separate bakes (3b is the OO-quality follow-up
+to 3, easier to review when isolated); Phase 4 in a separate bake
+so the rollback radius is contained.
 
 ## What we explicitly are NOT doing
 
@@ -364,8 +538,10 @@ commit body.
 |---|---|---|
 | Phase 1 — Narrow exceptions | proposed | — |
 | Phase 2 — Unify script runners | proposed | — |
-| Phase 3 — Deploy config consolidation | proposed | — |
-| Phase 4 — Deploy pipeline migration | proposed | — |
+| Phase 3 — Deploy config consolidation | **landed** (2026-05-11) | `ac75320e` |
+| Phase 3b — SRP split + Facade for `DeployConfigService` | proposed | — |
+| Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | proposed | — |
+| Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | proposed | — |
 | Phase 5 — `maintenance.py` migration | proposed | — |
 | Phase 6 — Boundary ratchet + cleanup | proposed | — |
 
