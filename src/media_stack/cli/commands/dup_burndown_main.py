@@ -1,226 +1,45 @@
-"""Daily duplicate-code burn-down — measure, report, optionally tighten.
+"""Entry-point shim for ``dup-burndown``.
 
-Runs two detectors against ``src/media_stack/`` and surfaces the
-delta vs the AST baseline:
-
-* AST function-fingerprint scan (in-process, ~6s, function-bodies only).
-* PMD CPD (out-of-process, ~30s, token-based blocks of any kind) when
-  the binary is on PATH or at ``/home/<user>/Downloads/pmd/pmd-bin-*``.
+ADR-0015 Phase 7g. Pre-Phase-7g this module held the full
+``DupBurndownDetector`` + ``DupBurndownCommand`` (281 LoC).
+Phase 7g moved the workflow logic into
+:mod:`media_stack.cli.workflows.dup_burndown`; what remains here
+is argparse + main + module-level aliases for the historical
+test-patch surface (8 detector helpers + 4 command helpers +
+``main``).
 
 Subcommands:
 
-* ``report``  — print both counts + show the top N dup clusters.
-                Default mode. Safe to run any time.
-* ``tighten`` — if the AST count dropped below baseline since the
-                last update, lower the baseline file in-place. Used
-                by the daily cron to ratchet the floor down without
-                a human in the loop.
-* ``check``   — exit 0 if AST count == baseline, exit 1 if it
-                regressed up. CI gate complement to the pytest
-                ratchet.
-
-Run via:
-
-    python3 -m media_stack.cli.commands.dup_burndown_main report
-    python3 -m media_stack.cli.commands.dup_burndown_main tighten
-
-A daily cron is the intended invocation — the CLI is idempotent and
-fast enough to run every morning. See
-``contracts/services/dup_burndown.yaml`` for the schedule wiring.
+* ``report``  — print AST + PMD counts and top clusters.
+* ``tighten`` — lower the baseline if duplication dropped.
+* ``check``   — exit 1 if duplication regressed (CI gate).
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
-import os
-import re
-import shutil
-import subprocess
-import sys
-from pathlib import Path
 from typing import Iterable
 
-
-class DupBurndownDetector:
-    """Detects duplicate-code clusters and tracks the baseline file."""
-
-    def load_ratchet_module(self):
-        spec = importlib.util.spec_from_file_location(
-            "_dup_ratchet",
-            Path(__file__).resolve().parents[4]
-            / "tests" / "unit" / "ratchets"
-            / "test_no_duplicate_code_ratchet.py",
-        )
-        if spec is None or spec.loader is None:
-            raise RuntimeError("Cannot locate dup-code ratchet for shared scanner.")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-    def repo_root(self) -> Path:
-        return Path(__file__).resolve().parents[4]
-
-    def baseline_file(self) -> Path:
-        return self.repo_root() / ".ratchets" / "duplicate-code-baseline.txt"
-
-    def ast_dup_count(self) -> tuple[int, dict[str, list[str]]]:
-        ratchet = self.load_ratchet_module()
-        groups = ratchet._all_duplicate_groups()
-        return len(groups), groups
-
-    def find_pmd(self) -> str | None:
-        """Locate a usable ``pmd`` binary, in order of preference:
-           (1) ``$PMD_HOME/bin/pmd`` if exported,
-           (2) ``pmd`` on PATH,
-           (3) the canonical ``~/Downloads/pmd/pmd-bin-*`` install.
-        Returns the binary path or ``None`` if no usable PMD is found.
-        """
-        pmd_home = os.environ.get("PMD_HOME", "").strip()
-        if pmd_home:
-            candidate = Path(pmd_home) / "bin" / "pmd"
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                return str(candidate)
-        path_match = shutil.which("pmd")
-        if path_match:
-            return path_match
-        home = Path.home() / "Downloads" / "pmd"
-        if home.is_dir():
-            for child in sorted(home.glob("pmd-bin-*")):
-                candidate = child / "bin" / "pmd"
-                if candidate.is_file() and os.access(candidate, os.X_OK):
-                    return str(candidate)
-        return None
-
-    def run_pmd_cpd(self, min_tokens: int = 100) -> tuple[int, str]:
-        """Run PMD CPD on ``src/media_stack/`` and return ``(cluster_count, raw_output)``.
-        Returns ``(-1, '')`` when PMD is not installed."""
-        pmd = self.find_pmd()
-        if not pmd:
-            return -1, ""
-        src = self.repo_root() / "src" / "media_stack"
-        proc = subprocess.run(
-            [
-                pmd, "cpd",
-                "--dir", str(src),
-                "--language", "python",
-                "--minimum-tokens", str(min_tokens),
-                "--format", "text",
-                "--skip-duplicate-files",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        output = proc.stdout + proc.stderr
-        # Each cluster begins with "Found a NN line (NN tokens) duplication" —
-        # count those headers.
-        return len(re.findall(r"Found a \d+ line", output)), output
-
-    def read_baseline(self) -> int:
-        bf = self.baseline_file()
-        if not bf.is_file():
-            return -1
-        raw = bf.read_text(encoding="utf-8").strip()
-        try:
-            return int(raw)
-        except ValueError:
-            return -1
-
-    def write_baseline(self, value: int) -> None:
-        bf = self.baseline_file()
-        bf.parent.mkdir(parents=True, exist_ok=True)
-        bf.write_text(f"{value}\n", encoding="utf-8")
+from media_stack.cli.workflows.dup_burndown import (
+    DupBurndownDetector,
+    DupBurndownRunner,
+)
 
 
-class DupBurndownCommand:
-    """CLI front-end for duplicate-code burn-down subcommands."""
+class DupBurndownEntryPoint:
+    """Per-ADR-0012 entry-point: argparse → runner dispatch."""
 
-    def __init__(self, detector: DupBurndownDetector | None = None) -> None:
-        self.detector = detector or DupBurndownDetector()
+    def __init__(self) -> None:
+        self._detector = DupBurndownDetector()
+        self._runner = DupBurndownRunner(self._detector)
 
-    def print_top_clusters(self, groups: dict[str, list[str]], top: int = 10) -> None:
-        sorted_groups = sorted(
-            groups.values(), key=lambda g: -len(g),
-        )
-        if not sorted_groups:
-            print("  (no duplicate clusters)")
-            return
-        for i, locations in enumerate(sorted_groups[:top], start=1):
-            print(f"  {i}. {len(locations)} copies:")
-            for loc in locations:
-                print(f"       {loc}")
+    @property
+    def detector(self) -> DupBurndownDetector:
+        return self._detector
 
-    def cmd_report(self, args: argparse.Namespace) -> int:
-        print("Duplicate-code report")
-        print("=" * 60)
-
-        ast_count, groups = self.detector.ast_dup_count()
-        baseline = self.detector.read_baseline()
-        print(f"AST function-body groups: {ast_count}")
-        if baseline >= 0:
-            delta = baseline - ast_count
-            sign = "" if delta == 0 else ("-" if delta > 0 else "+")
-            print(f"  vs. baseline ({baseline}): {sign}{abs(delta)}")
-
-        pmd_count, _raw = self.detector.run_pmd_cpd(min_tokens=args.pmd_tokens)
-        if pmd_count < 0:
-            print(
-                "PMD CPD: not installed (set PMD_HOME or install at "
-                "~/Downloads/pmd/pmd-bin-*).",
-            )
-        else:
-            print(f"PMD CPD blocks (≥{args.pmd_tokens} tokens): {pmd_count}")
-
-        print()
-        print(f"Top {args.top} largest AST clusters:")
-        self.print_top_clusters(groups, top=args.top)
-        return 0
-
-    def cmd_tighten(self, args: argparse.Namespace) -> int:
-        """If AST count is below baseline, lower the baseline. Idempotent
-        so the daily cron can run unguarded."""
-        ast_count, _ = self.detector.ast_dup_count()
-        baseline = self.detector.read_baseline()
-        if baseline < 0:
-            print(
-                f"No baseline found at {self.detector.baseline_file()}; "
-                f"seeding to {ast_count}."
-            )
-            self.detector.write_baseline(ast_count)
-            return 0
-        if ast_count >= baseline:
-            print(
-                f"No tightening needed — current ({ast_count}) >= "
-                f"baseline ({baseline}).",
-            )
-            return 0
-        print(
-            f"Tightening baseline {baseline} → {ast_count} "
-            f"({baseline - ast_count} cluster(s) eliminated).",
-        )
-        self.detector.write_baseline(ast_count)
-        return 0
-
-    def cmd_check(self, _args: argparse.Namespace) -> int:
-        """CI-gate complement: exit 1 if duplication regressed, 0 otherwise."""
-        ast_count, _ = self.detector.ast_dup_count()
-        baseline = self.detector.read_baseline()
-        if baseline < 0:
-            print(
-                f"No baseline found at {self.detector.baseline_file()}; "
-                f"treating as pass (seed will run on first 'tighten').",
-            )
-            return 0
-        if ast_count > baseline:
-            print(
-                f"REGRESSION: duplicate-code count grew from {baseline} to "
-                f"{ast_count}.",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"OK — {ast_count} clusters (baseline {baseline}).")
-        return 0
+    @property
+    def runner(self) -> DupBurndownRunner:
+        return self._runner
 
     def build_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
@@ -245,21 +64,23 @@ class DupBurndownCommand:
         return parser
 
     def main(self, argv: Iterable[str] | None = None) -> int:
-        args = self.build_parser().parse_args(list(argv) if argv is not None else None)
+        args = self.build_parser().parse_args(
+            list(argv) if argv is not None else None,
+        )
         sub = args.subcommand or "report"
         if sub == "tighten":
-            return self.cmd_tighten(args)
+            return self._runner.cmd_tighten(args)
         if sub == "check":
-            return self.cmd_check(args)
-        return self.cmd_report(args)
+            return self._runner.cmd_check(args)
+        return self._runner.cmd_report(args)
 
 
-# -----------------------------------------------------------------
-# Module-level singletons + back-compat aliases
-# -----------------------------------------------------------------
-
-_DETECTOR = DupBurndownDetector()
-_COMMAND = DupBurndownCommand(_DETECTOR)
+# Module-level singletons + back-compat aliases for the historical
+# test-patch surface (the eight detector helpers + four command
+# helpers + ``main`` were all importable by name pre-Phase-7g).
+_INSTANCE = DupBurndownEntryPoint()
+_DETECTOR = _INSTANCE.detector
+_RUNNER = _INSTANCE.runner
 
 _load_ratchet_module = _DETECTOR.load_ratchet_module
 _repo_root = _DETECTOR.repo_root
@@ -269,12 +90,31 @@ _find_pmd = _DETECTOR.find_pmd
 _run_pmd_cpd = _DETECTOR.run_pmd_cpd
 _read_baseline = _DETECTOR.read_baseline
 _write_baseline = _DETECTOR.write_baseline
-_print_top_clusters = _COMMAND.print_top_clusters
-cmd_report = _COMMAND.cmd_report
-cmd_tighten = _COMMAND.cmd_tighten
-cmd_check = _COMMAND.cmd_check
-_build_parser = _COMMAND.build_parser
-main = _COMMAND.main
+_print_top_clusters = _RUNNER.print_top_clusters
+cmd_report = _RUNNER.cmd_report
+cmd_tighten = _RUNNER.cmd_tighten
+cmd_check = _RUNNER.cmd_check
+_build_parser = _INSTANCE.build_parser
+main = _INSTANCE.main
+
+
+__all__ = [
+    "DupBurndownEntryPoint",
+    "_ast_dup_count",
+    "_baseline_file",
+    "_build_parser",
+    "_find_pmd",
+    "_load_ratchet_module",
+    "_print_top_clusters",
+    "_read_baseline",
+    "_repo_root",
+    "_run_pmd_cpd",
+    "_write_baseline",
+    "cmd_check",
+    "cmd_report",
+    "cmd_tighten",
+    "main",
+]
 
 
 if __name__ == "__main__":

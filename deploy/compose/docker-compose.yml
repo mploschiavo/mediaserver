@@ -643,7 +643,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.352}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.353}
     container_name: media-stack-controller
     # Image ENTRYPOINT is already "media-stack-controller" — only
     # pass flags here, otherwise the binary's own name re-arrives as
