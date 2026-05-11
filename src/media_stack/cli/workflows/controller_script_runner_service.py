@@ -1,92 +1,72 @@
-"""Script/module execution helper for bootstrap orchestration."""
+"""Compat shim — ADR-0015 Phase 2.
+
+The Phase 2 unification (commit landing this file change)
+collapsed :class:`ControllerScriptRunnerService` and the deploy-side
+:class:`DeployScriptRunnerService` into a single
+:class:`ScriptRunnerService` in :mod:`script_runner_service`. The
+two services had identical bodies modulo one env-var injection;
+keeping both forks was the audit's Phase 2 finding.
+
+This shim preserves the legacy import surface so existing callers
+(``cli/commands/run_controller_job_main.py``) and tests
+(``tests/unit/core/test_bootstrap_script_runner_service.py``)
+continue to work:
+
+* :class:`ControllerScriptRunnerConfig` keeps its single
+  ``root_dir`` field and adapts to the unified
+  :class:`ScriptRunnerConfig`.
+* :class:`ControllerScriptRunnerService` subclasses
+  :class:`ScriptRunnerService` — no env-var injection (unlike the
+  deploy variant), so the adapter is the identity transform plus
+  an empty ``extra_env`` dict.
+
+Removal of this shim is queued for ADR-0015 Phase 6's cleanup
+pass.
+"""
 
 from __future__ import annotations
 
-import os
-import shlex
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from media_stack.cli.workflows.script_runner_service import (
+    ScriptRunnerConfig,
+    ScriptRunnerService,
+)
+
 
 @dataclass(frozen=True)
 class ControllerScriptRunnerConfig:
+    """Legacy config — adapts to :class:`ScriptRunnerConfig` via the service."""
+
     root_dir: Path
 
 
 @dataclass
-class ControllerScriptRunnerService:
-    """Run a shell script under ``bin/`` or a Python module path.
+class ControllerScriptRunnerService(ScriptRunnerService):
+    """Controller-side adapter: no env injection, just the root_dir.
 
-    Per ADR-0012: the previously module-level ``_find_script`` helper
-    is folded onto this class as the ``find_script`` instance method
-    (no ``@staticmethod``). The module-level ``_INSTANCE`` carries an
-    ``_find_script`` alias so test patches and the historical
-    underscore-prefixed import surface keep resolving.
+    Pre-Phase-2 this had a full duplicated body; now it's a thin
+    subclass that re-wraps the legacy single-field config into the
+    unified :class:`ScriptRunnerConfig`. The bootstrap-job runner
+    doesn't carry a namespace because it discovers the namespace
+    via :class:`KubernetesClient` at call time, not at script-runner
+    construction.
     """
 
-    cfg: ControllerScriptRunnerConfig
+    cfg: ControllerScriptRunnerConfig  # type: ignore[assignment]
 
-    def find_script(self, bin_dir: Path, name: str) -> Path:
-        """Find a script in ``bin/`` or its first-level subdirectories."""
-        direct = bin_dir / name
-        if direct.is_file():
-            return direct
-        for child in bin_dir.iterdir():
-            if child.is_dir() and not child.name.startswith("."):
-                candidate = child / name
-                if candidate.is_file():
-                    return candidate
-        return direct
-
-    def run_script(
-        self,
-        script_name: str,
-        *args: str,
-        env: dict[str, str] | None = None,
-    ) -> None:
-        call_env = dict(os.environ)
-        if env:
-            call_env.update({k: str(v) for k, v in env.items()})
-
-        # Python module path (e.g. "media_stack.services.apps.foo.cli.bar_main")
-        if "." in script_name and not script_name.endswith(".sh"):
-            cmd = [sys.executable, "-m", script_name, *list(args)]
-            label = script_name
-        else:
-            # Dispatch through ``sys.modules`` so ``mock.patch`` on the
-            # module-level ``_find_script`` alias keeps intercepting
-            # (ADR-0012 design principle 3).
-            _module = sys.modules[__name__]
-            script_path = _module._find_script(self.cfg.root_dir / "bin", script_name)
-            cmd = ["bash", str(script_path), *list(args)]
-            label = script_name
-
-        proc = subprocess.run(
-            cmd,
-            cwd=str(self.cfg.root_dir),
-            env=call_env,
-            check=False,
-            text=True,
-            capture_output=True,
-        )
-        if proc.stdout.strip():
-            print(proc.stdout.rstrip())
-        if proc.stderr.strip():
-            print(proc.stderr.rstrip(), file=sys.stderr)
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"{label} failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in cmd)}"
-            )
+    def __post_init__(self) -> None:
+        # Identity adapter — no extra_env injection.
+        self.cfg = ScriptRunnerConfig(root_dir=self.cfg.root_dir)  # type: ignore[assignment]
 
 
-# Module-level singleton + aliases (ADR-0012 pattern).
-# ``ControllerScriptRunnerService`` is a dataclass that requires
-# ``cfg`` to instantiate, so build a bare instance via ``__new__``
-# purely to host the ``find_script`` helper alias (the helper is
-# stateless — it doesn't read ``self.cfg``).
+# Module-level alias for test-patch compatibility (same shape as the
+# deploy shim above — see :mod:`deploy_script_runner_service`).
 _INSTANCE = ControllerScriptRunnerService.__new__(ControllerScriptRunnerService)
-
 _find_script = _INSTANCE.find_script
+sys.modules[__name__]._find_script = _find_script  # type: ignore[attr-defined]
+
+
+__all__ = ["ControllerScriptRunnerConfig", "ControllerScriptRunnerService"]

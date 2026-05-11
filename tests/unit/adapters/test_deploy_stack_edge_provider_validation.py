@@ -60,7 +60,7 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             cfg = self._cfg(root_dir, router_provider="traefik")
             cfg.edge_router_provider = "envoy"
             runner = DeployStackRunner(cfg=cfg)
-            self.assertEqual(runner._edge_router_provider(), "envoy")
+            self.assertEqual(runner.config_service.edge_router_provider(), "envoy")
             runner._validate_inputs()
 
     def test_validate_inputs_rejects_non_builtin_provider_without_compose_bindings(self):
@@ -91,7 +91,7 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
                 },
             )
             runner = DeployStackRunner(cfg=cfg)
-            self.assertEqual(runner._edge_router_service_names(), ("envoy",))
+            self.assertEqual(runner.config_service.edge_router_service_names(), ("envoy",))
 
     def test_path_prefix_preserve_service_names_can_be_selected_by_provider(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,7 +108,7 @@ class DeployStackEdgeProviderValidationTests(unittest.TestCase):
             )
             runner = DeployStackRunner(cfg=cfg)
             self.assertEqual(
-                runner._edge_path_prefix_preserve_service_names(),
+                runner.config_service.edge_path_prefix_preserve_service_names(),
                 ("sonarr", "radarr", "prowlarr"),
             )
 

@@ -1,89 +1,86 @@
-"""Script/module runner for deploy/bootstrap orchestration."""
+"""Compat shim — ADR-0015 Phase 2.
+
+The Phase 2 unification (commit landing this file change)
+collapsed :class:`DeployScriptRunnerService` and the controller-side
+:class:`ControllerScriptRunnerService` into a single
+:class:`ScriptRunnerService` in :mod:`script_runner_service`. The
+two services had identical bodies modulo one env-var injection;
+keeping both forks was the audit's Phase 2 finding.
+
+This shim preserves the legacy import surface so existing callers
+(``cli/commands/deploy_stack_runner_services.py``) and tests
+(``tests/unit/adapters/test_rebuild_script_runner_service.py``)
+continue to work:
+
+* :class:`DeployScriptRunnerConfig` keeps its ``root_dir`` +
+  ``namespace`` fields. A property adapts it into a
+  :class:`ScriptRunnerConfig` with ``extra_env={"NAMESPACE": …}``.
+* :class:`DeployScriptRunnerService` subclasses
+  :class:`ScriptRunnerService` and overrides ``__post_init__`` to
+  apply the namespace adapter.
+
+Removal of this shim is queued for ADR-0015 Phase 6's cleanup
+pass (with all known callers migrated to the unified service).
+"""
 
 from __future__ import annotations
 
-import os
-import shlex
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from media_stack.cli.workflows.script_runner_service import (
+    ScriptRunnerConfig,
+    ScriptRunnerService,
+)
+
 
 @dataclass(frozen=True)
 class DeployScriptRunnerConfig:
+    """Legacy config — adapts to :class:`ScriptRunnerConfig` via the service."""
+
     root_dir: Path
     namespace: str
 
 
 @dataclass
-class DeployScriptRunnerService:
-    """Run a shell script under ``bin/`` or a Python module path.
+class DeployScriptRunnerService(ScriptRunnerService):
+    """Deploy-side adapter: injects ``NAMESPACE`` env into every script call.
 
-    Per ADR-0012: the previously module-level ``_find_script`` helper
-    is folded onto this class as the ``find_script`` instance method
-    (no ``@staticmethod``). The module-level ``_INSTANCE`` carries an
-    ``_find_script`` alias so test patches and the historical
-    underscore-prefixed import surface keep resolving.
+    Pre-Phase-2 this had a full duplicated body; now it's a thin
+    subclass that re-wraps the legacy config dataclass into the
+    unified :class:`ScriptRunnerConfig` with the namespace as
+    ``extra_env={"NAMESPACE": …}``.
     """
 
-    cfg: DeployScriptRunnerConfig
+    cfg: DeployScriptRunnerConfig  # type: ignore[assignment]
 
-    def find_script(self, bin_dir: Path, name: str) -> Path:
-        """Find a script in ``bin/`` or its first-level subdirectories."""
-        direct = bin_dir / name
-        if direct.is_file():
-            return direct
-        for child in bin_dir.iterdir():
-            if child.is_dir() and not child.name.startswith("."):
-                candidate = child / name
-                if candidate.is_file():
-                    return candidate
-        return direct  # fall through — let caller handle missing file
-
-    def run_script(self, script_name: str, *args: str, env: dict[str, str] | None = None) -> None:
-        merged_env = dict(os.environ)
-        merged_env.update({"NAMESPACE": self.cfg.namespace})
-        if env:
-            merged_env.update({k: str(v) for k, v in env.items()})
-
-        # Python module path (e.g. "media_stack.cli.commands.foo_main")
-        if "." in script_name and not script_name.endswith(".sh"):
-            cmd = [sys.executable, "-m", script_name, *list(args)]
-            label = script_name
-        else:
-            # Dispatch through ``sys.modules`` so ``mock.patch`` on the
-            # module-level ``_find_script`` alias keeps intercepting
-            # (ADR-0012 design principle 3).
-            _module = sys.modules[__name__]
-            script_path = _module._find_script(self.cfg.root_dir / "bin", script_name)
-            cmd = ["bash", str(script_path), *list(args)]
-            label = script_name
-
-        proc = subprocess.run(
-            cmd,
-            cwd=str(self.cfg.root_dir),
-            env=merged_env,
-            capture_output=True,
-            text=True,
-            check=False,
+    def __post_init__(self) -> None:
+        # Translate the legacy config into the unified shape on
+        # construction. The unified service reads ``self.cfg`` as
+        # a ScriptRunnerConfig; we replace the dataclass-bound
+        # value with an adapted view that carries the namespace
+        # via extra_env. The legacy ``cfg.namespace`` attribute
+        # is still readable for any caller that introspects it.
+        self.cfg = ScriptRunnerConfig(  # type: ignore[assignment]
+            root_dir=self.cfg.root_dir,
+            extra_env={"NAMESPACE": self.cfg.namespace},
         )
-        if proc.stdout.strip():
-            print(proc.stdout.rstrip())
-        if proc.stderr.strip():
-            print(proc.stderr.rstrip(), file=sys.stderr)
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"{label} failed ({proc.returncode}): "
-                f"{' '.join(shlex.quote(x) for x in cmd)}"
-            )
 
 
-# Module-level singleton + aliases (ADR-0012 pattern).
-# ``DeployScriptRunnerService`` is a dataclass that requires ``cfg``
-# to instantiate, so build a bare instance via ``__new__`` purely to
-# host the ``find_script`` helper alias (the helper is stateless —
-# it doesn't read ``self.cfg``).
+# Module-level alias for test-patch compatibility. Tests historically
+# mock ``_find_script`` on this module path; preserve that import
+# surface by re-exposing the unified alias here.
 _INSTANCE = DeployScriptRunnerService.__new__(DeployScriptRunnerService)
-
 _find_script = _INSTANCE.find_script
+
+# Also expose the module-level alias the bash branch in
+# ``run_script`` dispatches through. The unified runner's bash
+# branch does ``sys.modules[script_runner_service]._find_script``;
+# legacy callers that import this module and patch its own
+# ``_find_script`` get the same effect because the alias above
+# points at the unified instance method.
+sys.modules[__name__]._find_script = _find_script  # type: ignore[attr-defined]
+
+
+__all__ = ["DeployScriptRunnerConfig", "DeployScriptRunnerService"]
