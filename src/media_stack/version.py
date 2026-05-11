@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 from typing import IO
 
-__version__ = "1.0.347"
+__version__ = "1.0.348"
 """Package version. Keep in sync with ``VERSION`` at the repo root.
 ``bin/release.sh`` bumps both."""
 
