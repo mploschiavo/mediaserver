@@ -75,6 +75,57 @@ bash bin/release.sh 1.0.X
 
 This builds, pushes the controller image to harbor, and updates `dist/docker-compose.yml` + `dist/k8s-deploy.yaml` + `docker/docker-compose.yml` to the new tag.
 
+## What NOT to commit
+
+The 2026-05-12 audit found 8 leaked secrets in git history — a
+Google OAuth client_id + secret, the Authelia storage encryption
+key, Bazarr `flask_secret_key` + Plex `encryption_key`, and three
+*arr API keys. All entered via a single test fixture
+(`tests/fixtures/api_responses/backup.json`) captured from a real
+`GET /api/backup` response. They were scrubbed via `git filter-repo`
+before the public release. Don't repeat this.
+
+The repo enforces this in CI via two ratchets in
+`tests/unit/ratchets/`:
+
+* **`NoCommittedSecretsRatchet`** scans every tracked text file
+  for known secret prefixes (`GOCSPX-`, `AIza`, `ghp_`, `sk-`,
+  `AKIA`, `xoxb-`, `ya29.`, PEM private-key blocks).
+* **`NoSecretsInApiResponseFixtures`** walks every JSON under
+  `tests/fixtures/api_responses/` for keys named `*secret_key`,
+  `*encryption_key`, `client_secret`, `private_key`, etc. and
+  flags any value that looks like a real credential (≥16 char,
+  alphanumeric) rather than a `REDACTED-…` / `<placeholder>`
+  string.
+
+Add `gitleaks` or `detect-secrets` as a pre-commit hook locally
+for a third layer that catches the issue before the commit ever
+lands:
+
+```bash
+# gitleaks (Go binary, fast)
+pre-commit install --hook-type pre-commit
+# or detect-secrets (Python)
+pip install detect-secrets
+detect-secrets scan --baseline .secrets.baseline
+```
+
+If you're capturing a real API response for a fixture (especially
+from `/api/backup`, `/api/keys`, `/api/env`, or anything that
+sources from `os.environ`), redact at the source:
+
+```python
+# Replace real values with REDACTED-<purpose> before saving.
+for k in ("client_secret", "encryption_key", "flask_secret_key"):
+    if k in payload:
+        payload[k] = f"REDACTED-{k}"
+```
+
+The `/api/backup` endpoint itself returns cleartext today (see
+ADR backlog item ``redact /api/backup by default``). Until that
+lands, treat its output as sensitive — never commit a captured
+backup as a fixture.
+
 ---
 
 **Project Steward**
