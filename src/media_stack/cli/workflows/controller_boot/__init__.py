@@ -19,6 +19,9 @@ SRP class:
 from media_stack.cli.workflows.controller_boot.boot_configure_auth_service import (
     BootConfigureAuthService,
 )
+from media_stack.cli.workflows.controller_boot.boot_preparation import (
+    ControllerBootPreparation,
+)
 from media_stack.cli.workflows.controller_boot.boot_profile_loader import (
     BootProfileLoader,
 )
@@ -30,5 +33,6 @@ from media_stack.cli.workflows.controller_boot.key_canary_validator import (
 __all__ = [
     "BootConfigureAuthService",
     "BootProfileLoader",
+    "ControllerBootPreparation",
     "KeyCanaryValidator",
 ]

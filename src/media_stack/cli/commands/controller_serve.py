@@ -1,5 +1,17 @@
 """HTTP API serve mode for the bootstrap controller.
 
+ADR-0015 Phase 7m refactor
+--------------------------
+
+Pre-Phase-7m the boot-prep helpers (``_resolve_config_path``,
+``_opt_out_of_legacy_media_server_adapter``, ``_apply_boot_profile``,
+``_predispatch_api_keys``) lived on :class:`ControllerServeCommand`
+here in commands/. Phase 7m moves them onto
+:class:`ControllerBootPreparation` under
+``cli/workflows/controller_boot/``. The serve command now wires the
+preparation class via constructor injection and calls it from
+``_run_serve``.
+
 ADR-0015 Phase 7e refactor
 --------------------------
 
@@ -9,7 +21,7 @@ legitimate HTTP-server-glue (start_api_server, action_trigger
 queue-injection seam, log instrumentation) with workflow logic
 that belonged in workflows/.
 
-Phase 7e extracts the workflow logic onto SRP classes under
+Phase 7e extracted the workflow logic onto SRP classes under
 ``cli/workflows/``:
 
 * :class:`KeyCanaryValidator` + :class:`BootProfileLoader` +
@@ -26,7 +38,7 @@ Phase 7e extracts the workflow logic onto SRP classes under
   (telemetry, media integrity, snapshot timer, scheduler loop,
   trigger engine, auto-run bootstrap).
 
-What stays in this file:
+What stays in this file (per ADR-0015's HTTP-tier exemption):
 
 * The argparse + entry-point shim (``main``).
 * The ``action_trigger`` closure — every config writer in
@@ -45,12 +57,9 @@ import os
 import queue
 import sys
 import threading
-from pathlib import Path
 
 import media_stack.services.runtime_platform as runtime_platform
 
-from media_stack.api.preflight.api_keys import run_preflight as _discover_keys
-from media_stack.api.preflight.profile_validation import validate_profile
 from media_stack.api.server import (
     ACTION_PRIORITY,
     DEFAULT_ACTION_PRIORITY,
@@ -66,6 +75,7 @@ from media_stack.cli.workflows.controller_action_dispatcher import (
 from media_stack.cli.workflows.controller_boot import (
     BootConfigureAuthService,
     BootProfileLoader,
+    ControllerBootPreparation,
     KeyCanaryValidator,
 )
 from media_stack.cli.workflows.controller_scheduler_seeding import (
@@ -73,10 +83,6 @@ from media_stack.cli.workflows.controller_scheduler_seeding import (
 )
 from media_stack.cli.workflows.controller_serve_wiring import (
     ControllerServeWiring,
-)
-from media_stack.services.jobs.controller_handlers import (
-    _auto_generate_config_json,
-    _resolve_config_path,
 )
 
 
@@ -97,6 +103,9 @@ class ControllerServeCommand:
             log=runtime_platform.log,
         )
         self._wiring = ControllerServeWiring(self._scheduler_seeds)
+        self._boot_prep = ControllerBootPreparation(
+            key_canary=self._key_canary, log=runtime_platform.log,
+        )
 
     # -- backward-compat shims for the pre-Phase-7e module-level aliases ---
 
@@ -122,10 +131,10 @@ class ControllerServeCommand:
         """
         module = sys.modules[__name__]
 
-        self._resolve_config_path(args)
-        self._opt_out_of_legacy_media_server_adapter()
-        self._apply_boot_profile(args)
-        self._predispatch_api_keys(args, module)
+        self._boot_prep.resolve_config_path(args)
+        self._boot_prep.opt_out_of_legacy_media_server_adapter()
+        self._boot_prep.apply_boot_profile(args)
+        self._boot_prep.predispatch_api_keys(args)
 
         state = ControllerState()
         state.load_persisted_config()
@@ -154,89 +163,7 @@ class ControllerServeCommand:
             args, state, server, action_queue, _fire_webhooks,
         )
 
-    # -- _run_serve helpers ----------------------------------------------
-
-    def _resolve_config_path(self, args: argparse.Namespace) -> None:
-        resolved = _resolve_config_path(args.config)
-        if resolved and resolved != args.config:
-            runtime_platform.log(f"[INFO] Config resolved: {args.config} → {resolved}")
-            args.config = resolved
-            return
-        if not resolved:
-            runtime_platform.log(
-                "[INFO] Bootstrap config JSON not found — generating from contracts + profile"
-            )
-            try:
-                generated = _auto_generate_config_json(args.config)
-                if generated:
-                    args.config = generated
-                    runtime_platform.log(
-                        f"[OK] Generated config from contracts: {generated}"
-                    )
-            except Exception as exc:  # noqa: BLE001 — best-effort generation
-                runtime_platform.log(
-                    f"[WARN] Config generation failed: {exc}. "
-                    "Bootstrap may skip some steps."
-                )
-
-    def _opt_out_of_legacy_media_server_adapter(self) -> None:
-        # Media server ops are handled by the configure-media-server job
-        # framework. Skip the old media server adapter in finalize to
-        # prevent conflicts (the old adapter reads config.json which has
-        # fewer tuners/guides than the profile).
-        os.environ["SKIP_MEDIA_SERVER_ADAPTER_IN_FINALIZE"] = "1"
-
-    def _apply_boot_profile(self, args: argparse.Namespace) -> None:
-        profile_file = os.environ.get("BOOTSTRAP_PROFILE_FILE")
-        if not profile_file:
-            return
-        profile_path = Path(profile_file)
-        if not profile_path.is_file():
-            runtime_platform.log(
-                f"[INFO] Profile not yet available at {profile_file} — "
-                "will apply from config when action is triggered"
-            )
-            return
-        try:
-            validate_profile(profile_file, log=runtime_platform.log)
-        except Exception as exc:  # noqa: BLE001 — non-fatal validation
-            runtime_platform.log(
-                f"[WARN] Profile validation failed: {exc}. "
-                "The controller will still start — fix the profile and restart."
-            )
-        _apply_profile_env(profile_file)
-
-    def _predispatch_api_keys(
-        self, args: argparse.Namespace, module: object,
-    ) -> None:
-        try:
-            config_root = getattr(
-                args, "config_root", os.environ.get("CONFIG_ROOT", "/srv-config"),
-            )
-            # Plumb the resolved value into ``os.environ`` so downstream
-            # probes/ensurers see the same value the CLI was given.
-            os.environ["CONFIG_ROOT"] = config_root
-            runtime_platform.log(
-                f"[INFO] Config root discovery starting (configured: {config_root})"
-            )
-            discovered = _discover_keys(
-                config_root=config_root, log=runtime_platform.log,
-            )
-            # Update CONFIG_ROOT in case discovery changed it.
-            config_root = os.environ.get("CONFIG_ROOT", config_root)
-            for env_key, val in discovered.items():
-                if val and not os.environ.get(env_key):
-                    os.environ[env_key] = val
-            if discovered:
-                runtime_platform.log(
-                    f"[INFO] Pre-discovered {len(discovered)} API keys "
-                    f"(config_root={config_root})"
-                )
-            module._validate_key_against_service(
-                discovered, config_root, runtime_platform.log,
-            )
-        except Exception as exc:  # noqa: BLE001 — pre-discovery is best-effort
-            runtime_platform.log(f"[WARN] API key pre-discovery failed: {exc}")
+    # -- HTTP-server glue (kept in commands/ per ADR-0015 exemption) ------
 
     def _resolve_api_port(self, args: argparse.Namespace) -> int:
         return int(
