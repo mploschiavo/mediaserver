@@ -71,6 +71,21 @@ cd /path/to/media-automation-stack
     --target compose --scope config --execute --yes
 ```
 
+If you also don't have a virtualenv set up (no `.venv/`, or you're
+running from a fresh clone before `python -m venv .venv`), point
+Python at the in-tree `src/` layout directly:
+
+```bash
+cd /path/to/media-automation-stack
+PYTHONPATH=src python3 -m media_stack.cli.commands.teardown_stack_main \
+    --target compose --scope config --execute --yes
+```
+
+This works on any host with `python3` + PyYAML available (the
+teardown CLI's only third-party dep). It's the form CI uses, and
+the form to reach for when troubleshooting on a remote host where
+you can't easily install into a venv.
+
 > **Scope reminder:** `--scope everything` deletes `media/` too —
 > your entire library. If you want to redeploy with the same media
 > intact, use `--scope config` (or `--scope data` if you also want
@@ -237,7 +252,8 @@ media-stack-teardown --target k8s --environment prod --execute \
 
 (Same `cd /path/to/media-automation-stack` + `.venv/bin/python -m ...`
 fallback applies as in the compose section if you haven't done
-`pip install -e .`.)
+`pip install -e .`. The `PYTHONPATH=src python3 -m ...` no-venv
+form works on the k8s target too — substitute `--target k8s`.)
 
 ---
 
@@ -354,6 +370,14 @@ sequence, including pre-bootstrap profile choice.
 ---
 
 ## Last reviewed
+
+2026-05-12 — added the ``PYTHONPATH=src python3 -m ...`` no-venv
+invocation form. The two pre-existing forms (``media-stack-teardown``
+console-script + ``.venv/bin/python -m ...``) both require either
+an editable-install or an active virtualenv; the new form runs the
+exact same module against the in-tree ``src/`` layout on any host
+that has ``python3`` + PyYAML, which is what the CI suite and the
+in-session operator commands have been using.
 
 2026-05-10 (third pass) — swapped the canonical invocation to the
 `media-stack-teardown` console-script entry point (declared in
