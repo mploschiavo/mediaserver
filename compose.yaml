@@ -1,0 +1,37 @@
+# Root-level compose stub so plain ``docker compose up -d`` (the
+# pattern most users reach for) works from the repo root without
+# requiring ``-f deploy/compose/docker-compose.yml``.
+#
+# The canonical compose file lives at ``deploy/compose/docker-compose.yml``
+# (kept there so it ships alongside the rest of the deploy artefacts
+# in ``deploy/``). Compose v2.20+'s ``include:`` directive resolves
+# relative paths inside the included file against the included
+# file's own location, so the ``../../config`` / ``../../media`` /
+# ``../../data`` volume defaults inside docker-compose.yml still
+# point at the repo-root ``config/`` / ``media/`` / ``data/``
+# directories regardless of whether you invoke compose from the
+# root or from ``deploy/compose/``.
+#
+# Both invocation forms now work and yield the same project:
+#
+#   # From the repo root (most familiar — what this stub enables):
+#   docker compose up -d
+#
+#   # From anywhere with an explicit -f (the long-form path):
+#   docker compose -f deploy/compose/docker-compose.yml up -d
+#
+# For the orchestrated path that runs ``compose_preflight``
+# handlers (qBit password rotation, *arr UrlBase reconcile,
+# etc.) BEFORE the containers start, see ``media-stack-deploy``
+# / ``PYTHONPATH=src python3 -m media_stack.cli.commands.deploy_stack_main``
+# documented in ``docs/how-to/deployment.md``.
+# Pin the project name so containers stay under the same project
+# regardless of whether you invoke compose from the repo root
+# (``docker compose up -d``) or from ``deploy/compose/`` (where
+# compose would otherwise derive the project name from the parent
+# directory, ``compose``). Without this, the two invocation forms
+# yield different project names and the second one fails on
+# container_name collisions.
+name: media-stack
+include:
+  - path: deploy/compose/docker-compose.yml

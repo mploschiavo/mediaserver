@@ -162,23 +162,40 @@ python deploy.py compose
 python deploy.py compose --delete
 ```
 
-**Plain Compose (any OS):**
+### Two ways to deploy compose
 
-```bash
-docker compose -f deploy/compose/docker-compose.yml up -d
-# Wait for the controller to be healthy, then trigger:
-curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: application/json" -d "{}"
-```
+There are two valid invocation styles. Use the **Workflow CLI**
+for the canonical "first-time deploy on a fresh box" experience;
+use **plain `docker compose`** for every subsequent restart / log
+tail / single-service operation. The table below summarises the
+difference; the two subsections that follow give the actual
+commands.
 
-### Stack Runner workflow (cross-platform orchestration)
+| Concern | Plain `docker compose` | `media-stack-deploy` (workflow CLI) |
+|---|---|---|
+| First-time deploy on a fresh clone | ⚠️  Insecure defaults (see below) | ✅  Canonical path |
+| Re-up / restart / logs / ps | ✅  Familiar, fast | overkill |
+| Renders `deploy/compose/.env` from `secrets.generated.env` + profile | ❌  no — falls back to image defaults (`STACK_ADMIN_PASSWORD=admin`) | ✅  rendered before `up -d` |
+| Runs `compose_preflight_handler` entries (Authelia config seed, Bazarr URL-base, Sabnzbd API access, Jellyfin bootstrap auth) | ❌  bypassed | ✅  every contract that declares one |
+| Applies `apps.<service>: false` profile toggles | ❌  every container in the YAML starts | ✅  profile-driven service selection |
+| Selects compose profiles (e.g. `optional`, `plex`) | manual `COMPOSE_PROFILES=…` env | profile-aware |
+| qBit / Jellyfin / *arr password + URL-base sync at boot | ✅  (moved into the orchestrator promise loop in v1.0.367 — fires on every controller boot regardless of how compose came up) | ✅ |
+| Audit chain verifier / log-feed wiring | ✅  controller does this itself | ✅ |
 
-When you want orchestrated deploy + compose-preflight handlers
-(qBit password rotation, Authelia config seed, *arr UrlBase
-reconcile) + health-check + profile resolution in one command,
-use the Python workflow CLI. **All deployment settings come from
-the bootstrap profile YAML**, not from CLI flags — so the only
-arguments the deploy CLI accepts are an optional `NODE_IP`
-positional (k8s only) and `--bootstrap-profile-file FILE`.
+The orchestrator post-boot reconciler closes most of the gap on
+re-ups, but the **`.env` rendering** and **compose_preflight
+handler** items only happen via the Workflow CLI, and they ARE
+load-bearing on a fresh box — otherwise the stack comes up with
+`STACK_ADMIN_PASSWORD=admin` (the controller's blocklist guard
+fires a WARN but doesn't refuse to boot unless
+`internet_exposed=true` in the profile).
+
+#### Path A — Workflow CLI (first-time deploy, profile changes)
+
+All deployment settings come from the bootstrap profile YAML, not
+from CLI flags. The deploy CLI accepts an optional `NODE_IP`
+positional (k8s only) and `--bootstrap-profile-file FILE` — that's
+it.
 
 Three invocation forms, matching the [teardown how-to](teardown.md):
 
@@ -211,6 +228,40 @@ PYTHONPATH=src python3 -m media_stack.cli.commands.deploy_stack_main \
     --bootstrap-profile-file deploy/examples/bootstrap-profiles/media-compose-standard.yaml
 ```
 
+What this actually does, in order:
+
+1. Resolves the bootstrap profile YAML (`--bootstrap-profile-file`
+   flag → `BOOTSTRAP_PROFILE_FILE` env → `contracts/media-stack.profile.yaml`).
+2. Reads `metadata.platform` from the profile to dispatch to compose
+   vs k8s.
+3. Writes `deploy/compose/.env` from `secrets.generated.env` +
+   profile defaults (`STACK_ADMIN_USERNAME` / `STACK_ADMIN_PASSWORD`,
+   `STACK_ADMIN_EMAIL`, `CONFIG_ROOT` / `DATA_ROOT` / `MEDIA_ROOT`,
+   `APP_PATH_PREFIX`, etc.).
+4. Runs every `compose_preflight_handler` declared in
+   `contracts/services/*.yaml` against the resolved config:
+   - `authelia` — copies `users_database.yml` defaults into the
+     auth provider config dir
+   - `bazarr` — sets the URL-base for reverse-proxy access
+   - `jellyfin` — runs `cli_ensure_controller_main` to seed the
+     wizard with the stack-admin password and discover the API key
+   - `qbittorrent` — rotates the temp WebUI password to
+     `STACK_ADMIN_PASSWORD` and applies the auth-bypass whitelist
+     (orchestrator also runs this at controller boot now, but the
+     preflight runs it before `up -d` so qBit comes up healthy on
+     the first start)
+   - `sabnzbd` — seeds the API key into the controller secret if
+     it's already on disk
+   - `<arr>` — patches each Servarr config.xml to set
+     `AuthenticationMethod=External` + `UrlBase=/app/<arr>`
+5. Calls `docker compose up -d` against
+   `deploy/compose/docker-compose.yml` (with the
+   `apps.<service>: false` profile toggles applied as the
+   `selected_apps` filter).
+6. Optionally triggers the controller's `bootstrap` action if the
+   profile sets `bootstrap.run_bootstrap: true` (default for
+   compose is true; k8s has its own conditional logic).
+
 The bootstrap profile decides every behaviour the CLI used to
 accept as flags:
 
@@ -226,14 +277,69 @@ accept as flags:
 Use the right profile for your target — e.g.
 `deploy/examples/bootstrap-profiles/media-compose-standard.yaml`
 (compose) or `media-k8s-standard.yaml` (k8s). Operators
-typically copy one of those into `contracts/media-stack.profile.yaml`
-once at install time and the deploy CLI picks it up by default
-(the `--bootstrap-profile-file` flag overrides that for ad-hoc
-runs).
+typically copy one of those into
+`contracts/media-stack.profile.yaml` once at install time and the
+deploy CLI picks it up by default (the
+`--bootstrap-profile-file` flag overrides that for ad-hoc runs).
 
 Linux convenience wrapper: `bash bin/install/deploy-stack.sh
-[NODE_IP] [--bootstrap-profile-file FILE]`. Passes through to the
-same `deploy_stack_main` module.
+[NODE_IP] [--bootstrap-profile-file FILE]` — passes through to
+the same `deploy_stack_main` module.
+
+#### Path B — Plain `docker compose` (re-ups, day-to-day)
+
+Once the stack has been deployed once with the Workflow CLI (so
+`deploy/compose/.env` exists with the strong stack-admin password
++ every compose_preflight has run at least once), plain
+`docker compose` is the right tool for everyday operations:
+
+```bash
+# From the repo root (most familiar — works thanks to the
+# include: stub in ./compose.yaml):
+docker compose up -d
+docker compose ps
+docker compose logs -f media-stack-controller
+docker compose restart sonarr
+
+# From anywhere with the long-form -f (equivalent):
+docker compose -f deploy/compose/docker-compose.yml up -d
+```
+
+Both forms address the same project (``name: media-stack``) so
+they don't conflict — invoke from whichever path is convenient.
+
+Plain `docker compose up -d` runs the controller, which on every
+boot reconciles the things that used to require the deploy CLI:
+
+* qBit auth-bypass whitelist + password rotation
+  (`qbittorrent:ensure-credentials` job, `pre_bootstrap` phase,
+  priority 5)
+* Jellyfin admin password sync (`jellyfin:ensure-credentials`
+  job, `pre_bootstrap` phase, priority 6)
+* *arr `UrlBase` reconcile (five `<arr>:ensure-url-base` jobs,
+  one per Servarr fork)
+* Audit chain verifier
+* Authelia post-up config seed (separate path from the
+  compose_preflight seed; same end state)
+
+What plain `docker compose up -d` does **not** do (and why a
+fresh-box first deploy still needs the Workflow CLI):
+
+* **Does not render `deploy/compose/.env`** — the compose YAML
+  reads env vars from there, and if the file is missing the
+  containers fall back to image defaults
+  (`STACK_ADMIN_PASSWORD=admin`). The controller's blocklist guard
+  fires a WARN but doesn't refuse to boot unless
+  `internet_exposed=true` in the profile.
+* **Does not run compose_preflight handlers** that are NOT
+  represented in the orchestrator promise loop — Bazarr URL-base,
+  Sabnzbd API access seed, Jellyfin first-run wizard. These mostly
+  recover on their own via the orchestrator's reconcile path after
+  ~one tick, but the first dashboard hit during that window can
+  show partial state.
+* **Does not apply `apps.<service>: false` profile toggles** — every
+  container in `docker-compose.yml` starts regardless. To filter,
+  set `COMPOSE_PROFILES=…` explicitly.
 
 ### Compose runtime notes
 
@@ -674,6 +780,18 @@ Kubernetes mode is StorageClass / PVC-driven, so remote operators can apply mani
 ---
 
 ## Last reviewed
+
+2026-05-12 — rewrote the compose section as "Two ways to deploy
+compose" with explicit Path A (Workflow CLI for first-time
+deploys) / Path B (plain `docker compose` for day-to-day) split.
+Spells out exactly what each path does and does not do, with a
+table of differences up front. Documents the new root-level
+`compose.yaml` stub that makes `docker compose up -d` work from
+the repo root (via compose v2.20+ ``include:`` of the real file
+at `deploy/compose/docker-compose.yml`). Stale CLI flag examples
+removed — the deploy CLI only takes `[NODE_IP]` and
+`--bootstrap-profile-file FILE`; everything else comes from the
+profile YAML.
 
 2026-05-10 — refreshed every `bin/*.sh` path to its new `bin/<subdir>/`
 location and demoted Linux-only bash invocations in favour of the
