@@ -1,54 +1,50 @@
 stateDiagram-v2
-  [*] --> StartAPIServer
-  StartAPIServer --> WaitForAction: --serve mode (persistent)
-  StartAPIServer --> ParseConfig: --auto-run or POST /actions/bootstrap
+  [*] --> StartControllerServer
+  StartControllerServer --> WaitForAction: serve mode (HTTP API on port 9100)
+  StartControllerServer --> RunAction: auto-run / POST /actions/{name}
 
-  WaitForAction --> ParseConfig: POST /actions/bootstrap
-  WaitForAction --> RunPostServarr: POST /actions/finalize
-  WaitForAction --> RunIndexerPipeline: POST /actions/auto-indexers
-  WaitForAction --> EnvoyConfigGen: POST /actions/envoy-config
-  WaitForAction --> Reconcile: POST /actions/reconcile
-  WaitForAction --> RestartApps: POST /actions/restart-apps
-  WaitForAction --> SyncIndexers: POST /actions/sync-indexers
-  RestartApps --> WaitForAction
-  SyncIndexers --> WaitForAction
+  WaitForAction --> RunAction: POST /actions/{name}
+  RunAction --> WaitForAction
 
-  ParseConfig --> LoadServiceYAML
-  LoadServiceYAML --> MergeHookDefaults
-  MergeHookDefaults --> ResolveBindings
-  ResolveBindings --> BuildRuntime
+  state RunAction {
+    [*] --> ResolveAction
+    ResolveAction --> DispatchCore: core action
+    ResolveAction --> DispatchJob: KNOWN_ACTIONS job (discovered from contracts)
+    ResolveAction --> Rejected: name not in KNOWN_ACTIONS
 
-  BuildRuntime --> RunPrecheckPlan: parallel preflight handlers
-  RunPrecheckPlan --> WaitForServices: parallel health checks
-  WaitForServices --> RunDownloadClientPhases: qBit + SAB in parallel
-  RunDownloadClientPhases --> RunServarrPhases: Sonarr/Radarr/Lidarr/Readarr in parallel
-  RunServarrPhases --> BootstrapComplete
-  BootstrapComplete --> QueueFinalize: auto-queue finalize action
+    DispatchCore --> RunJobGraph
+    DispatchJob --> RunJob
 
-  state RunPostServarr {
-    PostServarrPreMedia: Bazarr + Jellyseerr + Maintainerr
-    MediaServerPlan: Jellyfin libraries + plugins + playback + prewarm
-    PostServarrPostMedia: Homepage + Guardrails + Hygiene
-    PostServarrPreMedia --> MediaServerPlan
-    MediaServerPlan --> PostServarrPostMedia
+    state RunJobGraph {
+      [*] --> LoadProfile
+      LoadProfile --> ResolveBindings
+      ResolveBindings --> BuildPlan: depends_on graph (per-service yaml + cross_cutting)
+      BuildPlan --> RunPromises: probe then ensure (LifecycleHandlerAdapter)
+      RunPromises --> [*]: 64 promises (49 agnostic / 14 k8s / 1 compose)
+    }
+
+    state RunJob {
+      [*] --> ExecuteJobLifecycle
+      ExecuteJobLifecycle --> [*]: probe / ensure / verify (ADR-0007)
+    }
+
+    DispatchCore --> ActionComplete
+    DispatchJob --> ActionComplete
+    Rejected --> ActionComplete
+    ActionComplete --> [*]
   }
 
-  RunPostServarr --> QueueIndexers: auto-queue indexer discovery
-  QueueIndexers --> RunIndexerPipeline: 4 parallel test workers
-  RunIndexerPipeline --> ActionComplete
-  ActionComplete --> EnvoyConfigGen: auto-queue after first bootstrap
-  EnvoyConfigGen --> WaitForAction
-
-  BootstrapComplete --> RetryAction: retry > 0
-  RetryAction --> ParseConfig: exponential backoff
-
-  RunServarrPhases --> RetryableFailure: transient http error
-  RetryableFailure --> RunServarrPhases: retry decorator
-  RetryableFailure --> FatalFailure: max retries
-
-  ActionComplete --> FireWebhooks: notify registered URLs
-  FatalFailure --> FireWebhooks
+  RunAction --> FireWebhooks: post-action notifications
   FireWebhooks --> WaitForAction
 
-  LoadServiceYAML --> FatalFailure: invalid service YAML
-  ResolveBindings --> FatalFailure: missing or unbound technology
+  RunAction --> RetryableFailure: transient http / kube error
+  RetryableFailure --> RunAction: retry decorator (capped backoff)
+  RetryableFailure --> FatalFailure: max retries exceeded
+  FatalFailure --> FireWebhooks
+
+  note right of RunAction
+    Source of truth for action names is
+    KNOWN_ACTIONS in
+    src/media_stack/api/services/known_actions.py
+    (core actions + jobs + aliases from contracts).
+  end note

@@ -1,71 +1,89 @@
 flowchart TD
   subgraph Operators[Operator Surface]
-    SH1["bin/install.sh\nbin/deploy-stack.sh"]
-    SH2["bin/bootstrap-all.sh\nbin/run-bootstrap-job.sh"]
-    SH3["bin/test/verify-flow.sh\nbin/test.sh"]
+    PY["deploy.py\ncross-platform Python launcher"]
+    SH1["bin/bootstrap-all.sh\nbin/run-bootstrap-job.sh"]
+    SH2["bin/test/verify-flow.sh\nbin/test/run-playwright-screenshots.sh"]
+    CLI["cli/commands/*_main.py\nconsole-script entry points\n(media-stack-deploy / -backup / -teardown / ...)"]
   end
 
   subgraph Contracts[Declarative Contracts]
     SVC["contracts/services/*.yaml\nper-service definitions + plugin config"]
     PROF["contracts/media-stack.profile.yaml\ntechnology_bindings + routing + auth"]
     K8S["contracts/adapter-hooks.k8s.yaml\nK8s pipeline phases"]
-    RPLAN["src/media_stack/contracts/runner_operation_plans.json"]
+    RPLAN["contracts/runner_operation_plans.json"]
+    PROMISES["contracts/promises/*.yaml\n+ contracts/services/<svc>.yaml plugin.promises\n(ADR-0006 per-service registries)"]
+  end
+
+  subgraph CliLayer[CLI Layer Boundary — ADR-0015]
+    CMDS["cli/commands/*\nthin entry-point shims\n(arg parsing + exit codes)"]
+    WORKFLOWS["cli/workflows/*\ndeploy / release / teardown / controller\nservice classes (DI-wired)"]
   end
 
   subgraph Entry[Composition Root]
     MAIN["controller_main.py"]
-    RF["runtime_factory/*"]
-    REG["adapter_factory.py\n(generic registry)"]
-    WIRE["operation_wiring.py"]
+    RF["application/runtime_factory/*"]
+    REG["services/adapter_factory.py\n(generic registry)"]
+    WIRE["services/operation_wiring.py"]
+    LIFECYCLE["application/lifecycle/*\nADR-0007 dispatch tables"]
+    JOBS["application/jobs/framework.py\njob-graph engine"]
   end
 
   subgraph Core[Shared Runtime Core]
-    CFGM["config_models.py"]
-    CORE_RT["runtime_platform.py"]
-    CORE_SEC["runtime_secrets.py"]
-    ARR["apps/servarr/runtime/__init__.py"]
+    CFGM["domain/config_models.py"]
+    CORE_RT["infrastructure/runtime_platform.py"]
+    CORE_SEC["infrastructure/runtime_secrets.py"]
+    PROMRT["infrastructure/promises/registry.py\nload_registry() across cross-cutting +\nper-service registries"]
     LIB["core/* helpers"]
   end
 
   subgraph Adapters[Technology Adapters]
-    DL["download_client_adapters/*"]
-    MS["media_server_adapters/*"]
-    SA["apps/servarr/technologies/*"]
+    DL["adapters/download_client_adapters/*"]
+    MS["adapters/media_server_adapters/*"]
+    SA["services/apps/servarr/technologies/*"]
+    COMPOSE["adapters/compose/*"]
+    K8SA["adapters/k8s/*"]
   end
 
   subgraph AppSvc[App Services]
-    APPMOD["apps/* service modules\njellyfin, jellyseerr, prowlarr,\nbazarr, torrent clients,\nusenet clients, maintainerr,\nhomepage, tautulli"]
+    APPMOD["services/apps/* service modules\njellyfin / jellyseerr / prowlarr / bazarr\ntorrent clients / usenet clients\nmaintainerr / homepage / tautulli /\nunpackerr / flaresolverr / authelia"]
   end
 
   subgraph Runtime[Cluster Runtime]
-    CTRL["media-stack-controller\nHTTP API + Dashboard on :9100"]
-    UI["media-stack-ui v1.1.0\nSPA on :8080\nreverse-proxies /api/*"]
-    APPS["Arr/Prowlarr/Jellyfin\nJellyseerr + bound clients"]
+    CTRL["media-stack-controller\nHTTP API + dashboard on :9100\n(harbor.iomio.io/public/media-stack-controller)"]
+    UI["media-stack-ui SPA on :8080\n(harbor.iomio.io/public/media-stack-ui)\nreverse-proxies /api/*"]
+    APPS["Arr / Prowlarr / Jellyfin /\nJellyseerr + bound clients"]
   end
 
+  PY --> CLI
   SH1 --> MAIN
   SH2 --> MAIN
-  SH3 --> MAIN
+  CLI --> CMDS --> WORKFLOWS --> MAIN
 
   SVC --> RF
   PROF --> RF
   K8S --> RF
   RPLAN --> RF
+  PROMISES --> PROMRT
 
   MAIN --> RF --> WIRE
+  MAIN --> LIFECYCLE
+  MAIN --> JOBS
+  PROMRT --> LIFECYCLE
 
   RF --> CFGM
   RF --> CORE_RT
   RF --> CORE_SEC
-  RF --> ARR
   RF --> LIB
 
   REG --> DL
   REG --> MS
   REG --> SA
+  REG --> COMPOSE
+  REG --> K8SA
   RF --> REG
 
   WIRE --> APPMOD
+  LIFECYCLE --> APPMOD
 
   MAIN --> CTRL --> APPS
   UI -->|/api/*| CTRL

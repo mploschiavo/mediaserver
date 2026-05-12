@@ -84,7 +84,12 @@ const hostPathOverrides: Record<string, string> = {
 };
 
 function safeName(host: string): string {
-  return host.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/\./g, '_').toLowerCase();
+  // ``capturedAppHosts`` is already deduped to one entry per
+  // service, so the leading slug (segment before the first dot)
+  // uniquely identifies the app. Drop the TLD/domain entirely so
+  // the README can ``![](bazarr.png)`` without per-deployment
+  // hostname noise leaking into doc filenames.
+  return host.split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '_');
 }
 
 async function isVisible(locator: Locator): Promise<boolean> {

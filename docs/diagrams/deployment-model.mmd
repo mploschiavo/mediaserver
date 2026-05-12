@@ -1,53 +1,46 @@
 flowchart TB
   OP[Operator]
   GIT[Git Repository]
-  CI[CI Validation]
+  CI[CI Validation\n+ ratchets / pre-commit]
 
   subgraph K8S[Kubernetes Path]
-    subgraph ENV1[Namespace: media-dev]
-      K8S1[Kustomize Manifests]
-      BOOT1[Controller API :9100]
-      UI1[media-stack-ui :8080]
-      ENVOY1[Envoy Gateway]
-      APPS1[19 Configured Apps]
-    end
-    subgraph ENV2[Namespace: media-stack]
-      K8S2[Kustomize Manifests]
-      BOOT2[Controller API :9100]
-      UI2[media-stack-ui :8080]
-      ENVOY2[Envoy Gateway]
-      APPS2[19 Configured Apps]
+    subgraph NS[Namespace: media-stack]
+      K8S1[Kustomize Manifests\ndeploy/k8s/]
+      BOOT1[Controller API\n:9100 ClusterIP]
+      UI1[media-stack-ui\n:8080 ClusterIP]
+      ENVOY1[Envoy Gateway\nIngress :80/:443]
+      AUTH1[Authelia\next_authz portal]
+      APPS1[~14 Configured Apps\n+ optional services]
     end
   end
 
   subgraph COMPOSE[Docker Compose Path]
-    DC[docker-compose.yml]
+    DC["docker compose / deploy.py compose"]
     BOOT3[Controller :9100]
-    UI3["media-stack-ui<br/>${UI_PORT:-9101}:8080"]
-    ENVOY3[Envoy Gateway :80]
-    APPS3[19 Configured Apps]
+    UI3["media-stack-ui\n${UI_PORT:-9101}:8080"]
+    ENVOY3[Envoy Gateway :80/:443]
+    AUTH3[Authelia portal]
+    APPS3[~14 Configured Apps]
   end
 
   OP --> GIT
   GIT --> CI
   CI --> K8S
   CI --> COMPOSE
-  ENV1 --> ENV2
 
   K8S1 --> BOOT1 --> APPS1
   BOOT1 --> ENVOY1
+  BOOT1 --> AUTH1
   K8S1 --> UI1
-  UI1 -->|/api/*| BOOT1
-  K8S2 --> BOOT2 --> APPS2
-  BOOT2 --> ENVOY2
-  K8S2 --> UI2
-  UI2 -->|/api/*| BOOT2
+  UI1 -->|/api/* via Envoy| BOOT1
+  ENVOY1 -->|ext_authz| AUTH1
 
   DC --> BOOT3 --> APPS3
   BOOT3 --> ENVOY3
+  BOOT3 --> AUTH3
   DC --> UI3
-  UI3 -->|/api/*| BOOT3
+  UI3 -->|/api/* via Envoy| BOOT3
+  ENVOY3 -->|ext_authz| AUTH3
 
-  style ENV1 fill:#e8f2ff,stroke:#1f4f99,stroke-width:2px
-  style ENV2 fill:#e9ffe8,stroke:#1a7f37,stroke-width:2px
+  style NS fill:#e9ffe8,stroke:#1a7f37,stroke-width:2px
   style COMPOSE fill:#fff3e0,stroke:#e65100,stroke-width:2px

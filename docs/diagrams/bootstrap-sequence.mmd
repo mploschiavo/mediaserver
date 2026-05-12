@@ -1,32 +1,28 @@
 sequenceDiagram
   participant User
-  participant Script as deploy-k8s.sh / deploy-stack.sh
+  participant Deploy as deploy.py / bin/run-bootstrap-job.sh
   participant Factory as runtime_factory
-  participant API as Bootstrap HTTP API :9100
-  participant Apps as Arr + Prowlarr + Jellyfin + Jellyseerr + Bound Clients
+  participant API as Controller HTTP API :9100
+  participant Jobs as application/jobs/framework
+  participant Apps as Arr + Prowlarr + Jellyfin + Jellyseerr + bound clients
 
-  User->>Script: Deploy stack
-  Script->>Script: Apply manifests / start containers
-  Script->>API: Wait for /healthz (Deployment starts with --serve --auto-run)
-  API->>Factory: Parse config + load plugin manifests
+  User->>Deploy: Deploy stack (k8s or compose)
+  Deploy->>Deploy: Apply manifests / start containers
+  Deploy->>API: Wait for /healthz (controller starts with --serve --auto-run)
+  API->>Factory: Load profile + per-service yaml + plugin manifests
   Factory->>Factory: Resolve technology_bindings + build runtime plan
 
   Note over API: Auto-queues bootstrap action on startup
 
-  API->>Apps: Run preflight handlers (parallel)
-  API->>Apps: Wait for services (parallel health checks)
-  API->>Apps: Prepare download clients (qBit + SAB in parallel)
-  API->>Apps: Run Servarr pipeline (Sonarr/Radarr/Lidarr/Readarr in parallel)
-  API->>Apps: Run post-servarr steps (Bazarr + Jellyseerr + Maintainerr in parallel)
-  API->>Apps: Run media server plan (Jellyfin 6 steps in parallel)
-  API->>Apps: Run post-media steps (Homepage + Disk guardrails + Hygiene in parallel)
-  API->>Apps: Run indexer pipeline (4 parallel workers)
-  API->>API: Auto-queue envoy-config action
-  API->>Apps: Regenerate Envoy config + restart Envoy
+  API->>Jobs: Dispatch bootstrap (resolve job graph from contracts)
+  Jobs->>Apps: Run lifecycle dispatch (probe -> ensure -> verify)<br/>per ADR-0007 LifecycleHandlerAdapter
+  Jobs->>Apps: Per-service promises evaluate in dep-order<br/>(64 promises: 49 agnostic, 14 k8s, 1 compose)
+  Jobs->>Apps: Cross-cutting promises run after their dep predecessors
 
   Note over API: Service stays alive for on-demand actions
 
-  User->>API: POST /actions/reconcile (on-demand)
-  User->>API: POST /config {"auto_download_content": true}
+  User->>API: POST /actions/reconcile (re-run the full graph)
+  User->>API: POST /actions/{job-name} (single job)
+  User->>API: POST /config (mutate profile fields)
   User->>API: GET /logs/stream (SSE)
-  User->>API: GET / (dashboard)
+  User->>API: GET / (dashboard SPA at :9100, also served via Envoy + Authelia)
