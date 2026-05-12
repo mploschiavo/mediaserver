@@ -50,7 +50,7 @@ Things that work without any clicking after `up -d`:
 - Jellyseerr connected to all four Arr apps + Jellyfin (with Authelia SSO when auth is enabled).
 - Maintainerr collection rules linked to the right Arr apps.
 - Envoy gateway with self-signed TLS on `:443`, HTTP→HTTPS redirect on `:80`.
-- 52 OTB promises (37 agnostic, 14 k8s-only, 1 compose-only), each verified by a probe against the live stack — see [reference/promises.md](docs/reference/promises.md).
+- 64 OTB promises (49 agnostic, 14 k8s-only, 1 compose-only), each verified by a probe against the live stack — see [reference/promises.md](docs/reference/promises.md).
 
 ## Dashboard
 
@@ -58,9 +58,9 @@ The controller dashboard at `:9100` is a React 19 SPA (Vite 6 + Tailwind v4 + sh
 
 Installable as a PWA — service worker is NetworkOnly for `/api/*`, CacheFirst for the Geist CDN, with home-screen shortcuts for Media Integrity, Logs, and Reconcile now. ⌘K opens the in-app command palette; `ConnectionStatus` polls `/api/health`. Auth is unchanged: cookies from Authelia, validated by Envoy `ext_authz`, UI sends `credentials: "same-origin"`.
 
-Quality ratchets enforced in CI: `pnpm size` (250 KB total JS gzip ceiling, currently 240.8 KB), `pnpm check:todos` (snapshot at `.ratchets/todos.json`), `pnpm lint` (flat ESLint locks `no-console` / `no-only-tests` / `no-explicit-any` at 0), `vitest-axe` a11y on AppShell / CommandPalette / UserMenu / MediaIntegrity (blocks serious + critical), a path-contract test that every `/api/*` literal in `src/` exists in the OpenAPI spec, and a manifest contract that every PNG referenced from `dist/manifest.webmanifest` exists at the declared dimensions.
+Quality ratchets enforced in CI: `pnpm size` (320 KB total JS gzip ceiling, per-chunk budgets in `ui/.size-limit.json`), `pnpm check:todos` (snapshot at `.ratchets/todos.json`), `pnpm lint` (flat ESLint locks `no-console` / `no-only-tests` / `no-explicit-any` at 0), `vitest-axe` a11y on AppShell / CommandPalette / UserMenu / MediaIntegrity (blocks serious + critical), a path-contract test that every `/api/*` literal in `src/` exists in the OpenAPI spec, and a manifest contract that every PNG referenced from `dist/manifest.webmanifest` exists at the declared dimensions.
 
-UI image: `harbor.iomio.io/public/media-stack-ui:v1.3.71` (see [CHANGELOG.md](CHANGELOG.md)).
+UI image: `harbor.iomio.io/public/media-stack-ui:v1.3.87` (see [CHANGELOG.md](CHANGELOG.md)).
 
 ## CI/CD (Python-first)
 

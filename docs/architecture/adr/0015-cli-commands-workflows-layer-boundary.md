@@ -1,12 +1,14 @@
 # ADR-0015 — CLI layer boundary: commands as entry-points, workflows as services
 
-**Status:** In progress (2026-05-11). Phase 3 (deploy config
-consolidation) landed at commit `ac75320e` — single resolver, zero
-duplicate files, the four-bug parade collapsed to one isolated bug.
-Phase 3b (SRP split + named patterns for the new
-`DeployConfigService`) added on the same day after the operator
-caught that Phase 3 met its consolidation goal but reproduced the
-god-class smell the original audit had flagged.
+**Status:** All planned phases landed (latest: Phase 7m on
+2026-05-12 at `1f826458` — `controller_serve` boot-prep extraction).
+The phase table below records the full sequence. Phase 3
+(deploy config consolidation, `ac75320e`) collapsed the four-bug
+parade to one isolated bug; Phase 3b/3c (`9477cb92`/`7f064f3e`)
+applied the SRP split the original audit had asked for; Phases
+4–7m migrated the remaining orchestration + per-command classes
+into `cli/workflows/`, leaving `cli/commands/` as thin entry-point
+shims gated by the boundary ratchet from Phase 6 (`4e478e30`).
 
 Authors: matthew
 
