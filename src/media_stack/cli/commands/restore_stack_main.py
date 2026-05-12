@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""Restore a stack backup archive."""
+"""Entry-point shim for ``bin/restore-stack.sh``.
+
+ADR-0015 Phase 7l moved :class:`RestoreStackRunner` to workflows/.
+"""
 
 from __future__ import annotations
 
 import argparse
 import os
-import shutil
-import tarfile
-import tempfile
-from pathlib import Path
 
-from media_stack.core.exceptions import ConfigError
-
-from media_stack.core.cli_common import kube_cmd, run_command
+from media_stack.cli.workflows.restore_stack_runner import RestoreStackRunner
 
 
+class RestoreStackEntryPoint:
+    """Per-ADR-0012 entry-point: argparse → runner.run."""
 
+    def __init__(self) -> None:
+        self._runner = RestoreStackRunner()
 
-
-
-class RestoreStackCommand:
-    """Wraps restore stack CLI entrypoint."""
+    @property
+    def runner(self) -> RestoreStackRunner:
+        return self._runner
 
     def parse_args(self, argv: list[str] | None = None) -> argparse.Namespace:
         parser = argparse.ArgumentParser(
@@ -28,61 +28,43 @@ class RestoreStackCommand:
             description="Restores a backup produced by bin/backup-stack.sh.",
         )
         parser.add_argument("archive_path", help="Path to backup archive .tar.gz")
-        parser.add_argument("--namespace", default=(os.environ.get("NAMESPACE", "media-stack") or "media-stack"))
-        parser.add_argument("--stack-root", default=(os.environ.get("STACK_ROOT", "/srv/media-stack") or "/srv/media-stack"))
-        parser.add_argument("--restore-media", action="store_true", default=_env_bool("RESTORE_MEDIA", False))
+        parser.add_argument(
+            "--namespace",
+            default=(os.environ.get("NAMESPACE", "media-stack") or "media-stack"),
+        )
+        parser.add_argument(
+            "--stack-root",
+            default=(
+                os.environ.get("STACK_ROOT", "/srv/media-stack")
+                or "/srv/media-stack"
+            ),
+        )
+        parser.add_argument(
+            "--restore-media", action="store_true",
+            default=self._runner.env_bool("RESTORE_MEDIA", False),
+        )
         return parser.parse_args(argv)
 
     def main(self, argv: list[str] | None = None) -> int:
-        args = self.parse_args(argv)
-        archive_path = Path(args.archive_path).expanduser().resolve()
-        if not archive_path.exists():
-            raise ConfigError(f"Backup archive not found: {archive_path}")
-        kubectl = kube_cmd()
-        stack_root = Path(args.stack_root).expanduser().resolve()
-        stack_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="media-stack-restore-") as tmpdir:
-            tmp_path = Path(tmpdir)
-            with tarfile.open(archive_path, "r:gz") as tar:
-                tar.extractall(tmp_path)
-            roots = [p for p in tmp_path.iterdir() if p.is_dir()]
-            if not roots:
-                raise ConfigError("Invalid backup archive structure.")
-            restore_root = roots[0]
-            for folder in ("config", "data"):
-                source = restore_root / folder
-                if source.exists() and source.is_dir():
-                    _copy_tree_contents(source, stack_root / folder)
-            if args.restore_media:
-                media_src = restore_root / "media"
-                if media_src.exists() and media_src.is_dir():
-                    _copy_tree_contents(media_src, stack_root / "media")
-            secret_file = restore_root / "media-stack-secrets.yaml"
-            if secret_file.exists():
-                run_command([*kubectl, "apply", "-f", str(secret_file)], check=True)
-        print(f"[OK] Restore complete from {archive_path}")
-        return 0
+        return self._runner.run(self.parse_args(argv))
 
 
-    def _env_bool(self, name: str, default: bool) -> bool:
-        raw = str(os.environ.get(name, "1" if default else "0") or "").strip().lower()
-        return raw in {"1", "true", "yes", "on"}
-
-    def _copy_tree_contents(self, src: Path, dst: Path) -> None:
-        dst.mkdir(parents=True, exist_ok=True)
-        for child in src.iterdir():
-            target = dst / child.name
-            if child.is_dir():
-                shutil.copytree(child, target, dirs_exist_ok=True)
-            else:
-                shutil.copy2(child, target)
+_INSTANCE = RestoreStackEntryPoint()
+_RUNNER = _INSTANCE.runner
+parse_args = _INSTANCE.parse_args
+main = _INSTANCE.main
+_env_bool = _RUNNER.env_bool
+_copy_tree_contents = _RUNNER.copy_tree_contents
 
 
-_instance = RestoreStackCommand()
-parse_args = _instance.parse_args
-main = _instance.main
-_env_bool = _instance._env_bool
-_copy_tree_contents = _instance._copy_tree_contents
+__all__ = [
+    "RestoreStackEntryPoint",
+    "_copy_tree_contents",
+    "_env_bool",
+    "main",
+    "parse_args",
+]
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
