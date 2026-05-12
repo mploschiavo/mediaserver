@@ -600,6 +600,7 @@ commit body.
 | Phase 7g — `dup_burndown_main.py` + `set_pvc_storage_class_main.py` | **landed** (2026-05-11) | `5c92c307` |
 | Phase 7h — `watch_install_main.py` + `orchestrator_eval_main.py` + `microk8s_smoke_test_main.py` | **landed** (2026-05-11) | `dd60bd48` |
 | Phase 7i — `reset_admin_main.py` + `apply_scale_policy_main.py` + `deploy_verify_main.py` | **landed** (2026-05-11) | `abfe20cf` |
+| Phase 7j — `controller_main._run_oneshot` extract + bulk `@staticmethod` fold (16 statics across 7 files) | **landed** (2026-05-11) | `674fb972` |
 
 ---
 
