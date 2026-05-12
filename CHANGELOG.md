@@ -2,6 +2,112 @@
 
 All notable changes to this stack. Dates reflect when the work landed on `main`.
 
+## [v1.0.368] / UI [v1.3.87] — 2026-05-12
+
+First tagged release after a long batch of architectural work
+(ADR-0005 Phase 5 → ADR-0015 Phase 7m, plus a 2026-05-12 operator
+session that closed a class of compose-deploy bugs). 135 commits
+since `v1.0.321`. Highlights, by area:
+
+### Architecture
+
+- **ADR-0005 Phase 5b–5c.4c** — every service's API-key discovery
+  flows through the orchestrator's promise loop; subprocess-per-
+  action machinery retired in favour of in-process
+  `JobRunner.run`. `_run_preflights` legacy call retired; the
+  per-promise lifecycle ensurer is now the canonical disk-read +
+  env-persist + k8s-secret-patch path.
+- **ADR-0009 Phase 6 + ADR-0010 Phase 7** — trigger-driven Jobs
+  framework + ensurer collapse: every promise's `ensured_by` flips
+  from `type: lifecycle` to `type: job`; lifecycle methods bind
+  as Job handlers via `LifecycleHandlerAdapter`.
+- **ADR-0011** — import-direction discipline + package-layout
+  cleanup; service registry relocated from `api/` to `core/`.
+- **ADR-0012** — loose functions / static methods → zero across
+  14 waves. `LOOSE 510 → 1`, `NO_CLASS 51 → 0`.
+- **ADR-0013** — retire `run-legacy-pipeline`: one job framework,
+  no bespoke paths. qBittorrent password rotation moved to
+  orchestrator promise (`qbittorrent:ensure-credentials`);
+  `ContainerAccess` Protocol added so the same lifecycle body
+  serves both deploy-time and reconcile-tick calls; k8s container
+  access added.
+- **ADR-0014** — GPU strategy: NVIDIA overlay (k8s) + controller-
+  side GPU detection via Kubernetes Python client; documented
+  upgrade triggers (P4 → A10 trade-offs).
+- **ADR-0015** — CLI commands / workflows layer boundary across
+  Phases 1–7m: 13+ workflows extractions, deploy-config
+  consolidation, controller-serve boot-prep extraction.
+- **ADR-0016** — converge `media-stack-deploy` and plain
+  `docker compose up -d`: documents the gap, ranks the remaining
+  `compose_preflight` handlers by migration category, and lays
+  out the 5-phase plan so plain compose can become the canonical
+  day-to-day command.
+
+### Controller boot-time reconcilers (new orchestrator promises)
+
+- `qbittorrent:ensure-credentials` (pre_bootstrap, priority 5) —
+  WebUI password rotation + reverse-proxy auth-bypass whitelist.
+- `jellyfin:ensure-credentials` (pre_bootstrap, priority 6) —
+  Jellyfin admin password sync vs. `STACK_ADMIN_PASSWORD`.
+- `<arr>:ensure-url-base` × 5 — Radarr / Sonarr / Lidarr / Readarr
+  / Prowlarr URL-base reconcile. Persists through Prowlarr's
+  SQLite DB rehydration.
+
+### Audit log hardening
+
+- Cross-instance lock + shared `_last_hash_cache` keyed by absolute
+  path. Closes the 2026-04-27 chain-break race.
+- Verifier no longer spams on duplicate corruption signatures.
+- File-disappear detection: operator-archived audit logs reset
+  the cache so the next append starts a fresh chain.
+
+### Auth + security
+
+- `STACK_ADMIN_PASSWORD` weak-credential blocklist runs on every
+  boot (not just first seed). Blocklist expanded with `secret` /
+  `pass` / `test` / `hello`.
+- `WWW-Authenticate: Basic` no longer fires on XHR 401s — closes
+  the "second login popup" on Authelia-fronted deploys.
+- **History scrub (2026-05-12):** 8 leaked secrets (Google OAuth
+  client_id + secret, Authelia storage encryption key, Bazarr +
+  Radarr + Sonarr fixture API keys) purged from git history via
+  `git filter-repo`. All values were already rotated on the live
+  stacks before scrub; the Google OAuth pair was revoked at the
+  provider. The scrub is for clean public-release hygiene, not
+  active-compromise remediation.
+
+### Compose first-boot fixes
+
+- Media-integrity adapter set tolerates `URLError`/`OSError` at
+  boot; periodic re-wire until adapters stabilise.
+- `_dispatch_action` unknown-action raises `ValueError` (was
+  `RuntimeError` after the Phase 7k single-path consolidation).
+
+### Dashboard data fixes
+
+- Guide-source health donut reads the live `/api/epg-health`
+  payload (was matching never-implemented array shapes); plus
+  fixes 0×0 rendering with stretch + min-height.
+- Profile YAML editor: `/api/profile` returns raw `yaml` field.
+- Compose container count excludes one-shot init containers.
+
+### Registry path
+
+- Images moved from `harbor.iomio.io/library/*` to
+  `harbor.iomio.io/public/*` (38 files updated). Symmetric `ui:`
+  block added to `contracts/media-stack.profile.yaml`.
+- Root-level `compose.yaml` stub with compose v2.20+ `include:`
+  so plain `docker compose up -d` works from the repo root.
+
+### Documentation
+
+- `docs/how-to/teardown.md` + `docs/how-to/deployment.md` —
+  added the no-venv `PYTHONPATH=src python3 -m …` form (the form
+  CI uses).
+- `docs/how-to/deployment.md` rewrote the compose section as
+  "Two ways to deploy compose" with explicit Path A (Workflow
+  CLI) / Path B (plain `docker compose`) split.
+
 ## [v1.0.314] — 2026-05-02
 
 ### Fixed
