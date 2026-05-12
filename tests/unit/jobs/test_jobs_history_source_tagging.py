@@ -252,7 +252,14 @@ class TestCronOneShotWritesHistory(_HistoryDirMixin, unittest.TestCase):
     its own."""
 
     def test_oneshot_writes_cron_history_entry(self):
+        # ADR-0015 Phase 7k: ``_build_runner`` is consumed inside
+        # ``cli/workflows/controller_oneshot_runner``; patch the
+        # workflow module's binding rather than the legacy
+        # commands re-export so the stub takes effect.
         from media_stack.cli.commands import controller_main
+        from media_stack.cli.workflows import (
+            controller_oneshot_runner as _runner_mod,
+        )
         import argparse
         args = argparse.Namespace(
             config="/dev/null", config_root=self._tmpdir,
@@ -260,16 +267,13 @@ class TestCronOneShotWritesHistory(_HistoryDirMixin, unittest.TestCase):
             mode="reconcile", env="test", serve=False,
             auto_run=False, api_port=9100,
         )
-        # Stub the runner build + run so we don't actually touch
-        # any service. The history entry is the contract under
-        # test, not the legacy runner's behaviour.
         fake_runner = MagicMock()
         fake_runner.run = MagicMock(return_value=None)
         with patch.object(
-            controller_main, "_build_runner",
+            _runner_mod, "_build_runner",
             return_value=(fake_runner, MagicMock()),
         ):
-            controller_main.ControllerMainCommand._run_oneshot(args)
+            controller_main._run_oneshot(args)
         history = get_job_history()
         self.assertGreaterEqual(len(history), 1)
         self.assertEqual(history[0]["source"], "cron:reconcile")
@@ -277,6 +281,9 @@ class TestCronOneShotWritesHistory(_HistoryDirMixin, unittest.TestCase):
 
     def test_oneshot_history_records_error(self):
         from media_stack.cli.commands import controller_main
+        from media_stack.cli.workflows import (
+            controller_oneshot_runner as _runner_mod,
+        )
         import argparse
         args = argparse.Namespace(
             config="/dev/null", config_root=self._tmpdir,
@@ -287,11 +294,11 @@ class TestCronOneShotWritesHistory(_HistoryDirMixin, unittest.TestCase):
         fake_runner = MagicMock()
         fake_runner.run = MagicMock(side_effect=RuntimeError("boom"))
         with patch.object(
-            controller_main, "_build_runner",
+            _runner_mod, "_build_runner",
             return_value=(fake_runner, MagicMock()),
         ):
             with self.assertRaises(RuntimeError):
-                controller_main.ControllerMainCommand._run_oneshot(args)
+                controller_main._run_oneshot(args)
         history = get_job_history()
         self.assertEqual(history[0]["source"], "cron:media-hygiene")
         self.assertEqual(history[0]["errors"], 1)
