@@ -188,7 +188,12 @@ class PlaywrightScreenshotsMain:
         if stack_user:
             info(f"Screenshot auth user: {stack_user}")
 
-        playwright_dir = root_dir / "tests" / "e2e" / "playwright"
+        # ``tests/browser/`` is the Playwright project root (has its
+        # own ``package.json`` + ``playwright.config.ts``). Earlier
+        # revisions of this script pointed at ``tests/e2e/playwright/``
+        # which doesn't exist in this tree — the screenshot tool would
+        # fail with "no spec found" against the stale path.
+        playwright_dir = root_dir / "tests" / "browser"
         _ensure_node_modules(playwright_dir)
 
         env = {

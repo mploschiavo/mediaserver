@@ -261,27 +261,73 @@ test.describe('UI screenshot capture', () => {
   }
 
   // Controller dashboard — accessed directly on port 9100, not via ingress.
+  //
+  // Walks every top-level route under ``ui/src/routes/`` and saves one
+  // PNG per page. The list is the union of every route file the UI
+  // ships (excluding ``__root.tsx`` and the splat / placeholder
+  // catch-alls). Keep this in sync when adding a new page — the
+  // ratchet at ``tests/unit/ratchets/test_screenshot_route_coverage.py``
+  // pins the list against the route filesystem so a missed entry
+  // surfaces in CI.
   const controllerPort = process.env.CONTROLLER_PORT || '9100';
-  test('capture controller dashboard', async ({ browser }) => {
-    const context = await browser.newContext({
-      viewport: { width: 1680, height: 945 },
-    });
-    const page = await context.newPage();
-    const url = `http://${nodeIp}:${controllerPort}/`;
-    try {
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-      // Wait for dashboard data to populate.
-      await page.waitForTimeout(4000);
-      if (response && !acceptableStatusCodes.has(response.status()) && strictMode) {
-        expect(acceptableStatusCodes.has(response.status()), `Controller returned HTTP ${response.status()}`).toBeTruthy();
+  const controllerRoutes: { name: string; path: string }[] = [
+    { name: 'dashboard', path: '/' },
+    { name: 'apps', path: '/apps' },
+    { name: 'jobs', path: '/jobs' },
+    { name: 'ops', path: '/ops' },
+    { name: 'routing', path: '/routing' },
+    { name: 'auth', path: '/auth' },
+    { name: 'security', path: '/security' },
+    { name: 'users', path: '/users' },
+    { name: 'sessions', path: '/sessions' },
+    { name: 'bans', path: '/bans' },
+    { name: 'audit-log', path: '/audit-log' },
+    { name: 'logs', path: '/logs' },
+    { name: 'media-integrity', path: '/media-integrity' },
+    { name: 'guardrails', path: '/guardrails' },
+    { name: 'livetv', path: '/livetv' },
+    { name: 'content', path: '/content' },
+    { name: 'snapshots', path: '/snapshots' },
+    { name: 'webhooks', path: '/webhooks' },
+    { name: 'api-docs', path: '/api-docs' },
+    { name: 'me', path: '/me' },
+    { name: 'about', path: '/about' },
+  ];
+
+  for (const { name, path: routePath } of controllerRoutes) {
+    test(`capture controller ${name}`, async ({ browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 1680, height: 945 },
+      });
+      const page = await context.newPage();
+      const url = `http://${nodeIp}:${controllerPort}${routePath}`;
+      try {
+        const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        // Wait for the SPA to hydrate + data to load. Each panel
+        // fires its own queries on mount; 4s is enough margin for
+        // the typical bootstrap-state snapshot to land before the
+        // screenshot fires.
+        await page.waitForTimeout(4000);
+        if (response && !acceptableStatusCodes.has(response.status()) && strictMode) {
+          expect(
+            acceptableStatusCodes.has(response.status()),
+            `Controller ${routePath} returned HTTP ${response.status()}`,
+          ).toBeTruthy();
+        }
+      } catch (err) {
+        console.warn(`[WARN] Controller route ${routePath} not reachable at ${url}: ${err}`);
       }
-    } catch (err) {
-      // Controller may not be directly reachable (e.g., ClusterIP only).
-      // Try via kubectl port-forward target or NodePort.
-      console.warn(`[WARN] Controller dashboard not reachable at ${url}: ${err}`);
-    }
-    const filePath = path.join(screenshotDir, 'controller_dashboard.png');
-    await page.screenshot({ path: filePath, fullPage: true });
-    await context.close();
-  });
+      // Filename pattern: ``controller_<route>.png`` — keeps the
+      // pre-existing ``controller_dashboard.png`` filename and
+      // adds per-route siblings. Replaces ``/`` and ``-`` in the
+      // route name with ``_`` so the filesystem doesn't carry the
+      // route-syntax noise.
+      const filePath = path.join(
+        screenshotDir,
+        `controller_${name.replace(/[\/-]/g, '_')}.png`,
+      );
+      await page.screenshot({ path: filePath, fullPage: true });
+      await context.close();
+    });
+  }
 });
