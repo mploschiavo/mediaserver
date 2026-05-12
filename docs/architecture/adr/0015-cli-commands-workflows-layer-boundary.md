@@ -602,6 +602,7 @@ commit body.
 | Phase 7i — `reset_admin_main.py` + `apply_scale_policy_main.py` + `deploy_verify_main.py` | **landed** (2026-05-11) | `abfe20cf` |
 | Phase 7j — `controller_main._run_oneshot` extract + bulk `@staticmethod` fold (16 statics across 7 files) | **landed** (2026-05-11) | `674fb972` |
 | Phase 7k — move 3 controller siblings to workflows (`controller_k8s`, `controller_dispatch`, `controller_profile`) | **landed** (2026-05-11) | `309df71b` |
+| Phase 7l — extract 4 small-to-mid CLI commands to workflows (`setup_lan_tls`, `backup_stack`, `restore_stack`, `render_architecture_diagrams`) | **landed** (2026-05-11) | `62e103ab` |
 
 ---
 
