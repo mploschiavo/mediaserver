@@ -65,6 +65,14 @@ plugin:
       handler: media_stack.adapters.qbittorrent.lifecycle:ensure_credentials
       label: "Verify qBittorrent stack-admin credentials"
       satisfies: [qbittorrent-credentials-synced]
+      # Has to run in ``pre_bootstrap`` (before run-legacy-pipeline,
+      # which gates on ``qbittorrent-credentials-synced``).
+      # Priority 5 puts it ahead of discover-api-keys (10) and
+      # run-legacy-pipeline (20) so qBit's auth whitelist + the
+      # stack-admin password are in place before the legacy pipeline
+      # tries its first qBit WebUI login.
+      phase: pre_bootstrap
+      priority: 5
       requires: []
   event_handlers:
     ACQUIRE:
