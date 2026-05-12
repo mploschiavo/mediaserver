@@ -364,9 +364,28 @@ class _AuthPolicy:
         }).encode("utf-8")
         handler.send_response(HTTPStatus.UNAUTHORIZED)
         handler.send_header("Content-Type", "application/json; charset=utf-8")
-        handler.send_header(
-            "WWW-Authenticate", 'Basic realm="Media Stack Controller"',
-        )
+        # The ``WWW-Authenticate: Basic`` header is what makes the
+        # browser pop its native Basic-auth dialog on a 401. That
+        # popup is BROKEN UX in two scenarios:
+        #
+        # 1. XHR / fetch from the dashboard — the JS caller will
+        #    inspect the 401 and route the user to the real login.
+        #    Popping a Basic dialog over an XHR response confuses
+        #    the user (they can't authenticate against it — the
+        #    actual auth is Authelia / OIDC behind Envoy).
+        # 2. Browser nav when CONTROLLER_LOGIN_URL is set — the
+        #    302-redirect branch above already handled it; we never
+        #    reach this line in that case. But if the operator left
+        #    the env unset on a deploy that DOES have Authelia
+        #    fronting via Envoy, the popup is still wrong.
+        #
+        # So emit Basic only for direct (non-browser, non-XHR)
+        # clients with no login URL — that's curl + API clients,
+        # the only audience for which the popup makes sense.
+        if not login_url and is_browser:
+            handler.send_header(
+                "WWW-Authenticate", 'Basic realm="Media Stack Controller"',
+            )
         handler.send_header(_H_CONTENT_LENGTH, str(len(body)))
         self.emit_security_headers(handler)
         handler.end_headers()
