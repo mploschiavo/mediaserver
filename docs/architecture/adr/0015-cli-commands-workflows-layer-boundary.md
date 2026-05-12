@@ -603,6 +603,7 @@ commit body.
 | Phase 7j — `controller_main._run_oneshot` extract + bulk `@staticmethod` fold (16 statics across 7 files) | **landed** (2026-05-11) | `674fb972` |
 | Phase 7k — move 3 controller siblings to workflows (`controller_k8s`, `controller_dispatch`, `controller_profile`) | **landed** (2026-05-11) | `309df71b` |
 | Phase 7l — extract 4 small-to-mid CLI commands to workflows (`setup_lan_tls`, `backup_stack`, `restore_stack`, `render_architecture_diagrams`) | **landed** (2026-05-11) | `62e103ab` |
+| Phase 7m — extract 4 boot-prep helpers from `controller_serve` onto `ControllerBootPreparation` (`resolve_config_path`, `opt_out_of_legacy_media_server_adapter`, `apply_boot_profile`, `predispatch_api_keys`) | **landed** (2026-05-12) | `1f826458` |
 
 ---
 
