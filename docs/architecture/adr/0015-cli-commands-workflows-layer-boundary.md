@@ -1,14 +1,14 @@
 # ADR-0015 — CLI layer boundary: commands as entry-points, workflows as services
 
 **Status:** All planned phases landed (latest: Phase 7m on
-2026-05-12 at `1f826458` — `controller_serve` boot-prep extraction).
+2026-05-12 at `40564335` — `controller_serve` boot-prep extraction).
 The phase table below records the full sequence. Phase 3
-(deploy config consolidation, `ac75320e`) collapsed the four-bug
-parade to one isolated bug; Phase 3b/3c (`9477cb92`/`7f064f3e`)
+(deploy config consolidation, `bed4507a`) collapsed the four-bug
+parade to one isolated bug; Phase 3b/3c (`460241ed`/`90d73f56`)
 applied the SRP split the original audit had asked for; Phases
 4–7m migrated the remaining orchestration + per-command classes
 into `cli/workflows/`, leaving `cli/commands/` as thin entry-point
-shims gated by the boundary ratchet from Phase 6 (`4e478e30`).
+shims gated by the boundary ratchet from Phase 6 (`1e4cbf88`).
 
 Authors: matthew
 
@@ -110,7 +110,7 @@ the god-class ratchet's 500-line cap).
 
 ### What Phase 3 taught us
 
-Phase 3 landed at `ac75320e` and **achieved its stated goal** —
+Phase 3 landed at `bed4507a` and **achieved its stated goal** —
 the four bugs collapsed to one isolated bug, the two parallel
 resolvers became one. But the operator caught a problem the
 original audit had named that the Phase 3 commit reproduced
@@ -282,7 +282,7 @@ through this session — there's one resolver, so there's one place
 new hook fields can be missed. The four open deploy-CLI bugs likely
 collapse into one focused fix once the duplication is removed.
 
-**Phase 3 status (2026-05-11):** Landed at commit `ac75320e`. Goal
+**Phase 3 status (2026-05-11):** Landed at commit `bed4507a`. Goal
 met (one resolver, one source of truth, the bug parade collapsed
 to one isolated bug in `bootstrap_config_generator.py`). But —
 the consolidation reproduced the god-class smell the audit had
@@ -473,7 +473,7 @@ Sub-phases:
   "behaviour-affecting" phases so Phase 1's narrower exceptions catch
   any regressions cleanly, and Phase 2 has already proved the
   shim-then-delete pattern works. **Phase 3 landed first in
-  practice** (commit `ac75320e`, ahead of Phases 1 + 2) because the
+  practice** (commit `bed4507a`, ahead of Phases 1 + 2) because the
   bug parade was actively blocking work; the trade-off was deliberate
   but the OO-quality smell that surfaced is the reason Phase 3b exists.
 * **Phase 3b** is the immediate follow-up. The Facade-with-6-resolvers
@@ -585,27 +585,27 @@ commit body.
 
 | Phase | Status | Landed commit |
 |---|---|---|
-| Phase 1 — Narrow exceptions | **landed** (2026-05-11) | `fddcfe12` |
-| Phase 2 — Unify script runners | **landed** (2026-05-11) | `376734ef` |
-| Phase 3 — Deploy config consolidation | **landed** (2026-05-11) | `ac75320e` |
-| Phase 3b — SRP split + Facade for `DeployConfigService` | **landed** (2026-05-11) | `9477cb92` |
-| Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | **landed** (2026-05-11) | `7f064f3e` |
-| Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | **landed** (2026-05-11) | `ecf7a9ec` |
-| Phase 5 — `maintenance.py` migration | **landed** (2026-05-11) | `7b5cefda` |
-| Phase 6 — Boundary ratchet + cleanup | **landed** (2026-05-11) | `4e478e30` |
-| Phase 7a — `Microk8sReconcileRunner` migration | **landed** (2026-05-11) | `51581dc8` |
-| Phase 7b — `ValidateControllerConfigCommand` migration | **landed** (2026-05-11) | `9bfa7c74` |
-| Phase 7c — `RunBootstrapJobRunner` migration | **landed** (2026-05-11) | `ef2359d7` |
-| Phase 7d — `ControllerAllRunner` migration | **landed** (2026-05-11) | `94e881a5` |
-| Phase 7e — `controller_serve.py` audit + extract | **landed** (2026-05-11) | `e9b5d967` |
-| Phase 7f — `release_pipeline_main.py` split | **landed** (2026-05-11) | `5dd9e0b3` |
-| Phase 7g — `dup_burndown_main.py` + `set_pvc_storage_class_main.py` | **landed** (2026-05-11) | `5c92c307` |
-| Phase 7h — `watch_install_main.py` + `orchestrator_eval_main.py` + `microk8s_smoke_test_main.py` | **landed** (2026-05-11) | `dd60bd48` |
-| Phase 7i — `reset_admin_main.py` + `apply_scale_policy_main.py` + `deploy_verify_main.py` | **landed** (2026-05-11) | `abfe20cf` |
-| Phase 7j — `controller_main._run_oneshot` extract + bulk `@staticmethod` fold (16 statics across 7 files) | **landed** (2026-05-11) | `674fb972` |
-| Phase 7k — move 3 controller siblings to workflows (`controller_k8s`, `controller_dispatch`, `controller_profile`) | **landed** (2026-05-11) | `309df71b` |
-| Phase 7l — extract 4 small-to-mid CLI commands to workflows (`setup_lan_tls`, `backup_stack`, `restore_stack`, `render_architecture_diagrams`) | **landed** (2026-05-11) | `62e103ab` |
-| Phase 7m — extract 4 boot-prep helpers from `controller_serve` onto `ControllerBootPreparation` (`resolve_config_path`, `opt_out_of_legacy_media_server_adapter`, `apply_boot_profile`, `predispatch_api_keys`) | **landed** (2026-05-12) | `1f826458` |
+| Phase 1 — Narrow exceptions | **landed** (2026-05-11) | `d83e6892` |
+| Phase 2 — Unify script runners | **landed** (2026-05-11) | `0b8f1e13` |
+| Phase 3 — Deploy config consolidation | **landed** (2026-05-11) | `bed4507a` |
+| Phase 3b — SRP split + Facade for `DeployConfigService` | **landed** (2026-05-11) | `460241ed` |
+| Phase 3c — SRP split for `DeployCliConfigService` + `RunControllerJobCliConfigService` | **landed** (2026-05-11) | `90d73f56` |
+| Phase 4 — Deploy pipeline migration (with SRP split per 3b precedent) | **landed** (2026-05-11) | `c6bd0e9c` |
+| Phase 5 — `maintenance.py` migration | **landed** (2026-05-11) | `03180b11` |
+| Phase 6 — Boundary ratchet + cleanup | **landed** (2026-05-11) | `1e4cbf88` |
+| Phase 7a — `Microk8sReconcileRunner` migration | **landed** (2026-05-11) | `8f33221d` |
+| Phase 7b — `ValidateControllerConfigCommand` migration | **landed** (2026-05-11) | `dd4a82bf` |
+| Phase 7c — `RunBootstrapJobRunner` migration | **landed** (2026-05-11) | `c5f438d9` |
+| Phase 7d — `ControllerAllRunner` migration | **landed** (2026-05-11) | `a4a5593c` |
+| Phase 7e — `controller_serve.py` audit + extract | **landed** (2026-05-11) | `0eaff09c` |
+| Phase 7f — `release_pipeline_main.py` split | **landed** (2026-05-11) | `4505d4a6` |
+| Phase 7g — `dup_burndown_main.py` + `set_pvc_storage_class_main.py` | **landed** (2026-05-11) | `55d6aac5` |
+| Phase 7h — `watch_install_main.py` + `orchestrator_eval_main.py` + `microk8s_smoke_test_main.py` | **landed** (2026-05-11) | `74885ec3` |
+| Phase 7i — `reset_admin_main.py` + `apply_scale_policy_main.py` + `deploy_verify_main.py` | **landed** (2026-05-11) | `0c6e5cba` |
+| Phase 7j — `controller_main._run_oneshot` extract + bulk `@staticmethod` fold (16 statics across 7 files) | **landed** (2026-05-11) | `35d012ce` |
+| Phase 7k — move 3 controller siblings to workflows (`controller_k8s`, `controller_dispatch`, `controller_profile`) | **landed** (2026-05-11) | `9b10d77a` |
+| Phase 7l — extract 4 small-to-mid CLI commands to workflows (`setup_lan_tls`, `backup_stack`, `restore_stack`, `render_architecture_diagrams`) | **landed** (2026-05-11) | `60b8c313` |
+| Phase 7m — extract 4 boot-prep helpers from `controller_serve` onto `ControllerBootPreparation` (`resolve_config_path`, `opt_out_of_legacy_media_server_adapter`, `apply_boot_profile`, `predispatch_api_keys`) | **landed** (2026-05-12) | `40564335` |
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0007 — OpenAPI-driven API request routing
 
 **Status:** ✅ **Implemented (2026-05-04).** Phase 1 (router foundation)
-landed at `e4c9b5b4`; Phase 2 (domain migration) closed at `21c876ff`
+landed at `e9b3a595`; Phase 2 (domain migration) closed at `26f3e638`
 after 8 waves. The legacy `handlers_get.py` + `handlers_post.py`
 chain (~5,360 LoC) is deleted; all 240 routes flow through the
 OpenAPI Router. See the [Status as of 2026-05-04](#status-as-of-2026-05-04)
@@ -40,17 +40,17 @@ in elif chains.
 
 | Commit | Wave | Routes added | New modules |
 |---|---|---|---|
-| `e38f9112` | 1 | first proof + 1 domain | health |
-| `3a949727` | 2 | 20 routes / 6 domains | indexers_quality + 5 |
-| `91efc0ec` | 3+4 | ~55 routes / 14 domains | 13 parallel-agent modules (auth, downloads, epg, envoy, logs, routing_admin, probes_dns_tls, system_diag, content_lists, config, branding_user, security_audit, ops, stack_backup, jobs, misc_legacy) |
-| `c9f8c30c` | 5 | 67 routes / 8 domains | 8 modules |
-| `9439299b` | 5+ | re-home /api/schedules | schedules.py |
-| `77f60652` | 6 | 20 routes / 4 modules | post_jobs_queue, post_user_resources, post_content_config, webhooks_and_deferred |
-| `2b7a013e` | (B) | snake_case path-params + 2 ratchets | (no new routes; case-normalization sweep) |
-| `a98a1ef6` | 7 | 4 routes | snapshots, auth_password_tickets + 2 routes folded into ops.py |
-| `6e6fde13` | 8 | 40 routes / 11 modules | post_users, post_user_sessions, post_roles, post_tokens, post_me, post_schedules_crud, post_bans, post_media_integrity, post_indexers_import_lists, post_misc + Router infra-allowlist |
-| `a903572e` | (D) | parity flip + structural ratchet upgrade | (gate work) |
-| `21c876ff` | (E) | **cleanup** — delete legacy files, lift helpers, retighten ratchets | 9 service modules |
+| `10dd1f0d` | 1 | first proof + 1 domain | health |
+| `5552f5c2` | 2 | 20 routes / 6 domains | indexers_quality + 5 |
+| `9f24f947` | 3+4 | ~55 routes / 14 domains | 13 parallel-agent modules (auth, downloads, epg, envoy, logs, routing_admin, probes_dns_tls, system_diag, content_lists, config, branding_user, security_audit, ops, stack_backup, jobs, misc_legacy) |
+| `8c791162` | 5 | 67 routes / 8 domains | 8 modules |
+| `5771e333` | 5+ | re-home /api/schedules | schedules.py |
+| `c8fd226b` | 6 | 20 routes / 4 modules | post_jobs_queue, post_user_resources, post_content_config, webhooks_and_deferred |
+| `0e930d93` | (B) | snake_case path-params + 2 ratchets | (no new routes; case-normalization sweep) |
+| `9c8bf00f` | 7 | 4 routes | snapshots, auth_password_tickets + 2 routes folded into ops.py |
+| `9cd9c6af` | 8 | 40 routes / 11 modules | post_users, post_user_sessions, post_roles, post_tokens, post_me, post_schedules_crud, post_bans, post_media_integrity, post_indexers_import_lists, post_misc + Router infra-allowlist |
+| `597841c9` | (D) | parity flip + structural ratchet upgrade | (gate work) |
+| `26f3e638` | (E) | **cleanup** — delete legacy files, lift helpers, retighten ratchets | 9 service modules |
 
 ### Net diff: -3,913 LoC
 
@@ -501,7 +501,7 @@ phase. Reversibility:
   ``api/routes/<domain>.py`` deletion + restoration of the legacy
   ``elif`` branches. ~5-minute revert per domain.
 
-## Phase 1 deliverables (✅ shipped at `e4c9b5b4` and prior)
+## Phase 1 deliverables (✅ shipped at `e9b3a595` and prior)
 
 - Fix ``/metrics`` shadow at
   ``src/media_stack/api/handlers_get.py:1273``.
@@ -526,7 +526,7 @@ phase. Reversibility:
   ``handlers_{get,post}.handle()`` only goes DOWN. Phase 2 drives
   it to zero.
 
-## Phase 2 deliverables (✅ shipped at `21c876ff`)
+## Phase 2 deliverables (✅ shipped at `26f3e638`)
 
 Original plan called for ~18 commits, one per domain. Actual
 rollout was 8 waves (the first few bundled multiple domains via
@@ -537,7 +537,7 @@ above for the detailed mapping.
 - ✅ All 240 routes migrated into `api/routes/*.py` modules
   (41 RouteModule classes total).
 - ✅ `api/handlers_get.py` + `api/handlers_post.py` deleted in
-  the cleanup commit (`21c876ff`); helpers extracted into 9
+  the cleanup commit (`26f3e638`); helpers extracted into 9
   service modules.
 - ✅ The legacy fallback in `server.py` is removed; `do_GET` /
   `do_POST` call `router.dispatch(...)` directly. NO_MATCH

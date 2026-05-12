@@ -18,11 +18,11 @@ a thin shim that delegates to the same lifecycle method.
 
 | Commit     | Phase | Summary                                                                                  |
 |------------|-------|------------------------------------------------------------------------------------------|
-| `38d96718` | doc   | ADR-0013 created                                                                          |
-| `06259a44` | doc   | Clarification: relationship to ADR-0003 / ADR-0010 (no regression on lifecycle pattern)   |
-| `f2f7f963` | 2     | qBittorrent verify-only ensurer: `probe_credentials_synced` + `ensure_credentials` + contract entry + promise |
-| `1c1d74a5` | 3     | `ContainerAccess` Protocol in domain + `ComposeContainerAccess` in infra + `LifecycleResolver` wires `extra["container_access"]` + qBit `ensure_credentials` upgraded to verify+rotate |
-| `0d857a5a` | 3b    | `K8sContainerAccess` (kubectl-backed) + `LifecycleResolver` detects platform + `compose_preflight` body retired (now a 30-line shim that calls the lifecycle) |
+| `49d4999d` | doc   | ADR-0013 created                                                                          |
+| `18effa24` | doc   | Clarification: relationship to ADR-0003 / ADR-0010 (no regression on lifecycle pattern)   |
+| `00ae44d4` | 2     | qBittorrent verify-only ensurer: `probe_credentials_synced` + `ensure_credentials` + contract entry + promise |
+| `1aa06cc8` | 3     | `ContainerAccess` Protocol in domain + `ComposeContainerAccess` in infra + `LifecycleResolver` wires `extra["container_access"]` + qBit `ensure_credentials` upgraded to verify+rotate |
+| `2125bbcb` | 3b    | `K8sContainerAccess` (kubectl-backed) + `LifecycleResolver` detects platform + `compose_preflight` body retired (now a 30-line shim that calls the lifecycle) |
 
 **One body, two entry points** (the end-state Phase 3b achieved):
 
@@ -412,7 +412,7 @@ must not introduce new bespoke paths or regressions:
   one-path-only philosophy applied to module-level functions; this
   ADR applies it to dispatch paths.
 
-Hotfix bridge that surfaced this ADR: commit `be8a1655` (2026-05-10
+Hotfix bridge that surfaced this ADR: commit `65145b9e` (2026-05-10
 v1.0.328) added `_make_lifecycle_wrapper` to `application/jobs/
 framework.py` so the framework's `JobContext` translates to
 `OrchestrationContext` before invoking lifecycle handlers. The fix

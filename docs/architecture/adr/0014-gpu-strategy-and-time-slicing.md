@@ -10,8 +10,8 @@ Authors: matthew
 
 The 2026-05-10 GPU rollout landed an NVIDIA Tesla P4 (Pascal, 8 GB,
 6th-gen NVENC) on the microk8s cluster. A new
-`deploy/k8s/overlays/nvidia/` overlay (commit `06d7620b`, refined
-in `1f8d8aa8`) attaches the GPU to the Jellyfin Deployment via
+`deploy/k8s/overlays/nvidia/` overlay (commit `4bfbb4f2`, refined
+in `68a2d592`) attaches the GPU to the Jellyfin Deployment via
 `nvidia.com/gpu: 1` + `runtimeClassName: nvidia`. The controller's
 `JellyfinGpu` lifecycle reconciles `system.xml` with
 `<HardwareAccelerationType>nvenc</HardwareAccelerationType>` +
@@ -334,9 +334,9 @@ NVENC AV1 you trade quality vs throughput.
   (Phase 5 backlog there) will tick this same hardware path on
   every reconcile. No change to that plan.
 * Commits that landed the current single-consumer GPU support:
-  * `06d7620b` — nvidia overlay + controller k8s detection
-  * `a6f457c8` — switch from kubectl shell to k8s python client
-  * `1f8d8aa8` — `strategy: Recreate` for single-GPU rollouts
+  * `4bfbb4f2` — nvidia overlay + controller k8s detection
+  * `b9bbb72f` — switch from kubectl shell to k8s python client
+  * `68a2d592` — `strategy: Recreate` for single-GPU rollouts
 * NVIDIA references:
   * Time-slicing config schema:
     https://github.com/NVIDIA/k8s-device-plugin#shared-access-to-gpus

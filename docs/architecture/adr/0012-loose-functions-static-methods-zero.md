@@ -13,7 +13,7 @@ landed across roughly twelve hours of session time (with one ~12-hour
 working-tree revert mid-session that was redone), ultimately driving the
 LOOSE / NO-CLASS ratchets to their effective floor.
 
-**Final pin values** (committed in `914392f9`):
+**Final pin values** (committed in `2c1184ac`):
 
 | Ratchet                         | Original | Final | Delta |
 |---------------------------------|---------:|------:|------:|
@@ -71,9 +71,9 @@ through waves 4–9 from agent prompts that only enforced LOOSE_FUNCTIONS):
     `sys.modules[__name__]` so module-level patches still intercept.
 
 **Commits in waves 4–14 (this session)**:
-`4d7150d2`, `83aca4a8`, `2c62dce1`, `7ffe8eaa`, `2f26a9a9`, `7e28e53a`,
-`84b97b02`, `5a04d77d`, `f5079da3`, `65af5ab9`, `48aaca5c`, `97e9edb4`,
-`bbf5569f`, `914392f9`. Each wave commits + pushes immediately so the
+`962f5124`, `f6a96323`, `40b10905`, `dea327e7`, `4a4444ea`, `48a825e3`,
+`956c6a8c`, `4d90b862`, `851b6024`, `438242e9`, `2166b1c1`, `b3666111`,
+`7cf2b1c0`, `2c1184ac`. Each wave commits + pushes immediately so the
 working-tree-revert incident at the start of the session can't recur.
 
 ## Original context (2026-05-08, pre-session)
@@ -134,7 +134,7 @@ lock-in.
    through the module alias rather than ``self.helper()`` (lesson
    from this session's ``run_history._path`` patch).
 4. **15-method / 500-line ceiling.** Split into sibling helper classes
-   (BazarrAdapter pattern, commit ``a9992829``) when a single class
+   (BazarrAdapter pattern, commit ``022ecd4d``) when a single class
    would exceed.
 5. **Type hints on public methods.** Pre-empt
    ``NO_TYPE_HINTS_PUBLIC_METHODS`` regressions by adding ``-> X``
@@ -168,7 +168,7 @@ Execution: 6-agent parallel batches at the proven pattern. ~7-8 batches
 Each needs a one-off design, not the generic pattern.
 
 * ``adapters/jellyfin/lifecycle.py`` (7 helpers) — extend the existing
-  ``LifecycleApiKeyHelpers`` pattern (commit ``99160ab8``) to a
+  ``LifecycleApiKeyHelpers`` pattern (commit ``08c36f8c``) to a
   ``JellyfinLifecycleApiKeyHelpers`` subclass with the wider helper
   surface (``_api_key_db_path``, ``_config_root``, ``_bool_cfg``,
   ``_coerce_list``, ``_resolve_path``). Inject via ``ClassVar`` like
@@ -225,7 +225,7 @@ Target: ``LOOSE_FUNCTIONS_RATCHET`` −1 + eases the way for Phase E
 This module is the single biggest cyclic-import magnet (per ADR-0011:
 56 of the 119 inverted-direction imports go through it). ADR-0011
 Phase 2.1 already moved it from ``api/services/`` to
-``core/service_registry/`` (commit ``652128d5``). The 21 loose helpers
+``core/service_registry/`` (commit ``ad7d3ee7``). The 21 loose helpers
 remain.
 
 **Design**: split into 3 classes during the next ADR-0011 increment:
@@ -290,8 +290,8 @@ ADR-0011 already maps the path. Status as of this writing:
 
 | Sub-phase | Status | Description |
 |---|---|---|
-| 1 — domain leaf | ✅ done (commit ``45716dea``) | zero inverted-direction out of ``domain/`` |
-| 2.1 — registry → core | ✅ done (commit ``652128d5``); deferred-import sweep is Phase D of THIS ADR | |
+| 1 — domain leaf | ✅ done (commit ``6e9ed002``) | zero inverted-direction out of ``domain/`` |
+| 2.1 — registry → core | ✅ done (commit ``ad7d3ee7``); deferred-import sweep is Phase D of THIS ADR | |
 | 2.2 — config | pending | ``api/services/config.py`` → ``application/service_registry/config.py`` (~10 inverted refs) |
 | 2.3 — key_formats | pending | ``api/services/key_formats.py`` → ``core/key_formats/`` (~8 inverted refs) |
 | 2.4 — health | pending | ``api/services/health.py`` → ``application/service_health/`` (~8 inverted refs); class refactor (``ContainerListProbe``) already done in this session — relocation is the next step |

@@ -255,7 +255,7 @@ limits blast radius:
   load-bearing for non-orchestrator flows (bootstrap pre-controller
   hooks, JobRunner-driven jobs, manual/cron invocations). Honest
   scope:
-  - **5e.1** (shipped, `53da33e`): extract `_evaluate` from
+  - **5e.1** (shipped, `4f8eb20`): extract `_evaluate` from
     probe_promises CLI to `infrastructure/promises/assert_eval.py`
     so the CLI can be retired independently.
   - **5e.2** (blocked on ADR-0004 Phase 6.4): delete

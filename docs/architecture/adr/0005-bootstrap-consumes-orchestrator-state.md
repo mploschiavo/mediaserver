@@ -83,21 +83,21 @@ Phase 5b started 2026-05-07:
   ``ensure-arr-download-client``). Promises ``sonarr-download
   -client`` / ``radarr-download-client`` flipped to lifecycle
   dispatch; legacy job lost ``phase: post`` + ``priority: 85``.
-  Commit ``530aebb9``.
+  Commit ``6d206948``.
 * **5b.1b** — ``JellyfinLibrariesWirer`` (10th wirer, closing
   the last ``ensured_by: ensure-*`` string-form snowflake).
   Promise ``jellyfin-libraries`` flipped to lifecycle dispatch;
   legacy ``ensure-jellyfin-libraries`` lost ``phase: post``.
-  Commit ``272ff685``.
+  Commit ``6e10a7b1``.
 * **5b.2** — ``POST /api/lifecycle-ensurers/{service}/{method}``
   endpoint + ``LifecycleEnsurerInvoker`` service. Same
   ``dispatch_ensurer`` mechanism the orchestrator uses; three
   callers (orchestrator-tick, operator-UI, auto-heal) sharing
-  one path. Commit ``269eac1a``.
+  one path. Commit ``994a4522``.
 * **5b.3** — ``useRunLifecycleEnsurer`` UI hook for future
   operator-dashboard "Run now" surfaces. Audit found zero
   production ``useRunAction("ensure-X")`` literals today; hook
-  ships ready for use. Commit ``d5959952``.
+  ships ready for use. Commit ``988cbce8``.
 * **5b.4** — Auto-heal migration: NO-OP. Audit confirmed
   ``AutoHealService.run_cycle()`` already routes through the
   orchestrator's ``dispatch_ensurer`` path via
@@ -110,19 +110,19 @@ Unblocks ADR-0003 Phase 5e.3+ deletions.
 **Status update 2026-05-08** — Phase 5b complete, Phase 5c
 substantially landed:
 
-* **5b.5** (commit ``fee8897c``) — legacy ``ensure-*``
+* **5b.5** (commit ``64569413``) — legacy ``ensure-*``
   registration shells deleted from ``core.yaml`` +
   ``jellyseerr.yaml``. New flat ratchet
   (``test_no_string_ensure_ensured_by``) pins the invariant:
   every ``ensured_by`` is either ``{type: lifecycle, ...}``
   or a top-level operational job in an explicit allowlist.
-* **5c.1 wide** (commit ``515e7b37``) — added 5 new
+* **5c.1 wide** (commit ``61858242``) — added 5 new
   ``*-api-key-discoverable`` lifecycle promises (sonarr,
   radarr, lidarr, readarr, jellyseerr); migrated
   ``discover-api-keys`` to ``orchestrator.satisfy_scope([6
   ids])``; deleted ``_run_preflights``. Every service's
   API-key discovery flows through the orchestrator now.
-* **5c.4 (partial)** (commit ``9dc6761e``) — retired the
+* **5c.4 (partial)** (commit ``89a46b6d``) — retired the
   subprocess-per-action machinery
   (``_MP_CTX`` / ``_action_worker`` / ``_SubprocessState``).
   Every action runs through ``_dispatch_action -> JobRunner.run``
@@ -151,18 +151,18 @@ defense; this is the principled-pair on the controller side. The
 flag itself goes away in 5c.4 once bootstrap is a normal
 Job-framework job (run history is the single source of truth).
 
-Phase 3 final state (final wave shipped at ``e4c9b5b4``):
+Phase 3 final state (final wave shipped at ``e9b3a595``):
 
 | Wirer class | Promises covered | Reference commit |
 |---|---|---|
-| ``JellyfinNotifierWirer`` | sonarr/radarr/lidarr ``-jellyfin-notifier`` (3) | ``1f13a8a6`` (proof-of-pattern) |
-| ``IndexerPipelineWirer`` | sonarr/radarr ``-has-indexers`` (2) | ``f241f639`` |
-| ``BazarrConfigWirer`` | 5 bazarr ``-*`` promises | ``f241f639`` |
-| ``JellyseerrConfigWirer`` | 3 jellyseerr ``-*`` promises | ``f241f639`` |
-| ``RuntimeDefaultsWirer`` | sonarr/radarr ``-quality-profiles`` + ``radarr-import-lists-auto`` (3) | ``e4c9b5b4`` |
-| ``SeedSeriesWirer`` | ``sonarr-has-series`` (1) | ``e4c9b5b4`` |
-| ``CategoriesWirer`` | ``qbittorrent-categories`` (1) | ``e4c9b5b4`` |
-| ``MaintainerrCollectionsWirer`` | ``maintainerr-rules-linked-to-arr`` (1) | ``e4c9b5b4`` |
+| ``JellyfinNotifierWirer`` | sonarr/radarr/lidarr ``-jellyfin-notifier`` (3) | ``ec122d5c`` (proof-of-pattern) |
+| ``IndexerPipelineWirer`` | sonarr/radarr ``-has-indexers`` (2) | ``48b8f1b6`` |
+| ``BazarrConfigWirer`` | 5 bazarr ``-*`` promises | ``48b8f1b6`` |
+| ``JellyseerrConfigWirer`` | 3 jellyseerr ``-*`` promises | ``48b8f1b6`` |
+| ``RuntimeDefaultsWirer`` | sonarr/radarr ``-quality-profiles`` + ``radarr-import-lists-auto`` (3) | ``e9b3a595`` |
+| ``SeedSeriesWirer`` | ``sonarr-has-series`` (1) | ``e9b3a595`` |
+| ``CategoriesWirer`` | ``qbittorrent-categories`` (1) | ``e9b3a595`` |
+| ``MaintainerrCollectionsWirer`` | ``maintainerr-rules-linked-to-arr`` (1) | ``e9b3a595`` |
 
 Across the wave, three patterns crystallized into the recipe (see
 ``ref_adr_0005_phase_3_cutover_recipe`` memory):
