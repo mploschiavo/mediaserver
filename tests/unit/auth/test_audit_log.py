@@ -71,6 +71,33 @@ class AuditLogTests(unittest.TestCase):
             entries = list(log.iter_entries())
             self.assertEqual(entries[0].detail, {"role": "adult", "count": 3})
 
+    def test_external_archive_resets_cache(self):
+        """When the operator archives the audit file out-of-band
+        (``mv audit.log.jsonl audit.log.jsonl.corrupted-…`` is the
+        documented recovery path for a tamper-evident chain), the
+        next ``append`` must start a fresh chain — prev_hash="" on
+        the new entry — instead of continuing from the cached tail
+        of the now-archived file. This guards the 2026-05-12 case
+        where the operator archive left the class-level
+        ``_LAST_HASH_CACHE`` pointing at the old file's last hash,
+        so the first append after archive wrote ``prev_hash=…fe32…``
+        when the entry should have been ``prev_hash=""``."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.log.jsonl"
+            log = AuditLog(path)
+            log.append(actor="a", action="x", target="t1")
+            log.append(actor="a", action="x", target="t2")
+            self.assertTrue(path.is_file())
+            # Operator archive (rename out of the way).
+            archived = path.with_suffix(".jsonl.corrupted")
+            path.rename(archived)
+            self.assertFalse(path.is_file())
+            # Next append must start a fresh chain.
+            entry = log.append(actor="a", action="x", target="t-fresh")
+            self.assertEqual(entry.prev_hash, "")
+            ok, detail = AuditLog(path).verify_chain()
+            self.assertTrue(ok, f"new chain should verify: {detail}")
+
     def test_separate_instances_same_path_share_lock(self):
         """Two ``AuditLog`` instances pointing at the same file must
         produce a valid chain when concurrent threads call ``append``

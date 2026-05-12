@@ -81,13 +81,21 @@ class AuditLog:
         rotation (handled in ``_rotate_if_needed``) so it never
         drifts from the live tail of the file. Callers MUST hold
         ``self._lock`` — the shared cache is only safe to read
-        under the shared write lock."""
-        cached = type(self)._LAST_HASH_CACHE.get(self._lock_key)
-        if cached is not None:
-            return cached
+        under the shared write lock.
+
+        File-presence is checked FIRST: when an operator archives
+        the file out-of-band (mv audit.log.jsonl audit.log.jsonl.
+        corrupted-2026-04-27 is the documented recovery path), the
+        cache must reset so the next append starts a fresh chain
+        with prev_hash = "" instead of continuing from the
+        now-archived tail.
+        """
         if not self._path.is_file():
             type(self)._LAST_HASH_CACHE[self._lock_key] = ""
             return ""
+        cached = type(self)._LAST_HASH_CACHE.get(self._lock_key)
+        if cached is not None:
+            return cached
         last = ""
         with self._path.open("r", encoding="utf-8") as f:
             for line in f:
