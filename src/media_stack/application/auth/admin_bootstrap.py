@@ -94,12 +94,20 @@ class AdminBootstrap:
         refuses to boot instead of shipping a well-known credential
         to the public internet.
         """
+        # Run the blocklist check on EVERY boot, not just first seed.
+        # An existing-superadmin shortcut used to swallow the WARN
+        # entirely when the operator booted with a weak
+        # STACK_ADMIN_PASSWORD on a previously-installed store. We
+        # still need the warning (or fatal, when internet_exposed)
+        # because env_password gets used as a fallback in the
+        # password-sync path even after the superadmin row exists.
+        password = self._env.get("STACK_ADMIN_PASSWORD", "").strip()
+        if password:
+            self._check_blocklist(password, internet_exposed)
         if self._has_active_superadmin(service):
             return {"action": "skipped", "reason": "existing_superadmin"}
-        password = self._env.get("STACK_ADMIN_PASSWORD", "").strip()
         if not password:
             return {"action": "skipped", "reason": "no_credential"}
-        self._check_blocklist(password, internet_exposed)
         username, email = self._resolve_identity()
         # If the source-of-truth already has an admin row (a deploy
         # from before Phase 1 wrote users_database.yml but never a

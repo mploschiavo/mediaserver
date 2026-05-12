@@ -36,15 +36,38 @@ class RoutingConfigService:
         )
 
     def get_profile(self) -> dict[str, Any]:
-        """Read and return the profile YAML (slim — app config sections stripped)."""
+        """Read and return the profile YAML (slim — app config sections stripped).
+
+        Returns both the parsed-and-slimmed ``profile`` dict (for
+        section-by-section rendering) AND the raw ``yaml`` text (for
+        the read-only excerpt panel + the editor). The UI's
+        ``EffectiveProfileCard`` / ``ProfileEditorCard`` both consumed
+        ``p.yaml`` against this endpoint and rendered "No profile
+        loaded" / an empty textarea when the field was missing —
+        symptom seen 2026-05-12 on both compose + k8s.
+        """
         profile_data, path = self._profile.load()
         if path is None:
-            return {"profile": None, "error": "Profile not found"}
+            return {"profile": None, "yaml": "", "error": "Profile not found"}
         ms_id = self._profile.media_server_id()
         strip_keys = STRIPPED_FROM_PROFILE | ({ms_id} if ms_id else set())
         moved = [k for k in (APP_CONFIG_SECTIONS | ({ms_id} if ms_id else set())) if k in profile_data]
         slim = {k: v for k, v in profile_data.items() if k not in strip_keys}
-        result: dict[str, Any] = {"profile": slim, "file": str(path)}
+        try:
+            raw_yaml = path.read_text(encoding="utf-8")
+        except OSError:
+            # File disappeared between ``load()`` (which cached the
+            # parsed dict) and now. Fall back to re-serialising the
+            # parsed dict so the UI still has something to render.
+            raw_yaml = yaml.safe_dump(
+                profile_data, default_flow_style=False,
+                sort_keys=False, allow_unicode=True,
+            )
+        result: dict[str, Any] = {
+            "profile": slim,
+            "yaml": raw_yaml,
+            "file": str(path),
+        }
         if moved:
             result["moved_to_app_config"] = moved
         return result

@@ -134,14 +134,38 @@ interface ProbeShape {
   ok?: boolean;
 }
 
+/**
+ * Convert the live ``/api/epg-health`` response (verified shape:
+ * ``{healthy, unhealthy, countries, providers, details}``) into a
+ * pass/fail/unknown breakdown the donut renders. Two earlier
+ * shapes the controller has never actually returned are still
+ * accepted for forward-compat — ``{probes: [...]}`` and
+ * ``{sources: [...]}`` — but the real path now reads ``healthy``
+ * + ``unhealthy`` (preferred) or walks ``details`` (per-country,
+ * per-provider boolean map) when the aggregates are missing.
+ *
+ * The pre-fix code only looked at ``probes`` / ``sources`` and
+ * always returned ``[]``, so the donut showed "No guide sources
+ * configured" even on a fully-healthy deploy with EPG providers
+ * actively probing — the bug the user reported 2026-05-12.
+ */
 function bucketHealth(
   raw: unknown,
 ): { status: string; count: number }[] {
   if (!raw || typeof raw !== "object") return [];
-  const probes =
+  const probesShape =
     (raw as { probes?: ProbeShape[] }).probes ??
     (raw as { sources?: ProbeShape[] }).sources ??
-    [];
+    null;
+  if (probesShape && probesShape.length > 0) {
+    return bucketFromProbes(probesShape);
+  }
+  return bucketFromAggregates(raw as Record<string, unknown>);
+}
+
+function bucketFromProbes(
+  probes: ProbeShape[],
+): { status: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const probe of probes) {
     if (!probe || typeof probe !== "object") continue;
@@ -157,4 +181,43 @@ function bucketHealth(
   }
   if (counts.size === 0) return [];
   return Array.from(counts, ([status, count]) => ({ status, count }));
+}
+
+function bucketFromAggregates(
+  raw: Record<string, unknown>,
+): { status: string; count: number }[] {
+  const healthy =
+    typeof raw.healthy === "number" ? raw.healthy : null;
+  const unhealthy =
+    typeof raw.unhealthy === "number" ? raw.unhealthy : null;
+  if (healthy !== null || unhealthy !== null) {
+    const buckets: { status: string; count: number }[] = [];
+    if ((healthy ?? 0) > 0) {
+      buckets.push({ status: "pass", count: healthy ?? 0 });
+    }
+    if ((unhealthy ?? 0) > 0) {
+      buckets.push({ status: "fail", count: unhealthy ?? 0 });
+    }
+    return buckets;
+  }
+  // ``details`` is the per-country per-provider boolean matrix —
+  // walk it when the aggregate counts are missing (older controller
+  // builds, or test fixtures).
+  const details = raw.details;
+  if (!details || typeof details !== "object") return [];
+  let pass = 0;
+  let fail = 0;
+  for (const perCountry of Object.values(
+    details as Record<string, Record<string, boolean>>,
+  )) {
+    if (!perCountry || typeof perCountry !== "object") continue;
+    for (const ok of Object.values(perCountry)) {
+      if (ok === true) pass += 1;
+      else if (ok === false) fail += 1;
+    }
+  }
+  const buckets: { status: string; count: number }[] = [];
+  if (pass > 0) buckets.push({ status: "pass", count: pass });
+  if (fail > 0) buckets.push({ status: "fail", count: fail });
+  return buckets;
 }

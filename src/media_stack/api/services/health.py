@@ -131,18 +131,42 @@ class ContainerEnumerator:
         return names
 
     def total_compose_container_names(self) -> set[str]:
-        """Return the names of every compose container (running OR
-        stopped) in this stack. Used as the denominator for the ops
-        KPI gauge so 17 running out of 20 deployed renders 85 %."""
+        """Return the names of every compose container EXPECTED to be
+        running. Used as the denominator for the ops KPI gauge.
+
+        Excludes one-shot init containers (``restart: no``) — they're
+        designed to run and exit cleanly, so counting them in
+        ``total`` makes the dashboard show "17/19 running" forever
+        even on a healthy stack where every long-running service is
+        up and the init containers completed successfully. 2026-05-12
+        fix: filter on ``HostConfig.RestartPolicy.Name``; only count
+        containers configured to keep running.
+        """
         names: set[str] = set()
         try:
             import docker
             client = docker.from_env()
             for c in client.containers.list(all=True):
+                if self._is_oneshot_init_container(c):
+                    continue
                 names.add(c.name)
         except Exception as exc:
             log_swallowed(exc)
         return names
+
+    def _is_oneshot_init_container(self, container: Any) -> bool:
+        """True when the container's restart policy is ``no`` — the
+        compose idiom for one-shot init containers
+        (init-permissions, envoy-config-init) that should not be
+        counted as "expected running" in the running-vs-total gauge.
+        """
+        try:
+            attrs = getattr(container, "attrs", None) or {}
+            host_cfg = attrs.get("HostConfig") or {}
+            policy = host_cfg.get("RestartPolicy") or {}
+            return str(policy.get("Name") or "").lower() == "no"
+        except Exception:  # noqa: BLE001
+            return False
 
 
 _CONTAINER_ENUMERATOR = ContainerEnumerator()

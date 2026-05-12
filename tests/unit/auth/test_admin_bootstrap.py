@@ -303,6 +303,41 @@ class WeakPasswordBlocklistTests(unittest.TestCase):
                 "STACK_ADMIN_PASSWORD": "Admin",
             }).run(service, internet_exposed=True)
 
+    def test_blocklist_fires_on_existing_superadmin_boot(self):
+        """A deploy that previously seeded an admin row but is
+        rebooting with a now-known-weak STACK_ADMIN_PASSWORD must
+        still hit the blocklist check. Pre-fix, the
+        ``existing_superadmin`` shortcut returned before the check
+        even ran — so an operator who rotated their secret to
+        ``secret`` after first install never saw the WARN. Guards
+        the 2026-05-12 follow-up where the live k8s deploy was
+        booting with STACK_ADMIN_PASSWORD=secret and the guard was
+        silent."""
+        existing = _fake_user(role="superadmin", state=UserState.ACTIVE)
+        service = _fake_service([existing])
+
+        # internet_exposed=True must STILL refuse to boot even
+        # though there's already a superadmin.
+        with self.assertRaises(AdminBootstrapWeakPasswordError):
+            AdminBootstrap(env={
+                "STACK_ADMIN_PASSWORD": "secret",
+            }).run(service, internet_exposed=True)
+
+        # internet_exposed=False returns "skipped:existing_superadmin"
+        # but the WARN log line fires. Sentinel captured via
+        # assertLogs to prove the guard ran rather than bypassed.
+        with self.assertLogs("media_stack", level="WARNING") as caught:
+            result = AdminBootstrap(env={
+                "STACK_ADMIN_PASSWORD": "secret",
+            }).run(service, internet_exposed=False)
+        self.assertEqual(result["action"], "skipped")
+        self.assertEqual(result["reason"], "existing_superadmin")
+        self.assertTrue(
+            any("well-known weak credential" in r.getMessage()
+                for r in caught.records),
+            f"expected weak-credential WARN, got {[r.getMessage() for r in caught.records]}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
