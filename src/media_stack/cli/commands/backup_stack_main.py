@@ -103,13 +103,11 @@ class BackupStackCommand:
         return 0
 
 
-    @staticmethod
-    def _env_bool(name: str, default: bool) -> bool:
+    def _env_bool(self, name: str, default: bool) -> bool:
         raw = str(os.environ.get(name, "1" if default else "0") or "").strip().lower()
         return raw in {"1", "true", "yes", "on"}
 
-    @staticmethod
-    def _copy_tree_if_exists(src: Path, dst: Path) -> None:
+    def _copy_tree_if_exists(self, src: Path, dst: Path) -> None:
         if not src.exists() or not src.is_dir():
             return
         shutil.copytree(src, dst, dirs_exist_ok=True)

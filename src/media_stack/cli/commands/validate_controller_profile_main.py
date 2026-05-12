@@ -68,8 +68,7 @@ class ValidateControllerProfileCommand:
         return 0
 
 
-    @staticmethod
-    def _format_path(path_parts: list[object]) -> str:
+    def _format_path(self, path_parts: list[object]) -> str:
         if not path_parts:
             return "$"
         out = "$"

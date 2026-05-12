@@ -47,23 +47,19 @@ class RunUnitTestsCommand:
         return exit_code
 
 
-    @staticmethod
-    def _env_int(name: str, default: int) -> int:
+    def _env_int(self, name: str, default: int) -> int:
         raw = os.environ.get(name, "").strip()
         return int(raw) if raw else default
 
-    @staticmethod
-    def _env_float(name: str, default: float | None) -> float | None:
+    def _env_float(self, name: str, default: float | None) -> float | None:
         raw = os.environ.get(name, "").strip()
         return float(raw) if raw else default
 
-    @staticmethod
-    def _env_bool(name: str, default: bool) -> bool:
+    def _env_bool(self, name: str, default: bool) -> bool:
         raw = os.environ.get(name, "").strip().lower()
         return raw in {"1", "true", "yes", "on"} if raw else default
 
-    @staticmethod
-    def _ensure_test_import_paths(root_dir: Path) -> None:
+    def _ensure_test_import_paths(self, root_dir: Path) -> None:
         for candidate in (str(root_dir), str(root_dir / "src")):
             if candidate not in sys.path:
                 sys.path.insert(0, candidate)

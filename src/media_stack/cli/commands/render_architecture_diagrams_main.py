@@ -63,8 +63,7 @@ class RenderArchitectureDiagramsCommand:
         return 0
 
 
-    @staticmethod
-    def _render_with_mmdc(command_prefix, input_file, config_file, width, height, scale):
+    def _render_with_mmdc(self, command_prefix, input_file, config_file, width, height, scale):
         common = [*command_prefix, "-i", str(input_file), "-w", str(width), "-H", str(height), "-s", str(scale)]
         if config_file.exists():
             common.extend(["-c", str(config_file)])
@@ -72,8 +71,7 @@ class RenderArchitectureDiagramsCommand:
             out = input_file.with_suffix(suffix)
             run_command([*common, "-o", str(out)], check=True)
 
-    @staticmethod
-    def _render_with_kroki(input_file):
+    def _render_with_kroki(self, input_file):
         for output_format, suffix in (("svg", ".svg"), ("png", ".png")):
             out = input_file.with_suffix(suffix)
             run_command(["curl", "-fsS", "--retry", "8", "--retry-delay", "2", "--retry-all-errors",

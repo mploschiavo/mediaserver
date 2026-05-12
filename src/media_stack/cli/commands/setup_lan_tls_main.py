@@ -62,8 +62,7 @@ class SetupLanTlsCommand:
         return 0
 
 
-    @staticmethod
-    def _resolve_node_ip(explicit_node_ip: str) -> str:
+    def _resolve_node_ip(self, explicit_node_ip: str) -> str:
         if explicit_node_ip.strip():
             return explicit_node_ip.strip()
         proc = run_command(["hostname", "-I"], check=False)
@@ -71,23 +70,20 @@ class SetupLanTlsCommand:
             return ""
         return (proc.stdout or "").strip().split()[0] if (proc.stdout or "").strip() else ""
 
-    @staticmethod
-    def _read_ingress_hosts(kubectl, namespace, ingress_name):
+    def _read_ingress_hosts(self, kubectl, namespace, ingress_name):
         proc = run_command([*kubectl, "-n", namespace, "get", "ingress", ingress_name, "-o",
             "jsonpath={range .spec.rules[*]}{.host}{'\\n'}{end}"], check=False)
         if proc.returncode != 0:
             return []
         return [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
 
-    @staticmethod
-    def _generate_with_mkcert(crt, key, hosts, node_ip):
+    def _generate_with_mkcert(self, crt, key, hosts, node_ip):
         args = ["mkcert", "-cert-file", str(crt), "-key-file", str(key), *hosts]
         if node_ip:
             args.append(node_ip)
         run_command(args, check=True)
 
-    @staticmethod
-    def _generate_with_openssl(crt, key, hosts, node_ip, work_dir):
+    def _generate_with_openssl(self, crt, key, hosts, node_ip, work_dir):
         if shutil.which("openssl") is None:
             raise MediaStackError("openssl is required when mkcert is not installed.")
         san_file = work_dir / "san.cnf"

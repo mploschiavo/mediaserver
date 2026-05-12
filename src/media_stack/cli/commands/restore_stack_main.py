@@ -64,13 +64,11 @@ class RestoreStackCommand:
         return 0
 
 
-    @staticmethod
-    def _env_bool(name: str, default: bool) -> bool:
+    def _env_bool(self, name: str, default: bool) -> bool:
         raw = str(os.environ.get(name, "1" if default else "0") or "").strip().lower()
         return raw in {"1", "true", "yes", "on"}
 
-    @staticmethod
-    def _copy_tree_contents(src: Path, dst: Path) -> None:
+    def _copy_tree_contents(self, src: Path, dst: Path) -> None:
         dst.mkdir(parents=True, exist_ok=True)
         for child in src.iterdir():
             target = dst / child.name
