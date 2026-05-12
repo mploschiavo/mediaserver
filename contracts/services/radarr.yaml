@@ -96,6 +96,16 @@ plugin:
       label: "Ensure Radarr API key discoverable"
       satisfies: [radarr-api-key-discoverable]
       requires: []
+    # Reconcile urlBase=/app/radarr via the host-config API. Replaces
+    # the legacy ``http_preflight._reconcile_url_base`` call that
+    # ADR-0005 Phase 5c.1 retired from the boot path. Runs after the
+    # api key is discoverable; the *arr SQLite DB persists the
+    # value so it survives container restarts.
+    "radarr:ensure-url-base":
+      handler: media_stack.adapters.servarr.lifecycle:radarr_ensure_url_base_synced
+      label: "Reconcile Radarr urlBase to /app/radarr"
+      satisfies: [radarr-url-base-synced]
+      requires: [radarr-api-key-discoverable]
   promises:
     # --- Radarr → Jellyfin notifier ---------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -210,3 +220,24 @@ plugin:
       ensured_by:
         type: job
         job_name: "radarr:ensure-api-key-discoverable"
+
+    # --- urlBase sync (Radarr) --------------------------------------------
+    # Replaces the retired ``http_preflight._reconcile_url_base`` path
+    # so ``docker compose up -d`` keeps Radarr's stored urlBase in
+    # sync with Envoy's /app/radarr forward-prefix. Symptom when
+    # missing: dashboard's /app/radarr/ link returns blank; the
+    # controller's /api calls to /app/radarr/api/v3/* get HTML
+    # (Radarr's SPA) instead of JSON because the *arr only serves the
+    # /api prefix under its configured urlBase.
+    - id: radarr-url-base-synced
+      description: Radarr's stored urlBase matches /app/radarr (survives DB rehydration)
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      depends_on: [radarr-api-key-discoverable]
+      probe:
+        type: lifecycle
+        service: radarr
+        method: probe_url_base_synced
+      ensured_by:
+        type: job
+        job_name: "radarr:ensure-url-base"

@@ -462,6 +462,169 @@ class ServarrLifecycle:
     ) -> Outcome[None]:
         return _API_KEY_DISCOVERABLE_WIRER.ensure(self.service_id, ctx)
 
+    # --- url-base sync ---------------------------------------------
+    #
+    # Replaces the legacy ``infrastructure.servarr.http_preflight.
+    # _reconcile_url_base`` call, which lived inside the
+    # ``_run_preflights`` path that ADR-0005 Phase 5c.1 retired. The
+    # promise-dispatch path didn't get a corresponding job, so
+    # ``docker compose up -d`` (which doesn't run the deploy-CLI's
+    # ``compose_preflight`` either) left the *arr ``urlBase`` field
+    # un-reconciled. Prowlarr specifically rehydrates ``config.xml``
+    # from its SQLite DB on every restart, so even a one-time deploy
+    # CLI run got wiped on the next pod recreate — symptom: the
+    # dashboard's ``/app/prowlarr/`` link returned a blank page and
+    # the controller logged ``non-JSON body from prowlarr:9696/app/
+    # prowlarr/api/v1/indexer`` once per orchestrator tick.
+
+    def probe_url_base_synced(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        """GET ``{password_api_path}`` and compare ``urlBase`` to
+        ``/app/{service_id}``. ``ok`` on match; ``failed`` on drift;
+        ``unknown`` on transport / unauthenticated responses."""
+        url, headers = self._host_config_request_target(ctx)
+        if not url:
+            return ProbeResult.failed(
+                "no password_api_path in contract — cannot probe urlBase",
+                evidence={"config_keys": sorted(ctx.config.keys())},
+                evaluated_at=ctx.now(),
+            )
+        if not headers:
+            return ProbeResult.unknown(
+                "api key not discoverable; cannot read host config",
+                evidence={"url": url},
+                evaluated_at=ctx.now(),
+            )
+        cfg = self._fetch_host_config(url, headers, ctx)
+        if cfg is None:
+            return ProbeResult.unknown(
+                "host-config endpoint unreachable",
+                evidence={"url": url},
+                evaluated_at=ctx.now(),
+            )
+        desired = f"/app/{self.service_id}"
+        actual = str(cfg.get("urlBase") or "").strip()
+        if actual == desired:
+            return ProbeResult.ok(
+                f"urlBase already {desired!r}",
+                evidence={"url": url, "url_base": actual},
+                evaluated_at=ctx.now(),
+            )
+        return ProbeResult.failed(
+            f"urlBase drift: stored={actual!r} expected={desired!r}",
+            evidence={"url": url, "url_base": actual, "expected": desired},
+            evaluated_at=ctx.now(),
+        )
+
+    def ensure_url_base_synced(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        """If the urlBase doesn't match ``/app/{service_id}``, PUT
+        the host config to fix it. Persists via the *arr's SQLite
+        DB so it survives restarts (the file-level edit alone gets
+        wiped by Prowlarr's startup rehydration)."""
+        probe = self.probe_url_base_synced(ctx)
+        if probe.status == "ok":
+            return Outcome.success(evidence=dict(probe.evidence or {}))
+        if probe.status == "unknown":
+            return Outcome.failure(
+                probe.detail or "host-config unreachable / no API key",
+                transient=True,
+                evidence=dict(probe.evidence or {}),
+            )
+        url, headers = self._host_config_request_target(ctx)
+        if not url or not headers:
+            return Outcome.failure(
+                "no api key / endpoint — cannot rotate urlBase",
+                transient=False,
+                evidence={"phase": "request_target"},
+            )
+        cfg = self._fetch_host_config(url, headers, ctx)
+        if cfg is None:
+            return Outcome.failure(
+                "host-config GET failed mid-rotate",
+                transient=True,
+                evidence={"phase": "fetch"},
+            )
+        cfg["urlBase"] = f"/app/{self.service_id}"
+        if not self._put_host_config(url, headers, cfg):
+            return Outcome.failure(
+                "host-config PUT failed",
+                transient=True,
+                evidence={"phase": "put"},
+            )
+        re_probe = self.probe_url_base_synced(ctx)
+        if re_probe.status == "ok":
+            return Outcome.success(
+                evidence={**dict(re_probe.evidence or {}), "rotated": True},
+            )
+        return Outcome.failure(
+            re_probe.detail or "urlBase reconcile not visible after PUT",
+            transient=True,
+            evidence=dict(re_probe.evidence or {}),
+        )
+
+    def _host_config_request_target(
+        self, ctx: OrchestrationContext,
+    ) -> tuple[str, dict[str, str]]:
+        path = str(ctx.config.get("password_api_path") or "").strip()
+        host = (ctx.config.get("host") or "").strip()
+        port = ctx.config.get("port")
+        if not path or not host or not port:
+            return "", {}
+        scheme = (ctx.config.get("scheme") or "http").strip()
+        url = f"{scheme}://{host}:{port}{path}"
+        api_key = self.discover_api_key(ctx) or ""
+        if not api_key:
+            return url, {}
+        return url, {
+            "X-Api-Key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def _fetch_host_config(
+        self, url: str, headers: dict[str, str],
+        ctx: OrchestrationContext,
+    ) -> dict[str, Any] | None:
+        import json as _json
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(
+                req, timeout=_DEFAULT_PROBE_TIMEOUT_SECONDS,
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                body = resp.read().decode("utf-8", errors="replace")
+        except (urllib.error.HTTPError, urllib.error.URLError,
+                OSError, TimeoutError):
+            return None
+        try:
+            payload = _json.loads(body)
+        except _json.JSONDecodeError:
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _put_host_config(
+        self, url: str, headers: dict[str, str], cfg: dict[str, Any],
+    ) -> bool:
+        import json as _json
+        cfg_id = cfg.get("id")
+        put_url = f"{url}/{cfg_id}" if cfg_id is not None else url
+        body = _json.dumps(cfg).encode("utf-8")
+        req = urllib.request.Request(
+            put_url, data=body, method="PUT", headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(
+                req, timeout=_DEFAULT_PROBE_TIMEOUT_SECONDS,
+            ) as resp:
+                return resp.status in (200, 201, 202, 204)
+        except (urllib.error.HTTPError, urllib.error.URLError,
+                OSError, TimeoutError):
+            return False
+
     # --- persist ----------------------------------------------------
 
     def persist_api_key(
@@ -587,21 +750,47 @@ readarr_ensure_api_key_discoverable = LifecycleHandlerAdapter.bind(
     ServarrLifecycle, "ensure_api_key_discoverable", service_id="readarr",
 )
 
+# Per-service ensure_url_base_synced (all five *arrs incl. prowlarr).
+# Mirrors the qBit / Jellyfin credential-sync pattern. Without these
+# the orchestrator-driven boot path leaves urlBase un-reconciled,
+# Prowlarr in particular rehydrates urlBase=empty from its DB on
+# every restart, and the dashboard's /app/<arr>/ link goes blank.
+radarr_ensure_url_base_synced = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_url_base_synced", service_id="radarr",
+)
+sonarr_ensure_url_base_synced = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_url_base_synced", service_id="sonarr",
+)
+lidarr_ensure_url_base_synced = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_url_base_synced", service_id="lidarr",
+)
+readarr_ensure_url_base_synced = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_url_base_synced", service_id="readarr",
+)
+prowlarr_ensure_url_base_synced = LifecycleHandlerAdapter.bind(
+    ServarrLifecycle, "ensure_url_base_synced", service_id="prowlarr",
+)
+
 
 __all__ = [
     "ServarrLifecycle",
-    "radarr_ensure_jellyfin_notifier",
-    "sonarr_ensure_jellyfin_notifier",
-    "lidarr_ensure_jellyfin_notifier",
-    "radarr_ensure_indexers",
-    "sonarr_ensure_indexers",
-    "sonarr_ensure_has_series",
-    "radarr_ensure_runtime_defaults",
-    "sonarr_ensure_runtime_defaults",
-    "radarr_ensure_download_client",
-    "sonarr_ensure_download_client",
-    "radarr_ensure_api_key_discoverable",
-    "sonarr_ensure_api_key_discoverable",
     "lidarr_ensure_api_key_discoverable",
+    "lidarr_ensure_jellyfin_notifier",
+    "lidarr_ensure_url_base_synced",
+    "prowlarr_ensure_url_base_synced",
+    "radarr_ensure_api_key_discoverable",
+    "radarr_ensure_download_client",
+    "radarr_ensure_indexers",
+    "radarr_ensure_jellyfin_notifier",
+    "radarr_ensure_runtime_defaults",
+    "radarr_ensure_url_base_synced",
     "readarr_ensure_api_key_discoverable",
+    "readarr_ensure_url_base_synced",
+    "sonarr_ensure_api_key_discoverable",
+    "sonarr_ensure_download_client",
+    "sonarr_ensure_has_series",
+    "sonarr_ensure_indexers",
+    "sonarr_ensure_jellyfin_notifier",
+    "sonarr_ensure_runtime_defaults",
+    "sonarr_ensure_url_base_synced",
 ]

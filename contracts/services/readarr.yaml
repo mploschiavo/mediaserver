@@ -63,6 +63,11 @@ plugin:
       label: "Ensure Readarr API key discoverable"
       satisfies: [readarr-api-key-discoverable]
       requires: []
+    "readarr:ensure-url-base":
+      handler: media_stack.adapters.servarr.lifecycle:readarr_ensure_url_base_synced
+      label: "Reconcile Readarr urlBase to /app/readarr"
+      satisfies: [readarr-url-base-synced]
+      requires: [readarr-api-key-discoverable]
   promises:
     # --- API-key discoverability (Readarr) --------------------------------
     # ADR-0005 Phase 5c.1 (wide) — port the legacy
@@ -81,3 +86,16 @@ plugin:
       ensured_by:
         type: job
         job_name: "readarr:ensure-api-key-discoverable"
+
+    - id: readarr-url-base-synced
+      description: Readarr's stored urlBase matches /app/readarr (survives DB rehydration)
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      depends_on: [readarr-api-key-discoverable]
+      probe:
+        type: lifecycle
+        service: readarr
+        method: probe_url_base_synced
+      ensured_by:
+        type: job
+        job_name: "readarr:ensure-url-base"

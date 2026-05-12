@@ -124,6 +124,11 @@ plugin:
       label: "Ensure Sonarr API key discoverable"
       satisfies: [sonarr-api-key-discoverable]
       requires: []
+    "sonarr:ensure-url-base":
+      handler: media_stack.adapters.servarr.lifecycle:sonarr_ensure_url_base_synced
+      label: "Reconcile Sonarr urlBase to /app/sonarr"
+      satisfies: [sonarr-url-base-synced]
+      requires: [sonarr-api-key-discoverable]
   promises:
     # --- Sonarr → Jellyfin notifier ---------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -256,6 +261,19 @@ plugin:
       ensured_by:
         type: job
         job_name: "sonarr:ensure-api-key-discoverable"
+
+    - id: sonarr-url-base-synced
+      description: Sonarr's stored urlBase matches /app/sonarr (survives DB rehydration)
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      depends_on: [sonarr-api-key-discoverable]
+      probe:
+        type: lifecycle
+        service: sonarr
+        method: probe_url_base_synced
+      ensured_by:
+        type: job
+        job_name: "sonarr:ensure-url-base"
 defaults:
   root_folder: /media/tv
   discovery_lists:

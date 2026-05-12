@@ -75,6 +75,11 @@ plugin:
       label: "Ensure Lidarr API key discoverable"
       satisfies: [lidarr-api-key-discoverable]
       requires: []
+    "lidarr:ensure-url-base":
+      handler: media_stack.adapters.servarr.lifecycle:lidarr_ensure_url_base_synced
+      label: "Reconcile Lidarr urlBase to /app/lidarr"
+      satisfies: [lidarr-url-base-synced]
+      requires: [lidarr-api-key-discoverable]
   promises:
     # --- Lidarr → Jellyfin notifier ---------------------------------------
     # ADR-0005 Phase 3 cutover: probe + ensurer dispatch through
@@ -108,3 +113,16 @@ plugin:
       ensured_by:
         type: job
         job_name: "lidarr:ensure-api-key-discoverable"
+
+    - id: lidarr-url-base-synced
+      description: Lidarr's stored urlBase matches /app/lidarr (survives DB rehydration)
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      depends_on: [lidarr-api-key-discoverable]
+      probe:
+        type: lifecycle
+        service: lidarr
+        method: probe_url_base_synced
+      ensured_by:
+        type: job
+        job_name: "lidarr:ensure-url-base"

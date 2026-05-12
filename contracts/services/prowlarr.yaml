@@ -60,6 +60,21 @@ plugin:
       # actual tracker — slow on cold network). Non-blocking so it
       # doesn't gate the rest of bootstrap.
       non_blocking: true
+
+    # Reconcile urlBase=/app/prowlarr via the host-config API.
+    # Prowlarr rehydrates ``config.xml`` from its SQLite DB on every
+    # restart, so a deploy-CLI ``compose_preflight`` edit gets wiped
+    # by the next pod recreate. The orchestrator-driven boot path
+    # didn't have a corresponding job (ADR-0005 Phase 5c.1 retired
+    # the legacy ``http_preflight._reconcile_url_base`` call). Without
+    # this, the dashboard's /app/prowlarr/ link returns blank and
+    # the controller logs ``non-JSON body from prowlarr:9696/app/
+    # prowlarr/api/v1/indexer`` on every orchestrator tick.
+    "prowlarr:ensure-url-base":
+      handler: media_stack.adapters.servarr.lifecycle:prowlarr_ensure_url_base_synced
+      label: "Reconcile Prowlarr urlBase to /app/prowlarr"
+      satisfies: [prowlarr-url-base-synced]
+      requires: []
   event_handlers:
     VALIDATE:
       ensure_prowlarr_ready: media_stack.services.apps.prowlarr.runtime_ops:ensure_prowlarr_ready
@@ -123,3 +138,16 @@ plugin:
         assert: |
           isinstance(response, list) and response
           and any(len(i.get('tags') or []) >= 1 for i in response)
+
+    # --- urlBase sync (Prowlarr) ------------------------------------------
+    - id: prowlarr-url-base-synced
+      description: Prowlarr's stored urlBase matches /app/prowlarr (survives DB rehydration)
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      probe:
+        type: lifecycle
+        service: prowlarr
+        method: probe_url_base_synced
+      ensured_by:
+        type: job
+        job_name: "prowlarr:ensure-url-base"
