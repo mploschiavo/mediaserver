@@ -1,14 +1,13 @@
 # ADR-0006 — Per-service promise registries
 
-**Status:** Phases 1–4 shipped (2026-05-03). 30 of 52 promises
-moved to per-service yamls; 22 cross-cutting promises retained
-in a single `cross_cutting.yaml` (renamed from `promises.yaml`)
-with future themed-split deferred until growth past ~40 entries.
-Builds on ADR-0003 (orchestrator primitives) and ADR-0005
-(orchestrator-driven
-bootstrap). Doesn't unblock anything load-bearing — this is a
-locality / authoring-ergonomics improvement that compounds as new
-services ship.
+**Status:** Phases 1–4 shipped (2026-05-03). The live registry
+now reports 64 promises (49 agnostic / 14 k8s-only / 1 compose-only)
+spread across `cross_cutting.yaml` + per-service `plugin.promises:`
+blocks. Phase 5 (renderer follow-up) deferred — see "Phase 5
+deferred" section below. Builds on ADR-0003 (orchestrator
+primitives) and ADR-0005 (orchestrator-driven bootstrap). Doesn't
+unblock anything load-bearing — this is a locality / authoring-
+ergonomics improvement that compounds as new services ship.
 
 Phase 1 deliverables landed:
 
@@ -487,3 +486,57 @@ Trivial. Both file-rename (loader prefers new but reads old)
 and the unpackerr re-home (single-commit revert) are reversible.
 Future themed splitting layers on top by widening the glob in
 `_iter_cross_cutting`; the per-entry parser is unchanged.
+
+## Phase 5 — renderer parity with the live registry (deferred)
+
+**Status:** Deferred (2026-05-12). Filed during the doc-link
+audit when the count discrepancy between `README.md` ("64 OTB
+promises") and `docs/reference/promises.md` (which only enumerates
+the cross-cutting subset) surfaced.
+
+**What's broken.** `src/media_stack/cli/commands/render_promises_reference.py`
+reads only `contracts/promises/cross_cutting.yaml`. Post-Phase-1,
+30+ promises live in `contracts/services/<svc>.yaml` under the
+`plugin.promises:` key. The render walks neither location nor
+the unified `PromisesRegistry.load_registry()` output, so the
+generated reference page shows ~22 of the 64 live promises.
+
+**What needs to change.**
+
+1. Switch the renderer's source of truth from a single YAML read
+   to `infrastructure.promises.registry.PromisesRegistry().load_registry()`.
+   The registry already does the dual-source merge + platform tag
+   resolution; the renderer should consume the same domain objects
+   the runtime uses, not re-parse YAML.
+2. Group output by `service_id` so per-service promises render
+   under their service heading, with cross-cutting in its own
+   section. Today the page is one flat list under categories that
+   were hand-curated in the YAML — a per-service grouping reflects
+   the post-ADR-0006 authoring shape.
+3. Move the "X of Y promises shipped" count into the rendered
+   header so future drift between README and the reference page
+   surfaces in CI (a ratchet against the rendered count, or a
+   shared constant the README pulls).
+4. Update the doc generator's source-comment from
+   `<!-- Source: contracts/promises/cross_cutting.yaml. -->` to
+   reflect the dual-source reality.
+
+**Why deferred.** The renderer rewrite is a "while we're touching
+promises" task; it pairs with broader promises work tracked
+separately (cross-cutting themed split eligibility, the per-service
+ensurer-resolution warning that Phase 1 stubbed, possible promise-
+provenance metadata for the audit log). Bundling the renderer fix
+with that next promises-track sprint avoids two rounds of
+documentation churn.
+
+**Workaround until Phase 5 lands.** Operators wanting the full
+list can dump the registry with:
+```bash
+PYTHONPATH=src python3 -c "
+from media_stack.infrastructure.promises.registry import PromisesRegistry
+for p in PromisesRegistry().load_registry():
+    print(f'{p.id}\t{sorted(p.platforms)}\t{p.description}')
+"
+```
+The `docs/reference/promises.md` count + table will trail the
+live state until Phase 5 ships.

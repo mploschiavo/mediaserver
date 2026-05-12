@@ -1,7 +1,9 @@
 # ADR-0015 — CLI layer boundary: commands as entry-points, workflows as services
 
-**Status:** All planned phases landed (latest: Phase 7m on
+**Status:** Phases 1 through 7m landed (latest: Phase 7m on
 2026-05-12 at `40564335` — `controller_serve` boot-prep extraction).
+Phase 8 (release pipeline hygiene — `regen-dist.sh` ratchet-path
+fixup) deferred and tracked in the phase table below.
 The phase table below records the full sequence. Phase 3
 (deploy config consolidation, `bed4507a`) collapsed the four-bug
 parade to one isolated bug; Phase 3b/3c (`460241ed`/`90d73f56`)
@@ -606,6 +608,7 @@ commit body.
 | Phase 7k — move 3 controller siblings to workflows (`controller_k8s`, `controller_dispatch`, `controller_profile`) | **landed** (2026-05-11) | `9b10d77a` |
 | Phase 7l — extract 4 small-to-mid CLI commands to workflows (`setup_lan_tls`, `backup_stack`, `restore_stack`, `render_architecture_diagrams`) | **landed** (2026-05-11) | `60b8c313` |
 | Phase 7m — extract 4 boot-prep helpers from `controller_serve` onto `ControllerBootPreparation` (`resolve_config_path`, `opt_out_of_legacy_media_server_adapter`, `apply_boot_profile`, `predispatch_api_keys`) | **landed** (2026-05-12) | `40564335` |
+| Phase 8 — release pipeline hygiene: rewrite `bin/release/regen-dist.sh`'s stale `tests/unit/test_v1_0_119_batch4_ratchets.py::ControllerImageVersionParity` reference to the post-ratchet-reorg path `tests/unit/ratchets/test_deployment_parity_ratchets.py::ControllerImageVersionParity`. Today operators have to set `SKIP_VERSION_CHECK=1` to bypass the missing-file error; the ratchet has been at its new home since the reorg landed but the regen-dist pre-flight wasn't updated. | **pending** | — |
 
 ---
 
