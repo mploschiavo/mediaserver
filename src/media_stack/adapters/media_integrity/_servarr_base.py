@@ -436,9 +436,14 @@ class _ServarrBaseAdapter:
         app will reject."""
         try:
             cfg = self.get_media_management()
-        except ServarrHttpError:
-            # Offline at construction — conservative defaults, the
-            # enforcer will re-probe on next apply attempt.
+        except (ServarrHttpError, urllib.error.URLError, OSError):
+            # Offline at construction — conservative defaults so the
+            # adapter still installs into the integrity service.
+            # ``OSError`` covers connection-refused on fresh compose
+            # boots where the *arr container is up but not yet
+            # accepting WebUI connections; the controller's periodic
+            # re-wire (controller_serve_wiring.refresh_media_integrity)
+            # rebuilds adapters once the service is reachable.
             return AdapterCapabilities()
         fields = tuple(sorted(cfg.keys()))
         auto_unmonitor_key = self._MEDIA_MANAGEMENT_FIELDS.get("unmonitor_deleted")

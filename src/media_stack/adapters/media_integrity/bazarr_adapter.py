@@ -26,6 +26,7 @@ slow on big libraries. The reconciler calls this once per pass.
 from __future__ import annotations
 
 import json
+import urllib.error
 from typing import Any
 
 from media_stack.adapters.media_integrity._servarr_base import (
@@ -328,7 +329,10 @@ class BazarrAdapter:
     def _probe_capabilities(self) -> BazarrCapabilities:
         try:
             cfg = self.get_settings()
-        except ServarrHttpError:
+        except (ServarrHttpError, urllib.error.URLError, OSError):
+            # Offline / transient — see _ServarrBaseAdapter._probe_capabilities
+            # for the symmetric rationale (controller re-wires periodically
+            # until the adapter probes succeed).
             return BazarrCapabilities()
         keys = tuple(sorted(self._flatten_keys(cfg)))
         return BazarrCapabilities(probed_setting_keys=keys)

@@ -58,6 +58,14 @@ _FIRST_SNAPSHOT_DELAY_SECONDS = 60
 _DEFAULT_SNAPSHOT_INTERVAL_SECONDS = 3600
 _SCHEDULER_BOOTSTRAP_GRACE_SECONDS = 120
 _SCHEDULER_TICK_SECONDS = 60
+# Media integrity adapters are constructed at controller boot, but
+# on a fresh compose deploy the *arr services aren't ready yet
+# (Connection refused) and the *arr API keys haven't been
+# discovered (env not set). Periodically re-wire until every
+# expected adapter is present or the cap is hit. Once successful,
+# the timer stops.
+_MEDIA_INTEGRITY_REFRESH_INTERVAL_SECONDS = 60
+_MEDIA_INTEGRITY_REFRESH_MAX_ATTEMPTS = 20
 
 
 class ControllerServeWiring:
@@ -76,22 +84,69 @@ class ControllerServeWiring:
         start_telemetry_timer(log=runtime_platform.log)
 
     def wire_media_integrity(self) -> None:
+        if not self._rebuild_media_integrity():
+            return
+        # Adapters may be incomplete on first boot (Connection refused
+        # against still-starting *arr services, or API keys not yet
+        # discovered into env). Start a daemon that re-runs the
+        # factory periodically until every expected adapter is
+        # installed — then exits. Idempotent; the factory just rebuilds
+        # adapters from the current registry + env on each tick.
+        thread = threading.Thread(
+            target=self._media_integrity_refresh_loop,
+            daemon=True,
+            name="media-integrity-refresh",
+        )
+        thread.start()
+
+    def _rebuild_media_integrity(self) -> bool:
+        """Build the integrity service once + install it on the API
+        handler. Returns ``True`` on success (timer may continue),
+        ``False`` on fatal config error (timer must not start)."""
         try:
             _mi_service = _build_media_integrity()
-            _media_integrity_api.set_service(_mi_service)
-            runtime_platform.log(
-                "[INFO] Media integrity: service ready "
-                "(driven by JobRunner; legacy scheduler removed)"
-            )
         except FileNotFoundError as exc:
             runtime_platform.log(
                 f"[WARN] Media integrity: policy contract missing "
                 f"({exc}); subsystem disabled"
             )
+            return False
         except Exception as exc:  # noqa: BLE001 — defensive; must not block boot
             runtime_platform.log(
                 f"[WARN] Media integrity: init failed ({exc}); subsystem disabled"
             )
+            return False
+        _media_integrity_api.set_service(_mi_service)
+        snap = _mi_service.status()
+        runtime_platform.log(
+            "[INFO] Media integrity: service ready "
+            f"({len(snap['servarr_adapters'])} servarr + "
+            f"{'bazarr' if snap['bazarr_present'] else 'no bazarr'}, "
+            f"missing_keys={snap['missing_api_keys']})"
+        )
+        return True
+
+    def _media_integrity_refresh_loop(self) -> None:
+        """Re-run the factory every N seconds until the adapter set
+        stabilises (no missing keys) or the attempt cap is reached.
+        Closes the gap between controller boot and
+        ``discover-api-keys`` completion on fresh compose deploys."""
+        import time as _time
+        for _ in range(_MEDIA_INTEGRITY_REFRESH_MAX_ATTEMPTS):
+            _time.sleep(_MEDIA_INTEGRITY_REFRESH_INTERVAL_SECONDS)
+            if self._media_integrity_stable():
+                return
+            self._rebuild_media_integrity()
+
+    def _media_integrity_stable(self) -> bool:
+        svc = getattr(_media_integrity_api, "_service", None)
+        if svc is None:
+            return False
+        try:
+            snap = svc.status()
+        except Exception:  # noqa: BLE001
+            return False
+        return not snap.get("missing_api_keys")
 
     def start_snapshot_timer(self, args: argparse.Namespace) -> None:
         snapshot_interval = int(
