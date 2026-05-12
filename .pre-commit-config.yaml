@@ -1,0 +1,50 @@
+# Pre-commit hooks for the media-stack repo.
+#
+# Install once:
+#   pip install --user pre-commit detect-secrets
+#   pre-commit install
+#
+# Manual run on all files (CI does this on every PR):
+#   pre-commit run --all-files
+#
+# The detect-secrets hook is the layer added after the 2026-05-12
+# incident where 8 secrets ended up in git history via a captured
+# /api/backup response. The ``.secrets.baseline`` file pins the
+# current set of (mostly false-positive) high-entropy strings; the
+# hook only fails on NEW findings beyond that baseline. To accept
+# a new false positive, run:
+#
+#   detect-secrets scan --baseline .secrets.baseline
+#
+# To audit unknown findings interactively before accepting:
+#
+#   detect-secrets audit .secrets.baseline
+#
+# The complementary in-repo ratchets
+# (tests/unit/ratchets/test_no_committed_secrets_ratchet.py) run
+# in CI as a tripwire if the pre-commit hook is bypassed.
+
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --baseline
+          - .secrets.baseline
+        exclude: |
+          (?x)^(
+            # The baseline file itself contains the hashed
+            # detector output — scanning it would create an
+            # infinite-recursion-shaped false positive.
+            \.secrets\.baseline|
+            # Lockfiles are deterministic SHA / hash bundles by
+            # design; nothing actionable in flagging them.
+            pnpm-lock\.yaml|
+            package-lock\.json|
+            poetry\.lock|
+            # Generated dist artefacts (regenerated via
+            # bin/release/regen-dist.sh from sources that are
+            # already scanned).
+            deploy/dist/.*
+          )$

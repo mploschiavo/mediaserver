@@ -44,3 +44,18 @@ dist/media/
 
 # Vitest scratch — vitest.config.ts.timestamp-<epoch>-<hash>.mjs leaks when a test run is interrupted
 ui/*.timestamp-*.mjs
+
+# Backup files. The 2026-05-12 incident root-caused to a captured
+# ``GET /api/backup`` JSON committed as a fixture. The
+# ``media-stack-backup-YYYYMMDD.json`` / ``media-stack-keys-
+# backup.json`` filenames in the teardown how-to (``docs/how-to/
+# teardown.md``) are the canonical names operators reach for; pre-
+# ignore them at the repo root so a copy-paste from the doc
+# doesn't accidentally commit live secrets. ``*.bak`` /
+# ``*.backup`` cover the atomic-rename pattern used by the
+# Authelia config writer, ``ProfileService.save``, etc. — those
+# files contain pre-rotation copies of files we DO commit.
+media-stack-backup-*.json
+media-stack-keys-backup.json
+*.bak
+*.backup

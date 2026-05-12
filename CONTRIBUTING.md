@@ -98,16 +98,34 @@ The repo enforces this in CI via two ratchets in
   alphanumeric) rather than a `REDACTED-…` / `<placeholder>`
   string.
 
-Add `gitleaks` or `detect-secrets` as a pre-commit hook locally
-for a third layer that catches the issue before the commit ever
-lands:
+The repo ships a `.pre-commit-config.yaml` that wires
+[`detect-secrets`](https://github.com/Yelp/detect-secrets) against
+the committed `.secrets.baseline`. Install once per clone:
 
 ```bash
-# gitleaks (Go binary, fast)
-pre-commit install --hook-type pre-commit
-# or detect-secrets (Python)
-pip install detect-secrets
+pip install --user pre-commit detect-secrets
+
+# The repo's .git/config historically pinned ``core.hooksPath`` to
+# the default value, which pre-commit refuses to install over.
+# Unset it (one-time, per-clone, only if it's set to the default):
+git config --get core.hooksPath  # if this prints …/.git/hooks, run:
+git config --unset core.hooksPath
+
+pre-commit install
+```
+
+The hook fires on every `git commit` and only fails if you
+introduce a NEW high-entropy / known-secret-shaped string beyond
+what's already in the baseline. To accept a new false positive:
+
+```bash
 detect-secrets scan --baseline .secrets.baseline
+```
+
+To audit unknown findings interactively before accepting:
+
+```bash
+detect-secrets audit .secrets.baseline
 ```
 
 If you're capturing a real API response for a fixture (especially
