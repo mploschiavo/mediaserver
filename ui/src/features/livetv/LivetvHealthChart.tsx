@@ -64,10 +64,24 @@ export function LivetvHealthChart() {
           </p>
         ) : (
           <div
-            className="flex h-44 w-full items-center"
+            className="flex h-44 w-full items-stretch gap-4"
             data-testid="livetv-health-chart-area"
           >
-            <div className="flex-1">
+            {/*
+              The flex-1 wrapper needs ``min-w-0`` so it can shrink
+              (without it, the legend's intrinsic size keeps it at
+              its content width and the chart wrapper resolves to 0
+              under flex-shrink). ``h-full`` on the wrapper plus
+              explicit ``min-h-[150px]`` on the chart container is
+              the Recharts-documented shape for filling a flex parent:
+              ResponsiveContainer reads ``clientWidth`` /
+              ``clientHeight`` on the parent and bails out silently
+              if either is 0 — exactly the 2026-05-12 symptom where
+              the donut's colour keys rendered but the donut itself
+              never drew because the parent was 0px tall under
+              ``items-center``.
+            */}
+            <div className="flex-1 min-w-0 h-full min-h-[150px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
