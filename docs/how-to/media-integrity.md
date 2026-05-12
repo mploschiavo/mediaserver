@@ -92,7 +92,7 @@ Key source locations:
 - HTTP→Job shim: `_dispatch_media_integrity_via_job` in `src/media_stack/api/handlers_post.py`
 - Scheduler seeding: `_scheduler_loop` in `src/media_stack/cli/commands/controller_serve.py`
 - UI route: `/media-integrity` in the React SPA (`ui/src/routes/media-integrity.tsx`).
-  See [ui-design-system.md](ui-design-system.md) for the component
+  See [ui-design-system.md](../reference/ui-design-system.md) for the component
   catalog and [ui-container.md](ui-container.md) for how the bundle is
   served.
 
@@ -187,7 +187,7 @@ of UI v1.1.0 it composes:
 - **ProgressBar** — shimmer animation while a pass is in flight;
   respects `prefers-reduced-motion`.
 
-Component vocabulary lives in [ui-design-system.md](ui-design-system.md).
+Component vocabulary lives in [ui-design-system.md](../reference/ui-design-system.md).
 
 ## Scheduler
 

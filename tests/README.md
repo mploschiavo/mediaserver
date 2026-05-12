@@ -40,19 +40,17 @@ bash bin/lib/run-python-cli.sh run_unit_tests_main.py --pattern 'test_*.py' --to
 
 Run with Playwright against a live cluster ingress:
 ```bash
-RUN_PLAYWRIGHT=1 STACK_NODE_IP=<NODE_IP> bash bin/test.sh
-# or directly:
-bash bin/run-playwright-smoke.sh <NODE_IP> [NAMESPACE]
+bash bin/test/run-playwright-smoke.sh <NODE_IP> [NAMESPACE]
 ```
 
 Capture app screenshots via Playwright:
 ```bash
-bash bin/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
+bash bin/test/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE]
 ```
 
 Capture Kubernetes terminal evidence:
 ```bash
-bash bin/capture-k8s-snapshots.sh [NAMESPACE]
+bash bin/debug/capture-k8s-snapshots.sh [NAMESPACE]
 ```
 
 Run API relationship verification against a live namespace:

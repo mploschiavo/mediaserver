@@ -1,12 +1,12 @@
 # Service Guide
 
-![UI surface map](diagrams/ui-surface-map.png)
+![UI surface map](../diagrams/ui-surface-map.png)
 
 Reference authenticated screenshots:
-- [Homepage](screenshots/apps/homepage_local.png)
-- [Jellyfin](screenshots/apps/jellyfin_local.png)
-- [Jellyseerr](screenshots/apps/jellyseerr_local.png)
-- [Maintainerr](screenshots/apps/maintainerr_local.png)
+- [Homepage](../screenshots/apps/homepage.png)
+- [Jellyfin](../screenshots/apps/jellyfin.png)
+- [Jellyseerr](../screenshots/apps/jellyseerr.png)
+- [Maintainerr](../screenshots/apps/maintainerr.png)
 
 ## Pluggable Role Mapping
 

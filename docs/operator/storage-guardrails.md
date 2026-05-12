@@ -242,7 +242,7 @@ If the card seems sluggish, check:
 
 * [ADR-0008 disk-pressure guardrails](../architecture/adr/0008-disk-pressure-guardrails.md)
   — architectural background and trigger-interaction rules.
-* [ADR-0005 orchestrator-driven bootstrap](../architecture/adr/0005-orchestrator-driven-bootstrap.md)
+* [ADR-0005 bootstrap consumes orchestrator state](../architecture/adr/0005-bootstrap-consumes-orchestrator-state.md)
   — Maintainerr integration and the `MaintainerrCollectionsWirer`
   (Phase 3).
 * [docs/how-to/storage.md](../how-to/storage.md) — older operator

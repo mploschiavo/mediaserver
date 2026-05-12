@@ -114,7 +114,7 @@ If a promise fails after upgrade, that's the meta-ratchet doing its job:
 2. Re-run just that job: `curl -X POST http://localhost:9100/actions/<job-name>`.
 3. If it still fails, the upgrade probably needs a profile change — see the changelog entry for that version.
 
-For anything else, [open a bug](../CONTRIBUTING.md#reporting-a-bug) with the controller version and the failing probe.
+For anything else, [open a bug](../../CONTRIBUTING.md#reporting-a-bug) with the controller version and the failing probe.
 
 ---
 

@@ -89,8 +89,8 @@ unstructured `any` makes injection sinks invisible to review.
 Additional defenses:
 
 - **Content-Security-Policy** header on every UI response (emitted by
-  the [`media-stack-ui`](ui-container.md) nginx layer; see
-  [`docker/ui-nginx.conf`](../docker/ui-nginx.conf)):
+  the [`media-stack-ui`](../how-to/ui-container.md) nginx layer; see
+  [`deploy/compose/ui-nginx.conf`](../../deploy/compose/ui-nginx.conf)):
   ```
   default-src 'self';
   script-src 'self' 'unsafe-inline';
@@ -163,7 +163,7 @@ Concrete implementations:
   `AbortController` for in-flight cancellation.
 - **Static assets served with `Cache-Control: public, max-age=31536000, immutable`**
   for Vite hashed filenames; `no-cache` for `index.html`. See
-  [ui-container.md](ui-container.md).
+  [ui-container.md](../how-to/ui-container.md).
 - **Brotli/gzip** negotiated in the response.
 - **One whitelisted third-party origin**: `cdn.jsdelivr.net` for Geist
   Variable, fetched as `CacheFirst` by the PWA service worker. No

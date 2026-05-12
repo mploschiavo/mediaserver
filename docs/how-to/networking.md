@@ -99,9 +99,9 @@ Linux convenience: `bash bin/test/microk8s-smoke-test.sh ...`. The underlying cl
 - Downloader and control APIs should remain internal-only unless explicitly required.
 
 Reference diagram:
-- [`docs/diagrams/network-protocol-topology.svg`](diagrams/network-protocol-topology.svg)
+- [`docs/diagrams/network-protocol-topology.svg`](../diagrams/network-protocol-topology.svg)
 
-![Network and protocol topology](diagrams/network-protocol-topology.png)
+![Network and protocol topology](../diagrams/network-protocol-topology.png)
 
 ## Authentication
 

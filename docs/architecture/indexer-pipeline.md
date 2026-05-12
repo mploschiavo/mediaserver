@@ -21,14 +21,14 @@ and a known one-liner to verify it.
 **What it does.** Iterates Prowlarr's Cardigann definition list (~70),
 tests each via `POST /api/v1/indexer/test`, then `POST /api/v1/indexer`
 to create the ones that pass. Filtered by
-[contracts/curated-indexers.yaml](../contracts/curated-indexers.yaml)
+[contracts/curated-indexers.yaml](../../contracts/curated-indexers.yaml)
 to ~28 known-reliable public trackers (the full set is mostly dead).
 
 **Where it lives.**
-- Adapter: [job_adapters.py](../src/media_stack/services/apps/core/job_adapters.py) `discover_indexers`
-- Implementation: [reputation_ops.py](../src/media_stack/services/apps/prowlarr/reputation_ops.py) `auto_add_tested_indexers`
+- Adapter: [job_adapters.py](../../src/media_stack/services/apps/core/job_adapters.py) `discover_indexers`
+- Implementation: [reputation_ops.py](../../src/media_stack/services/apps/prowlarr/reputation_ops.py) `auto_add_tested_indexers`
 
-**Job declaration.** [contracts/services/core.yaml](../contracts/services/core.yaml):
+**Job declaration.** [contracts/services/core.yaml](../../contracts/services/core.yaml):
 `discover-indexers` — `non_blocking: true` (8–14 min cold).
 
 **Verify.**
@@ -55,8 +55,8 @@ indexers with `sync-{app}`. Then sets each app's `tags` field so
 ApplicationIndexerSync only pushes matching ones.
 
 **Where it lives.**
-- Adapter: [job_adapters.py](../src/media_stack/services/apps/core/job_adapters.py) `tag_indexers_for_apps`
-- Probe + tag: [indexer_app_match.py](../src/media_stack/services/apps/prowlarr/indexer_app_match.py)
+- Adapter: [job_adapters.py](../../src/media_stack/services/apps/core/job_adapters.py) `tag_indexers_for_apps`
+- Probe + tag: [indexer_app_match.py](../../src/media_stack/services/apps/prowlarr/indexer_app_match.py)
 
 **Job declaration.**
 ```yaml
@@ -90,7 +90,7 @@ pushes the indexers whose tags match that app's filter tag. The
 `*arr` then has the indexer in its own DB and can search it.
 
 **Where it lives.**
-- Adapter: [job_adapters.py](../src/media_stack/services/apps/core/job_adapters.py) `push_indexers`
+- Adapter: [job_adapters.py](../../src/media_stack/services/apps/core/job_adapters.py) `push_indexers`
 - Sync: Prowlarr's `/api/v1/command` `{name: ApplicationIndexerSync}`
 
 **Job declaration.**
@@ -199,12 +199,12 @@ indexer pipeline broke (re-broke?) because of exactly this race**:
 indexers because `discover-indexers` was still 40s away from
 finishing.
 
-Implementation: [job_framework.py](../src/media_stack/cli/commands/job_framework.py)
+Implementation: [framework.py](../../src/media_stack/application/jobs/framework.py)
 `JobRunner.run` uses a `threading.Condition` to wake when any async
 job signals completion, then re-evaluates the ready set. No polling,
 no fixed sleeps.
 
-Ratchet: [test_runtime_invariants_ratchets.py](../tests/unit/test_runtime_invariants_ratchets.py)
+Ratchet: [test_runtime_invariants_ratchets.py](../../tests/unit/ratchets/test_runtime_invariants_ratchets.py)
 `NonBlockingJobsHaveAfterDeps` runs an end-to-end runner test that
 asserts a downstream `after:`-dependent sibling does NOT start before
 the non_blocking upstream finishes.

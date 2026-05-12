@@ -3,9 +3,9 @@
 This stack supports technology replacement without editing the bootstrap entrypoint.
 
 Design model reference:
-- [Technology adapter model diagram](diagrams/technology-adapter-model.svg)
+- [Technology adapter model diagram](../diagrams/technology-adapter-model.svg)
 
-![Technology adapter model](diagrams/technology-adapter-model.png)
+![Technology adapter model](../diagrams/technology-adapter-model.png)
 
 ## Source of Truth for Swaps
 

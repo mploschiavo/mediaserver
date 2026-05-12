@@ -2,7 +2,7 @@
 
 The `media-stack-ui` container is an nginx process that serves the React 19
 SPA bundle (built with Vite 6 + Tailwind v4 + shadcn/ui — see
-[ui-design-system.md](ui-design-system.md)) and reverse-proxies `/api/*` to
+[ui-design-system.md](../reference/ui-design-system.md)) and reverse-proxies `/api/*` to
 the controller container. It replaces the static-serving role the Python
 controller used to perform.
 
@@ -62,7 +62,7 @@ bin/build-ui-image.sh --engine podman  # force podman over docker
 Defaults:
 - Image: `harbor.iomio.io/public/media-stack-ui:v${VERSION-UI}` — current
   shipped tag is `v1.1.0`.
-- Dockerfile: [`docker/ui.Dockerfile`](../docker/ui.Dockerfile) — multi-stage
+- Dockerfile: [`deploy/compose/ui.Dockerfile`](../../deploy/compose/ui.Dockerfile) — multi-stage
   `node:22-alpine` (pnpm + Vite build) → `nginxinc/nginx-unprivileged:1.27-alpine`.
 - Engine: auto-detect (docker preferred, podman fallback)
 
@@ -147,9 +147,9 @@ the controller Service is named `media-stack-controller`.
 - **PWA icon 404 / "icon size mismatch" in DevTools.** The PNGs under
   `/usr/share/nginx/html/icons/` must match the `sizes` declared in
   `dist/manifest.webmanifest`. The CI manifest-contract check covers this;
-  see [ui-design-system.md](ui-design-system.md) for the regen step.
+  see [ui-design-system.md](../reference/ui-design-system.md) for the regen step.
 - **CSP violation in browser console.** Tighten or relax the policy in
-  [`docker/ui-nginx.conf`](../docker/ui-nginx.conf) and rebuild. The current
+  [`deploy/compose/ui-nginx.conf`](../../deploy/compose/ui-nginx.conf) and rebuild. The current
   policy intentionally allows `https://cdn.jsdelivr.net` for Geist Variable
   font CSS + woff2 only; new third-party origins MUST be added to this doc
   before the conf changes.
@@ -163,7 +163,7 @@ the controller Service is named `media-stack-controller`.
 ## Security
 
 The CSP and supporting headers are emitted by nginx (see
-[`docker/ui-nginx.conf`](../docker/ui-nginx.conf)):
+[`deploy/compose/ui-nginx.conf`](../../deploy/compose/ui-nginx.conf)):
 
 - `Content-Security-Policy`:
   ```
@@ -181,7 +181,7 @@ The CSP and supporting headers are emitted by nginx (see
   `style-src 'unsafe-inline'` is required for Tailwind v4's runtime style
   injection and Vaul/Sonner positioning; `cdn.jsdelivr.net` is whitelisted for
   Geist Variable only and is fetched as `CacheFirst` by the service worker
-  ([Workbox](../ui/vite.config.ts) config). `script-src 'unsafe-inline'`
+  ([Workbox](../../ui/vite.config.ts) config). `script-src 'unsafe-inline'`
   remains for shadcn's small inline bootstrap and `next-themes`'
   flash-of-unstyled-content guard; React 19 + Vite-built scripts themselves
   are all `'self'`.

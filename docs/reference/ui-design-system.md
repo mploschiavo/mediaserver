@@ -1,7 +1,7 @@
 # UI design system
 
 The dashboard is a React 19 single-page app served by the
-[`media-stack-ui`](ui-container.md) container. Every route MUST look like
+[`media-stack-ui`](../how-to/ui-container.md) container. Every route MUST look like
 the same product. This document is the contract; the components, tokens,
 and a11y patterns below are the **only** sanctioned shape. Anything not
 listed here is forbidden.
@@ -149,7 +149,7 @@ File-based via TanStack Router. The shipped surface as of v1.1.0:
 - `/` — landing.
 - `/media-integrity` — the showcase tab (StatusOverview, AdapterTable,
   NeedsReviewPanel, Reconcile/Enforce buttons, ProgressBar). See
-  [media-integrity.md](media-integrity.md).
+  [media-integrity.md](../how-to/media-integrity.md).
 - `/content`, `/logs`, `/ops`, `/routing`, `/webhooks`, `/users`, `/me`
   — operator surfaces.
 - `/profile`, `/settings` — placeholders pending feature work.
@@ -199,7 +199,7 @@ Recorded here so future readers don't reintroduce them:
 
 - The SPA hits **`/api/health`** (the canonical controller route).
   `/healthz` is reserved for the kubelet probe on the nginx
-  container — see [ui-container.md](ui-container.md). A prior build
+  container — see [ui-container.md](../how-to/ui-container.md). A prior build
   conflated the two.
 - The PWA PNG icons are regenerated from the master SVG via
   ImageMagick. A previous build shipped 0-byte PNGs; the manifest

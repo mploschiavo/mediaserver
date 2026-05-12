@@ -117,7 +117,7 @@ same endpoints.
    store (all currently in-process memory) must be externalised
    (e.g. to Redis). Today we support 1 replica only on both
    targets; the roadmap is
-   [session-visibility-followups.md](roadmap/session-visibility-followups.md).
+   [session-visibility-followups.md](../roadmap/session-visibility-followups.md).
 
 2. **Authelia reload signal** — on compose, `AutheliaIPDenyProvider`'s
    `reload_hook` restarts the `authelia` container via

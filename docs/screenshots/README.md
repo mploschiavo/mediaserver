@@ -2,11 +2,10 @@
 
 This directory stores reproducible runtime artifacts captured from a live namespace.
 
-> **Freshness** — the PNGs currently checked in predate the home-screen
-> redesign, user-management UI, TLS enablement, and admin-bootstrap
-> rotation flow. Recapture against a fresh deploy before using these
-> as marketing/docs material. Use `bin/run-playwright-screenshots.sh`
-> below; it logs in first so shots reflect authenticated dashboards.
+> **Freshness** — captures are refreshed against each release. Re-run
+> the capture tool below before using PNGs as marketing/docs material;
+> it logs in through Authelia first so shots reflect authenticated
+> dashboards.
 
 ## Folder Structure
 
@@ -20,39 +19,43 @@ This directory stores reproducible runtime artifacts captured from a live namesp
 ## Capture UI Screenshots
 
 ```bash
-bash bin/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE] [OUT_DIR]
+bash bin/test/run-playwright-screenshots.sh <NODE_IP> [NAMESPACE] [OUT_DIR]
 ```
 
-Example:
+Example (k8s, served via Envoy + Authelia at the `iomio.io` family):
 
 ```bash
-bash bin/run-playwright-screenshots.sh 192.168.1.60 media-stack
+STACK_CONTROLLER_HOST=m.iomio.io \
+STACK_CONTROLLER_PREFIX=/app/media-stack-ui \
+STACK_AUTHELIA_HOST=authelia.iomio.io \
+bash bin/test/run-playwright-screenshots.sh 192.168.1.60 media-stack
 ```
 
-This runs `tests/browser/tests/screenshot-capture.spec.ts` and writes one PNG per app host.
-The capture flow now attempts app login first (using credentials from env/Kubernetes secret),
-so screenshots reflect authenticated dashboards rather than pre-login shells.
+This runs `tests/browser/tests/screenshot-capture.spec.ts` and writes one PNG per
+service plus one PNG per controller route (`controller_<route>.png`). The capture
+flow logs into Authelia once and reuses the cookie for every controller route, so
+shots reflect authenticated dashboards rather than pre-login shells.
 
 Sample authenticated captures:
 
-![Homepage](apps/homepage_local.png)
+![Homepage](apps/homepage.png)
 
-![Jellyfin](apps/jellyfin_local.png)
+![Jellyfin](apps/jellyfin.png)
 
-![Jellyseerr](apps/jellyseerr_local.png)
+![Jellyseerr](apps/jellyseerr.png)
 
-![Maintainerr](apps/maintainerr_local.png)
+![Maintainerr](apps/maintainerr.png)
 
 ## Capture Kubernetes Terminal Snapshots
 
 ```bash
-bash bin/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
+bash bin/debug/capture-k8s-snapshots.sh [NAMESPACE] [OUT_DIR]
 ```
 
 Example:
 
 ```bash
-bash bin/capture-k8s-snapshots.sh media-stack
+bash bin/debug/capture-k8s-snapshots.sh media-stack
 ```
 
 This writes timestamped `.txt` evidence files for:
