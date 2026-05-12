@@ -716,7 +716,7 @@ POST /api/admin/explain
 {
   "subject": {"kind": "job", "id": "media-integrity-scan-2"},
   "max_audit_rows": 50,
-  "model": "claude-haiku-4-5"
+  "model": "default"
 }
 → streams text/event-stream tokens
 ```

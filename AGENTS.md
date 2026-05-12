@@ -441,7 +441,7 @@ For Kubernetes and Docker runtime operations, Python SDK adapters are required; 
 - Chaos scheduling parameters (`duration_minutes`, `interval_seconds`, `actions`) must remain config-driven and test-covered.
 
 ## Commit Message Policy
-- Do not include `Co-Authored-By` lines, AI/LLM tool attributions, or references to Claude, Anthropic, or any AI assistant in git commit messages.
+- Do not include `Co-Authored-By` lines, AI/LLM tool attributions, or vendor/assistant name-drops in git commit messages.
 - Commit messages should describe the change, not the tooling used to produce it.
 
 ## Compose Environment Contract

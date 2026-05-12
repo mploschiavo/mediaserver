@@ -41,8 +41,8 @@ The goals, in priority order, are:
 - `bin/release.sh` and the `dist/`-rooted release one-liners
   operators have used for months.
 - `VERSION` and `VERSION-UI` at root (read by Dockerfiles).
-- `AGENTS.md`, `CLAUDE.md`, `.claude/` (load-bearing for the agent
-  harness).
+- `AGENTS.md` and the agent local-config tree (load-bearing for the
+  agent harness).
 - `.github/` workflow + template paths.
 - `contracts/` source-of-truth tree.
 - `bin/controller.py` composition root.
@@ -55,8 +55,8 @@ The goals, in priority order, are:
 
 ```
 .
-├── .github/  .ratchets/  .claude/
-├── AGENTS.md  CLAUDE.md  README.md  CHANGELOG.md  CONTRIBUTING.md
+├── .github/  .ratchets/
+├── AGENTS.md  README.md  CHANGELOG.md  CONTRIBUTING.md
 ├── VERSION  VERSION-UI
 ├── pyproject.toml  mypy.ini
 │
