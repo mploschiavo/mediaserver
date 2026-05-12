@@ -276,19 +276,29 @@ class TestPostBootstrapAutoQueue(unittest.TestCase):
 
 class TestDispatchAction(unittest.TestCase):
 
-    @patch("media_stack.cli.commands.controller_main._apply_overrides")
-    @patch("media_stack.services.runtime_platform.log")
-    @patch("media_stack.services.jobs.action_handlers.action_bootstrap")
-    def test_dispatch_bootstrap(self, mock_handler, mock_log, mock_apply):
-        _dispatch_action("bootstrap", {}, _make_args(), ControllerState())
-        mock_handler.assert_called_once()
+    # Post-Phase-7k dispatch is single-path: every action name routes
+    # through ``run_job``. ``bootstrap`` is a phase wrapper (no direct
+    # handler) and ``post-setup`` has ``requires:`` that block it in
+    # unit tests — so mocking the legacy ``action_handlers.*``
+    # functions doesn't observe anything. Assert the dispatch
+    # boundary instead: ``_dispatch_action(name, ...)`` calls
+    # ``run_job(name, ...)``.
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")
     @patch("media_stack.services.runtime_platform.log")
-    @patch("media_stack.services.jobs.action_handlers.action_post_setup")
-    def test_dispatch_finalize(self, mock_handler, mock_log, mock_apply):
+    @patch("media_stack.services.jobs.framework.run_job")
+    def test_dispatch_bootstrap(self, mock_run_job, mock_log, mock_apply):
+        mock_run_job.return_value = {"action": "bootstrap"}
+        _dispatch_action("bootstrap", {}, _make_args(), ControllerState())
+        mock_run_job.assert_called_once_with("bootstrap", source=None, actor=None)
+
+    @patch("media_stack.cli.commands.controller_main._apply_overrides")
+    @patch("media_stack.services.runtime_platform.log")
+    @patch("media_stack.services.jobs.framework.run_job")
+    def test_dispatch_finalize(self, mock_run_job, mock_log, mock_apply):
+        mock_run_job.return_value = {"action": "post-setup"}
         _dispatch_action("post-setup", {}, _make_args(), ControllerState())
-        mock_handler.assert_called_once()
+        mock_run_job.assert_called_once_with("post-setup", source=None, actor=None)
 
     @patch("media_stack.cli.commands.controller_main._apply_overrides")
     @patch("media_stack.services.runtime_platform.log")

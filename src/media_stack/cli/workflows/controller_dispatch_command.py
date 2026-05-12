@@ -105,8 +105,16 @@ class ControllerDispatchCommand:
         result = run_job(action_name, source=source, actor=actor)
         if not result:
             raise ValueError(f"Unknown action: {action_name}")
-        if result.get("error"):
-            raise RuntimeError(result["error"])
+        error = result.get("error")
+        if error:
+            # ``run_job`` returns a truthy dict with an ``error`` key
+            # when the job name doesn't resolve in the registry. Map
+            # that back to ValueError so callers (and the public API
+            # contract preserved from pre-Phase-7k dispatch) see
+            # "Unknown action" rather than a generic RuntimeError.
+            if error.startswith("Unknown job:"):
+                raise ValueError(f"Unknown action: {action_name}")
+            raise RuntimeError(error)
 
         runtime_platform.log(f"[ACTION] {action_name}: complete")
 

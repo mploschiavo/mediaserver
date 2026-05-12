@@ -47,64 +47,84 @@ def _make_args(**overrides):
 
 # ---------------------------------------------------------------------------
 # _dispatch_action routing table
+#
+# Post-Phase-7k dispatch is single-path: every action name routes through
+# ``run_job``. Pre-Phase-7k tests mocked the legacy
+# ``action_handlers.action_*`` callables and expected ``_dispatch_action``
+# to call them directly. That contract no longer holds — some action_*
+# functions are dead code (``action_bootstrap``, ``action_reconcile``),
+# some are still called from job adapters but only after blocking
+# prereqs (``action_post_setup``), and exercising the real job framework
+# from a unit test would expand the phase tree and run real work.
+#
+# So these tests now assert the dispatch boundary directly:
+# ``_dispatch_action(name, ...)`` ends up calling
+# ``run_job(name, source=..., actor=...)``.
 # ---------------------------------------------------------------------------
 
-_HANDLER_MODULE = "media_stack.services.jobs.action_handlers"
+_RUN_JOB_TARGET = "media_stack.services.jobs.framework.run_job"
 
 
 class TestDispatchActionBootstrap(unittest.TestCase):
-    """_dispatch_action routes 'bootstrap' to action_bootstrap."""
-
-    @mock.patch(f"{_HANDLER_MODULE}.action_bootstrap")
-    def test_bootstrap(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_bootstrap(self, m_run_job):
+        m_run_job.return_value = {"action": "bootstrap"}
         _dispatch_action("bootstrap", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("bootstrap", source=None, actor=None)
 
 
 class TestDispatchActionFinalize(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_post_setup")
-    def test_finalize(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_finalize(self, m_run_job):
+        m_run_job.return_value = {"action": "post-setup"}
         _dispatch_action("post-setup", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("post-setup", source=None, actor=None)
 
 
 class TestDispatchActionAutoIndexers(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_discover_indexers")
-    def test_auto_indexers(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_auto_indexers(self, m_run_job):
+        m_run_job.return_value = {"action": "discover-indexers"}
         _dispatch_action("discover-indexers", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("discover-indexers", source=None, actor=None)
 
 
 class TestDispatchActionRestartApps(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_restart_apps")
-    def test_restart_apps(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_restart_apps(self, m_run_job):
+        m_run_job.return_value = {"action": "restart-apps"}
         _dispatch_action("restart-apps", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("restart-apps", source=None, actor=None)
 
 
 class TestDispatchActionSyncIndexers(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_push_indexers")
-    def test_sync_indexers(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_sync_indexers(self, m_run_job):
+        m_run_job.return_value = {"action": "push-indexers"}
         _dispatch_action("push-indexers", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("push-indexers", source=None, actor=None)
 
 
 class TestDispatchActionEnvoyConfig(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_envoy_config")
-    def test_envoy_config(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_envoy_config(self, m_run_job):
+        m_run_job.return_value = {"action": "envoy-config"}
         _dispatch_action("envoy-config", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("envoy-config", source=None, actor=None)
 
 
 class TestDispatchActionReconcile(unittest.TestCase):
-    @mock.patch(f"{_HANDLER_MODULE}.action_reconcile")
-    def test_reconcile(self, m_handler):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_reconcile(self, m_run_job):
+        m_run_job.return_value = {"action": "reconcile"}
         _dispatch_action("reconcile", {}, _make_args(), ControllerState())
-        m_handler.assert_called_once()
+        m_run_job.assert_called_once_with("reconcile", source=None, actor=None)
 
 
 class TestDispatchActionUnknown(unittest.TestCase):
-    def test_unknown_action_raises(self):
+    @mock.patch(_RUN_JOB_TARGET)
+    def test_unknown_action_raises(self, m_run_job):
+        m_run_job.return_value = {"error": "Unknown job: no-such-action"}
         with self.assertRaises(ValueError) as ctx:
             _dispatch_action("no-such-action", {}, _make_args(), ControllerState())
         self.assertIn("no-such-action", str(ctx.exception))
