@@ -67,6 +67,28 @@ plugin:
       satisfies: [jellyfin-libraries]
       requires: []
 
+    # Rotate Jellyfin's admin password to match ``STACK_ADMIN_PASSWORD``
+    # so it stays in sync with Authelia / *arr / qBit. Without this,
+    # Jellyfin's password is set once at first-run wizard time and
+    # never re-rotated — operators who rotate the stack secret end
+    # up with Authelia on the new password but Jellyfin still on
+    # the old one (the literal scenario observed 2026-05-12 with
+    # Jellyfin still accepting admin/admin on k8s).
+    #
+    # Runs in pre_bootstrap with priority 6 so it lands between
+    # ``qbittorrent:ensure-credentials`` (priority 5) and
+    # ``discover-api-keys`` (priority 10). Gated below:
+    # ``run-legacy-pipeline`` declares
+    # ``requires: [jellyfin-credentials-synced]`` so the legacy
+    # pipeline's media-server steps never see a stale password.
+    "jellyfin:ensure-credentials":
+      handler: media_stack.adapters.jellyfin.lifecycle:ensure_credentials
+      label: "Verify Jellyfin stack-admin credentials"
+      satisfies: [jellyfin-credentials-synced]
+      phase: pre_bootstrap
+      priority: 6
+      requires: []
+
     configure-libraries:
       handler: media_stack.services.apps.jellyfin.runtime_ops:ensure_jellyfin_libraries
       label: "Update libraries"
@@ -208,6 +230,19 @@ plugin:
       ensured_by:
         type: job
         job_name: "jellyfin:mint-api-key"
+
+    - id: jellyfin-credentials-synced
+      description: Jellyfin admin user authenticates against STACK_ADMIN_USERNAME/PASSWORD
+      platforms: [compose, k8s]
+      bootstrap_blocking: true
+      depends_on: [jellyfin-api-key-discoverable]
+      probe:
+        type: lifecycle
+        service: jellyfin
+        method: probe_credentials_synced
+      ensured_by:
+        type: job
+        job_name: "jellyfin:ensure-credentials"
 
     - id: jellyfin-libraries
       description: Jellyfin has Movies, TV Shows, Music, Books libraries pointing at /media/*

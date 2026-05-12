@@ -35,9 +35,11 @@ against the current world. The orchestrator owns retry + cooldown.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import ClassVar
 
@@ -298,6 +300,153 @@ class JellyfinLifecycle:
     ) -> Outcome[None]:
         return _LIBRARIES_WIRER.ensure(self.discover_api_key(ctx), ctx)
 
+    # --- credentials sync (Jellyfin admin password ↔ STACK_ADMIN_*) -
+
+    def probe_credentials_synced(
+        self, ctx: OrchestrationContext,
+    ) -> ProbeResult:
+        """Cheap HTTP check that STACK_ADMIN_USERNAME / PASSWORD
+        authenticate against Jellyfin's admin user. ``ok`` on
+        successful authenticate; ``failed`` on 401-ish responses;
+        ``unknown`` when Jellyfin is unreachable (warmup)."""
+        base = self._jellyfin_url(ctx)
+        if not base:
+            return ProbeResult.failed(
+                "no host/port in config — cannot probe",
+                evidence={"config_keys": sorted(ctx.config.keys())},
+                evaluated_at=ctx.now(),
+            )
+        username, password = self._stack_admin_creds(ctx)
+        if not password:
+            return ProbeResult.failed(
+                "no STACK_ADMIN_PASSWORD in env/secrets",
+                evidence={"username_present": bool(username)},
+                evaluated_at=ctx.now(),
+            )
+        url = f"{base.rstrip('/')}/Users/AuthenticateByName"
+        body = json.dumps({"Username": username, "Pw": password}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Emby-Authorization": (
+                    'MediaBrowser Client="controller", Device="controller", '
+                    'DeviceId="controller-ensure-creds", Version="1.0"'
+                ),
+            },
+        )
+        try:
+            with urllib.request.urlopen(
+                req, timeout=_DEFAULT_PROBE_TIMEOUT_SECONDS,
+            ) as resp:
+                if resp.status == 200:
+                    return ProbeResult.ok(
+                        "stack-admin creds authenticate at Jellyfin",
+                        evidence={"url": url},
+                        evaluated_at=ctx.now(),
+                    )
+                return ProbeResult.failed(
+                    f"login returned http={resp.status}",
+                    evidence={"url": url, "http_status": resp.status},
+                    evaluated_at=ctx.now(),
+                )
+        except urllib.error.HTTPError as exc:
+            return ProbeResult.failed(
+                f"login HTTP {exc.code} — credentials likely mismatched",
+                evidence={"url": url, "http_status": exc.code},
+                evaluated_at=ctx.now(),
+            )
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            return ProbeResult.unknown(
+                f"Jellyfin unreachable at {url}: {exc}",
+                evidence={"url": url, "error": str(exc)},
+                evaluated_at=ctx.now(),
+            )
+
+    def ensure_credentials(
+        self, ctx: OrchestrationContext,
+    ) -> Outcome[None]:
+        """Probe whether ``STACK_ADMIN_PASSWORD`` authenticates against
+        Jellyfin's admin user. If not, rotate Jellyfin's admin
+        password to the stack-admin value using the discovered
+        API key. Success on a clean re-probe afterwards; non-fatal
+        on Jellyfin unreachable (transient).
+        """
+        probe = self.probe_credentials_synced(ctx)
+        if probe.status == "ok":
+            return Outcome.success(evidence=dict(probe.evidence or {}))
+        if probe.status == "unknown":
+            return Outcome.failure(
+                probe.detail or "Jellyfin unreachable",
+                transient=True,
+                evidence=dict(probe.evidence or {}),
+            )
+        # Mismatch → rotate. Need the API key + user id; both come
+        # from the SQLite db / env. Without them we can't authenticate
+        # to /Users/{id}/Password.
+        api_key = self.discover_api_key(ctx)
+        if not api_key:
+            return Outcome.failure(
+                "credentials mismatched and no API key discoverable — "
+                "operator must align Jellyfin admin password with "
+                "STACK_ADMIN_PASSWORD manually",
+                transient=False,
+                evidence={"rotation_reason": "no_api_key"},
+            )
+        username, password = self._stack_admin_creds(ctx)
+        from media_stack.infrastructure.jellyfin.admin_ops import (
+            JellyfinAdminOps,
+        )
+        svc = _StubServiceDef(
+            host=str(ctx.config.get("host") or ""),
+            port=ctx.config.get("port"),
+        )
+        ops = JellyfinAdminOps()
+        # Try rotating with old=password and old="" — admin_ops.reset_password
+        # already iterates both, plus a hard-reset fallback for Jellyfin
+        # 10.9+. ``config_root`` is needed for the discover_api_key
+        # fallback inside reset_password if env JELLYFIN_API_KEY isn't set.
+        config_root = self._API_KEY_HELPERS.config_root(ctx)
+        os.environ["JELLYFIN_API_KEY"] = api_key
+        ok, err = ops.reset_password(
+            svc=svc,
+            username=username,
+            old_password=password,
+            new_password=password,
+            config_root=str(config_root),
+        )
+        if not ok:
+            return Outcome.failure(
+                f"Jellyfin password rotation failed: {err}",
+                transient=True,
+                evidence={"rotation_reason": "reset_password_failed"},
+            )
+        re_probe = self.probe_credentials_synced(ctx)
+        if re_probe.status == "ok":
+            return Outcome.success(
+                evidence={**dict(re_probe.evidence or {}), "rotated": True},
+            )
+        return Outcome.failure(
+            re_probe.detail or "Jellyfin re-probe failed after rotation",
+            transient=True,
+            evidence={"rotation_reason": "reprobe_failed"},
+        )
+
+    def _stack_admin_creds(
+        self, ctx: OrchestrationContext,
+    ) -> tuple[str, str]:
+        username = (
+            (ctx.secrets.get("STACK_ADMIN_USERNAME") or "")
+            or os.environ.get("STACK_ADMIN_USERNAME", "")
+        ).strip() or "admin"
+        password = (
+            (ctx.secrets.get("STACK_ADMIN_PASSWORD") or "")
+            or os.environ.get("STACK_ADMIN_PASSWORD", "")
+        ).strip()
+        return username, password
+
     # --- helpers ----------------------------------------------------
 
     def _public_info_url(self, ctx: OrchestrationContext) -> str:
@@ -345,10 +494,25 @@ mint_api_key = LifecycleHandlerAdapter.bind(
 ensure_libraries = LifecycleHandlerAdapter.bind(
     JellyfinLifecycle, "ensure_libraries",
 )
+ensure_credentials = LifecycleHandlerAdapter.bind(
+    JellyfinLifecycle, "ensure_credentials",
+)
+
+
+class _StubServiceDef:
+    """Minimal duck-typed projection of ``ServiceDef`` for
+    ``JellyfinAdminOps.reset_password`` — it only reads ``.host`` /
+    ``.port``. Keeps the lifecycle independent of the registry
+    module while preserving the existing admin_ops contract."""
+
+    def __init__(self, host: str, port: object) -> None:
+        self.host = host
+        self.port = port
 
 
 __all__ = [
     "JellyfinLifecycle",
-    "mint_api_key",
+    "ensure_credentials",
     "ensure_libraries",
+    "mint_api_key",
 ]

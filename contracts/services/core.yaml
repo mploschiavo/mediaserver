@@ -137,17 +137,24 @@ plugin:
       label: "Run legacy bootstrap"
       phase: pre_bootstrap
       priority: 20
-      # The legacy adapter pipeline talks to qBittorrent via its
-      # WebUI (login + setPreferences). On a clean install qBit
-      # boots with a one-shot temp password and no auth-bypass
-      # whitelist — so the controller's stored
-      # STACK_ADMIN_PASSWORD doesn't yet authenticate. Gate the
-      # legacy pipeline on the credentials-synced promise so
-      # ``qbittorrent:ensure-credentials`` (which both rotates the
-      # password and applies the reverse-proxy trust whitelist)
-      # runs first.
+      # The legacy adapter pipeline talks to qBittorrent + Jellyfin
+      # via their admin APIs. On a clean install:
+      #   * qBit boots with a one-shot temp password and no
+      #     auth-bypass whitelist — STACK_ADMIN_PASSWORD doesn't yet
+      #     authenticate. ``qbittorrent:ensure-credentials`` rotates
+      #     the password + applies the reverse-proxy whitelist.
+      #   * Jellyfin's first-run wizard sets the admin password to
+      #     whatever ``STACK_ADMIN_PASSWORD`` was at wizard time. If
+      #     the operator later rotates the secret, Jellyfin stays on
+      #     the old password and downstream auth checks (Authelia
+      #     OIDC bridge, controller dashboard, *arr notifier) fail.
+      #     ``jellyfin:ensure-credentials`` re-rotates Jellyfin's
+      #     admin password to match the current secret.
+      # Gate the legacy pipeline on both so the media-server steps
+      # never see stale credentials.
       requires:
         - qbittorrent-credentials-synced
+        - jellyfin-credentials-synced
 
     # ---------------------------------------------------------------
     # download_clients phase — sit alongside configure-indexers

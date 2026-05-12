@@ -48,6 +48,11 @@ _WEAK_PASSWORD_BLOCKLIST = frozenset({
     "admin", "administrator", "password", "passw0rd", "changeme",
     "letmein", "media-stack", "root", "toor", "default", "12345",
     "123456", "1234567", "12345678", "qwerty", "welcome",
+    # Added 2026-05-12 after live k8s deploy was found running with
+    # STACK_ADMIN_PASSWORD=secret. ``secret`` / ``pass`` are obvious
+    # placeholder values; ``test`` / ``hello`` catch the most common
+    # "I'll set a real password later" stand-ins.
+    "secret", "pass", "test", "hello",
 })
 
 
