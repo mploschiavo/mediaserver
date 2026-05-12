@@ -38,6 +38,37 @@ const hosts = hostCsv
   .map((v) => v.trim())
   .filter(Boolean);
 
+// ``hosts`` is the full set every browser request must be able to
+// resolve. For the per-app screenshot loop we want ONE entry per
+// service. Selection rules:
+//   * Drop non-app prefixes (controller / authelia / authentik / auth).
+//   * Prefer the ``.iomio.io`` form when present — the Authelia
+//     session cookie is scoped to ``.iomio.io`` so per-app captures
+//     reuse the bootstrap auth. On a remote k8s box ``.local``
+//     hostnames don't resolve at all (mDNS doesn't cross the LAN).
+//   * Require the service to have BOTH ``.iomio.io`` and ``.local``
+//     forms — that's the marker for an actually-deployed app.
+//     Single-form ``.iomio.io`` entries (``emby``/``mythtv``/
+//     ``nzbget``/``jdownloader``/``plex``/``jf``) are Envoy stubs
+//     for non-deployed services and would just emit 404 PNGs.
+const _NON_APP_PREFIXES = new Set<string>([
+  'auth', 'authelia', 'authentik',
+  'm',  // controller host
+]);
+const slugSiblingCount = new Map<string, number>();
+for (const h of hosts) {
+  if (h.endsWith('.iomio.io') || h.endsWith('.local')) {
+    const slug = h.split('.')[0];
+    slugSiblingCount.set(slug, (slugSiblingCount.get(slug) ?? 0) + 1);
+  }
+}
+const capturedAppHosts: string[] = hosts.filter((h: string) => {
+  if (!h.endsWith('.iomio.io')) return false;
+  const slug = h.split('.')[0];
+  if (_NON_APP_PREFIXES.has(slug)) return false;
+  return (slugSiblingCount.get(slug) ?? 0) >= 2;
+});
+
 const acceptableStatusCodes = new Set([200, 301, 302, 303, 307, 308, 401, 403]);
 const resolverRules = hosts.map((host) => `MAP ${host} ${nodeIp}`).join(',');
 const testSkipReason =
@@ -217,7 +248,7 @@ test.describe('UI screenshot capture', () => {
     fs.mkdirSync(screenshotDir, { recursive: true });
   });
 
-  for (const host of hosts) {
+  for (const host of capturedAppHosts) {
     test(`capture ${host}`, async ({ browser }) => {
       const context = await browser.newContext({
         viewport: { width: 1680, height: 945 },
@@ -260,15 +291,26 @@ test.describe('UI screenshot capture', () => {
     });
   }
 
-  // Controller dashboard — accessed directly on port 9100, not via ingress.
+  // Controller dashboard — every top-level route under
+  // ``ui/src/routes/`` saved as one PNG per page. Ratchet at
+  // ``tests/unit/ratchets/test_screenshot_route_coverage.py``
+  // pins this list against the route filesystem.
   //
-  // Walks every top-level route under ``ui/src/routes/`` and saves one
-  // PNG per page. The list is the union of every route file the UI
-  // ships (excluding ``__root.tsx`` and the splat / placeholder
-  // catch-alls). Keep this in sync when adding a new page — the
-  // ratchet at ``tests/unit/ratchets/test_screenshot_route_coverage.py``
-  // pins the list against the route filesystem so a missed entry
-  // surfaces in CI.
+  // Two deployment modes:
+  //
+  // 1. Compose / direct (default): port-9100 access, no auth.
+  //    Used when ``STACK_CONTROLLER_HOST`` is unset.
+  // 2. K8s via Envoy + Authelia: served at host
+  //    ``${STACK_CONTROLLER_HOST}`` (e.g. ``m.iomio.io``) under
+  //    the prefix ``${STACK_CONTROLLER_PREFIX}`` (e.g.
+  //    ``/app/media-stack-ui``). Auth flow: visit any controller
+  //    URL → Envoy ext_authz → Authelia portal at
+  //    ``${STACK_AUTHELIA_HOST}`` → submit credentials → cookie
+  //    set → redirect back. Cookie persists for the rest of the
+  //    capture loop.
+  const controllerHost = process.env.STACK_CONTROLLER_HOST || '';
+  const controllerPrefix = (process.env.STACK_CONTROLLER_PREFIX || '').replace(/\/$/, '');
+  const autheliaHost = process.env.STACK_AUTHELIA_HOST || '';
   const controllerPort = process.env.CONTROLLER_PORT || '9100';
   const controllerRoutes: { name: string; path: string }[] = [
     { name: 'dashboard', path: '/' },
@@ -294,19 +336,51 @@ test.describe('UI screenshot capture', () => {
     { name: 'about', path: '/about' },
   ];
 
-  for (const { name, path: routePath } of controllerRoutes) {
-    test(`capture controller ${name}`, async ({ browser }) => {
-      const context = await browser.newContext({
-        viewport: { width: 1680, height: 945 },
-      });
-      const page = await context.newPage();
-      const url = `http://${nodeIp}:${controllerPort}${routePath}`;
+  function controllerUrlFor(routePath: string): string {
+    if (controllerHost) {
+      const safePath = routePath === '/' ? '' : routePath;
+      return `http://${controllerHost}${controllerPrefix}${safePath || '/'}`;
+    }
+    return `http://${nodeIp}:${controllerPort}${routePath}`;
+  }
+
+  // Single test that loops every controller route. Shares one
+  // browser context (and thus one Authelia cookie) across the
+  // whole loop — that's the only mode where the k8s capture is
+  // sensible, because logging into Authelia 21 times would be
+  // wasteful and flaky. 21 routes × ~7s each + auth bootstrap
+  // ~= ~3min, well past Playwright's 30s default.
+  test('capture controller routes', async ({ browser }) => {
+    test.setTimeout(5 * 60 * 1000);
+    const context = await browser.newContext({
+      viewport: { width: 1680, height: 945 },
+    });
+    const page = await context.newPage();
+
+    if (controllerHost && autheliaHost) {
+      // Authelia bootstrap: visit a controller URL, follow the
+      // 302 redirect to Authelia, submit the form, wait for the
+      // redirect back to the controller UI.
+      const bootstrapUrl = controllerUrlFor('/');
       try {
-        const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-        // Wait for the SPA to hydrate + data to load. Each panel
-        // fires its own queries on mount; 4s is enough margin for
-        // the typical bootstrap-state snapshot to land before the
-        // screenshot fires.
+        await page.goto(bootstrapUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForTimeout(2000);
+        // On the Authelia portal, fill admin credentials. Common
+        // selectors used by Authelia 4.x portal.
+        const loggedIn = await loginCommonForm(page, stackAdminUsername, stackAdminPassword);
+        if (loggedIn) {
+          await page.waitForTimeout(3000);
+        }
+      } catch (err) {
+        console.warn(`[WARN] Authelia bootstrap failed: ${err}`);
+      }
+    }
+
+    for (const { name, path: routePath } of controllerRoutes) {
+      const url = controllerUrlFor(routePath);
+      try {
+        const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        // 4s margin for SPA hydration + initial data load.
         await page.waitForTimeout(4000);
         if (response && !acceptableStatusCodes.has(response.status()) && strictMode) {
           expect(
@@ -317,17 +391,12 @@ test.describe('UI screenshot capture', () => {
       } catch (err) {
         console.warn(`[WARN] Controller route ${routePath} not reachable at ${url}: ${err}`);
       }
-      // Filename pattern: ``controller_<route>.png`` — keeps the
-      // pre-existing ``controller_dashboard.png`` filename and
-      // adds per-route siblings. Replaces ``/`` and ``-`` in the
-      // route name with ``_`` so the filesystem doesn't carry the
-      // route-syntax noise.
       const filePath = path.join(
         screenshotDir,
         `controller_${name.replace(/[\/-]/g, '_')}.png`,
       );
       await page.screenshot({ path: filePath, fullPage: true });
-      await context.close();
-    });
-  }
+    }
+    await context.close();
+  });
 });

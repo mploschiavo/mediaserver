@@ -72,13 +72,12 @@ class CliCommonHelpers:
     def repo_root_from_script_file(self, script_file: str) -> Path:
         resolved = Path(script_file).resolve()
         for candidate in (resolved.parent, *resolved.parents):
-            if (candidate / "contracts" / "media-stack.config.json").exists() and (
-                candidate / "src" / "media_stack"
-            ).exists():
+            if (
+                (candidate / "pyproject.toml").exists()
+                and (candidate / "src" / "media_stack").is_dir()
+                and (candidate / "contracts").is_dir()
+            ):
                 return candidate
-        # Fallback for expected src/media_stack/... paths.
-        if len(resolved.parents) >= 5:
-            return resolved.parents[4]
         return resolved.parent
 
 

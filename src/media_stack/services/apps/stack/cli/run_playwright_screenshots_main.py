@@ -206,6 +206,9 @@ class PlaywrightScreenshotsMain:
             "JELLYSEERR_PASSWORD": jellyseerr_pass,
             "SABNZBD_USERNAME": sab_user,
             "SABNZBD_PASSWORD": sab_pass,
+            "STACK_CONTROLLER_HOST": os.environ.get("STACK_CONTROLLER_HOST", ""),
+            "STACK_CONTROLLER_PREFIX": os.environ.get("STACK_CONTROLLER_PREFIX", ""),
+            "STACK_AUTHELIA_HOST": os.environ.get("STACK_AUTHELIA_HOST", ""),
         }
         _run_playwright_capture(playwright_dir, env)
 
@@ -219,6 +222,12 @@ _instance = PlaywrightScreenshotsMain()
 info = _instance.info
 build_arg_parser = _instance.build_arg_parser
 main = _instance.main
+_capture = _instance._capture
+_ensure_node_modules = _instance._ensure_node_modules
+_hosts_csv = _instance._hosts_csv
+_run = _instance._run
+_run_playwright_capture = _instance._run_playwright_capture
+_secret_value = _instance._secret_value
 
 
 if __name__ == "__main__":
@@ -227,9 +236,3 @@ if __name__ == "__main__":
     except (ConfigError, MediaStackError) as exc:
         print(f"[ERR] {exc}", file=sys.stderr)
         sys.exit(1)
-_capture = _instance._capture
-_ensure_node_modules = _instance._ensure_node_modules
-_hosts_csv = _instance._hosts_csv
-_run = _instance._run
-_run_playwright_capture = _instance._run_playwright_capture
-_secret_value = _instance._secret_value
