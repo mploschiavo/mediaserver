@@ -201,5 +201,160 @@ Highlights:
 
 ---
 
+## Incident response — leaked secret in git history
+
+The 2026-05-12 incident landed 8 secrets in git history via a
+captured `GET /api/backup` JSON committed as a fixture (Google
+OAuth pair, Authelia storage encryption key, Bazarr +
+*arr secrets). All 8 values were rotated on the live stack
+before scrubbing; the Google OAuth pair was revoked at the
+provider. The recovery sequence below is the runbook for the
+next time something gets committed it shouldn't have been.
+
+### Step 1 — Revoke at the source, immediately
+
+Before touching git history, rotate every leaked secret at its
+provider:
+
+* Google / GitHub / Cloud creds — provider console, "delete
+  credential" or "revoke OAuth client"
+* Stack-internal secrets (`STACK_ADMIN_PASSWORD`, Authelia
+  storage key, *arr API keys) — rotate via the dashboard's
+  "Reset password" flow or by deleting + re-creating the
+  service container so it regenerates
+
+History scrubbing without revocation is theatre — the secret is
+already in any clone, archive, scanner cache, and search index
+that hit the repo before you noticed. **Rotation is the only
+control that actually invalidates the leak.**
+
+### Step 2 — Verify the leak's scope
+
+Find every commit + file that ever touched the secret:
+
+```bash
+git log --all -p | grep -nE "<secret-string-or-pattern>"
+git log --all --diff-filter=ACMR --pretty=format: --name-only \
+    -S "<exact-secret-value>" | sort -u
+```
+
+For multi-secret incidents (the 2026-05-12 case had 8), build a
+single regex alternation up front so you can re-run the count
+after each step:
+
+```bash
+git log --all -p 2>&1 | grep -cE "(GOCSPX-…|AIza…|<other-shapes>)"
+```
+
+### Step 3 — Backup-mirror the repo before any rewrite
+
+```bash
+git clone --mirror . ../my-repo.pre-scrub.git
+```
+
+This is the rollback path if filter-repo produces an unexpected
+result. Keep it until the force-push has bedded in for ~24
+hours.
+
+### Step 4 — Install `git-filter-repo`
+
+```bash
+pip install --user --break-system-packages git-filter-repo
+# (the --break-system-packages flag is needed on PEP-668-managed
+# Python installations; omit it on a venv-based install)
+```
+
+### Step 5 — Build a `replacements.txt`
+
+One line per secret, `==>` separator, replacement text. Use a
+documented-placeholder pattern so the replacement is itself
+greppable:
+
+```
+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==>REDACTED-google-oauth-client-secret
+744487b958c96db4a3b30a4ead60781d5e8197204384c037f468dd72bf421e9d==>REDACTED-authelia-storage-encryption-key
+…
+```
+
+### Step 6 — Run filter-repo
+
+```bash
+git filter-repo --replace-text replacements.txt --force
+```
+
+filter-repo will remove the `origin` remote (safety default) and
+record the pre-rewrite history under `refs/original/`. Both have
+to be cleaned up for the scrub to be effective.
+
+### Step 7 — Purge the safety refs + repack
+
+```bash
+git update-ref -d refs/original/refs/heads/main
+git update-ref -d refs/remotes/origin/main 2>/dev/null
+git update-ref -d refs/remotes/origin/HEAD 2>/dev/null
+git reflog expire --expire=now --all
+git gc --prune=now --aggressive
+```
+
+### Step 8 — Verify zero residue
+
+```bash
+git log --all -p 2>&1 | grep -cE "(<secret-pattern-1>|<secret-pattern-2>)"
+# Expected: 0
+```
+
+If non-zero, identify the surviving ref (`git for-each-ref` —
+look for any `refs/original/*`, `refs/remotes/*`, or stash
+entries you missed) and repeat Step 7 against it.
+
+### Step 9 — Force-push
+
+```bash
+git remote add origin <url>   # filter-repo stripped this
+git push origin main --force
+git push origin --tags --force   # only if tag SHAs changed
+```
+
+`--force-with-lease` is the safer default for everyday
+force-pushes, but it requires a fresh `git fetch` that would
+re-pollute the local object store with the un-scrubbed history.
+For a post-scrub push, plain `--force` is the right tool —
+you've already verified locally that origin has nothing newer
+than what you're about to overwrite.
+
+### Step 10 — Notify
+
+* Anyone with a clone of the un-scrubbed history needs to
+  `git fetch + git reset --hard origin/main` (or re-clone).
+  For a small-team / pre-public repo this is just the operator
+  themselves.
+* For a public repo, file a security disclosure note in the
+  CHANGELOG noting which commits were rewritten and why.
+  GitHub's own caches + the fork ecosystem may still retain old
+  SHAs for hours — there's no fix for that other than rotation
+  (Step 1).
+
+### Step 11 — Add a control so it doesn't recur
+
+The pre-commit hook + CI ratchets shipped 2026-05-12
+(`.pre-commit-config.yaml` + `tests/unit/ratchets/
+test_no_committed_secrets_ratchet.py`) catch known secret
+prefixes at commit-time and CI-time. Adding a new secret type
+the ratchets didn't anticipate = one regex line + a baseline
+re-scan:
+
+```bash
+# Add the new pattern to the regex table in the ratchet test,
+# then re-baseline detect-secrets:
+detect-secrets scan --baseline .secrets.baseline
+git add tests/unit/ratchets/test_no_committed_secrets_ratchet.py \
+        .secrets.baseline
+```
+
+See `CONTRIBUTING.md`'s "What NOT to commit" section for the
+operator-side install + baseline-management workflow.
+
+---
+
 **Project Steward**
 Matthew Loschiavo • [matthewloschiavo.com](https://matthewloschiavo.com) • [mploschiavo@gmail.com](mailto:mploschiavo@gmail.com) • [LinkedIn](https://www.linkedin.com/in/matthewloschiavo)
