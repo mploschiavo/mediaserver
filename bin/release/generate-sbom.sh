@@ -14,7 +14,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${1:-${IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}}"
+IMAGE="${1:-${IMAGE:-harbor.iomio.io/public/media-stack-controller:latest}}"
 
 if ! command -v syft >/dev/null 2>&1; then
   echo "[ERR] syft not found. See install link in script header." >&2

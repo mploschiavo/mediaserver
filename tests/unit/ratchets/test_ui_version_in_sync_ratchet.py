@@ -3,7 +3,7 @@
 These two strings serve different purposes but must agree:
 
 * ``VERSION-UI`` is what ``bin/build/build-ui-image.sh`` reads to tag
-  the container image (``harbor.iomio.io/library/media-stack-ui:vX.Y.Z``).
+  the container image (``harbor.iomio.io/public/media-stack-ui:vX.Y.Z``).
 * ``ui/package.json``'s ``version`` field is read by Vite at build time
   and baked into the JS bundle — it's what ``UpdateAvailableBanner``
   and the operator-visible "version" pill display.

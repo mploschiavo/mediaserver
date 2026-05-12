@@ -1,6 +1,6 @@
 # Upgrades
 
-Media Stack ships as a pinned controller image (`harbor.iomio.io/library/media-stack-controller:vX.Y.Z`) plus a separately versioned UI image (`harbor.iomio.io/library/media-stack-ui:vX.Y.Z`). Current versions live in `VERSION` (controller) and `VERSION-UI` (UI) at the repo root. The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
+Media Stack ships as a pinned controller image (`harbor.iomio.io/public/media-stack-controller:vX.Y.Z`) plus a separately versioned UI image (`harbor.iomio.io/public/media-stack-ui:vX.Y.Z`). Current versions live in `VERSION` (controller) and `VERSION-UI` (UI) at the repo root. The app images (Jellyfin, Sonarr, etc.) come from upstream registries and follow their own release cadence.
 
 > The CLI invocations below assume `media-stack-*` is on PATH. If you're
 > running on a fresh checkout, do the [First-time setup](deployment.md#first-time-setup)
@@ -44,9 +44,9 @@ kubectl rollout status -n media-stack deploy/media-stack-ui --timeout=120s
 NEW_CTRL_VERSION="$(cat VERSION)"
 NEW_UI_VERSION="$(cat VERSION-UI)"
 kubectl set image -n media-stack deployment/media-stack-controller \
-    controller=harbor.iomio.io/library/media-stack-controller:v${NEW_CTRL_VERSION}
+    controller=harbor.iomio.io/public/media-stack-controller:v${NEW_CTRL_VERSION}
 kubectl set image -n media-stack deployment/media-stack-ui \
-    ui=harbor.iomio.io/library/media-stack-ui:v${NEW_UI_VERSION}
+    ui=harbor.iomio.io/public/media-stack-ui:v${NEW_UI_VERSION}
 kubectl rollout status -n media-stack deploy/media-stack-controller --timeout=120s
 ```
 
@@ -101,7 +101,7 @@ For k8s, the imperative form is faster for rollback:
 
 ```bash
 kubectl set image -n media-stack deployment/media-stack-controller \
-    controller=harbor.iomio.io/library/media-stack-controller:v1.0.<previous>
+    controller=harbor.iomio.io/public/media-stack-controller:v1.0.<previous>
 ```
 
 Bootstrap state is forward / backward compatible across patch versions in the same minor (`v1.0.X`). Major-minor downgrades may require a restore from backup if the controller wrote schema changes to `${CONFIG_ROOT}/.controller/`.

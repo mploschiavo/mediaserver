@@ -109,8 +109,8 @@ rm -rf data/
 rm -rf media/
 
 # 5. (Optional) Remove the controller + UI images
-docker rmi harbor.iomio.io/library/media-stack-controller:latest \
-           harbor.iomio.io/library/media-stack-ui:latest 2>/dev/null || true
+docker rmi harbor.iomio.io/public/media-stack-controller:latest \
+           harbor.iomio.io/public/media-stack-ui:latest 2>/dev/null || true
 
 # 6. (Optional) Prune unused Docker resources
 docker system prune -af --volumes
@@ -141,7 +141,7 @@ Get-ChildItem config -Directory | Where-Object Name -ne 'defaults' | Remove-Item
 Remove-Item -Recurse -Force media\, data\
 
 # 4. (Optional) Remove the controller + UI images
-docker rmi harbor.iomio.io/library/media-stack-controller:latest, harbor.iomio.io/library/media-stack-ui:latest 2>$null
+docker rmi harbor.iomio.io/public/media-stack-controller:latest, harbor.iomio.io/public/media-stack-ui:latest 2>$null
 
 # 5. (Optional) Prune unused Docker resources
 docker system prune -af --volumes
@@ -374,7 +374,7 @@ in this repo. Removed that reference and made the venv-python
 prefix explicit on every invocation example.
 
 Prior 2026-05-10 (first pass) — refreshed paths (`deploy/compose/`
-+ `deploy/k8s/`), image registry prefix (`harbor.iomio.io/library/`),
++ `deploy/k8s/`), image registry prefix (`harbor.iomio.io/public/`),
 added the GPU overlay teardown section. Previous revision
 (2026-04-30) had `cd docker/` and `k8s/all/` which no longer exist
 in this tree.

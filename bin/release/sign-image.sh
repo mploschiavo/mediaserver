@@ -16,7 +16,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}"
+IMAGE="${IMAGE:-harbor.iomio.io/public/media-stack-controller:latest}"
 WITH_SBOM=0
 for arg in "$@"; do
   case "$arg" in

@@ -60,7 +60,7 @@ Installable as a PWA — service worker is NetworkOnly for `/api/*`, CacheFirst 
 
 Quality ratchets enforced in CI: `pnpm size` (250 KB total JS gzip ceiling, currently 240.8 KB), `pnpm check:todos` (snapshot at `.ratchets/todos.json`), `pnpm lint` (flat ESLint locks `no-console` / `no-only-tests` / `no-explicit-any` at 0), `vitest-axe` a11y on AppShell / CommandPalette / UserMenu / MediaIntegrity (blocks serious + critical), a path-contract test that every `/api/*` literal in `src/` exists in the OpenAPI spec, and a manifest contract that every PNG referenced from `dist/manifest.webmanifest` exists at the declared dimensions.
 
-UI image: `harbor.iomio.io/library/media-stack-ui:v1.3.71` (see [CHANGELOG.md](CHANGELOG.md)).
+UI image: `harbor.iomio.io/public/media-stack-ui:v1.3.71` (see [CHANGELOG.md](CHANGELOG.md)).
 
 ## CI/CD (Python-first)
 
@@ -111,7 +111,7 @@ PYTHONPATH=src python3 -m media_stack.cli.commands.release_pipeline_main verify-
 
 ## Project status
 
-Active. The controller image is published as `harbor.iomio.io/library/media-stack-controller:vX.Y.Z`. Recent changes are in [CHANGELOG.md](CHANGELOG.md).
+Active. The controller image is published as `harbor.iomio.io/public/media-stack-controller:vX.Y.Z`. Recent changes are in [CHANGELOG.md](CHANGELOG.md).
 
 If you're going to deploy this in front of the internet, set `routing.internet_exposed: true` in your bootstrap profile. That disables the `STACK_ADMIN_PASSWORD` env-seed fallback, enforces the weak-password blocklist, and fails boot on well-known defaults. Home-LAN installs don't need any of that.
 

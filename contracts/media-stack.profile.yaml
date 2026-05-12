@@ -18,7 +18,14 @@ resources:
   network_cidr: 192.168.1.0/24
 controller:
   registry: harbor.iomio.io
-  image_name: library/media-stack-controller
+  image_name: public/media-stack-controller
+  image_tag: latest
+ui:
+  # Symmetric with ``controller`` so build/deploy code can resolve
+  # the UI image off the same profile rather than hardcoding the
+  # registry path in ``cli/workflows/build_ui_image_service.py``.
+  registry: harbor.iomio.io
+  image_name: public/media-stack-ui
   image_tag: latest
 install_profile: standard
 apps:

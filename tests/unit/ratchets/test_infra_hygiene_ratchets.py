@@ -478,7 +478,7 @@ def test_burndown_k8s_images_using_mutable_tags() -> None:
         count,
         hint=(
             "Pin container images by digest: "
-            "``image: harbor.iomio.io/library/x:v1@sha256:<digest>``. "
+            "``image: harbor.iomio.io/public/x:v1@sha256:<digest>``. "
             "Without it, ``imagePullPolicy: Always`` (or a node pull "
             "after eviction) can fetch a newer image with the same "
             "tag — silent version drift across pods."

@@ -51,7 +51,7 @@ from typing import Any
 _log = logging.getLogger("media_stack.stack_update")
 
 _REGISTRY = os.environ.get(
-    "STACK_UPDATE_REGISTRY", "harbor.iomio.io/library/media-stack-controller"
+    "STACK_UPDATE_REGISTRY", "harbor.iomio.io/public/media-stack-controller"
 )
 _TAGS_URL = (
     "https://"

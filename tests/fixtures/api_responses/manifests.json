@@ -43,11 +43,11 @@
       "name": "maintainerr"
     },
     {
-      "image": "harbor.iomio.io/library/media-stack-controller:v1.0.187",
+      "image": "harbor.iomio.io/public/media-stack-controller:v1.0.187",
       "name": "media-stack-controller"
     },
     {
-      "image": "harbor.iomio.io/library/media-stack-ui:v1.3.7",
+      "image": "harbor.iomio.io/public/media-stack-ui:v1.3.7",
       "name": "media-stack-ui"
     },
     {

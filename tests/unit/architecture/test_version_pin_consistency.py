@@ -12,7 +12,7 @@ silently stayed on v1.0.96 for the same release.
 
 Coverage:
 
-* All ``image: harbor.iomio.io/library/media-stack-controller:vX``
+* All ``image: harbor.iomio.io/public/media-stack-controller:vX``
   references across the repo (compose source + dist + k8s
   manifests + dist k8s bundle) must read the current ``VERSION``.
 * Every kustomize ``newTag:`` for that image must read the
@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 _VERSION_FILE = ROOT / "VERSION"
-_IMAGE_NAME = "harbor.iomio.io/library/media-stack-controller"
+_IMAGE_NAME = "harbor.iomio.io/public/media-stack-controller"
 
 # File patterns to scan. Anything outside these globs is ignored.
 _SCAN_GLOBS = (

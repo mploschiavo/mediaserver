@@ -47,7 +47,7 @@ _K8S_KUSTOMIZATION = _K8S_DIR / "kustomization.yaml"
 _K8S_SECRETS = _K8S_DIR / "base" / "secrets.example.yaml"
 
 _AUTHELIA_CONFIG_PVC = "media-stack-config-authelia"
-_CONTROLLER_IMAGE = "harbor.iomio.io/library/media-stack-controller"
+_CONTROLLER_IMAGE = "harbor.iomio.io/public/media-stack-controller"
 
 
 def _split_yaml_docs(text: str) -> list[dict]:

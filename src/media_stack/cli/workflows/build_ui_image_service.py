@@ -27,15 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from media_stack.core.cli_common import run_command
+from media_stack.core.defaults import default_ui_image as _profile_default_ui_image
 from media_stack.core.exceptions import ConfigError
-
-
-# Image coordinates are duplicated from the profile YAML's controller block
-# pattern (registry / image_name / image_tag). The UI does not yet have a
-# dedicated profile section so we hard-default the registry; an operator can
-# override with --image or BOOTSTRAP_UI_IMAGE.
-_DEFAULT_REGISTRY = "harbor.iomio.io/library"
-_DEFAULT_IMAGE_NAME = "media-stack-ui"
 
 
 @dataclass(frozen=True)
@@ -67,15 +60,31 @@ class BuildUIImageService:
     def default_ui_image(self, root_dir: Path) -> str:
         """Resolve the default UI image ref.
 
-        ``BOOTSTRAP_UI_IMAGE`` env override wins for parity with the
-        controller's ``BOOTSTRAP_RUNNER_IMAGE`` escape hatch. Otherwise
-        synthesise from the repo's ``VERSION-UI`` text.
+        Reads the registry + image-name pair from the same profile
+        YAML the controller image uses (``ui.{registry,image_name}``)
+        and pairs it with the repo's ``VERSION-UI`` text. The
+        ``BOOTSTRAP_UI_IMAGE`` env override (and the compose-flavoured
+        ``UI_RUNNER_IMAGE`` alias) win for parity with the
+        controller's ``BOOTSTRAP_RUNNER_IMAGE`` escape hatch.
         """
-        env = os.environ.get("BOOTSTRAP_UI_IMAGE", "").strip()
+        env = (
+            os.environ.get("BOOTSTRAP_UI_IMAGE", "").strip()
+            or os.environ.get("UI_RUNNER_IMAGE", "").strip()
+        )
         if env:
             return env
+        # ``default_ui_image()`` from core/defaults.py resolves
+        # ``<registry>/<image_name>:<image_tag>`` from the profile.
+        # We replace the profile's tag with the per-repo
+        # ``VERSION-UI`` so a build always pairs the right code with
+        # the right version literal even when the profile says
+        # ``image_tag: latest``.
+        profile_ref = _profile_default_ui_image()
+        registry_image, _, _profile_tag = profile_ref.rpartition(":")
+        if not registry_image:
+            registry_image = profile_ref  # no tag in profile ref
         version = sys.modules[__name__]._read_ui_version(root_dir)
-        return f"{_DEFAULT_REGISTRY}/{_DEFAULT_IMAGE_NAME}:v{version}"
+        return f"{registry_image}:v{version}"
 
     def truthy(self, value: str | None, default: bool) -> bool:
         if value is None:

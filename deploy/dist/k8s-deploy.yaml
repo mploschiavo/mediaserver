@@ -1716,7 +1716,7 @@ spec:
           value: /profile/profile.yaml
         - name: BOOTSTRAP_CONFIG_FILE
           value: /controller-config/config.json
-        image: harbor.iomio.io/library/media-stack-controller:v1.0.337
+        image: harbor.iomio.io/public/media-stack-controller:v1.0.337
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -1889,7 +1889,7 @@ spec:
       - env:
         - name: API_UPSTREAM
           value: media-stack-controller:9100
-        image: harbor.iomio.io/library/media-stack-ui:v1.3.20
+        image: harbor.iomio.io/public/media-stack-ui:v1.3.20
         imagePullPolicy: Always
         livenessProbe:
           failureThreshold: 3
@@ -2542,7 +2542,7 @@ spec:
               value: "25"
             - name: FULLY_PRECONFIGURED
               value: "1"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.337
+            image: harbor.iomio.io/public/media-stack-controller:v1.0.337
             imagePullPolicy: IfNotPresent
             name: controller-reconcile
             volumeMounts:
@@ -2682,7 +2682,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.337
+            image: harbor.iomio.io/public/media-stack-controller:v1.0.337
             imagePullPolicy: IfNotPresent
             name: jellyfin-prewarm
             volumeMounts:
@@ -2781,7 +2781,7 @@ spec:
               value: "3"
             - name: BOOTSTRAP_WAIT_HEARTBEAT_SECONDS
               value: "15"
-            image: harbor.iomio.io/library/media-stack-controller:v1.0.337
+            image: harbor.iomio.io/public/media-stack-controller:v1.0.337
             imagePullPolicy: IfNotPresent
             name: media-hygiene
             volumeMounts:

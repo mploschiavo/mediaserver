@@ -31,7 +31,7 @@ cosign generate-key-pair
 #  → cosign.key + cosign.pub. Guard cosign.key like any private key.
 
 # After building + pushing an image via bin/build-controller-image.sh:
-IMAGE=harbor.iomio.io/library/media-stack-controller:v1.0.65
+IMAGE=harbor.iomio.io/public/media-stack-controller:v1.0.65
 
 bin/generate-sbom.sh "$IMAGE"
 # → artifacts/sbom/harbor.iomio.io-library-media-stack-controller--v1.0.65.spdx.json
@@ -69,7 +69,7 @@ Add this as a pre-flight in your deploy pipeline / kubeadm apply /
 `docker run` wrapper:
 
 ```bash
-IMAGE=harbor.iomio.io/library/media-stack-controller:v1.0.65 \
+IMAGE=harbor.iomio.io/public/media-stack-controller:v1.0.65 \
 EXPECTED_IDENTITY='https://github.com/<org>/<repo>/.github/workflows/release.yml@refs/heads/main' \
 bin/verify-image.sh
 # → [OK] Image signature valid

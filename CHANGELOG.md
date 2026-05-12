@@ -674,7 +674,7 @@ env) reverts to full Phase-4c shadow without touching the image.
   must exist + match declared dimensions.
 
 ### Distribution
-- Image: `harbor.iomio.io/library/media-stack-ui:v1.1.0` — already deployed
+- Image: `harbor.iomio.io/public/media-stack-ui:v1.1.0` — already deployed
   (k8s + compose manifests pinned). Tests: 462/462 passing. Bundle:
   240.8 KB total JS gzip.
 

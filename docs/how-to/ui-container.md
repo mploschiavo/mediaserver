@@ -60,7 +60,7 @@ bin/build-ui-image.sh --engine podman  # force podman over docker
 ```
 
 Defaults:
-- Image: `harbor.iomio.io/library/media-stack-ui:v${VERSION-UI}` — current
+- Image: `harbor.iomio.io/public/media-stack-ui:v${VERSION-UI}` — current
   shipped tag is `v1.1.0`.
 - Dockerfile: [`docker/ui.Dockerfile`](../docker/ui.Dockerfile) — multi-stage
   `node:22-alpine` (pnpm + Vite build) → `nginxinc/nginx-unprivileged:1.27-alpine`.
@@ -74,7 +74,7 @@ Kubernetes (rolling update):
 
 ```
 kubectl set image deploy/media-stack-ui \
-    ui=harbor.iomio.io/library/media-stack-ui:v1.1.0
+    ui=harbor.iomio.io/public/media-stack-ui:v1.1.0
 kubectl rollout status deploy/media-stack-ui --timeout=120s
 ```
 
@@ -122,7 +122,7 @@ Compose example:
 ```
 services:
   ui:
-    image: harbor.iomio.io/library/media-stack-ui:v1.1.0
+    image: harbor.iomio.io/public/media-stack-ui:v1.1.0
     environment:
       API_UPSTREAM: bootstrap:9100
     ports:

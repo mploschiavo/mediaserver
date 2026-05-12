@@ -16,8 +16,8 @@ resources:
   - ../../base/apps/unpackerr.yaml
   - ../../base/scale-policy.yaml
 images:
-  - name: harbor.iomio.io/library/media-stack-controller
-    newName: harbor.iomio.io/library/media-stack-controller
-    newTag: v1.0.367
+  - name: harbor.iomio.io/public/media-stack-controller
+    newName: harbor.iomio.io/public/media-stack-controller
+    newTag: v1.0.368
 patches:
   - path: ingress-tls-patch.yaml

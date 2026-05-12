@@ -54,7 +54,7 @@ def test_default_ui_image_uses_version_file(tmp_path: Path, monkeypatch) -> None
     monkeypatch.delenv("BOOTSTRAP_UI_IMAGE", raising=False)
     (tmp_path / "VERSION-UI").write_text("9.9.9\n", encoding="utf-8")
     assert ui_build.default_ui_image(tmp_path) == (
-        "harbor.iomio.io/library/media-stack-ui:v9.9.9"
+        "harbor.iomio.io/public/media-stack-ui:v9.9.9"
     )
 
 
@@ -67,7 +67,7 @@ def test_default_ui_image_env_override_wins(tmp_path: Path, monkeypatch) -> None
 def test_default_ui_image_falls_back_to_dev_tag(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("BOOTSTRAP_UI_IMAGE", raising=False)
     assert ui_build.default_ui_image(tmp_path) == (
-        "harbor.iomio.io/library/media-stack-ui:vdev"
+        "harbor.iomio.io/public/media-stack-ui:vdev"
     )
 
 
@@ -77,7 +77,7 @@ def test_default_ui_image_ignores_blank_env(tmp_path: Path, monkeypatch) -> None
     monkeypatch.setenv("BOOTSTRAP_UI_IMAGE", "   ")
     (tmp_path / "VERSION-UI").write_text("1.0.0\n", encoding="utf-8")
     assert ui_build.default_ui_image(tmp_path) == (
-        "harbor.iomio.io/library/media-stack-ui:v1.0.0"
+        "harbor.iomio.io/public/media-stack-ui:v1.0.0"
     )
 
 
@@ -173,7 +173,7 @@ def test_parse_config_uses_defaults(monkeypatch, tmp_path: Path) -> None:
     (docker_dir / "ui.Dockerfile").write_text("FROM nginx:1.27-alpine\n")
 
     cfg = ui_build.parse_config([])
-    assert cfg.image == "harbor.iomio.io/library/media-stack-ui:v1.0.0"
+    assert cfg.image == "harbor.iomio.io/public/media-stack-ui:v1.0.0"
     assert cfg.push_image is True  # PUSH_IMAGE default
     assert cfg.engine == "docker"
     assert cfg.dockerfile.is_file()

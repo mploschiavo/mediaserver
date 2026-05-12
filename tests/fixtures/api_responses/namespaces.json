@@ -198,7 +198,7 @@
     },
     {
       "cpu_request": "",
-      "image": "harbor.iomio.io/library/media-stack-controller:v1.0.187",
+      "image": "harbor.iomio.io/public/media-stack-controller:v1.0.187",
       "mem_request": "",
       "name": "media-stack-controller",
       "ready": 1,
@@ -206,7 +206,7 @@
     },
     {
       "cpu_request": "25m",
-      "image": "harbor.iomio.io/library/media-stack-ui:v1.3.7",
+      "image": "harbor.iomio.io/public/media-stack-ui:v1.3.7",
       "mem_request": "32Mi",
       "name": "media-stack-ui",
       "ready": 2,

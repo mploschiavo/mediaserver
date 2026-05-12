@@ -20,7 +20,7 @@ main (always deployable)
 3. **Test locally** with `.venv/bin/python -m pytest tests/unit/ -q`
 4. **Verify architecture** with `.venv/bin/python -m pytest tests/unit/ratchets/ -v`
 5. **Build image** with `bin/build/build-controller-image.sh --no-push` (script uses `deploy/compose/controller.Dockerfile`)
-6. **Deploy locally** with `docker compose -f deploy/compose/docker-compose.yml up -d media-stack-controller` or `kubectl set image -n media-stack deployment/media-stack-controller controller=harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)`
+6. **Deploy locally** with `docker compose -f deploy/compose/docker-compose.yml up -d media-stack-controller` or `kubectl set image -n media-stack deployment/media-stack-controller controller=harbor.iomio.io/public/media-stack-controller:v$(cat VERSION)`
 7. **Verify runtime** via controller dashboard at `http://localhost:9100/` (compose) or your ingress (k8s)
 8. **Push** and create PR — the version-pin ratchet (`tests/unit/architecture/test_version_pin_consistency.py`) requires `VERSION` / `VERSION-UI` / `deploy/compose/docker-compose.yml` / `deploy/k8s/profiles/*/kustomization.yaml` / `contracts/api/openapi.yaml` to stay in sync
 
@@ -82,15 +82,15 @@ No platform code changes required:
 ```bash
 # Controller (uses deploy/compose/controller.Dockerfile under the hood)
 bin/build/build-controller-image.sh --no-push
-docker tag harbor.iomio.io/library/media-stack-controller:latest \
-           harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)
-docker push harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)
-docker push harbor.iomio.io/library/media-stack-controller:latest
+docker tag harbor.iomio.io/public/media-stack-controller:latest \
+           harbor.iomio.io/public/media-stack-controller:v$(cat VERSION)
+docker push harbor.iomio.io/public/media-stack-controller:v$(cat VERSION)
+docker push harbor.iomio.io/public/media-stack-controller:latest
 
 # UI (uses deploy/compose/ui.Dockerfile)
 bin/build/build-ui-image.sh --no-push
-docker push harbor.iomio.io/library/media-stack-ui:v$(cat VERSION-UI)
-docker push harbor.iomio.io/library/media-stack-ui:latest
+docker push harbor.iomio.io/public/media-stack-ui:v$(cat VERSION-UI)
+docker push harbor.iomio.io/public/media-stack-ui:latest
 ```
 
 The build scripts tag `:latest` only; the explicit `:v<VERSION>` tag is what kustomize pins reference, so you must `docker tag` + `docker push` it before doing a `kubectl apply -k`.
@@ -106,7 +106,7 @@ kubectl apply -k deploy/k8s/profiles/standard
 
 # Hot-fix the controller without re-applying the whole tree:
 kubectl set image -n media-stack deployment/media-stack-controller \
-    controller=harbor.iomio.io/library/media-stack-controller:v$(cat VERSION)
+    controller=harbor.iomio.io/public/media-stack-controller:v$(cat VERSION)
 ```
 
 ### Verify

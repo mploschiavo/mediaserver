@@ -227,7 +227,7 @@ services:
     shm_size: 512mb
 
   envoy-config-init:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/public/media-stack-controller:latest}
     container_name: ${COMPOSE_PROJECT_NAME:-media-dev}-envoy-config-init
     # Image ENTRYPOINT is "media-stack-controller" — for the
     # one-shot envoy generator we need plain python3, so override.
@@ -660,7 +660,7 @@ services:
     restart: unless-stopped
 
   media-stack-controller:
-    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-controller:v1.0.337}
+    image: ${BOOTSTRAP_RUNNER_IMAGE:-harbor.iomio.io/public/media-stack-controller:v1.0.337}
     container_name: media-stack-controller
     # Image ENTRYPOINT is already "media-stack-controller" — only
     # pass flags here, otherwise the binary's own name re-arrives as
@@ -776,7 +776,7 @@ services:
 
   media-stack-ui:
     container_name: ${COMPOSE_PROJECT_NAME:-media-stack}-ui
-    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/library/media-stack-ui:v1.3.85}
+    image: ${UI_RUNNER_IMAGE:-harbor.iomio.io/public/media-stack-ui:v1.3.85}
     restart: unless-stopped
     depends_on:
       media-stack-controller:

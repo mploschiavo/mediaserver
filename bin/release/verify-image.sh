@@ -16,7 +16,7 @@
 #   2  cosign not installed
 set -Eeuo pipefail
 
-IMAGE="${IMAGE:-harbor.iomio.io/library/media-stack-controller:latest}"
+IMAGE="${IMAGE:-harbor.iomio.io/public/media-stack-controller:latest}"
 
 if ! command -v cosign >/dev/null 2>&1; then
   echo "[ERR] cosign not found" >&2

@@ -82,7 +82,7 @@
     },
     {
       "days_old": 0,
-      "image": "harbor.iomio.io/library/media-stack-controller:v1.0.187",
+      "image": "harbor.iomio.io/public/media-stack-controller:v1.0.187",
       "last_updated": "2026-04-25 16:52:10",
       "name": "media-stack-controller",
       "stale": false,
@@ -90,7 +90,7 @@
     },
     {
       "days_old": 0,
-      "image": "harbor.iomio.io/library/media-stack-ui:v1.3.7",
+      "image": "harbor.iomio.io/public/media-stack-ui:v1.3.7",
       "last_updated": "2026-04-25 09:25:50",
       "name": "media-stack-ui",
       "stale": false,

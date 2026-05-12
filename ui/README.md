@@ -145,7 +145,7 @@ The UI ships in the `media-stack-ui` container, built via a two-stage
 Dockerfile at `docker/ui.Dockerfile`:
 
 ```
-bin/build-ui-image.sh        # builds + pushes harbor.iomio.io/library/media-stack-ui:v$VERSION-UI
+bin/build-ui-image.sh        # builds + pushes harbor.iomio.io/public/media-stack-ui:v$VERSION-UI
 bin/build-ui-image.sh --no-push
 ```
 

@@ -16,7 +16,7 @@
 #   - NetworkPolicy (ingress from in-namespace pods + kubelet,
 #     egress to controller:9100 + DNS)
 #
-# Image is published as harbor.iomio.io/library/media-stack-ui;
+# Image is published as harbor.iomio.io/public/media-stack-ui;
 # tag is pinned via kustomize ``images:`` block, mirroring the
 # controller's release flow.
 ---
@@ -70,7 +70,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: ui
-          image: harbor.iomio.io/library/media-stack-ui:v1.3.20
+          image: harbor.iomio.io/public/media-stack-ui:v1.3.20
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
