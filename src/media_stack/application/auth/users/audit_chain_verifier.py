@@ -79,28 +79,55 @@ class AuditChainVerifier:
     def verify_once(self) -> tuple[bool, str]:
         audit = self._factory()
         ok, detail = audit.verify_chain()
+        prev_ok = self.last_ok
+        prev_detail = self.last_detail
         self.last_checked_at = self._clock()
         self.last_ok = bool(ok)
         self.last_detail = str(detail or "")
         if not ok:
-            if self.first_tamper_at == 0.0:
-                self.first_tamper_at = self.last_checked_at
-            _log.error("[audit-verify] CHAIN CORRUPTION DETECTED: %s",
-                       detail)
-            if self._alert_fn is not None:
-                try:
-                    self._alert_fn(detail)
-                except Exception as exc:  # noqa: BLE001
-                    _log.debug(
-                        "[DEBUG] audit-verify alert_fn raised: %s", exc,
-                    )
-        else:
-            # Clear the "first tamper" timestamp only if the chain is
-            # intact AND was previously reported intact. Otherwise
-            # preserve the historical signal for forensics.
-            if self.first_tamper_at and self.last_ok:
-                pass  # keep timestamp — operator needs to see it happened
+            self._handle_failure(detail, prev_ok, prev_detail)
+        elif not prev_ok:
+            # Recovery (operator archived the corrupted log).
+            # Emit a single line so the dashboard can show the
+            # state transition; the historical ``first_tamper_at``
+            # timestamp is preserved for forensics.
+            _log.info(
+                "[audit-verify] chain intact (recovered after "
+                "previous tamper at %.0f)", self.first_tamper_at,
+            )
         return self.last_ok, self.last_detail
+
+    def _handle_failure(
+        self, detail: str, prev_ok: bool, prev_detail: str,
+    ) -> None:
+        """Record + alert on chain corruption, but suppress
+        duplicate-error spam.
+
+        Only log + alert when the state transitions (clean → broken)
+        or when the corruption signature itself changes (a NEW break,
+        e.g. the operator archived the previous corruption and a
+        fresh race introduced another). Re-logging the same
+        ``entry N: prev_hash mismatch`` every 10 minutes for weeks
+        just fills the dashboard.
+        """
+        first_detection = self.first_tamper_at == 0.0
+        if first_detection:
+            self.first_tamper_at = self.last_checked_at
+        detail_changed = self.last_detail != prev_detail
+        if not (first_detection or prev_ok or detail_changed):
+            return
+        _log.error("[audit-verify] CHAIN CORRUPTION DETECTED: %s", detail)
+        self._dispatch_alert(detail)
+
+    def _dispatch_alert(self, detail: str) -> None:
+        if self._alert_fn is None:
+            return
+        try:
+            self._alert_fn(detail)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "[DEBUG] audit-verify alert_fn raised: %s", exc,
+            )
 
     def snapshot(self) -> dict:
         return {

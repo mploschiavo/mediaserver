@@ -22,16 +22,46 @@ _MIN_ROTATION_BYTES = 2 ** 10
 
 class AuditLog:
 
+    # Class-level lock + last-hash registry keyed by absolute path.
+    # Multiple ``AuditLog(same_path)`` instances must share BOTH the
+    # write lock AND the cached last hash — otherwise concurrent
+    # writers (the request thread + background tasks like
+    # ``reset_password.bg``) each acquire their own per-instance
+    # lock, observe the same stale ``last_hash``, and write two
+    # entries with the same ``prev_hash`` (entry N+1 references
+    # entry N-1 instead of entry N — chain corrupted at N+1).
+    # ``user_service_factory`` constructs fresh ``AuditLog``
+    # instances in five places so per-instance state could never
+    # synchronize them. Keys are ``str(path.resolve())`` so
+    # equivalent paths (relative vs. absolute, symlinked etc.)
+    # collapse to one entry.
+    _STATE_GUARD = threading.Lock()
+    _LOCKS: dict[str, threading.Lock] = {}
+    _LAST_HASH_CACHE: dict[str, str | None] = {}
+
+    @classmethod
+    def _state_for_path(
+        cls, path: Path,
+    ) -> tuple[str, threading.Lock]:
+        """Return ``(key, lock)`` for ``path``; lock is created lazily."""
+        try:
+            key = str(path.resolve())
+        except OSError:
+            key = str(path.absolute())
+        with cls._STATE_GUARD:
+            lock = cls._LOCKS.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                cls._LOCKS[key] = lock
+                cls._LAST_HASH_CACHE[key] = None
+            return key, lock
+
     def __init__(self, path: Path, *, max_size_bytes: int = _DEFAULT_MAX_SIZE_BYTES,
                  keep_archives: int = _DEFAULT_KEEP_ARCHIVES) -> None:
         self._path = Path(path)
         self._max_size_bytes = max(_MIN_ROTATION_BYTES, int(max_size_bytes))
         self._keep_archives = max(1, int(keep_archives))
-        self._lock = threading.Lock()
-        # Cache of the last entry's hash. None = uncomputed; "" =
-        # file empty. Without this cache, append() was O(n) and the
-        # chain was O(n^2) — a 10k-entry log took >60s to extend.
-        self._last_hash_cache: str | None = None
+        self._lock_key, self._lock = self._state_for_path(self._path)
 
     def _now_iso(self) -> str:
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -42,16 +72,21 @@ class AuditLog:
     def _last_hash(self) -> str:
         """Return the hash of the last written entry.
 
-        Uses a cached value populated on first read. Without this,
-        ``append()`` was O(n) per call (full-file scan to find the
-        prior hash), making the hash chain O(n^2) over n entries
-        — a 10k-entry audit log took >60s just to re-append. The
-        cache is invalidated on rotation (handled in _rotate_if_needed)
-        so it never drifts from the live tail of the file."""
-        if self._last_hash_cache is not None:
-            return self._last_hash_cache
+        Reads from ``_LAST_HASH_CACHE`` (shared across all
+        ``AuditLog`` instances for the same path) — populated on
+        first read. Without this cache, ``append()`` was O(n) per
+        call (full-file scan to find the prior hash), making the
+        hash chain O(n^2) over n entries — a 10k-entry audit log
+        took >60s just to re-append. The cache is invalidated on
+        rotation (handled in ``_rotate_if_needed``) so it never
+        drifts from the live tail of the file. Callers MUST hold
+        ``self._lock`` — the shared cache is only safe to read
+        under the shared write lock."""
+        cached = type(self)._LAST_HASH_CACHE.get(self._lock_key)
+        if cached is not None:
+            return cached
         if not self._path.is_file():
-            self._last_hash_cache = ""
+            type(self)._LAST_HASH_CACHE[self._lock_key] = ""
             return ""
         last = ""
         with self._path.open("r", encoding="utf-8") as f:
@@ -66,7 +101,7 @@ class AuditLog:
                 h = row.get("hash") or ""
                 if h:
                     last = h
-        self._last_hash_cache = last
+        type(self)._LAST_HASH_CACHE[self._lock_key] = last
         return last
 
     def append(self, actor: str, action: str, target: str, result: str = "ok",
@@ -94,9 +129,9 @@ class AuditLog:
                 f.write(self._canonical(entry.to_dict()) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
-            # Update the cached last-hash so the next append is O(1)
+            # Update the shared cache so the next append is O(1)
             # instead of re-scanning the file.
-            self._last_hash_cache = entry.hash
+            type(self)._LAST_HASH_CACHE[self._lock_key] = entry.hash
             self._rotate_if_needed()
         return entry
 
@@ -117,7 +152,7 @@ class AuditLog:
             return
         # Cache belonged to the now-archived file; the next append
         # starts a fresh chain in an empty file.
-        self._last_hash_cache = ""
+        type(self)._LAST_HASH_CACHE[self._lock_key] = ""
         # Prune older archives
         archives = sorted(
             self._path.parent.glob(f"{self._path.name}.*"),

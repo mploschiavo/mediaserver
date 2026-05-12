@@ -71,6 +71,40 @@ class AuditLogTests(unittest.TestCase):
             entries = list(log.iter_entries())
             self.assertEqual(entries[0].detail, {"role": "adult", "count": 3})
 
+    def test_separate_instances_same_path_share_lock(self):
+        """Two ``AuditLog`` instances pointing at the same file must
+        produce a valid chain when concurrent threads call ``append``
+        on them. This guards the 2026-04-27 race where the request
+        thread + a background password-sync task each held their own
+        per-instance lock and wrote two entries sharing the same
+        ``prev_hash``."""
+        import threading
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.log.jsonl"
+            log_a = AuditLog(path)
+            log_b = AuditLog(path)
+            # Seed an entry so both instances cache the same last_hash.
+            log_a.append(actor="seed", action="seed", target="t0")
+
+            barrier = threading.Barrier(2)
+            errors: list[BaseException] = []
+
+            def worker(log: AuditLog, tag: str) -> None:
+                try:
+                    barrier.wait(timeout=2.0)
+                    for i in range(20):
+                        log.append(actor=tag, action="x", target=f"t{i}")
+                except BaseException as exc:  # noqa: BLE001
+                    errors.append(exc)
+
+            t1 = threading.Thread(target=worker, args=(log_a, "main"))
+            t2 = threading.Thread(target=worker, args=(log_b, "bg"))
+            t1.start(); t2.start()
+            t1.join(timeout=10); t2.join(timeout=10)
+            self.assertEqual(errors, [])
+            ok, detail = AuditLog(path).verify_chain()
+            self.assertTrue(ok, f"chain broke under concurrent writers: {detail}")
+
 
 if __name__ == "__main__":
     unittest.main()
