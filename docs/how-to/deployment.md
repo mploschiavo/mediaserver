@@ -172,33 +172,72 @@ curl -X POST http://127.0.0.1:9100/actions/bootstrap -H "Content-Type: applicati
 
 ### Stack Runner workflow (cross-platform orchestration)
 
-When you want orchestrated deploy + health-check + profile resolution in one
-command, use the Python workflow CLI (works on Windows / macOS / Linux):
+When you want orchestrated deploy + compose-preflight handlers
+(qBit password rotation, Authelia config seed, *arr UrlBase
+reconcile) + health-check + profile resolution in one command,
+use the Python workflow CLI. **All deployment settings come from
+the bootstrap profile YAML**, not from CLI flags — so the only
+arguments the deploy CLI accepts are an optional `NODE_IP`
+positional (k8s only) and `--bootstrap-profile-file FILE`.
+
+Three invocation forms, matching the [teardown how-to](teardown.md):
+
+**Console-script** (after `pip install -e .` — recommended for
+repeated use; works on Windows / macOS / Linux equally because
+the entry point resolves through Python's installed-package
+metadata, not relative imports):
 
 ```bash
 media-stack-deploy \
-  --platform-target compose \
-  --namespace media-dev \
-  --compose-project-name media-dev \
-  --compose-file deploy/compose/docker-compose.yml \
-  --compose-env-file deploy/compose/.env
+    --bootstrap-profile-file deploy/examples/bootstrap-profiles/media-compose-standard.yaml
 ```
 
-Optional profiles:
+**`.venv` module form** (fallback if the console script isn't on
+PATH, e.g. you have a virtualenv but skipped the editable install):
 
 ```bash
-media-stack-deploy \
-  --platform-target compose \
-  --namespace media-dev \
-  --compose-project-name media-dev \
-  --compose-profiles optional,plex
+cd /path/to/media-automation-stack
+.venv/bin/python -m media_stack.cli.commands.deploy_stack_main \
+    --bootstrap-profile-file deploy/examples/bootstrap-profiles/media-compose-standard.yaml
 ```
 
-Linux convenience wrapper: `bash bin/install/deploy-stack.sh ...`.
+**No-venv form** (any host with `python3` + PyYAML — the form CI
+uses, and the right form for fresh clones / remote-host
+troubleshooting where you can't easily install into a venv):
+
+```bash
+cd /path/to/media-automation-stack
+PYTHONPATH=src python3 -m media_stack.cli.commands.deploy_stack_main \
+    --bootstrap-profile-file deploy/examples/bootstrap-profiles/media-compose-standard.yaml
+```
+
+The bootstrap profile decides every behaviour the CLI used to
+accept as flags:
+
+| Behaviour | Profile key |
+|---|---|
+| compose vs k8s | `metadata.platform` (`compose` or `k8s`) |
+| namespace / compose project name | `metadata.name` |
+| optional services | `apps.<service>: true/false` + `install_profile` |
+| compose profiles selection | env `COMPOSE_PROFILES` (set explicitly) |
+| compose file / env file paths | profile defaults; env `COMPOSE_FILE` / `COMPOSE_ENV_FILE` override |
+| run bootstrap action | `bootstrap.run_bootstrap` |
+
+Use the right profile for your target — e.g.
+`deploy/examples/bootstrap-profiles/media-compose-standard.yaml`
+(compose) or `media-k8s-standard.yaml` (k8s). Operators
+typically copy one of those into `contracts/media-stack.profile.yaml`
+once at install time and the deploy CLI picks it up by default
+(the `--bootstrap-profile-file` flag overrides that for ad-hoc
+runs).
+
+Linux convenience wrapper: `bash bin/install/deploy-stack.sh
+[NODE_IP] [--bootstrap-profile-file FILE]`. Passes through to the
+same `deploy_stack_main` module.
 
 ### Compose runtime notes
 
-- Services with `profiles:` are skipped unless selected via `--compose-profiles` / `COMPOSE_PROFILES`.
+- Services with `profiles:` are skipped unless selected via the `COMPOSE_PROFILES` env var (e.g. `COMPOSE_PROFILES=optional,plex media-stack-deploy --bootstrap-profile-file …`).
 - `install` toggles from the bootstrap profile map to `selected_apps` filtering.
 - Path-prefix and hybrid route strategies can publish browser apps under one gateway host (e.g. `/app/sonarr`) while keeping Jellyfin direct-host routing for TV / mobile clients.
 - `AUTH_PROVIDER` supports `none`, `authelia`, `authentik`. Provider services are selected automatically (`authelia`, `authentik`, `authentik-worker`).
